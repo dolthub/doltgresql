@@ -10922,3 +10922,217 @@ fn test_text_search_rewrite_and_headline() {
         },
     ]);
 }
+
+#[test]
+fn test_geometric_functions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "geometric operators",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT point(1, 2) + point(3, 4), point(1, 2) * point(3, 4), point(1, 2) / point(3, 4), point(0, 0) <-> point(3, 4), point(1, 1) ~= point(1.0000001, 1), point(1, 2) <@ box '((0,0),(5,5))';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", POINT), Column("?column?", POINT), Column("?column?", POINT), Column("?column?", FLOAT8), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("(4,6)"), T("(-5,10)"), T("(0.44,0.08)"), T("5"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT box '((0,0),(2,2))' && box '((1,1),(3,3))', box '((0,0),(2,2))' @> box '((1,1),(2,2))', box '((0,0),(2,2))' # box '((1,1),(3,3))', @@ box '((0,0),(2,2))', area(box '((0,0),(2,3))'), box '((0,0),(2,2))' << box '((3,3),(4,4))';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOX), Column("?column?", POINT), Column("area", FLOAT8), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("(2,2),(1,1)"), T("(1,1)"), T("6"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lseg '[(0,0),(2,2)]' ?# lseg '[(0,2),(2,0)]', lseg '[(0,0),(2,2)]' # lseg '[(0,2),(2,0)]', point(5, 0) ## lseg '[(0,0),(2,2)]', ?- lseg '[(0,0),(2,0)]', @-@ lseg '[(0,0),(3,4)]', lseg '[(0,0),(1,1)]' <-> lseg '[(3,0),(4,0)]';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", POINT), Column("?column?", POINT), Column("?column?", BOOL), Column("?column?", FLOAT8), Column("?column?", FLOAT8)],
+                        rows: &[
+                            &[T("t"), T("(1,1)"), T("(2,2)"), T("t"), T("5"), T("2.23606797749979")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT line(point(0, 0), point(1, 1)), line '{1,-1,0}' ?# line '{1,1,0}', line '{1,-1,0}' # line '{1,1,0}', point(1, 0) <-> line '{1,-1,0}', line '{0,1,0}' ?|| line '{0,2,5}';",
+                    expected: Expected::Rows {
+                        columns: &[Column("line", LINE), Column("?column?", BOOL), Column("?column?", POINT), Column("?column?", FLOAT8), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("{1,-1,0}"), T("t"), T("(0,0)"), T("0.7071067811865476"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT polygon '((0,0),(4,0),(4,4),(0,4))' @> point(2, 2), polygon '((0,0),(4,0),(4,4),(0,4))' @> polygon '((1,1),(2,1),(2,2))', polygon '((0,0),(4,0),(4,4),(0,4))' && polygon '((3,3),(5,3),(5,5))', # polygon '((0,0),(4,0),(4,4))', @@ polygon '((0,0),(4,0),(4,4),(0,4))';",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", INT4), Column("?column?", POINT)],
+                        rows: &[
+                            &[T("t"), T("t"), T("t"), T("3"), T("(2,2)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT circle(point(0, 0), 2) @> point(1, 1), circle '<(0,0),1>' <-> circle '<(5,0),1>', area(circle '<(0,0),1>'), circle '<(0,0),1>' * point(2, 0), polygon(4, circle '<(0,0),1>');",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", FLOAT8), Column("area", FLOAT8), Column("?column?", CIRCLE), Column("polygon", POLYGON)],
+                        rows: &[
+                            &[T("t"), T("3"), T("3.141592653589793"), T("<(0,0),2>"), T("((-1,0),(-6.123233995736766e-17,1),(1,1.2246467991473532e-16),(1.8369701987210297e-16,-1))")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT path '[(0,0),(3,4),(6,0)]' + point(1, 1), length(path '[(0,0),(3,4),(6,0)]'), area(path '((0,0),(4,0),(4,4))'), isopen(path '[(0,0),(1,1)]'), pclose(path '[(0,0),(1,1)]'), npoints(path '[(0,0),(1,1)]');",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", PATH), Column("length", FLOAT8), Column("area", FLOAT8), Column("isopen", BOOL), Column("pclose", PATH), Column("npoints", INT4)],
+                        rows: &[
+                            &[T("[(1,1),(4,5),(7,1)]"), T("10"), T("8"), T("t"), T("((0,0),(1,1))"), T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT point(1, 2) / point(0, 0);",
+                    expected: Expected::Error(Diagnostic { code: "22012", message: "division by zero", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "geometric casts, subscripts, and float digits",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT '((0,0),(1,1))'::box::polygon, '<(1,1),2>'::circle::polygon, '(1,2)'::point::box, '[(1,2),(3,4)]'::lseg::point, '((0,0),(2,2))'::polygon::box, '((0,0),(2,2))'::polygon::path, '((0,0),(2,2))'::box::circle;",
+                    expected: Expected::Rows {
+                        columns: &[Column("polygon", POLYGON), Column("polygon", POLYGON), Column("box", BOX), Column("point", POINT), Column("box", BOX), Column("path", PATH), Column("circle", CIRCLE)],
+                        rows: &[
+                            &[T("((0,0),(0,1),(1,1),(1,0))"), T("((-1,1),(-0.7320508075688774,2),(-2.220446049250313e-16,2.732050807568877),(0.9999999999999999,3),(1.9999999999999996,2.7320508075688776),(2.7320508075688767,2.000000000000001),(3,1.0000000000000002),(2.7320508075688776,4.440892098500626e-16),(2.000000000000001,-0.7320508075688767),(1.0000000000000004,-1),(1.3322676295501878e-15,-0.7320508075688781),(-0.7320508075688767,-8.881784197001252e-16))"), T("(1,2),(1,2)"), T("(2,3)"), T("(2,2),(0,0)"), T("((0,0),(2,2))"), T("<(1,1),1.4142135623730951>")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '[(1,2),(3,4)]'::path::polygon;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "open path cannot be converted to polygon", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE gc (b box, p point);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO gc VALUES ('(1,2)'::point, '(3,4)');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT b, p[0], p[1], p[2], b[0], b[1] FROM gc;",
+                    expected: Expected::Rows {
+                        columns: &[Column("b", BOX), Column("p", FLOAT8), Column("p", FLOAT8), Column("p", FLOAT8), Column("b", POINT), Column("b", POINT)],
+                        rows: &[
+                            &[T("(1,2),(1,2)"), T("3"), T("4"), Null, T("(1,2)"), T("(1,2)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ('(1,2)'::point)[0:1];",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "slices of fixed-length arrays not implemented", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX gc_b ON gc USING gist (b);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX gc_p ON gc USING spgist (p);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM gc WHERE p <@ box '((0,0),(5,5))';",
+                    expected: Expected::Rows {
+                        columns: &[Column("b", BOX), Column("p", POINT)],
+                        rows: &[
+                            &[T("(1,2),(1,2)"), T("(3,4)")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET extra_float_digits = -3;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT point(4.0 / 3, 1e-10), 1.0 / 3::float8, 12345.678::float4, 1e100::float8;",
+                    expected: Expected::Rows {
+                        columns: &[Column("point", POINT), Column("?column?", FLOAT8), Column("float4", FLOAT4), Column("float8", FLOAT8)],
+                        rows: &[
+                            &[T("(1.3333333333333333,1e-10)"), T("0.3333333333333333"), T("12345.678"), T("1e+100")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET extra_float_digits = 0;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 1.0 / 3::float8, 0.1::float4, 1e15::float8, 1e16::float8;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", FLOAT8), Column("float4", FLOAT4), Column("float8", FLOAT8), Column("float8", FLOAT8)],
+                        rows: &[
+                            &[T("0.3333333333333333"), T("0.1"), T("1e+15"), T("1e+16")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET extra_float_digits;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 1.0 / 3::float8, 0.1::float4;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", FLOAT8), Column("float4", FLOAT4)],
+                        rows: &[
+                            &[T("0.3333333333333333"), T("0.1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

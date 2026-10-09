@@ -23,6 +23,7 @@ mod array;
 mod binary;
 pub(crate) mod catalog;
 pub mod datetime;
+pub(crate) mod geometry;
 pub mod json;
 mod jsonpath;
 mod math;
@@ -95,6 +96,7 @@ fn registry() -> &'static Registry {
             range::FUNCTIONS,
             populate::FUNCTIONS,
             textsearch::FUNCTIONS,
+            geometry::FUNCTIONS,
             catalog::FUNCTIONS,
             advisory::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,

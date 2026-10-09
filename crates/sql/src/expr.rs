@@ -2236,7 +2236,18 @@ impl<'b, 'a> Binder<'b, 'a> {
             return self.jsonb_subscripts((base, ty), items, arg_location(arg));
         }
         let ty = if is_array_type(ty.oid) { ty } else { crate::usertypes::base_type(ty) };
-        let (subscripts, slice) = self.subscripts(items)?;
+        let (mut subscripts, slice) = self.subscripts(items)?;
+        if let Some(element) = functions::geometry::element_type(ty.oid) {
+            if slice {
+                return Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "slices of fixed-length arrays not implemented"));
+            }
+            let index = match (subscripts.len(), subscripts.pop()) {
+                (1, Some((_, Some(index)))) => index,
+                _ => return Ok((Expr::Const(Value::Null), typ(element))),
+            };
+            let resolved = functions::resolve(functions::geometry::ELEMENT, &[ty.oid, oid::INT4], arg_location(arg))?;
+            return Ok((Expr::Func(resolved.index, vec![base, index]), typ(element)));
+        }
         if !is_array_type(ty.oid) {
             return Err(PgError {
                 position: position(arg_location(arg)),
@@ -2564,16 +2575,19 @@ fn operator_function(name: &str, types: &[u32]) -> Option<crate::pgcatalog::Impl
 
 fn unary(op: &str, (expr, ty): Bound, location: i32) -> Result<Bound> {
     let ty = if ty.oid == oid::UNKNOWN { typ(oid::FLOAT8) } else { ty };
+    if !matches!(op, "-" | "+" | "~")
+        && functions::exists(op)
+        && let Ok(resolved) = functions::resolve(op, &[ty.oid], location)
+    {
+        let arg = coerce((expr, ty), typ(resolved.arg_types[0]), false, location)?.0;
+        return Ok((Expr::Func(resolved.index, vec![arg]), typ(functions::function(resolved.index).ret)));
+    }
     match op {
         "-" if numeric_rank(ty.oid).is_some() => {
             Ok((Expr::Neg(Box::new(coerce((expr, ty), ty, false, location)?.0), ty), ty))
         }
         "+" if numeric_rank(ty.oid).is_some() => Ok((expr, ty)),
         "-" if ty.oid == oid::INTERVAL => Ok((Expr::Neg(Box::new(expr), ty), ty)),
-        "!!" if ty.oid == 3615 => {
-            let resolved = functions::resolve("!!", &[ty.oid], location)?;
-            Ok((Expr::Func(resolved.index, vec![expr]), ty))
-        }
         "~" if matches!(ty.oid, oid::INT2 | oid::INT4 | oid::INT8 | oid::BIT | oid::VARBIT) => {
             let resolved = functions::resolve("~", &[ty.oid], location)?;
             Ok((
@@ -2748,7 +2762,8 @@ pub fn coerce((expr, from): Bound, to: ColumnType, explicit: bool, location: i32
         && !transaction_id
         && !oid_without_cast(from.oid, to.oid)
         && !boolean
-        || implicitly_converts(from.oid, to.oid))
+        || implicitly_converts(from.oid, to.oid)
+        || functions::geometry::castable(from.oid, to.oid, explicit))
         && !(crate::array::is_vector_type(to.oid) && is_array_type(from.oid));
     if !allowed {
         return Err(PgError {
@@ -2880,6 +2895,7 @@ pub(crate) fn assignable(from: u32, to: u32) -> bool {
         || (from == oid::CHAR && is_string(to))
         || matches!((from, to), (oid::JSON, oid::JSONB) | (oid::JSONB, oid::JSON))
         || crate::casts::context(from, to).is_some_and(|c| c >= crate::casts::ASSIGNMENT)
+        || functions::geometry::castable(from, to, false)
 }
 
 /// element_type returns the element type of an array type.

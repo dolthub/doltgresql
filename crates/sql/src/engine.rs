@@ -1741,13 +1741,21 @@ impl Session {
             self.replication = Some((database.clone(), self.state.engine.store_root(&database)));
         }
         self.state.shared_statement = shareable(statement);
+        self.apply_extra_float_digits();
         let result = self.run_statement(statement, params);
+        self.apply_extra_float_digits();
         self.state.shared_statement = false;
         for warning in crate::xml::take_warnings() {
             self.state.notices.push(PgError { severity: "WARNING", ..PgError::new("01000", warning) });
         }
         self.state.sync_identity();
         result
+    }
+
+    /// apply_extra_float_digits makes floats on this thread print with the session's extra_float_digits.
+    fn apply_extra_float_digits(&self) {
+        let digits = self.state.settings.get("extra_float_digits").and_then(|v| v.parse().ok()).unwrap_or(1);
+        crate::types::set_extra_float_digits(digits);
     }
 
     /// run_statement runs one statement with the parameter values.

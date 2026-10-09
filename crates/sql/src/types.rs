@@ -110,15 +110,30 @@ pub struct Reg {
     pub name: String,
 }
 
-/// write_float appends a float's text as Postgres prints it with the default extra_float_digits: its shortest digits
-/// that read back as the float, which Postgres also finds with Ryu, with an exponent when the decimal exponent is below
-/// -4 or at least `max_exponent`.
+thread_local! {
+    /// EXTRA_FLOAT_DIGITS is the extra_float_digits setting of the session running on this thread.
+    static EXTRA_FLOAT_DIGITS: std::cell::Cell<i32> = const { std::cell::Cell::new(1) };
+}
+
+/// set_extra_float_digits sets the extra_float_digits that floats print with on this thread.
+pub fn set_extra_float_digits(digits: i32) {
+    EXTRA_FLOAT_DIGITS.with(|cell| cell.set(digits));
+}
+
+/// write_float appends a float's text as Postgres prints it. With a positive extra_float_digits that is its shortest
+/// digits that read back as the float, which Postgres also finds with Ryu, with an exponent when the decimal exponent
+/// is below -4 or at least `max_exponent`. Otherwise it is C's `%g` with `max_exponent` plus extra_float_digits
+/// significant digits.
 fn write_float(out: &mut Vec<u8>, value: f64, shortest: &str, max_exponent: i32) {
     if value.is_nan() {
         return out.extend_from_slice(b"NaN");
     }
     if value.is_infinite() {
         return out.extend_from_slice(if value < 0.0 { b"-Infinity" } else { b"Infinity" });
+    }
+    let extra = EXTRA_FLOAT_DIGITS.with(std::cell::Cell::get);
+    if extra <= 0 {
+        return write_general_float(out, value, (max_exponent + extra).max(1) as usize);
     }
     // Split ryu's text, which is either plain like 0.0001 or 123.0, or exponential like 1e-7 or 1.5e20, into its
     // digits and the decimal exponent of the first digit.
@@ -171,6 +186,28 @@ fn write_float(out: &mut Vec<u8>, value: f64, shortest: &str, max_exponent: i32)
             out.push(b'.');
             out.extend_from_slice(&digits[point..]);
         }
+    }
+}
+
+/// write_general_float appends a float as C's `%.*g` writes it with a precision of significant digits: in exponential
+/// form when its decimal exponent is below -4 or at least the precision, and without trailing zeros.
+fn write_general_float(out: &mut Vec<u8>, value: f64, precision: usize) {
+    let scientific = format!("{value:.*e}", precision - 1);
+    let (mantissa, exponent) = scientific.split_once('e').unwrap_or((&scientific, "0"));
+    let exponent: i32 = exponent.parse().unwrap_or(0);
+    let trim = |text: &str| -> String {
+        match text.contains('.') {
+            true => text.trim_end_matches('0').trim_end_matches('.').to_string(),
+            false => text.to_string(),
+        }
+    };
+    if exponent < -4 || exponent >= precision as i32 {
+        out.extend_from_slice(trim(mantissa).as_bytes());
+        let sign = if exponent < 0 { '-' } else { '+' };
+        out.extend_from_slice(format!("e{sign}{:02}", exponent.unsigned_abs()).as_bytes());
+    } else {
+        let fixed = format!("{value:.*}", (precision as i32 - 1 - exponent).max(0) as usize);
+        out.extend_from_slice(trim(&fixed).as_bytes());
     }
 }
 

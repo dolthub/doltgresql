@@ -776,6 +776,9 @@ pub fn cast_value(value: Value, to: ColumnType, explicit: bool) -> Result<Value>
         };
     }
     if crate::basetypes::get(to.oid).is_some() {
+        if let Some(converted) = crate::functions::geometry::cast(&value, to.oid, explicit) {
+            return converted;
+        }
         return match value {
             Value::Base(base) if base.type_oid == to.oid => Ok(Value::Base(base)),
             Value::Text(text) => input(&text, to.oid),

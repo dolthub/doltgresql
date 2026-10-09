@@ -1399,14 +1399,13 @@ impl Ctx<'_> {
         let table = self.resolve_table(relation)?;
         self.require_owner(&Object::Table(table.schema.clone(), table.name.clone()))?;
         let method = stmt.access_method.as_str();
-        let ranges_only = stmt.index_params.iter().all(|param| match param.node.as_ref() {
-            Some(NodeEnum::IndexElem(elem)) => table.columns.iter().any(|c| {
-                c.name == elem.name
-                    && (crate::rangetypes::is_range(c.ty.oid) || crate::rangetypes::is_multirange(c.ty.oid))
-            }),
+        let searchable = stmt.index_params.iter().all(|param| match param.node.as_ref() {
+            Some(NodeEnum::IndexElem(elem)) => {
+                table.columns.iter().any(|c| c.name == elem.name && searchable_by(method, c.ty.oid))
+            }
             _ => false,
         });
-        if !matches!(method, "" | "btree" | "hash") && !(matches!(method, "gist" | "spgist") && ranges_only) {
+        if !matches!(method, "" | "btree" | "hash") && !searchable {
             if let Some((extension, access_method)) = self.access_method(method)? {
                 return self.create_vector_index(stmt, table, extension, access_method);
             }
@@ -1785,5 +1784,20 @@ fn multiple_primary_keys(table: &str, location: i32) -> PgError {
             code::INVALID_TABLE_DEFINITION,
             format!("multiple primary keys for table \"{table}\" are not allowed"),
         )
+    }
+}
+
+/// searchable_by reports whether Doltgres builds an index of an access method that Postgres searches by operators other
+/// than comparisons as a plain index, which it only uses as a btree index would: GiST and SP-GiST over ranges,
+/// multiranges, geometric types, and tsvector, and GIN over arrays, jsonb, and tsvector.
+fn searchable_by(method: &str, type_oid: u32) -> bool {
+    match method {
+        "gist" | "spgist" => {
+            crate::rangetypes::is_range(type_oid)
+                || crate::rangetypes::is_multirange(type_oid)
+                || matches!(type_oid, 600 | 603 | 604 | 718 | 3614)
+        }
+        "gin" => crate::array::is_array_type(type_oid) || matches!(type_oid, crate::oid::JSONB | 3614),
+        _ => false,
     }
 }
