@@ -191,7 +191,7 @@ const DROPPED_DATABASES: &str = ".dolt_dropped_databases";
 /// create_times returns the clock readings of creating a database now, with the CREATE DATABASE commit a millisecond
 /// after the initial one so that ordering commits by date never ties them.
 fn create_times() -> doltdb::create::CreateTimes {
-    let millis = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+    let millis = crate::dolt::procedures::commit_millis(2) as u64;
     doltdb::create::CreateTimes {
         init_author_millis: millis as i64,
         init_committer_millis: millis,

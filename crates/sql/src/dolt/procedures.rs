@@ -549,6 +549,19 @@ pub fn now_millis() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64)
 }
 
+/// commit_millis returns a commit's time in Unix milliseconds: now, or a millisecond after the last commit time this
+/// process handed out when that is not earlier, so that ordering commits by date never ties two of them.
+pub fn commit_millis(count: i64) -> i64 {
+    static LAST: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+    let now = now_millis();
+    let previous = LAST
+        .try_update(std::sync::atomic::Ordering::SeqCst, std::sync::atomic::Ordering::SeqCst, |last| {
+            Some(now.max(last + 1) + count - 1)
+        })
+        .unwrap_or(now);
+    now.max(previous + 1)
+}
+
 /// commit_meta returns the metadata of a new commit by the session's user, now.
 pub fn commit_meta(ctx: &Ctx<'_>, description: &str) -> Result<CommitMeta> {
     let setting = |name: &str| ctx.session.settings.get(name).filter(|value| !value.is_empty());
@@ -564,7 +577,7 @@ pub fn commit_meta(ctx: &Ctx<'_>, description: &str) -> Result<CommitMeta> {
         setting("dolt_committer_email").unwrap_or(address),
     );
     let separate = committer_set && (committer_name != name || committer_email != email);
-    let millis = now_millis();
+    let millis = commit_millis(1);
     let date = |name: &str| setting(name).map_or(Ok(millis), |date| parse_date(&date));
     Ok(CommitMeta {
         name,
