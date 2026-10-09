@@ -145,6 +145,20 @@ fn make_sub_restrictinfos(root: &mut PlannerInfo<'_, '_>, clause: Expr, args: Re
     make_plain_restrictinfo(root, clause, Some(orlist), args)
 }
 
+/// commute_restrictinfo returns the RestrictInfo of a comparison with its sides swapped, as Postgres' function of the
+/// same name does.
+pub fn commute_restrictinfo(root: &mut PlannerInfo<'_, '_>, rinfo: RinfoId) -> RinfoId {
+    let mut result = root.rinfos[rinfo].clone();
+    let Expr::Compare(op, left, right) = result.clause else { unreachable!("only a comparison is commuted") };
+    result.clause = Expr::Compare(crate::indexscan::swap(op), right, left);
+    std::mem::swap(&mut result.left_relids, &mut result.right_relids);
+    std::mem::swap(&mut result.left_ec, &mut result.right_ec);
+    std::mem::swap(&mut result.left_em, &mut result.right_em);
+    result.outer_selec = Cell::new(-1.0);
+    root.rinfos.push(result);
+    root.rinfos.len() - 1
+}
+
 /// restriction_is_or_clause reports whether a RestrictInfo is of an OR clause, as Postgres' function of the same name
 /// does.
 pub fn restriction_is_or_clause(rinfo: &RestrictInfo) -> bool {
@@ -155,4 +169,22 @@ pub fn restriction_is_or_clause(rinfo: &RestrictInfo) -> bool {
 /// join's own condition, as Postgres' RINFO_IS_PUSHED_DOWN does.
 pub fn rinfo_is_pushed_down(rinfo: &RestrictInfo, joinrelids: &Relids) -> bool {
     rinfo.is_pushed_down || !rinfo.required_relids.is_subset(joinrelids)
+}
+
+/// join_clause_is_movable_into reports whether a join clause can be evaluated at a relation whose paths are
+/// parameterized by others, as Postgres' function of the same name does.
+pub fn join_clause_is_movable_into(rinfo: &RestrictInfo, currentrelids: &Relids, current_and_outer: &Relids) -> bool {
+    rinfo.clause_relids.is_subset(current_and_outer)
+        && currentrelids.overlap(&rinfo.clause_relids)
+        && !currentrelids.overlap(&rinfo.outer_relids)
+}
+
+/// join_clause_is_movable_to reports whether a join clause can be evaluated at a base relation's scan, when the
+/// relation's paths are parameterized by the other relations it reads, as Postgres' function of the same name does.
+pub fn join_clause_is_movable_to(rinfo: &RestrictInfo, baserel: &super::nodes::RelOptInfo) -> bool {
+    rinfo.clause_relids.is_member(baserel.relid)
+        && !rinfo.outer_relids.is_member(baserel.relid)
+        && !rinfo.clause_relids.overlap(&baserel.nulling_relids)
+        && !baserel.lateral_referencers.overlap(&rinfo.clause_relids)
+        && !rinfo.is_clone
 }

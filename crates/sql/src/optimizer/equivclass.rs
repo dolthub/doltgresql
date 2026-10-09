@@ -815,3 +815,16 @@ pub fn generate_implied_equalities_for_column(
     }
     result
 }
+
+/// is_redundant_with_indexclauses reports whether an index clause that is not lossy is a clause or was derived from
+/// the same class as it, so that an index scan need not test it, as Postgres' function of the same name does.
+pub fn is_redundant_with_indexclauses(
+    root: &PlannerInfo<'_, '_>,
+    rinfo: RinfoId,
+    indexclauses: &[super::nodes::IndexClause],
+) -> bool {
+    let parent_ec = root.rinfos[rinfo].parent_ec;
+    indexclauses.iter().filter(|iclause| !iclause.lossy).any(|iclause| {
+        iclause.rinfo == rinfo || (parent_ec.is_some() && root.rinfos[iclause.rinfo].parent_ec == parent_ec)
+    })
+}

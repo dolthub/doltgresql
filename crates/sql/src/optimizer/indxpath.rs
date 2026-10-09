@@ -12,85 +12,705 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Postgres' optimizer/path/indxpath.c: the index paths of a base relation. Doltgres' index scans choose an index
-//! and its ranges for a relation's restrictions, and Doltgres' lookup joins find the index that a join's equalities
-//! look rows up in, so each kind of path comes from them and takes Postgres' costs.
+//! Postgres' optimizer/path/indxpath.c: the index paths of a base relation, from the clauses that each column of each
+//! of its table's indexes can search by. Doltgres' index scans read the ranges that those clauses give, and its
+//! lookup joins look rows up by the equalities of an index's leading columns, which a parameterized path's join
+//! clauses must give. A system catalog's rows are an opaque plan, whose lookups Doltgres' lookup joins find.
 
 use std::rc::Rc;
 
 use prolly::NodeStore;
 
 use super::PlannerInfo;
-use super::clausesel::clauselist_selectivity;
-use super::costsize::{
-    IndexCost, QualCost, clamp_row_est, cost_index, cost_qual_eval, estimate_rel_pages, get_typavgwidth,
-};
+use super::costsize::{IndexCost, QualCost, clamp_row_est, cost_catalog_lookup, cost_index, cost_qual_eval};
+use super::equivclass::generate_implied_equalities_for_column;
 use super::nodes::{
-    IndexOptInfo, JoinType, Path, PathKind, RelOptKind, Relids, RestrictInfo, RinfoId, RteKind, VarNode,
+    EcId, EmId, IndexClause, IndexOptInfo, IndexPath, Path, PathKind, RelOptKind, Relids, RinfoId, RteKind, VarNode,
 };
+use super::pathkeys::{build_index_pathkeys, truncate_useless_pathkeys};
 use super::pathnode::add_path;
+use super::restrictinfo::{RestrictInfoArgs, binary_op_args, join_clause_is_movable_to, make_restrictinfo};
 use super::var::pull_varnos;
 use crate::catalog::table::TableDef;
 use crate::expr::{CmpOp, Expr};
-use crate::plan::{JoinMethod, Plan, SortKey};
+use crate::plan::JoinMethod;
 
-/// create_index_paths adds the paths of a base relation's index scans: the one that Doltgres chooses for its
-/// restrictions, one that reads its rows in the order of the query's ORDER BY, and a lookup for each set of other
-/// relations whose join equalities find its rows through an index, as Postgres' function of the same name adds plain,
-/// ordered, and parameterized index paths.
+/// IndexClauseSet is the index clauses of each key column of an index, as Postgres' IndexClauseSet is.
+type IndexClauseSet = Vec<Vec<IndexClause>>;
+
+/// get_relation_indexes returns the indexes of a base relation's table, as Postgres' get_relation_info lists them:
+/// Dolt's primary index, unless the table is keyless, and then each secondary index that is not a vector index, with
+/// each key column's btree operator family, direction, and NULL placement, and a secondary index's primary key
+/// columns after its own, which order its entries too.
+pub fn get_relation_indexes(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &TableDef) -> Vec<IndexOptInfo> {
+    let rules = root.ctx.index_rules(table).ok();
+    let glob = &mut *root.glob;
+    let mut to_vars = |e: &Expr| super::var::replace_columns(e.clone(), &mut |c| glob.var(rel, c, Relids::new()));
+    let mut hidden = Vec::new();
+    let mut predicates: Vec<Vec<Expr>> = Vec::new();
+    if let Some(rules) = &rules {
+        hidden = rules.hidden().iter().map(&mut to_vars).collect();
+        for predicate in rules.predicates() {
+            let conjuncts = predicate.iter().flat_map(crate::indexscan::conjuncts);
+            predicates.push(conjuncts.map(&mut to_vars).collect());
+        }
+    }
+    let width = |columns: &[usize]| -> f64 {
+        columns
+            .iter()
+            .filter_map(|&c| table.index_column(c))
+            .map(|c| super::costsize::get_typavgwidth(Some(c.ty.oid), c.ty.modifier))
+            .sum()
+    };
+    let (rel_pages, rel_tuples) = (root.rels[rel].pages, root.rels[rel].tuples);
+    let mut indexlist = Vec::new();
+    let mut add = |root: &mut PlannerInfo<'_, '_>, index: Option<usize>, columns: &[usize], unique: bool| {
+        let pk: Vec<usize> = match index {
+            Some(_) => table.key_columns.iter().copied().filter(|c| !columns.contains(c)).collect(),
+            None => Vec::new(),
+        };
+        let all: Vec<usize> = columns.iter().chain(&pk).copied().collect();
+        let (reverse_sort, nulls_first): (Vec<bool>, Vec<bool>) = match index {
+            Some(i) => {
+                let def = &table.indexes[i];
+                let own = (0..columns.len()).map(|c| (def.descending[c], !def.nulls_last[c]));
+                own.chain(pk.iter().map(|_| (false, false))).unzip()
+            }
+            None => all.iter().map(|_| (false, false)).unzip(),
+        };
+        let indexkeys: Vec<Option<usize>> = all.iter().map(|&c| (c < table.columns.len()).then_some(c)).collect();
+        let indexprs = all
+            .iter()
+            .filter_map(|&c| c.checked_sub(crate::catalog::table::HIDDEN_BASE))
+            .map(|k| hidden[k].clone())
+            .collect();
+        let opfamily = all
+            .iter()
+            .map(|&c| table.index_column(c).and_then(|col| super::nodefuncs::btree_opfamily(col.ty.oid)))
+            .collect();
+        let (pages, tree_height) = match index {
+            Some(i) => {
+                let height = root.ctx.db.read(&table.indexes[i].root).map_or(0, |r| r.level());
+                (super::costsize::estimate_rel_pages(rel_tuples, width(columns) + width(&table.key_columns)), height)
+            }
+            None => (rel_pages, prolly::Node::decode(table.table.primary_index.clone()).map_or(0, |r| r.level())),
+        };
+        let json = all.iter().any(|&c| {
+            table.index_column(c).is_some_and(|col| matches!(col.ty.oid, crate::oid::JSON | crate::oid::JSONB))
+        });
+        indexlist.push(IndexOptInfo {
+            index,
+            pages,
+            tuples: rel_tuples,
+            tree_height: f64::from(tree_height),
+            nkeycolumns: columns.len(),
+            indexkeys,
+            indexprs,
+            opfamily,
+            reverse_sort,
+            nulls_first,
+            sortable: !json && !crate::indexscan::hash_ordered(table, index),
+            unique,
+            indpred: index.and_then(|i| predicates.get(i).cloned()).unwrap_or_default(),
+            pred_ok: false,
+            indrestrictinfo: Vec::new(),
+        });
+    };
+    if !table.keyless() {
+        add(root, None, &table.key_columns, true);
+    }
+    for (i, def) in table.indexes.iter().enumerate() {
+        if def.vector.is_none() {
+            add(root, Some(i), &def.columns, def.unique);
+        }
+    }
+    indexlist
+}
+
+/// create_index_paths adds the paths of a base relation's index scans: for each index, a scan by the restrictions
+/// that its columns can search by, and scans parameterized by each set of other relations whose join clauses it can
+/// search by, as Postgres' function of the same name does. Bitmap scans are not built yet. A system catalog's
+/// lookups come from Doltgres' lookup joins.
 pub fn create_index_paths(root: &mut PlannerInfo<'_, '_>, rel: usize) {
-    if let RteKind::Relation(_, table) = &root.parse.rte(rel).kind {
-        let table = table.clone();
-        let restricted = create_restriction_index_path(root, rel, &table);
-        create_ordered_index_path(root, rel, &table, restricted);
+    if !matches!(root.parse.rte(rel).kind, RteKind::Relation(..)) {
+        create_catalog_lookup_paths(root, rel);
+        return;
     }
-    let mut joinclauses = root.rels[rel].joininfo.clone();
-    for clause in match_eclass_clauses_to_index(root, rel) {
-        if !joinclauses.contains(&clause) {
-            joinclauses.push(clause);
+    for index in 0..root.rels[rel].indexlist.len() {
+        let info = &root.rels[rel].indexlist[index];
+        if !info.indpred.is_empty() && !info.pred_ok {
+            continue;
         }
-    }
-    root.rels[rel].lookup_clauses = joinclauses.clone();
-    let mut outer_sets: Vec<Relids> = Vec::new();
-    for &rinfo in &joinclauses {
-        let Some((_, outer)) = join_equality(&root.rinfos[rinfo], rel) else { continue };
-        let relids = pull_varnos(root, outer);
-        if !outer_sets.contains(&relids) {
-            outer_sets.push(relids);
+        let rclauseset = match_restriction_clauses_to_index(root, rel, index);
+        get_index_paths(root, rel, index, &rclauseset);
+        let jclauseset = match_join_clauses_to_index(root, rel, index);
+        let eclauseset = match_eclass_clauses_to_index(root, rel, index);
+        let nonempty = |set: &IndexClauseSet| set.iter().any(|c| !c.is_empty());
+        if nonempty(&jclauseset) || nonempty(&eclauseset) {
+            consider_index_join_clauses(root, rel, index, &rclauseset, &jclauseset, &eclauseset);
         }
-    }
-    let all = outer_sets.iter().fold(Relids::new(), |relids, r| relids.union(r));
-    if outer_sets.len() > 1 {
-        outer_sets.push(all);
-    }
-    for outer_relids in outer_sets {
-        create_lookup_path(root, rel, outer_relids);
     }
 }
 
-/// match_eclass_clauses_to_index returns the join clauses that the equivalence classes imply between each key column
-/// of each index of a base relation and the members of other relations, as Postgres' function of the same name finds
-/// them for each index.
-fn match_eclass_clauses_to_index(root: &mut PlannerInfo<'_, '_>, rel: usize) -> Vec<RinfoId> {
-    let mut clauses = Vec::new();
-    if !root.rels[rel].has_eclass_joins {
-        return clauses;
-    }
-    let prohibited = root.rels[rel].lateral_referencers.clone();
-    for index in root.rels[rel].indexlist.clone() {
-        for indexcol in 0..index.indexkeys.len() {
-            let callback = |root: &PlannerInfo<'_, '_>, ec: super::nodes::EcId, em: super::nodes::EmId| {
-                ec_member_matches_indexcol(root, rel, &index, indexcol, ec, em)
-            };
-            clauses.extend(super::equivclass::generate_implied_equalities_for_column(
+/// consider_index_join_clauses builds the parameterized paths of an index for each set of outer relations that its
+/// join clauses read, as Postgres' function of the same name does.
+fn consider_index_join_clauses(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    index: usize,
+    rclauseset: &IndexClauseSet,
+    jclauseset: &IndexClauseSet,
+    eclauseset: &IndexClauseSet,
+) {
+    let mut considered_clauses = 0;
+    let mut considered_relids: Vec<Relids> = Vec::new();
+    for indexcol in 0..root.rels[rel].indexlist[index].nkeycolumns {
+        for set in [jclauseset, eclauseset] {
+            considered_clauses += set[indexcol].len();
+            consider_index_join_outer_rels(
                 root,
                 rel,
-                &callback,
-                &prohibited,
-            ));
+                index,
+                [rclauseset, jclauseset, eclauseset],
+                &set[indexcol],
+                considered_clauses,
+                &mut considered_relids,
+            );
         }
     }
-    clauses
+}
+
+/// consider_index_join_outer_rels builds the parameterized paths of an index for the outer relations of each of a
+/// column's join clauses, alone and with each set considered before, as Postgres' function of the same name does.
+fn consider_index_join_outer_rels(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    index: usize,
+    clausesets: [&IndexClauseSet; 3],
+    indexjoinclauses: &[IndexClause],
+    considered_clauses: usize,
+    considered_relids: &mut Vec<Relids>,
+) {
+    for iclause in indexjoinclauses {
+        let clause_relids = root.rinfos[iclause.rinfo].clause_relids.clone();
+        let parent_ec = root.rinfos[iclause.rinfo].parent_ec;
+        if considered_relids.contains(&clause_relids) {
+            continue;
+        }
+        let num_considered_relids = considered_relids.len();
+        for pos in 0..num_considered_relids {
+            let oldrelids = considered_relids[pos].clone();
+            if clause_relids.subset_compare(&oldrelids) != super::nodes::SubsetCompare::Different {
+                continue;
+            }
+            if parent_ec.is_some_and(|ec| eclass_already_used(root, ec, &oldrelids, indexjoinclauses)) {
+                continue;
+            }
+            if considered_relids.len() >= 10 * considered_clauses {
+                break;
+            }
+            get_join_index_paths(root, rel, index, clausesets, &clause_relids.union(&oldrelids), considered_relids);
+        }
+        get_join_index_paths(root, rel, index, clausesets, &clause_relids, considered_relids);
+    }
+}
+
+/// get_join_index_paths builds the paths of an index parameterized by a set of outer relations, from the join
+/// clauses that those relations supply and the restrictions, as Postgres' function of the same name does.
+fn get_join_index_paths(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    index: usize,
+    [rclauseset, jclauseset, eclauseset]: [&IndexClauseSet; 3],
+    relids: &Relids,
+    considered_relids: &mut Vec<Relids>,
+) {
+    if considered_relids.contains(relids) {
+        return;
+    }
+    let mut clauseset: IndexClauseSet = vec![Vec::new(); jclauseset.len()];
+    for indexcol in 0..jclauseset.len() {
+        for iclause in &jclauseset[indexcol] {
+            if root.rinfos[iclause.rinfo].clause_relids.is_subset(relids) {
+                clauseset[indexcol].push(iclause.clone());
+            }
+        }
+        if let Some(iclause) =
+            eclauseset[indexcol].iter().find(|iclause| root.rinfos[iclause.rinfo].clause_relids.is_subset(relids))
+        {
+            clauseset[indexcol].push(iclause.clone());
+        }
+        clauseset[indexcol].extend(rclauseset[indexcol].iter().cloned());
+    }
+    get_index_paths(root, rel, index, &clauseset);
+    considered_relids.push(relids.clone());
+}
+
+/// eclass_already_used reports whether a join clause from an equivalence class was already used for a subset of a
+/// set of outer relations, as Postgres' function of the same name does.
+fn eclass_already_used(
+    root: &PlannerInfo<'_, '_>,
+    parent_ec: EcId,
+    oldrelids: &Relids,
+    indexjoinclauses: &[IndexClause],
+) -> bool {
+    indexjoinclauses.iter().any(|iclause| {
+        let rinfo = &root.rinfos[iclause.rinfo];
+        rinfo.parent_ec == Some(parent_ec) && rinfo.clause_relids.is_subset(oldrelids)
+    })
+}
+
+/// get_index_paths adds the index paths that build_index_paths makes of an index and its clauses, as Postgres'
+/// function of the same name does.
+fn get_index_paths(root: &mut PlannerInfo<'_, '_>, rel: usize, index: usize, clauses: &IndexClauseSet) {
+    let useful_predicate = root.rels[rel].indexlist[index].pred_ok;
+    for path in build_index_paths(root, rel, index, clauses, useful_predicate) {
+        add_path(&mut root.rels[rel], path);
+    }
+}
+
+/// build_index_paths makes the paths of a scan of an index by its clauses: a forward scan whose order may be useful,
+/// and a backward one when its order is, as Postgres' function of the same name does. A parameterized path is made
+/// only when its join clauses give equalities of the index's leading columns that Doltgres' lookups can search by.
+fn build_index_paths(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    index: usize,
+    clauses: &IndexClauseSet,
+    useful_predicate: bool,
+) -> Vec<Rc<Path>> {
+    let mut index_clauses: Vec<IndexClause> = Vec::new();
+    let mut outer_relids = root.rels[rel].lateral_relids.clone();
+    for indexcol_clauses in clauses {
+        for iclause in indexcol_clauses {
+            index_clauses.push(iclause.clone());
+            outer_relids.add_members(&root.rinfos[iclause.rinfo].clause_relids);
+        }
+    }
+    outer_relids.del_member(rel);
+    if !outer_relids.is_empty() && lookup_keys(root, rel, index, &index_clauses).is_none() {
+        return Vec::new();
+    }
+    let loop_count = get_loop_count(root, &outer_relids);
+    let pathkeys_possibly_useful = outer_relids.is_empty() && super::pathkeys::has_useful_pathkeys(root, rel);
+    let index_is_ordered = root.rels[rel].indexlist[index].sortable;
+    let index_only_scan = check_index_only(root, rel, index);
+    let mut result = Vec::new();
+    let useful_pathkeys = match index_is_ordered && pathkeys_possibly_useful {
+        true => {
+            let index_pathkeys = build_index_pathkeys(root, rel, index, false);
+            truncate_useless_pathkeys(root, rel, &index_pathkeys)
+        }
+        false => Vec::new(),
+    };
+    if !index_clauses.is_empty() || !useful_pathkeys.is_empty() || useful_predicate || index_only_scan {
+        let path = IndexPath {
+            index,
+            indexclauses: index_clauses.clone(),
+            backward: false,
+            indexonly: index_only_scan,
+            indexselectivity: 1.0,
+        };
+        result.push(create_index_path(root, rel, path, useful_pathkeys, &outer_relids, loop_count));
+    }
+    if index_is_ordered && pathkeys_possibly_useful {
+        let index_pathkeys = build_index_pathkeys(root, rel, index, true);
+        let useful_pathkeys = truncate_useless_pathkeys(root, rel, &index_pathkeys);
+        if !useful_pathkeys.is_empty() {
+            let path = IndexPath {
+                index,
+                indexclauses: index_clauses,
+                backward: true,
+                indexonly: index_only_scan,
+                indexselectivity: 1.0,
+            };
+            result.push(create_index_path(root, rel, path, useful_pathkeys, &outer_relids, loop_count));
+        }
+    }
+    result
+}
+
+/// create_index_path makes the path of an index scan, with its parameterization's rows and its costs, as Postgres'
+/// function of the same name in pathnode.c does. When the query only counts the rows of this one table and the scan
+/// tests nothing after its index clauses, Doltgres' executor counts them from the index's entry counts, so the scan
+/// costs only its descent.
+fn create_index_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    mut path: IndexPath,
+    pathkeys: Vec<super::nodes::PkId>,
+    required_outer: &Relids,
+    loop_count: f64,
+) -> Rc<Path> {
+    let ppi = super::relnode::get_baserel_parampathinfo(root, rel, required_outer);
+    let (rows, ppi_clauses) = match &ppi {
+        Some(ppi) => (ppi.ppi_rows, ppi.ppi_clauses.clone()),
+        None => (root.rels[rel].rows, Vec::new()),
+    };
+    let ((disabled_nodes, startup_cost, mut total_cost), selectivity) =
+        cost_index(root, rel, &path, &ppi_clauses, rows, loop_count);
+    path.indexselectivity = selectivity;
+    let table = root.parse.rte(rel).table();
+    let counted = root.counting.as_ref().is_some_and(|calls| {
+        !calls.is_empty()
+            && calls.iter().all(|call| call.counts_rows() || table.is_some_and(|t| call.counts_set_column(t)))
+    });
+    let index = &root.rels[rel].indexlist[path.index];
+    let qpquals = super::costsize::extract_nonindex_conditions(root, &index.indrestrictinfo, &path.indexclauses);
+    if counted && qpquals.is_empty() && required_outer.is_empty() && root.all_baserels == Relids::singleton(rel) {
+        total_cost = startup_cost;
+    }
+    let parent = &root.rels[rel];
+    Rc::new(Path {
+        kind: PathKind::IndexScan(Box::new(path)),
+        parent: rel,
+        relids: parent.relids.clone(),
+        param: required_outer.clone(),
+        pathkeys,
+        rows,
+        width: parent.reltarget.width,
+        disabled_nodes,
+        startup_cost,
+        total_cost,
+    })
+}
+
+/// check_index_only reports whether an index holds every column of its relation that the query reads, from the
+/// relation's target and the restrictions the scan tests, as Postgres' function of the same name decides an
+/// index-only scan: Dolt's primary index holds the rows, and a secondary index holds its columns and the primary
+/// key's.
+fn check_index_only(root: &PlannerInfo<'_, '_>, rel: usize, index: usize) -> bool {
+    if !root.enables.indexonlyscan {
+        return false;
+    }
+    let info = &root.rels[rel].indexlist[index];
+    if info.index.is_none() {
+        return true;
+    }
+    let mut attrs_used: Vec<usize> = Vec::new();
+    let quals = info.indrestrictinfo.iter().map(|&r| &root.rinfos[r].clause);
+    for e in root.rels[rel].reltarget.exprs.iter().chain(quals) {
+        let vars = super::var::pull_var_clause(root.glob, e, false);
+        for id in vars {
+            if let VarNode::Var(var) = root.glob.node(id)
+                && var.varno == rel
+            {
+                attrs_used.push(var.varattno);
+            }
+        }
+    }
+    attrs_used.iter().all(|a| info.indexkeys.contains(&Some(*a)))
+}
+
+/// get_loop_count returns how many times a nested loop runs a parameterized path, the fewest rows among its outer
+/// relations, as Postgres' function of the same name estimates it. A semi join's unique outer rows are not counted
+/// yet.
+fn get_loop_count(root: &PlannerInfo<'_, '_>, outer_relids: &Relids) -> f64 {
+    let mut result = 0.0;
+    for outer_relid in outer_relids.members() {
+        let Some(outer_rel) = root.rels.get(outer_relid).filter(|r| r.reloptkind == RelOptKind::BaseRel) else {
+            continue;
+        };
+        if super::joinrels::is_dummy_rel(root, outer_relid) {
+            continue;
+        }
+        if result == 0.0 || result > outer_rel.rows {
+            result = outer_rel.rows;
+        }
+    }
+    if result > 0.0 { result } else { 1.0 }
+}
+
+/// match_restriction_clauses_to_index returns the restrictions that each column of an index can search by, as
+/// Postgres' function of the same name does.
+fn match_restriction_clauses_to_index(root: &mut PlannerInfo<'_, '_>, rel: usize, index: usize) -> IndexClauseSet {
+    let mut clauseset = vec![Vec::new(); root.rels[rel].indexlist[index].nkeycolumns];
+    let clauses = root.rels[rel].indexlist[index].indrestrictinfo.clone();
+    match_clauses_to_index(root, rel, &clauses, index, &mut clauseset);
+    clauseset
+}
+
+/// match_join_clauses_to_index returns the join clauses movable to a relation that each column of an index can search
+/// by, as Postgres' function of the same name does. OR clauses, which only bitmap scans use, are left out.
+fn match_join_clauses_to_index(root: &mut PlannerInfo<'_, '_>, rel: usize, index: usize) -> IndexClauseSet {
+    let mut clauseset = vec![Vec::new(); root.rels[rel].indexlist[index].nkeycolumns];
+    let clauses: Vec<RinfoId> = root.rels[rel]
+        .joininfo
+        .iter()
+        .copied()
+        .filter(|&r| join_clause_is_movable_to(&root.rinfos[r], &root.rels[rel]) && root.rinfos[r].orclause.is_none())
+        .collect();
+    match_clauses_to_index(root, rel, &clauses, index, &mut clauseset);
+    clauseset
+}
+
+/// match_eclass_clauses_to_index returns the join clauses that the equivalence classes imply between each key column
+/// of an index and the members of other relations, as Postgres' function of the same name finds them.
+fn match_eclass_clauses_to_index(root: &mut PlannerInfo<'_, '_>, rel: usize, index: usize) -> IndexClauseSet {
+    let nkeycolumns = root.rels[rel].indexlist[index].nkeycolumns;
+    let mut clauseset = vec![Vec::new(); nkeycolumns];
+    if !root.rels[rel].has_eclass_joins {
+        return clauseset;
+    }
+    let prohibited = root.rels[rel].lateral_referencers.clone();
+    let info = root.rels[rel].indexlist[index].clone();
+    for indexcol in 0..nkeycolumns {
+        let callback = |root: &PlannerInfo<'_, '_>, ec: EcId, em: EmId| {
+            ec_member_matches_indexcol(root, rel, &info, indexcol, ec, em)
+        };
+        let clauses = generate_implied_equalities_for_column(root, rel, &callback, &prohibited);
+        match_clauses_to_index(root, rel, &clauses, index, &mut clauseset);
+    }
+    clauseset
+}
+
+/// match_clauses_to_index adds each clause of a list that a column of an index can search by to the column's index
+/// clauses, as Postgres' function of the same name does.
+fn match_clauses_to_index(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    clauses: &[RinfoId],
+    index: usize,
+    clauseset: &mut IndexClauseSet,
+) {
+    for &rinfo in clauses {
+        match_clause_to_index(root, rel, rinfo, index, clauseset);
+    }
+}
+
+/// match_clause_to_index adds a clause to the index clauses of the first column of an index that can search by it,
+/// unless it is pseudoconstant or already there, as Postgres' function of the same name does.
+fn match_clause_to_index(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    rinfo: RinfoId,
+    index: usize,
+    clauseset: &mut IndexClauseSet,
+) {
+    if root.rinfos[rinfo].pseudoconstant {
+        return;
+    }
+    for (indexcol, indexclauses) in clauseset.iter_mut().enumerate() {
+        if indexclauses.iter().any(|iclause| iclause.rinfo == rinfo) {
+            return;
+        }
+        if let Some(iclause) = match_clause_to_indexcol(root, rel, rinfo, indexcol, index) {
+            indexclauses.push(iclause);
+            return;
+        }
+    }
+}
+
+/// match_clause_to_indexcol returns the index clause that a clause makes for a column of an index, when the column
+/// can search by it, as Postgres' function of the same name does: a boolean column itself, a comparison of the column
+/// with something that reads no Var of its relation, a LIKE of the column with a fixed prefix, an IN list or ANY
+/// array, an OR of equalities of the column, or a NULL test of the column.
+fn match_clause_to_indexcol(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    rinfo: RinfoId,
+    indexcol: usize,
+    index: usize,
+) -> Option<IndexClause> {
+    let info = root.rels[rel].indexlist[index].clone();
+    let clause = root.rinfos[rinfo].clause.clone();
+    if info.opfamily[indexcol] == super::nodefuncs::btree_opfamily(super::nodefuncs::BOOLOID)
+        && let Some(iclause) = match_boolean_index_clause(root, rel, rinfo, indexcol, &info)
+    {
+        return Some(iclause);
+    }
+    let plain = IndexClause { rinfo, indexquals: vec![rinfo], lossy: false, indexcol };
+    match &clause {
+        Expr::Compare(..) => match_opclause_to_indexcol(root, rel, rinfo, indexcol, &info),
+        Expr::Func(..) => match_funcclause_to_indexcol(root, rel, rinfo, indexcol, &info),
+        Expr::AnyArray(..) => match_saopclause_to_indexcol(root, rel, rinfo, indexcol, &info),
+        _ if root.rinfos[rinfo].orclause.is_some() => match_orclause_to_indexcol(root, rel, rinfo, indexcol, &info),
+        Expr::IsNull(arg, _) if !matches!(**arg, Expr::Row(..)) => {
+            match_index_to_operand(root, arg, indexcol, &info, rel).then_some(plain)
+        }
+        Expr::Not(inner) => match &**inner {
+            Expr::IsNull(arg, false) => match_index_to_operand(root, arg, indexcol, &info, rel).then_some(plain),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// indexcol_is_bool_constant_for_query reports whether a restriction fixes a boolean index column to a constant, so
+/// that the column does not change the order of the index's rows that the scan reads, as Postgres' function of the
+/// same name does.
+pub fn indexcol_is_bool_constant_for_query(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    index: usize,
+    indexcol: usize,
+) -> bool {
+    let info = root.rels[rel].indexlist[index].clone();
+    if info.opfamily[indexcol] != super::nodefuncs::btree_opfamily(super::nodefuncs::BOOLOID) {
+        return false;
+    }
+    for rinfo in root.rels[rel].baserestrictinfo.clone() {
+        if root.rinfos[rinfo].pseudoconstant {
+            continue;
+        }
+        if match_boolean_index_clause(root, rel, rinfo, indexcol, &info).is_some() {
+            return true;
+        }
+    }
+    false
+}
+
+/// make_simple_restrictinfo returns the RestrictInfo of a clause that an index clause derives, as Postgres'
+/// make_simple_restrictinfo does.
+fn make_simple_restrictinfo(root: &mut PlannerInfo<'_, '_>, clause: Expr) -> RinfoId {
+    make_restrictinfo(root, clause, RestrictInfoArgs { is_pushed_down: true, ..RestrictInfoArgs::default() })
+}
+
+/// match_boolean_index_clause returns the equality with true or false that a boolean column itself, its NOT, or its
+/// IS TRUE or IS FALSE test makes an index clause of, as Postgres' function of the same name does.
+fn match_boolean_index_clause(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    rinfo: RinfoId,
+    indexcol: usize,
+    index: &IndexOptInfo,
+) -> Option<IndexClause> {
+    let clause = root.rinfos[rinfo].clause.clone();
+    let eq = |arg: &Expr, value: bool| {
+        Expr::Compare(CmpOp::Eq, Box::new(arg.clone()), Box::new(Expr::Const(crate::types::Value::Bool(value))))
+    };
+    let op = if match_index_to_operand(root, &clause, indexcol, index, rel) {
+        eq(&clause, true)
+    } else {
+        match &clause {
+            Expr::Not(arg) if match_index_to_operand(root, arg, indexcol, index, rel) => eq(arg, false),
+            Expr::BoolTest(arg, Some(value), false) if match_index_to_operand(root, arg, indexcol, index, rel) => {
+                eq(arg, *value)
+            }
+            _ => return None,
+        }
+    };
+    let indexqual = make_simple_restrictinfo(root, op);
+    Some(IndexClause { rinfo, indexquals: vec![indexqual], lossy: false, indexcol })
+}
+
+/// in_opfamily reports whether a comparison is a btree operator of an index column's operator family: an ordering or
+/// equality whose other side's type is in the family.
+fn in_opfamily(root: &PlannerInfo<'_, '_>, op: CmpOp, other: &Expr, opfamily: Option<u32>) -> bool {
+    let other_family = super::nodefuncs::expr_type(root, other).and_then(super::nodefuncs::btree_opfamily);
+    matches!(op, CmpOp::Lt | CmpOp::Le | CmpOp::Eq | CmpOp::Ge | CmpOp::Gt)
+        && opfamily.is_some()
+        && other_family == opfamily
+}
+
+/// match_opclause_to_indexcol returns the index clause that a comparison of an index column with an expression that
+/// reads no Var of the column's relation and runs no volatile function makes, with its sides swapped when the column
+/// is on the right, as Postgres' function of the same name does.
+fn match_opclause_to_indexcol(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    rinfo: RinfoId,
+    indexcol: usize,
+    index: &IndexOptInfo,
+) -> Option<IndexClause> {
+    let r = root.rinfos[rinfo].clone();
+    let Expr::Compare(op, leftop, rightop) = &r.clause else { return None };
+    if matches!(**leftop, Expr::Row(..)) {
+        return None;
+    }
+    let opfamily = index.opfamily[indexcol];
+    if match_index_to_operand(root, leftop, indexcol, index, rel)
+        && !r.right_relids.is_member(rel)
+        && !super::clauses::contain_volatile_functions(root.glob, rightop)
+        && in_opfamily(root, *op, rightop, opfamily)
+    {
+        return Some(IndexClause { rinfo, indexquals: vec![rinfo], lossy: false, indexcol });
+    }
+    if match_index_to_operand(root, rightop, indexcol, index, rel)
+        && !r.left_relids.is_member(rel)
+        && !super::clauses::contain_volatile_functions(root.glob, leftop)
+        && in_opfamily(root, crate::indexscan::swap(*op), leftop, opfamily)
+    {
+        let commrinfo = super::restrictinfo::commute_restrictinfo(root, rinfo);
+        return Some(IndexClause { rinfo, indexquals: vec![commrinfo], lossy: false, indexcol });
+    }
+    None
+}
+
+/// match_funcclause_to_indexcol returns the index clauses that a LIKE of an index column with a pattern of a fixed
+/// prefix makes, its prefix's bounds, as Postgres' like_support function makes them for get_index_clause_from_support.
+fn match_funcclause_to_indexcol(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    rinfo: RinfoId,
+    indexcol: usize,
+    index: &IndexOptInfo,
+) -> Option<IndexClause> {
+    let Expr::Func(f, args) = root.rinfos[rinfo].clause.clone() else { return None };
+    let [column, Expr::Const(crate::types::Value::Text(pattern))] = args.as_slice() else { return None };
+    if crate::functions::function(f).name != "textlike"
+        || !match_index_to_operand(root, column, indexcol, index, rel)
+        || index.opfamily[indexcol] != super::nodefuncs::btree_opfamily(crate::oid::TEXT)
+    {
+        return None;
+    }
+    let (lower, upper) = crate::indexscan::like_prefix_bounds(pattern)?;
+    let bound =
+        |op, text| Expr::Compare(op, Box::new(column.clone()), Box::new(Expr::Const(crate::types::Value::Text(text))));
+    let mut indexquals = vec![make_simple_restrictinfo(root, bound(CmpOp::Ge, lower))];
+    if let Some(upper) = upper {
+        indexquals.push(make_simple_restrictinfo(root, bound(CmpOp::Lt, upper)));
+    }
+    Some(IndexClause { rinfo, indexquals, lossy: true, indexcol })
+}
+
+/// match_saopclause_to_indexcol returns the index clause that an IN list or ANY array of an index column makes, as
+/// Postgres' function of the same name does.
+fn match_saopclause_to_indexcol(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    rinfo: RinfoId,
+    indexcol: usize,
+    index: &IndexOptInfo,
+) -> Option<IndexClause> {
+    let Expr::AnyArray(comparison, array, false) = &root.rinfos[rinfo].clause else { return None };
+    let Expr::Compare(CmpOp::Eq, leftop, value) = &**comparison else { return None };
+    if !matches!(**value, Expr::SubqueryValue)
+        || !match_index_to_operand(root, leftop, indexcol, index, rel)
+        || pull_varnos(root, array).is_member(rel)
+        || super::clauses::contain_volatile_functions(root.glob, array)
+    {
+        return None;
+    }
+    Some(IndexClause { rinfo, indexquals: vec![rinfo], lossy: false, indexcol })
+}
+
+/// match_orclause_to_indexcol returns the index clause that an OR of equalities of an index column with expressions
+/// that read no Var of its relation makes, as Postgres' function of the same name turns it into an ANY array.
+fn match_orclause_to_indexcol(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    rinfo: RinfoId,
+    indexcol: usize,
+    index: &IndexOptInfo,
+) -> Option<IndexClause> {
+    let arms = root.rinfos[rinfo].orclause.clone()?;
+    for arm in &arms {
+        let [sub] = arm.as_slice() else { return None };
+        let Expr::Compare(CmpOp::Eq, l, r) = &root.rinfos[*sub].clause else { return None };
+        let (column, other) = match match_index_to_operand(root, l, indexcol, index, rel) {
+            true => (l, r),
+            false => (r, l),
+        };
+        if !match_index_to_operand(root, column, indexcol, index, rel)
+            || pull_varnos(root, other).is_member(rel)
+            || super::clauses::contain_volatile_functions(root.glob, other)
+            || !in_opfamily(root, CmpOp::Eq, other, index.opfamily[indexcol])
+        {
+            return None;
+        }
+    }
+    Some(IndexClause { rinfo, indexquals: vec![rinfo], lossy: false, indexcol })
 }
 
 /// ec_member_matches_indexcol reports whether an equivalence class's member is an index's key column, in the
@@ -100,310 +720,68 @@ fn ec_member_matches_indexcol(
     rel: usize,
     index: &IndexOptInfo,
     indexcol: usize,
-    ec: super::nodes::EcId,
-    em: super::nodes::EmId,
+    ec: EcId,
+    em: EmId,
 ) -> bool {
     index.opfamily[indexcol].is_some_and(|f| root.eq_classes[ec].ec_opfamilies.contains(&f))
         && match_index_to_operand(root, &root.eq_members[em].em_expr, indexcol, index, rel)
 }
 
-/// join_equality returns the sides of a join clause that equates an expression of a relation with one of others,
-/// as an index lookup of that relation's rows may search by.
-fn join_equality(rinfo: &RestrictInfo, rel: usize) -> Option<(&Expr, &Expr)> {
-    let Expr::Compare(CmpOp::Eq, l, r) = &rinfo.clause else { return None };
-    let singleton = Relids::singleton(rel);
-    match (rinfo.can_join, rinfo.left_relids == singleton, rinfo.right_relids == singleton) {
-        (true, true, false) => Some((l, r)),
-        (true, false, true) => Some((r, l)),
-        _ => None,
-    }
-}
-
-/// create_restriction_index_path adds the path of the index scan that Doltgres chooses for a table's restrictions,
-/// returning its index. When the query only counts the rows of that one table that the scan's ranges hold exactly,
-/// Doltgres' executor counts them from the index's entry counts, so the scan costs only its descent.
-fn create_restriction_index_path(
-    root: &mut PlannerInfo<'_, '_>,
-    rel: usize,
-    table: &TableDef,
-) -> Option<Option<usize>> {
+/// check_index_predicates records which partial indexes the query's clauses imply the predicates of, and the
+/// restrictions that each must still test, as Postgres' function of the same name does, where a clause implies a
+/// conjunct of a predicate equal to it.
+pub fn check_index_predicates(root: &mut PlannerInfo<'_, '_>, rel: usize) {
     let restrictinfo = root.rels[rel].baserestrictinfo.clone();
-    let predicate = restrictinfo
-        .iter()
-        .filter(|&&r| !root.rinfos[r].pseudoconstant)
-        .map(|&r| to_attnos(root, root.rinfos[r].clause.clone(), rel))
-        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
-    let predicate = predicate?;
-    let (scan, exact) = crate::indexscan::choose_with_cover(root.ctx, table, &predicate)?;
-    let chosen = scan.index;
-    let ordered =
-        local_pathkeys(root, rel).and_then(|keys| ordered_scan(Plan::IndexScan(Box::new(scan.clone())), &keys));
-    let (scan, pathkeys) = match ordered {
-        Some(ordered) => (ordered, root.query_pathkeys.clone()),
-        None => (scan, Vec::new()),
-    };
-    let columns = scan.index_columns();
-    let on_index = |r: &RinfoId| {
-        let clause = &root.rinfos[*r].clause;
-        pull_varnos(root, clause).num_members() == 1 && attnos(root, clause).iter().all(|a| columns.contains(a))
-    };
-    let index_quals: Vec<RinfoId> = restrictinfo.iter().copied().filter(on_index).collect();
-    let selectivity = clauselist_selectivity(root, &index_quals, rel, JoinType::Inner, None);
-    let index_tuples = clamp_row_est(selectivity * root.rels[rel].tuples);
-    let nquals = index_quals.len();
-    let qpquals: Vec<RinfoId> = match exact {
-        true => Vec::new(),
-        false => restrictinfo.iter().copied().filter(|r| !on_index(r)).collect(),
-    };
-    let index = index_info(root, rel, table, scan.index, check_index_only(root, rel, &scan), nquals);
-    let (disabled_nodes, startup_cost, mut total_cost) =
-        cost_index(root, rel, &index, index_tuples, cost_qual_eval(root, &qpquals), 1.0);
-    let counted = root.counting.as_ref().is_some_and(|calls| {
-        !calls.is_empty() && calls.iter().all(|call| call.counts_rows() || call.counts_set_column(table))
-    });
-    if exact && counted && root.all_baserels == Relids::singleton(rel) {
-        total_cost = startup_cost;
+    let mut clauselist: Vec<Expr> = restrictinfo.iter().map(|&r| root.rinfos[r].clause.clone()).collect();
+    for &r in &root.rels[rel].joininfo {
+        if join_clause_is_movable_to(&root.rinfos[r], &root.rels[rel]) {
+            clauselist.push(root.rinfos[r].clause.clone());
+        }
     }
-    let parent = &mut root.rels[rel];
-    let path = Path {
-        kind: PathKind::IndexScan(Box::new(scan), exact),
-        parent: rel,
-        relids: parent.relids.clone(),
-        param: Relids::new(),
-        pathkeys,
-        rows: parent.rows,
-        width: parent.reltarget.width,
-        disabled_nodes,
-        startup_cost,
-        total_cost,
-    };
-    add_path(parent, Rc::new(path));
-    Some(chosen)
-}
-
-/// create_ordered_index_path adds the path of a scan of every entry of an index of a table that reads its rows in
-/// the order of the query's ORDER BY, testing the table's restrictions on each, as Postgres adds an index path for its
-/// useful pathkeys alone, unless it is the index that the restrictions' scan reads, whose path has its order already.
-fn create_ordered_index_path(
-    root: &mut PlannerInfo<'_, '_>,
-    rel: usize,
-    table: &TableDef,
-    restricted: Option<Option<usize>>,
-) {
-    let Some(keys) = local_pathkeys(root, rel) else { return };
-    let Some(scan) = ordered_scan(Plan::Scan(Box::new(table.clone()), None), &keys) else { return };
-    if restricted == Some(scan.index) {
-        return;
-    }
-    let index = index_info(root, rel, table, scan.index, check_index_only(root, rel, &scan), 0);
-    let qpqual_cost = cost_qual_eval(root, &root.rels[rel].baserestrictinfo);
-    let tuples = root.rels[rel].tuples;
-    let (disabled_nodes, startup_cost, total_cost) = cost_index(root, rel, &index, tuples, qpqual_cost, 1.0);
-    let parent = &root.rels[rel];
-    let path = Path {
-        kind: PathKind::IndexScan(Box::new(scan), false),
-        parent: rel,
-        relids: parent.relids.clone(),
-        param: Relids::new(),
-        pathkeys: root.query_pathkeys.clone(),
-        rows: parent.rows,
-        width: parent.reltarget.width,
-        disabled_nodes,
-        startup_cost,
-        total_cost,
-    };
-    add_path(&mut root.rels[rel], Rc::new(path));
-}
-
-/// local_pathkeys returns the query's ORDER BY keys over the columns of a base relation, when they read only it.
-fn local_pathkeys(root: &PlannerInfo<'_, '_>, rel: usize) -> Option<Vec<SortKey>> {
-    let singleton = Relids::singleton(rel);
-    if root.query_pathkeys.is_empty() || root.query_sortkeys.iter().any(|k| pull_varnos(root, &k.expr) != singleton) {
-        return None;
-    }
-    Some(
-        root.query_sortkeys
-            .iter()
-            .map(|k| SortKey { expr: to_attnos(root, k.expr.clone(), rel), ..k.clone() })
-            .collect(),
-    )
-}
-
-/// ordered_scan returns the index scan that reads a scan's rows in the order of keys over its columns, as Doltgres'
-/// index scans can.
-fn ordered_scan(plan: Plan, keys: &[SortKey]) -> Option<crate::indexscan::IndexScan> {
-    match crate::indexscan::ordered(&plan, keys)? {
-        Plan::IndexScan(scan) => Some(*scan),
-        _ => None,
-    }
-}
-
-/// create_lookup_path adds the path of a lookup of a relation's rows by its join equalities with a set of other
-/// relations, when an index of its table or catalog lets it look them up, as Postgres adds the parameterized index
-/// path of the clauses that those relations' rows supply. A relation that evaluates PlaceHolderVars has none, as
-/// Doltgres' lookup joins return the looked-up rows as they are stored.
-fn create_lookup_path(root: &mut PlannerInfo<'_, '_>, rel: usize, outer_relids: Relids) {
-    let placeholders = root.rels[rel]
-        .reltarget
-        .exprs
-        .iter()
-        .any(|e| matches!(e, Expr::Column(id) if matches!(root.glob.node(*id), VarNode::PlaceHolderVar(_))));
-    if placeholders {
-        return;
-    }
-    let mut outer_vars: Vec<usize> = Vec::new();
-    let mut equalities = Vec::new();
-    for &rinfo in &root.rels[rel].lookup_clauses {
-        let Some((inner, outer)) = join_equality(&root.rinfos[rinfo], rel) else { continue };
-        if !pull_varnos(root, outer).is_subset(&outer_relids) {
+    let rinfos = &root.rinfos;
+    for index in root.rels[rel].indexlist.iter_mut() {
+        index.indrestrictinfo = restrictinfo.clone();
+        if index.indpred.is_empty() {
             continue;
         }
-        super::var::visit_columns(outer, &mut |v| {
-            if !outer_vars.contains(&v) {
-                outer_vars.push(v);
+        index.pred_ok = index.indpred.iter().all(|pred| clauselist.contains(pred));
+        let indpred = &index.indpred;
+        index.indrestrictinfo.retain(|&r| !indpred.contains(&rinfos[r].clause));
+    }
+}
+
+/// lookup_keys returns the expressions that a parameterized scan of an index looks its rows up by, one for each of
+/// the index's leading columns that an equality index clause gives, when the first one does and Doltgres' lookups can
+/// search the index by them: ascending columns of types that a lookup's keys compare.
+pub fn lookup_keys(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    index: usize,
+    indexclauses: &[IndexClause],
+) -> Option<Vec<Expr>> {
+    let info = &root.rels[rel].indexlist[index];
+    let table = root.parse.rte(rel).table()?;
+    let mut keys = Vec::new();
+    for indexcol in 0..info.nkeycolumns {
+        let column = info.indexkeys[indexcol].and_then(|c| table.index_column(c));
+        if info.reverse_sort[indexcol]
+            || column.is_none_or(|c| crate::storage::is_adaptive(c.encoding) || !crate::exec::lookup_type(c.ty.oid))
+        {
+            break;
+        }
+        let key = indexclauses.iter().filter(|iclause| iclause.indexcol == indexcol).find_map(|iclause| {
+            let [qual] = iclause.indexquals.as_slice() else { return None };
+            match &root.rinfos[*qual].clause {
+                Expr::Compare(CmpOp::Eq, _, other) => Some((**other).clone()),
+                _ => None,
             }
         });
-        equalities.push((inner.clone(), outer.clone()));
-    }
-    let left_width = outer_vars.len();
-    let position = |e: &Expr| -> Expr { positional(root, e.clone(), &outer_vars, rel, left_width) };
-    let condition = equalities
-        .iter()
-        .map(|(inner, outer)| Expr::Compare(CmpOp::Eq, Box::new(position(outer)), Box::new(position(inner))))
-        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
-    let Some(condition) = condition else { return };
-    let plan = match &root.parse.rte(rel).kind {
-        RteKind::Relation(plan, _) | RteKind::Plan(plan) => plan.clone(),
-        _ => return,
-    };
-    let Some(found) = crate::joins::lookup(root.ctx, &plan, &condition, left_width) else { return };
-    let method = match found.method {
-        JoinMethod::Lookup { scan, keys } => {
-            JoinMethod::Lookup { scan, keys: keys.iter().map(|k| from_positional(k.clone(), &outer_vars)).collect() }
+        match key {
+            Some(key) => keys.push(key),
+            None => break,
         }
-        JoinMethod::CatalogLookup { index, keys } => JoinMethod::CatalogLookup {
-            index,
-            keys: keys.iter().map(|k| from_positional(k.clone(), &outer_vars)).collect(),
-        },
-        other => other,
-    };
-    let loop_count = outer_relids
-        .members()
-        .filter(|&r| root.rels[r].reloptkind == RelOptKind::BaseRel)
-        .map(|r| root.rels[r].rows)
-        .fold(f64::INFINITY, f64::min);
-    let loop_count = if loop_count.is_finite() { loop_count } else { 1.0 };
-    let index = match (&method, &root.parse.rte(rel).kind) {
-        (JoinMethod::Lookup { scan, .. }, RteKind::Relation(_, table)) => {
-            let table = table.clone();
-            index_info(root, rel, &table, scan.index, false, 1)
-        }
-        _ => IndexCost {
-            pages: 1.0,
-            tuples: root.rels[rel].tuples,
-            tree_height: 0.0,
-            indexonly: true,
-            correlation: 1.0,
-            nquals: 1,
-        },
-    };
-    let parent = &root.rels[rel];
-    let selectivity = if parent.tuples > 0.0 { parent.rows / parent.tuples } else { 1.0 };
-    let rows = clamp_row_est(found.matches * selectivity);
-    let qpqual_cost: QualCost = cost_qual_eval(root, &parent.baserestrictinfo);
-    let (disabled_nodes, startup_cost, total_cost) =
-        cost_index(root, rel, &index, found.matches, qpqual_cost, loop_count);
-    let parent = &root.rels[rel];
-    let path = Path {
-        kind: PathKind::Lookup(method),
-        parent: rel,
-        relids: parent.relids.clone(),
-        param: outer_relids,
-        pathkeys: Vec::new(),
-        rows,
-        width: parent.reltarget.width,
-        disabled_nodes,
-        startup_cost,
-        total_cost,
-    };
-    add_path(&mut root.rels[rel], Rc::new(path));
-}
-
-/// check_index_only reports whether an index scan of a base relation reads every column that the query needs of
-/// the relation, from what the joins and output above it read and its restrictions, as Postgres' function of the same
-/// name decides an index-only scan.
-fn check_index_only(root: &PlannerInfo<'_, '_>, rel: usize, scan: &crate::indexscan::IndexScan) -> bool {
-    let parent = &root.rels[rel];
-    let mut needed: Vec<usize> = (0..parent.attr_needed.len()).filter(|&a| !parent.attr_needed[a].is_empty()).collect();
-    for &rinfo in &parent.baserestrictinfo {
-        needed.extend(attnos(root, &root.rinfos[rinfo].clause));
     }
-    scan.covers(&needed)
-}
-
-/// index_info returns what the planner knows of an index of a base relation's table for its costs: Dolt's primary
-/// index holds the table's rows, and a secondary index holds its columns with the primary key's, which a scan reads
-/// alone when it covers every column the scan needs.
-fn index_info(
-    root: &mut PlannerInfo<'_, '_>,
-    rel: usize,
-    table: &TableDef,
-    index: Option<usize>,
-    covering: bool,
-    nquals: usize,
-) -> IndexCost {
-    let parent = &root.rels[rel];
-    let Some(i) = index else {
-        let height = prolly::Node::decode(table.table.primary_index.clone()).map_or(0, |r| r.level());
-        return IndexCost {
-            pages: parent.pages,
-            tuples: parent.tuples,
-            tree_height: f64::from(height),
-            indexonly: true,
-            correlation: 1.0,
-            nquals,
-        };
-    };
-    let width = |columns: &[usize]| -> f64 {
-        columns
-            .iter()
-            .filter_map(|&c| table.index_column(c))
-            .map(|c| get_typavgwidth(Some(c.ty.oid), c.ty.modifier))
-            .sum()
-    };
-    let index_width = width(&table.indexes[i].columns) + width(&table.key_columns);
-    let (tuples, pages) = (parent.tuples, estimate_rel_pages(parent.tuples, index_width));
-    let height = root.ctx.db.read(&table.indexes[i].root).map_or(0, |r| r.level());
-    let columns = &table.indexes[i].columns;
-    let stats = root.rels[rel].stats.as_ref();
-    let first = columns.first().and_then(|&c| stats?.columns.get(c)).map_or(0.0, |c| c.correlation);
-    let correlation = if columns.len() > 1 { first * 0.75 } else { first };
-    IndexCost { pages, tuples, tree_height: f64::from(height), indexonly: covering, correlation, nquals }
-}
-
-/// get_relation_indexes returns the indexes of a table, as Postgres' get_relation_info lists them: Dolt's primary
-/// index, unless the table is keyless, and then each secondary index, with each key column's btree operator family.
-pub fn get_relation_indexes(table: &TableDef) -> Vec<IndexOptInfo> {
-    let opfamily = |c: usize| table.columns.get(c).and_then(|col| super::nodefuncs::btree_opfamily(col.ty.oid));
-    let key = |c: usize| (c < table.columns.len()).then_some(c);
-    let mut indexlist = Vec::new();
-    if !table.keyless() {
-        indexlist.push(IndexOptInfo {
-            indexkeys: table.key_columns.iter().map(|&c| key(c)).collect(),
-            opfamily: table.key_columns.iter().map(|&c| opfamily(c)).collect(),
-            unique: true,
-            has_predicate: false,
-        });
-    }
-    for index in &table.indexes {
-        indexlist.push(IndexOptInfo {
-            indexkeys: index.columns.iter().map(|&c| key(c)).collect(),
-            opfamily: index.columns.iter().map(|&c| opfamily(c)).collect(),
-            unique: index.unique,
-            has_predicate: !index.predicate.is_empty(),
-        });
-    }
-    indexlist
+    (!keys.is_empty()).then_some(keys)
 }
 
 /// relation_has_unique_index_ext reports whether a unique index of a base relation has each of its key columns
@@ -437,17 +815,17 @@ pub fn relation_has_unique_index_ext(
         return false;
     }
     for ind in &root.rels[rel].indexlist {
-        if !ind.unique || ind.has_predicate {
+        if !ind.unique || !ind.indpred.is_empty() {
             continue;
         }
         let mut exprs = Vec::new();
-        let all_matched = (0..ind.indexkeys.len()).all(|c| {
+        let all_matched = (0..ind.nkeycolumns).all(|c| {
             restrictlist.iter().any(|&rinfo| {
                 let r = &root.rinfos[rinfo];
                 if !ind.opfamily[c].is_some_and(|f| r.mergeopfamilies.contains(&f)) {
                     return false;
                 }
-                let Some((left, right)) = super::restrictinfo::binary_op_args(&r.clause) else { return false };
+                let Some((left, right)) = binary_op_args(&r.clause) else { return false };
                 let rexpr = if r.outer_is_left.get() { right } else { left };
                 if !match_index_to_operand(root, rexpr, c, ind, rel) {
                     return false;
@@ -468,8 +846,10 @@ pub fn relation_has_unique_index_ext(
     false
 }
 
-/// match_index_to_operand reports whether an expression is an index's key column, as a Var of the index's relation
-/// that no outer join makes NULL, as Postgres' function of the same name does for column keys.
+/// match_index_to_operand reports whether an expression is an index's column: a Var of the index's relation that no
+/// outer join makes NULL, or the expression of an expression column, looking through a PlaceHolderVar that nothing
+/// makes NULL and a cast that converts nothing, as Postgres' function of the same name does, or that stays in a btree
+/// operator family, where Postgres compares the types with a cross-type operator instead.
 pub fn match_index_to_operand(
     root: &PlannerInfo<'_, '_>,
     operand: &Expr,
@@ -477,9 +857,153 @@ pub fn match_index_to_operand(
     index: &IndexOptInfo,
     rel: usize,
 ) -> bool {
-    let Expr::Column(id) = operand else { return false };
-    let VarNode::Var(var) = root.glob.node(*id) else { return false };
-    index.indexkeys[indexcol].is_some_and(|k| var.varno == rel && var.varattno == k && var.varnullingrels.is_empty())
+    let operand = match operand {
+        Expr::Cast(arg, ty, _)
+            if ty.modifier < 0
+                && super::nodefuncs::expr_type(root, arg).is_some_and(|from| {
+                    let family = super::nodefuncs::btree_opfamily(from);
+                    crate::pgcatalog::binary_coercible(from, ty.oid)
+                        || (family.is_some() && family == super::nodefuncs::btree_opfamily(ty.oid))
+                }) =>
+        {
+            arg
+        }
+        other => other,
+    };
+    let operand = match operand {
+        Expr::Column(id) => match root.glob.node(*id) {
+            VarNode::PlaceHolderVar(phv) if phv.phnullingrels.is_empty() => &root.glob.placeholder(phv.phid).phexpr,
+            _ => operand,
+        },
+        other => other,
+    };
+    match index.indexkeys[indexcol] {
+        Some(attno) => matches!(operand, Expr::Column(id) if matches!(root.glob.node(*id),
+            VarNode::Var(var) if var.varno == rel && var.varattno == attno && var.varnullingrels.is_empty())),
+        None => {
+            let position = index.indexkeys[..indexcol].iter().filter(|k| k.is_none()).count();
+            index.indexprs.get(position).is_some_and(|indexkey| indexkey == operand)
+        }
+    }
+}
+
+/// index_column_exprs returns the expression of each of an index's columns, as Postgres' indextlist holds them.
+pub fn index_column_exprs(root: &mut PlannerInfo<'_, '_>, rel: usize, index: usize) -> Vec<Expr> {
+    let info = root.rels[rel].indexlist[index].clone();
+    let mut exprs = info.indexprs.iter();
+    info.indexkeys
+        .iter()
+        .map(|key| match key {
+            Some(attno) => root.glob.var(rel, *attno, Relids::new()),
+            None => exprs.next().cloned().expect("an expression column has its expression"),
+        })
+        .collect()
+}
+
+/// create_catalog_lookup_paths adds the path of a lookup of a system catalog's rows for each set of other relations
+/// whose join equalities find them through one of its indexes, which Doltgres' lookup joins find.
+fn create_catalog_lookup_paths(root: &mut PlannerInfo<'_, '_>, rel: usize) {
+    let mut outer_sets: Vec<Relids> = Vec::new();
+    for &rinfo in &root.rels[rel].joininfo {
+        let Some((_, outer)) = join_equality(root, rinfo, rel) else { continue };
+        let relids = pull_varnos(root, outer);
+        if !outer_sets.contains(&relids) {
+            outer_sets.push(relids);
+        }
+    }
+    let all = outer_sets.iter().fold(Relids::new(), |relids, r| relids.union(r));
+    if outer_sets.len() > 1 {
+        outer_sets.push(all);
+    }
+    for outer_relids in outer_sets {
+        create_catalog_lookup_path(root, rel, outer_relids);
+    }
+}
+
+/// join_equality returns the sides of a join clause that equates an expression of a relation with one of others.
+fn join_equality<'r>(root: &'r PlannerInfo<'_, '_>, rinfo: RinfoId, rel: usize) -> Option<(&'r Expr, &'r Expr)> {
+    let rinfo = &root.rinfos[rinfo];
+    let Expr::Compare(CmpOp::Eq, l, r) = &rinfo.clause else { return None };
+    let singleton = Relids::singleton(rel);
+    match (rinfo.can_join, rinfo.left_relids == singleton, rinfo.right_relids == singleton) {
+        (true, true, false) => Some((l, r)),
+        (true, false, true) => Some((r, l)),
+        _ => None,
+    }
+}
+
+/// create_catalog_lookup_path adds the path of a lookup of a system catalog's rows by its join equalities with a set
+/// of other relations, when an index of the catalog lets it look them up. A relation that evaluates PlaceHolderVars
+/// has none, as Doltgres' lookup joins return the looked-up rows as they are stored.
+fn create_catalog_lookup_path(root: &mut PlannerInfo<'_, '_>, rel: usize, outer_relids: Relids) {
+    let placeholders = root.rels[rel]
+        .reltarget
+        .exprs
+        .iter()
+        .any(|e| matches!(e, Expr::Column(id) if matches!(root.glob.node(*id), VarNode::PlaceHolderVar(_))));
+    if placeholders {
+        return;
+    }
+    let mut outer_vars: Vec<usize> = Vec::new();
+    let mut equalities = Vec::new();
+    for &rinfo in &root.rels[rel].joininfo {
+        let Some((inner, outer)) = join_equality(root, rinfo, rel) else { continue };
+        if !pull_varnos(root, outer).is_subset(&outer_relids) {
+            continue;
+        }
+        super::var::visit_columns(outer, &mut |v| {
+            if !outer_vars.contains(&v) {
+                outer_vars.push(v);
+            }
+        });
+        equalities.push((inner.clone(), outer.clone()));
+    }
+    let left_width = outer_vars.len();
+    let position = |e: &Expr| -> Expr { positional(root, e.clone(), &outer_vars, rel, left_width) };
+    let condition = equalities
+        .iter()
+        .map(|(inner, outer)| Expr::Compare(CmpOp::Eq, Box::new(position(outer)), Box::new(position(inner))))
+        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+    let Some(condition) = condition else { return };
+    let RteKind::Plan(plan) = &root.parse.rte(rel).kind else { return };
+    let plan = plan.clone();
+    let Some(found) = crate::joins::lookup(root.ctx, &plan, &condition, left_width) else { return };
+    let method = match found.method {
+        JoinMethod::CatalogLookup { index, keys } => JoinMethod::CatalogLookup {
+            index,
+            keys: keys.iter().map(|k| from_positional(k.clone(), &outer_vars)).collect(),
+        },
+        _ => return,
+    };
+    let loop_count = get_loop_count(root, &outer_relids);
+    let index = IndexCost {
+        pages: 1.0,
+        tuples: root.rels[rel].tuples,
+        tree_height: 0.0,
+        indexonly: true,
+        correlation: 1.0,
+        nquals: 1,
+    };
+    let parent = &root.rels[rel];
+    let selectivity = if parent.tuples > 0.0 { parent.rows / parent.tuples } else { 1.0 };
+    let rows = clamp_row_est(found.matches * selectivity);
+    let qpqual_cost: QualCost = cost_qual_eval(root, &parent.baserestrictinfo);
+    let (disabled_nodes, startup_cost, total_cost) =
+        cost_catalog_lookup(root, rel, &index, found.matches, qpqual_cost, loop_count);
+    let parent = &root.rels[rel];
+    let path = Path {
+        kind: PathKind::Lookup(method),
+        parent: rel,
+        relids: parent.relids.clone(),
+        param: outer_relids,
+        pathkeys: Vec::new(),
+        rows,
+        width: parent.reltarget.width,
+        disabled_nodes,
+        startup_cost,
+        total_cost,
+    };
+    add_path(&mut root.rels[rel], Rc::new(path));
 }
 
 /// to_attnos rewrites a restriction of a base relation over its Vars into one over the columns of its rows, computing
@@ -493,17 +1017,6 @@ pub fn to_attnos(root: &PlannerInfo<'_, '_>, e: Expr, rel: usize) -> Expr {
         },
         other => other.map_children(&mut |c| to_attnos(root, c, rel)),
     }
-}
-
-/// attnos returns the columns of its relation that a clause reads.
-fn attnos(root: &PlannerInfo<'_, '_>, e: &Expr) -> Vec<usize> {
-    let mut out = Vec::new();
-    super::var::visit_columns(e, &mut |id| {
-        if let VarNode::Var(var) = root.glob.node(id) {
-            out.push(var.varattno);
-        }
-    });
-    out
 }
 
 /// positional rewrites an expression over Vars into one over a row of the outer Vars followed by the relation's

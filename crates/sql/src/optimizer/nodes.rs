@@ -552,9 +552,9 @@ pub enum PathKind {
     Result(Vec<Expr>),
     /// The rows of each of the paths in turn, where no paths make an empty relation, as Postgres' AppendPath is.
     Append(Vec<Rc<Path>>),
-    /// A scan of an index of a base relation, through Doltgres' index scan, with whether its ranges answer every
-    /// restriction it was chosen for.
-    IndexScan(Box<crate::indexscan::IndexScan>, bool),
+    /// A scan of an index of a base relation, which a nested loop runs again for each outer row when the path is
+    /// parameterized.
+    IndexScan(Box<IndexPath>),
     /// A base relation's rows that one index lookup finds for each row of the relations it is parameterized by, the
     /// inner side of a nested loop, whose lookup keys read those relations' Vars.
     Lookup(crate::plan::JoinMethod),
@@ -599,15 +599,53 @@ pub struct Path {
     pub total_cost: f64,
 }
 
-/// IndexOptInfo is the planner's knowledge of an index of a table, as Postgres' IndexOptInfo holds it: its key
-/// columns, or None for an expression, the btree operator family of each, whether it is unique, and whether it is
-/// partial.
+/// IndexOptInfo is the planner's knowledge of an index of a table, as Postgres' IndexOptInfo holds it: Dolt's
+/// primary index, as None, or a secondary index by position, its size, its columns, as table attributes or None for
+/// an expression, where the first `nkeycolumns` are the ones index clauses search and a secondary index then orders
+/// its entries by the primary key's columns, the expression of each expression column, each column's btree operator
+/// family, direction, and NULL placement, whether its order gives its entries' order (a unique index of content
+/// hashes does not), whether it is unique, its predicate's conjuncts and whether the query's clauses imply them, and
+/// the restrictions that a scan of it must test.
 #[derive(Clone, Debug)]
 pub struct IndexOptInfo {
+    pub index: Option<usize>,
+    pub pages: f64,
+    pub tuples: f64,
+    pub tree_height: f64,
     pub indexkeys: Vec<Option<usize>>,
+    pub nkeycolumns: usize,
+    pub indexprs: Vec<Expr>,
     pub opfamily: Vec<Option<u32>>,
+    pub reverse_sort: Vec<bool>,
+    pub nulls_first: Vec<bool>,
+    pub sortable: bool,
     pub unique: bool,
-    pub has_predicate: bool,
+    pub indpred: Vec<Expr>,
+    pub pred_ok: bool,
+    pub indrestrictinfo: Vec<RinfoId>,
+}
+
+/// IndexClause is a clause that an index column can search by, as Postgres' IndexClause is: its RestrictInfo, the
+/// clauses the index searches by in its place, with its sides swapped or derived from it, whether those clauses
+/// keep more rows than it does, and the column.
+#[derive(Clone, Debug)]
+pub struct IndexClause {
+    pub rinfo: RinfoId,
+    pub indexquals: Vec<RinfoId>,
+    pub lossy: bool,
+    pub indexcol: usize,
+}
+
+/// IndexPath is the index scan of a path, as Postgres' IndexPath holds it: the index by its position in the
+/// relation's index list, the clauses it searches by, whether it reads backward, whether it reads nothing but the
+/// index, and the share of the index's entries that it reads.
+#[derive(Clone, Debug)]
+pub struct IndexPath {
+    pub index: usize,
+    pub indexclauses: Vec<IndexClause>,
+    pub backward: bool,
+    pub indexonly: bool,
+    pub indexselectivity: f64,
 }
 
 /// UniqueRelInfo records outer relations whose join clauses prove a relation's rows unique, as Postgres'
@@ -617,6 +655,16 @@ pub struct UniqueRelInfo {
     pub outerrelids: Relids,
     pub self_join: bool,
     pub extra_clauses: Vec<RinfoId>,
+}
+
+/// ParamPathInfo is what a parameterization by outer relations gives a base relation's paths, as Postgres'
+/// ParamPathInfo holds it: the outer relations, the rows that the relation's paths return under it, and the join
+/// clauses that its paths can test.
+#[derive(Clone, Debug)]
+pub struct ParamPathInfo {
+    pub ppi_req_outer: Relids,
+    pub ppi_rows: f64,
+    pub ppi_clauses: Vec<RinfoId>,
 }
 
 /// RelOptKind is a relation's kind, as Postgres' RelOptKind is, where an unused slot of the simple relations is a
@@ -666,6 +714,8 @@ pub struct RelOptInfo {
     pub nulling_relids: Relids,
     /// The indexes of a base relation's table.
     pub indexlist: Vec<IndexOptInfo>,
+    /// The parameterizations of a base relation's paths that were built.
+    pub ppilist: Vec<ParamPathInfo>,
     /// The outer relations that make a base relation's rows unique, and those that were found not to.
     pub unique_for_rels: Vec<UniqueRelInfo>,
     pub non_unique_for_rels: Vec<Relids>,
@@ -678,9 +728,6 @@ pub struct RelOptInfo {
     pub baserestrict_min_security: usize,
     /// The join clauses that read this relation and others.
     pub joininfo: Vec<RinfoId>,
-    /// The join clauses that an index lookup of a base relation may search by: its join clauses and the equalities
-    /// that equivalence classes imply between its index columns and other relations.
-    pub lookup_clauses: Vec<RinfoId>,
     /// Whether an equivalence class may give the relation join clauses.
     pub has_eclass_joins: bool,
 }

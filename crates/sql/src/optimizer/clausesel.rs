@@ -27,7 +27,7 @@ const DEFAULT_INEQ_SEL: f64 = 1.0 / 3.0;
 
 /// DEFAULT_RANGE_INEQ_SEL is the share of rows that Postgres assumes a pair of bounds on one value keeps without
 /// statistics.
-const DEFAULT_RANGE_INEQ_SEL: f64 = 0.005;
+pub const DEFAULT_RANGE_INEQ_SEL: f64 = 0.005;
 
 /// RangeQueryClause is the selectivities of the lower and upper bounds that a list's clauses put on one expression.
 struct RangeQueryClause<'e> {
@@ -53,7 +53,7 @@ pub fn clauselist_selectivity(
 
 /// list_selectivity is clauselist_selectivity for clauses that may lack a RestrictInfo, such as an AND's arguments.
 /// A pair of bounds on one expression keeps the rows between them rather than the product of their shares.
-fn list_selectivity(
+pub fn list_selectivity(
     root: &PlannerInfo<'_, '_>,
     clauses: &[(&Expr, Option<&RestrictInfo>)],
     varrelid: usize,

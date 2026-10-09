@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use super::PlannerInfo;
 use super::costsize::clamp_row_est;
-use super::nodes::{JoinType, Relids, SpecialJoinInfo, VarNode};
+use super::nodes::{IndexClause, IndexOptInfo, IndexPath, JoinType, Relids, RinfoId, SpecialJoinInfo, VarNode};
 use crate::colstats::{ColumnStats, TableStats};
 use crate::expr::Expr;
 use crate::types::Value;
@@ -258,4 +258,261 @@ pub fn estimate_hash_bucket_stats(root: &PlannerInfo<'_, '_>, hashkey: &Expr, nb
         estfract *= mcv_freq / avgfreq;
     }
     (mcv_freq, estfract.clamp(1.0e-6, 1.0))
+}
+
+/// DEFAULT_PAGE_CPU_MULTIPLIER is how many operators' cost Postgres charges for processing one index page in a
+/// btree descent.
+const DEFAULT_PAGE_CPU_MULTIPLIER: f64 = 50.0;
+
+/// IndexCostEstimate is what an index access method's cost estimate returns, as Postgres' amcostestimate does: the
+/// startup and total costs of reading the index, the share of its entries it reads, and how closely its order follows
+/// the table's.
+pub struct IndexCostEstimate {
+    pub startup_cost: f64,
+    pub total_cost: f64,
+    pub selectivity: f64,
+    pub correlation: f64,
+}
+
+/// get_quals_from_indexclauses returns the clauses that an index path's index clauses search by, as Postgres'
+/// function of the same name does.
+fn get_quals_from_indexclauses(indexclauses: &[IndexClause]) -> Vec<RinfoId> {
+    indexclauses.iter().flat_map(|iclause| iclause.indexquals.iter().copied()).collect()
+}
+
+/// index_other_operands_eval_cost returns the cost of evaluating the sides of index clauses that are not the index
+/// column, once per scan, as Postgres' function of the same name does.
+fn index_other_operands_eval_cost(root: &PlannerInfo<'_, '_>, indexquals: &[RinfoId]) -> f64 {
+    let mut qual_arg_cost = 0.0;
+    for &q in indexquals {
+        let other_operand = match &root.rinfos[q].clause {
+            Expr::Compare(_, _, other) => Some(&**other),
+            Expr::AnyArray(_, array, _) => Some(&**array),
+            _ => None,
+        };
+        if let Some(other) = other_operand {
+            let cost = super::costsize::cost_qual_eval_node(other);
+            qual_arg_cost += cost.startup + cost.per_tuple;
+        }
+    }
+    qual_arg_cost
+}
+
+/// add_predicate_to_index_quals returns an index's clauses with its predicate's conjuncts that they do not imply, as
+/// Postgres' function of the same name does, where a clause implies a conjunct equal to it.
+fn add_predicate_to_index_quals<'q>(
+    root: &'q PlannerInfo<'_, '_>,
+    index: &'q IndexOptInfo,
+    indexquals: &[RinfoId],
+) -> Vec<(&'q Expr, Option<&'q super::nodes::RestrictInfo>)> {
+    let mut quals: Vec<(&Expr, Option<&super::nodes::RestrictInfo>)> = index
+        .indpred
+        .iter()
+        .filter(|pred| !indexquals.iter().any(|&q| root.rinfos[q].clause == **pred))
+        .map(|pred| (pred, None))
+        .collect();
+    quals.extend(indexquals.iter().map(|&q| (&root.rinfos[q].clause, Some(&root.rinfos[q]))));
+    quals
+}
+
+/// estimate_array_length returns how many elements an array expression has, or 10 when that is unknown, as
+/// Postgres' function of the same name estimates it.
+pub fn estimate_array_length(arrayexpr: &Expr) -> f64 {
+    match arrayexpr {
+        Expr::Const(Value::Array(array)) => array.values.len() as f64,
+        Expr::Array(_, items, false) => items.len() as f64,
+        _ => 10.0,
+    }
+}
+
+/// genericcostestimate returns the costs of reading an index that every access method shares, given the entries
+/// and scans that btcostestimate found, as Postgres' function of the same name does.
+fn genericcostestimate(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    path: &IndexPath,
+    loop_count: f64,
+    num_index_tuples: f64,
+    num_sa_scans: f64,
+) -> IndexCostEstimate {
+    let index = &root.rels[rel].indexlist[path.index];
+    let index_quals = get_quals_from_indexclauses(&path.indexclauses);
+    let selectivity_quals = add_predicate_to_index_quals(root, index, &index_quals);
+    let index_selectivity = super::clausesel::list_selectivity(root, &selectivity_quals, rel, JoinType::Inner, None);
+    let tuples = root.rels[rel].tuples;
+    let mut num_index_tuples = match num_index_tuples <= 0.0 {
+        true => (index_selectivity * tuples / num_sa_scans).round(),
+        false => num_index_tuples,
+    };
+    num_index_tuples = num_index_tuples.min(index.tuples).max(1.0);
+    let num_index_pages = match index.pages > 1.0 && index.tuples > 1.0 {
+        true => (num_index_tuples * index.pages / index.tuples).ceil(),
+        false => 1.0,
+    };
+    let num_scans = num_sa_scans * loop_count;
+    let mut index_total_cost = match num_scans > 1.0 {
+        true => {
+            let pages_fetched =
+                super::costsize::index_pages_fetched(root, num_index_pages * num_scans, index.pages, index.pages);
+            pages_fetched * super::costsize::RANDOM_PAGE_COST / loop_count
+        }
+        false => num_index_pages * super::costsize::RANDOM_PAGE_COST,
+    };
+    let qual_arg_cost = index_other_operands_eval_cost(root, &index_quals);
+    let qual_op_cost = super::costsize::CPU_OPERATOR_COST * index_quals.len() as f64;
+    index_total_cost += qual_arg_cost;
+    index_total_cost += num_index_tuples * num_sa_scans * (super::costsize::CPU_INDEX_TUPLE_COST + qual_op_cost);
+    IndexCostEstimate {
+        startup_cost: qual_arg_cost,
+        total_cost: index_total_cost,
+        selectivity: index_selectivity,
+        correlation: 0.0,
+    }
+}
+
+/// examine_indexcol_variable finds what the planner knows of the values of an index's column, as Postgres' function
+/// of the same name does.
+fn examine_indexcol_variable(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    index: &IndexOptInfo,
+    indexcol: usize,
+) -> VariableStatData {
+    match index.indexkeys[indexcol] {
+        Some(attno) => {
+            let table = root.parse.rte(rel).table();
+            let isunique = table.is_some_and(|table| {
+                (table.key_columns == [attno] && !table.keyless())
+                    || table.indexes.iter().any(|i| i.unique && i.predicate.is_empty() && i.columns == [attno])
+            });
+            let isbool = table.and_then(|t| t.columns.get(attno)).is_some_and(|c| c.ty.oid == crate::oid::BOOL);
+            let stats = root.rels[rel].stats.clone().map(|stats| (stats, attno));
+            VariableStatData { rel: Some(rel), stats, isunique, isbool }
+        }
+        None => VariableStatData { rel: Some(rel), stats: None, isunique: false, isbool: false },
+    }
+}
+
+/// btcost_correlation returns how closely an index's order follows its table's, from the correlation of its first
+/// column, as Postgres' function of the same name does.
+fn btcost_correlation(index: &IndexOptInfo, vardata: &VariableStatData) -> f64 {
+    let Some(column) = vardata.column() else { return 0.0 };
+    let var_correlation = if index.reverse_sort[0] { -column.correlation } else { column.correlation };
+    if index.nkeycolumns > 1 { var_correlation * 0.75 } else { var_correlation }
+}
+
+/// btcostestimate returns the costs of reading a btree index for an index path, counting the entries that its
+/// bounding clauses read and the scans that its arrays and skipped columns start, as Postgres' function of the same
+/// name does.
+pub fn btcostestimate(root: &PlannerInfo<'_, '_>, rel: usize, path: &IndexPath, loop_count: f64) -> IndexCostEstimate {
+    let index = &root.rels[rel].indexlist[path.index];
+    let mut index_bound_quals: Vec<RinfoId> = Vec::new();
+    let mut index_skip_quals: Vec<RinfoId> = Vec::new();
+    let mut indexcol = 0;
+    let (mut eq_qual_here, mut found_row_compare, mut found_array, mut found_is_null_op) = (false, false, false, false);
+    let mut have_correlation = false;
+    let mut num_sa_scans: f64 = 1.0;
+    let mut correlation = 0.0;
+    'clauses: for iclause in &path.indexclauses {
+        if indexcol < iclause.indexcol {
+            let num_sa_scans_prev_cols = num_sa_scans;
+            if found_row_compare {
+                break;
+            }
+            if eq_qual_here {
+                indexcol += 1;
+                index_skip_quals.clear();
+            }
+            eq_qual_here = false;
+            while indexcol < iclause.indexcol {
+                found_array = true;
+                let vardata = examine_indexcol_variable(root, rel, index, indexcol);
+                let (mut ndistinct, isdefault) = get_variable_numdistinct(root, &vardata);
+                if indexcol == 0 {
+                    if vardata.column().is_some() {
+                        correlation = btcost_correlation(index, &vardata);
+                    }
+                    have_correlation = true;
+                }
+                if isdefault {
+                    num_sa_scans = num_sa_scans_prev_cols;
+                    break;
+                }
+                if !index_skip_quals.is_empty() {
+                    let partial_skip_quals = add_predicate_to_index_quals(root, index, &index_skip_quals);
+                    let ndistinctfrac =
+                        super::clausesel::list_selectivity(root, &partial_skip_quals, rel, JoinType::Inner, None);
+                    if ndistinctfrac < super::clausesel::DEFAULT_RANGE_INEQ_SEL {
+                        num_sa_scans = num_sa_scans_prev_cols;
+                        break;
+                    }
+                    ndistinct = (ndistinct * ndistinctfrac).round().max(1.0);
+                }
+                if index_skip_quals.is_empty() {
+                    ndistinct += 1.0;
+                }
+                num_sa_scans *= ndistinct;
+                if index.pages < num_sa_scans {
+                    num_sa_scans = num_sa_scans_prev_cols;
+                    break;
+                }
+                indexcol += 1;
+                index_skip_quals.clear();
+            }
+            if indexcol != iclause.indexcol {
+                break 'clauses;
+            }
+        }
+        for &q in &iclause.indexquals {
+            match &root.rinfos[q].clause {
+                Expr::Compare(_, l, _) if matches!(**l, Expr::Row(..)) => found_row_compare = true,
+                Expr::Compare(crate::expr::CmpOp::Eq, ..) => eq_qual_here = true,
+                Expr::AnyArray(_, array, _) => {
+                    let alength = estimate_array_length(array);
+                    found_array = true;
+                    if alength > 1.0 {
+                        num_sa_scans *= alength;
+                    }
+                    eq_qual_here = true;
+                }
+                Expr::IsNull(_, false) => {
+                    found_is_null_op = true;
+                    eq_qual_here = true;
+                }
+                _ => {}
+            }
+            index_bound_quals.push(q);
+            if !eq_qual_here && !found_row_compare && indexcol + 1 < index.nkeycolumns {
+                index_skip_quals.push(q);
+            }
+        }
+    }
+    let num_index_tuples =
+        if index.unique && indexcol + 1 == index.nkeycolumns && eq_qual_here && !found_array && !found_is_null_op {
+            1.0
+        } else {
+            let selectivity_quals = add_predicate_to_index_quals(root, index, &index_bound_quals);
+            let btree_selectivity =
+                super::clausesel::list_selectivity(root, &selectivity_quals, rel, JoinType::Inner, None);
+            let num_index_tuples = btree_selectivity * root.rels[rel].tuples;
+            num_sa_scans = num_sa_scans.min((index.pages * 0.3333333).ceil()).max(1.0);
+            (num_index_tuples / num_sa_scans).round()
+        };
+    let mut costs = genericcostestimate(root, rel, path, loop_count, num_index_tuples, num_sa_scans);
+    if index.tuples > 1.0 {
+        let descent_cost = index.tuples.log2().ceil() * super::costsize::CPU_OPERATOR_COST;
+        costs.startup_cost += descent_cost;
+        costs.total_cost += num_sa_scans * descent_cost;
+    }
+    let descent_cost = (index.tree_height + 1.0) * DEFAULT_PAGE_CPU_MULTIPLIER * super::costsize::CPU_OPERATOR_COST;
+    costs.startup_cost += descent_cost;
+    costs.total_cost += num_sa_scans * descent_cost;
+    costs.correlation = match have_correlation {
+        true => correlation,
+        false => {
+            let vardata = examine_indexcol_variable(root, rel, index, 0);
+            btcost_correlation(index, &vardata)
+        }
+    };
+    costs
 }

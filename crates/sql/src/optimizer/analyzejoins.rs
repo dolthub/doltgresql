@@ -178,7 +178,7 @@ fn reduce_semijoin_in_jointree(node: &mut JoinTreeNode, syn_righthand: &Relids) 
 /// name checks. A subquery that the planner did not pull up is already planned, so its distinctness is unknown.
 fn rel_supports_distinctness(root: &PlannerInfo<'_, '_>, relid: usize) -> bool {
     let rel = &root.rels[relid];
-    rel.reloptkind == RelOptKind::BaseRel && rel.indexlist.iter().any(|ind| ind.unique && !ind.has_predicate)
+    rel.reloptkind == RelOptKind::BaseRel && rel.indexlist.iter().any(|ind| ind.unique && ind.indpred.is_empty())
 }
 
 /// rel_is_distinct_for reports whether a base relation has at most one row for each set of values of the inner sides

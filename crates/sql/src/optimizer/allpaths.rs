@@ -19,7 +19,7 @@ use std::rc::Rc;
 
 use super::PlannerInfo;
 use super::costsize::{Costs, cost_opaque_scan, cost_resultscan, cost_seqscan, set_baserel_size_estimates};
-use super::indxpath::create_index_paths;
+use super::indxpath::{check_index_predicates, create_index_paths};
 use super::initsplan::JoinList;
 use super::joinrels::{is_dummy_rel, join_search_one_level};
 use super::nodes::{JoinType, Path, PathKind, RelOptKind, RteKind};
@@ -56,6 +56,9 @@ fn set_base_rel_consider_startup(root: &mut PlannerInfo<'_, '_>) {
 fn set_base_rel_sizes(root: &mut PlannerInfo<'_, '_>) {
     for rti in 1..=root.parse.rtable.len() {
         if root.rels[rti].reloptkind == RelOptKind::BaseRel {
+            if matches!(root.parse.rte(rti).kind, RteKind::Relation(..)) {
+                check_index_predicates(root, rti);
+            }
             set_baserel_size_estimates(root, rti);
         }
     }

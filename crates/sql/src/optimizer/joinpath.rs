@@ -20,7 +20,8 @@ use std::rc::Rc;
 
 use super::PlannerInfo;
 use super::costsize::{
-    JoinPathExtraData, SemiAntiJoinFactors, compute_semi_anti_join_factors, cost_hashjoin, cost_material, cost_nestloop,
+    JoinPathExtraData, SemiAntiJoinFactors, compute_semi_anti_join_factors, cost_hashjoin, cost_material,
+    cost_nestloop, has_indexed_join_quals,
 };
 use super::nodes::{JoinPath, JoinType, Path, PathKind, Relids, RestrictInfo, RinfoId, SpecialJoinInfo};
 use super::pathkeys::build_join_pathkeys;
@@ -126,11 +127,8 @@ fn try_nestloop_path(
     jointype: JoinType,
     extra: &JoinPathExtraData,
 ) {
-    let has_indexed_join_quals = matches!(inner.kind, PathKind::Lookup(_))
-        && extra.restrictlist.iter().all(|&r| {
-            let r = &root.rinfos[r];
-            r.hashjoinable && clause_sides_match_join(r, &outer.relids, &inner.relids)
-        });
+    let joinrelids = root.rels[joinrel].relids.clone();
+    let has_indexed_join_quals = has_indexed_join_quals(root, &joinrelids, &inner, &extra.restrictlist);
     let cost = cost_nestloop(root, jointype, &outer, &inner, extra, has_indexed_join_quals);
     let pathkeys = build_join_pathkeys(root, joinrel, jointype, &outer.pathkeys);
     let join = JoinPath { jointype, outer, inner, joinrestrictinfo: extra.restrictlist.clone() };

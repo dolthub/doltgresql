@@ -19,9 +19,9 @@
 
 use super::PlannerInfo;
 use super::costsize::cost_qual_eval_node;
-use super::indxpath::to_attnos;
+use super::indxpath::{lookup_keys, to_attnos};
 use super::joinpath::clause_sides_match_join;
-use super::nodes::{JoinType, Path, PathKind, RinfoId, RteKind, VarNode};
+use super::nodes::{IndexPath, JoinType, Path, PathKind, RinfoId, RteKind, VarNode};
 use super::restrictinfo::rinfo_is_pushed_down;
 use crate::expr::Expr;
 use crate::plan::{JoinKind, JoinMethod, Plan};
@@ -61,15 +61,8 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 None => (Plan::OneRow, Vec::new()),
             }
         }
-        PathKind::IndexScan(scan, exact) => {
-            let rel = path.parent;
-            let layout = base_slots(rel, scan.table.columns.len());
-            let plan = Plan::IndexScan(scan.clone());
-            let quals = root.rels[rel].baserestrictinfo.iter().copied();
-            let quals: Vec<RinfoId> = quals.filter(|&r| !*exact || root.rinfos[r].pseudoconstant).collect();
-            let quals = order_qual_clauses(root, quals);
-            (filtered(root, plan, &quals, &layout), layout)
-        }
+        PathKind::IndexScan(_) if !path.param.is_empty() => create_scan_plan(root, path.parent),
+        PathKind::IndexScan(best_path) => create_indexscan_plan(root, path.parent, best_path),
         PathKind::Append(_) => {
             let layout: Vec<Slot> = root.rels[path.parent].reltarget.exprs.iter().map(|e| slot(root, e)).collect();
             let nulls =
@@ -104,10 +97,23 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
             let otherquals = order_qual_clauses(root, otherquals);
             let method = match (&path.kind, &join.inner.kind) {
                 (PathKind::HashJoin(_), _) => JoinMethod::Hash,
-                (_, PathKind::Lookup(JoinMethod::Lookup { scan, keys })) => JoinMethod::Lookup {
-                    scan: scan.clone(),
-                    keys: keys.iter().map(|k| positional(root, k.clone(), &outer_layout)).collect(),
-                },
+                (_, PathKind::IndexScan(best_path)) if !join.inner.param.is_empty() => {
+                    let rel = join.inner.parent;
+                    let keys = lookup_keys(root, rel, best_path.index, &best_path.indexclauses)
+                        .expect("a parameterized index path has lookup keys");
+                    let table = root.parse.rte(rel).table().expect("an index path scans a table").clone();
+                    let scan = crate::indexscan::IndexScan {
+                        table: Box::new(table),
+                        index: root.rels[rel].indexlist[best_path.index].index,
+                        ranges: Vec::new(),
+                        reverse: false,
+                        nearest: None,
+                        needed: None,
+                        lookup_heavy: None,
+                    };
+                    let keys = keys.into_iter().map(|k| positional(root, k, &outer_layout)).collect();
+                    JoinMethod::Lookup { scan: Box::new(scan), keys }
+                }
                 (_, PathKind::Lookup(JoinMethod::CatalogLookup { index, keys })) => JoinMethod::CatalogLookup {
                     index,
                     keys: keys.iter().map(|k| positional(root, k.clone(), &outer_layout)).collect(),
@@ -187,6 +193,36 @@ fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<Sl
         }
         RteKind::Subquery(..) | RteKind::Join(_) => unreachable!("only base relations are scanned"),
     }
+}
+
+/// create_indexscan_plan makes the plan of a scan of an index, reading the ranges that its index clauses give and
+/// testing the restrictions that those ranges do not answer exactly, as Postgres' function of the same name does. A
+/// scan of every entry of the primary index in its order is the table's sequential scan.
+fn create_indexscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, best_path: &IndexPath) -> (Plan, Vec<Slot>) {
+    let table = root.parse.rte(rel).table().expect("an index path scans a table").clone();
+    let info = &root.rels[rel].indexlist[best_path.index];
+    let (index, scan_clauses) = (info.index, info.indrestrictinfo.clone());
+    if index.is_none() && best_path.indexclauses.is_empty() && !best_path.backward {
+        return create_scan_plan(root, rel);
+    }
+    let indexquals = best_path.indexclauses.iter().flat_map(|iclause| &iclause.indexquals);
+    let predicate = indexquals
+        .map(|&r| to_attnos(root, root.rinfos[r].clause.clone(), rel))
+        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+    let scan_of = |root: &mut PlannerInfo<'_, '_>, predicate: Option<&Expr>| {
+        crate::indexscan::scan_of_index(root.ctx, &table, index, predicate, best_path.backward)
+    };
+    let (scan, exact) = match scan_of(root, predicate.as_ref()) {
+        Some(found) => found,
+        None => (scan_of(root, None).expect("a scan of every entry is always possible").0, false),
+    };
+    let qpqual: Vec<RinfoId> = scan_clauses
+        .into_iter()
+        .filter(|&r| !exact || !best_path.indexclauses.iter().any(|iclause| iclause.rinfo == r && !iclause.lossy))
+        .collect();
+    let qpqual = order_qual_clauses(root, qpqual);
+    let layout = base_slots(rel, table.columns.len());
+    (filtered(root, Plan::IndexScan(Box::new(scan)), &qpqual, &layout), layout)
 }
 
 /// order_qual_clauses sorts clauses by the cost of evaluating them, cheapest first and otherwise in their order, as

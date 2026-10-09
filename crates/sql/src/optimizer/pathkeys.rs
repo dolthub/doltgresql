@@ -63,7 +63,8 @@ fn pathkey_is_redundant(root: &PlannerInfo<'_, '_>, new_pathkey: PkId, pathkeys:
 }
 
 /// make_pathkey_from_sortinfo returns the canonical pathkey of an expression sorted by an operator family, as
-/// Postgres' function of the same name does.
+/// Postgres' function of the same name does, or None when no equivalence class has the expression and none is made.
+#[allow(clippy::too_many_arguments)]
 fn make_pathkey_from_sortinfo(
     root: &mut PlannerInfo<'_, '_>,
     expr: crate::expr::Expr,
@@ -72,10 +73,10 @@ fn make_pathkey_from_sortinfo(
     descending: bool,
     nulls_first: bool,
     sortref: usize,
-) -> PkId {
-    let eclass = get_eclass_for_sort_expr(root, expr, &[opfamily], opcintype, sortref, true)
-        .expect("a class is created when none has the expression");
-    make_canonical_pathkey(root, eclass, opfamily, descending, nulls_first)
+    create_it: bool,
+) -> Option<PkId> {
+    let eclass = get_eclass_for_sort_expr(root, expr, &[opfamily], opcintype, sortref, create_it)?;
+    Some(make_canonical_pathkey(root, eclass, opfamily, descending, nulls_first))
 }
 
 /// compare_pathkeys compares two orders of rows, as Postgres' function of the same name does.
@@ -102,6 +103,38 @@ pub fn pathkeys_contained_in(keys1: &[PkId], keys2: &[PkId]) -> bool {
 pub fn pathkeys_count_contained_in(keys1: &[PkId], keys2: &[PkId]) -> (bool, usize) {
     let n = keys1.iter().zip(keys2).take_while(|(a, b)| a == b).count();
     (n == keys1.len(), n)
+}
+
+/// build_index_pathkeys returns the order of the rows that a scan of an index reads, forward or backward, as far as
+/// the query's equivalence classes have its columns, as Postgres' function of the same name does.
+pub fn build_index_pathkeys(root: &mut PlannerInfo<'_, '_>, rel: usize, index: usize, backward: bool) -> Vec<PkId> {
+    let info = root.rels[rel].indexlist[index].clone();
+    let mut retval = Vec::new();
+    if !info.sortable {
+        return retval;
+    }
+    let indextlist = super::indxpath::index_column_exprs(root, rel, index);
+    for (i, indexkey) in indextlist.into_iter().enumerate() {
+        let Some(opfamily) = info.opfamily[i] else { break };
+        let opcintype = super::nodefuncs::expr_type(root, &indexkey).unwrap_or(0);
+        let reverse_sort = info.reverse_sort[i] != backward;
+        let nulls_first = info.nulls_first[i] != backward;
+        let cpathkey =
+            make_pathkey_from_sortinfo(root, indexkey, opfamily, opcintype, reverse_sort, nulls_first, 0, false);
+        match cpathkey {
+            Some(cpathkey) => {
+                if !pathkey_is_redundant(root, cpathkey, &retval) {
+                    retval.push(cpathkey);
+                }
+            }
+            None => {
+                if !super::indxpath::indexcol_is_bool_constant_for_query(root, rel, index, i) {
+                    break;
+                }
+            }
+        }
+    }
+    retval
 }
 
 /// build_join_pathkeys returns the order of a join's rows that its outer path's order gives, as far as it is
@@ -133,7 +166,9 @@ pub fn make_pathkeys_for_sortclauses(root: &mut PlannerInfo<'_, '_>, sortclauses
             sortcl.descending,
             sortcl.nulls_first,
             i + 1,
-        );
+            true,
+        )
+        .expect("a class is created when none has the expression");
         if !pathkey_is_redundant(root, pathkey, &pathkeys) {
             pathkeys.push(pathkey);
         }
@@ -196,4 +231,10 @@ pub fn truncate_useless_pathkeys(root: &PlannerInfo<'_, '_>, rel: usize, pathkey
     let nuseful = pathkeys_useful_for_merging(root, rel, pathkeys)
         .max(pathkeys_count_contained_in(&root.query_pathkeys, pathkeys).1);
     pathkeys[..nuseful].to_vec()
+}
+
+/// has_useful_pathkeys reports whether an order of a relation's rows could be useful, for a merge join or the
+/// query's order, as Postgres' function of the same name does.
+pub fn has_useful_pathkeys(root: &PlannerInfo<'_, '_>, rel: usize) -> bool {
+    !root.rels[rel].joininfo.is_empty() || root.rels[rel].has_eclass_joins || !root.query_pathkeys.is_empty()
 }

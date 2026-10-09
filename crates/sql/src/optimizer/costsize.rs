@@ -18,18 +18,18 @@
 
 use super::PlannerInfo;
 use super::clausesel::{clause_selectivity, clauselist_selectivity};
-use super::nodes::{JoinType, Path, PathKind, RinfoId, SpecialJoinInfo};
-use super::restrictinfo::rinfo_is_pushed_down;
+use super::nodes::{JoinType, Path, PathKind, Relids, RinfoId, SpecialJoinInfo};
+use super::restrictinfo::{join_clause_is_movable_into, rinfo_is_pushed_down};
 use crate::expr::Expr;
 
 /// SEQ_PAGE_COST, RANDOM_PAGE_COST, CPU_TUPLE_COST, CPU_INDEX_TUPLE_COST, and CPU_OPERATOR_COST are Postgres' default
 /// cost settings: of reading a page in order and out of order, and of processing a row, an index entry, and an
 /// operator.
 const SEQ_PAGE_COST: f64 = 1.0;
-const RANDOM_PAGE_COST: f64 = 4.0;
+pub const RANDOM_PAGE_COST: f64 = 4.0;
 const CPU_TUPLE_COST: f64 = 0.01;
-const CPU_INDEX_TUPLE_COST: f64 = 0.005;
-const CPU_OPERATOR_COST: f64 = 0.0025;
+pub const CPU_INDEX_TUPLE_COST: f64 = 0.005;
+pub const CPU_OPERATOR_COST: f64 = 0.0025;
 
 /// EFFECTIVE_CACHE_SIZE is the pages that Postgres assumes the cache holds, as its default effective_cache_size.
 const EFFECTIVE_CACHE_SIZE: f64 = 524288.0;
@@ -239,9 +239,8 @@ pub fn cost_resultscan(root: &PlannerInfo<'_, '_>, rel: usize) -> Costs {
     (0, startup, startup + CPU_TUPLE_COST + qpqual_cost.per_tuple)
 }
 
-/// IndexCost is what the planner's costs know of an index: its size, whether a scan of it reads nothing else, as one
-/// of Dolt's primary index, which holds the table's rows, or of a secondary index holding every column the scan needs,
-/// how closely its order follows the table's, and how many clauses it searches by.
+/// IndexCost is what the costs of a lookup in a system catalog's index know of the index: its size, whether a scan
+/// of it reads nothing else, how closely its order follows the table's, and how many clauses it searches by.
 pub struct IndexCost {
     pub pages: f64,
     pub tuples: f64,
@@ -254,10 +253,10 @@ pub struct IndexCost {
     pub nquals: usize,
 }
 
-/// cost_index returns the costs of an index scan that reads about `num_index_tuples` of the
-/// index's entries for each of `loop_count` runs, and tests the clauses it does not search by, as Postgres'
-/// cost_index does with btcostestimate's costs of the index itself.
-pub fn cost_index(
+/// cost_catalog_lookup returns the costs of a lookup in a system catalog's index that reads about
+/// `num_index_tuples` of the index's entries for each of `loop_count` runs, and tests the clauses it does not search
+/// by, by Postgres' cost_index and btcostestimate formulas.
+pub fn cost_catalog_lookup(
     root: &PlannerInfo<'_, '_>,
     rel: usize,
     index: &IndexCost,
@@ -316,10 +315,78 @@ pub fn cost_index(
     (disabled(enabled), startup_cost, startup_cost + run_cost + cpu_run_cost)
 }
 
+/// cost_index returns the costs of an index path and the share of the index's entries that it reads, given the join
+/// clauses that its parameterization adds, the rows it returns, and how many times a nested loop runs it, as
+/// Postgres' function of the same name does with btcostestimate's costs of the index itself. Dolt has no visibility
+/// map, as though every page were all-visible, so an index-only scan reads no table pages.
+pub fn cost_index(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    path: &super::nodes::IndexPath,
+    ppi_clauses: &[RinfoId],
+    rows: f64,
+    loop_count: f64,
+) -> (Costs, f64) {
+    let baserel = &root.rels[rel];
+    let index = &baserel.indexlist[path.index];
+    let mut qpquals = extract_nonindex_conditions(root, &index.indrestrictinfo, &path.indexclauses);
+    qpquals.extend(extract_nonindex_conditions(root, ppi_clauses, &path.indexclauses));
+    let disabled_nodes = disabled(root.enables.indexscan);
+    let estimate = super::selfuncs::btcostestimate(root, rel, path, loop_count);
+    let (mut startup_cost, mut run_cost) = (estimate.startup_cost, estimate.total_cost - estimate.startup_cost);
+    let tuples_fetched = clamp_row_est(estimate.selectivity * baserel.tuples);
+    let allvisfrac = if path.indexonly { 1.0 } else { 0.0 };
+    let (max_io_cost, min_io_cost);
+    if loop_count > 1.0 {
+        let pages_fetched = index_pages_fetched(root, tuples_fetched * loop_count, baserel.pages, index.pages);
+        let pages_fetched = (pages_fetched * (1.0 - allvisfrac)).ceil();
+        max_io_cost = pages_fetched * RANDOM_PAGE_COST / loop_count;
+        let pages_fetched = (estimate.selectivity * baserel.pages).ceil();
+        let pages_fetched = index_pages_fetched(root, pages_fetched * loop_count, baserel.pages, index.pages);
+        let pages_fetched = (pages_fetched * (1.0 - allvisfrac)).ceil();
+        min_io_cost = pages_fetched * RANDOM_PAGE_COST / loop_count;
+    } else {
+        let pages_fetched = index_pages_fetched(root, tuples_fetched, baserel.pages, index.pages);
+        let pages_fetched = (pages_fetched * (1.0 - allvisfrac)).ceil();
+        max_io_cost = pages_fetched * RANDOM_PAGE_COST;
+        let pages_fetched = ((estimate.selectivity * baserel.pages).ceil() * (1.0 - allvisfrac)).ceil();
+        min_io_cost = match pages_fetched > 0.0 {
+            true => RANDOM_PAGE_COST + (pages_fetched - 1.0).max(0.0) * SEQ_PAGE_COST,
+            false => 0.0,
+        };
+    }
+    let csquared = estimate.correlation * estimate.correlation;
+    run_cost += max_io_cost + csquared * (min_io_cost - max_io_cost);
+    let qpqual_cost = cost_qual_eval(root, &qpquals);
+    startup_cost += qpqual_cost.startup;
+    let cpu_per_tuple = CPU_TUPLE_COST + qpqual_cost.per_tuple;
+    let mut cpu_run_cost = cpu_per_tuple * tuples_fetched;
+    startup_cost += baserel.reltarget.cost.startup;
+    cpu_run_cost += baserel.reltarget.cost.per_tuple * rows;
+    run_cost += cpu_run_cost;
+    ((disabled_nodes, startup_cost, startup_cost + run_cost), estimate.selectivity)
+}
+
+/// extract_nonindex_conditions returns the clauses of a list that an index scan must test on each row because its
+/// index clauses do not answer them, leaving out pseudoconstant ones, as Postgres' function of the same name does.
+pub fn extract_nonindex_conditions(
+    root: &PlannerInfo<'_, '_>,
+    qual_clauses: &[RinfoId],
+    indexclauses: &[super::nodes::IndexClause],
+) -> Vec<RinfoId> {
+    qual_clauses
+        .iter()
+        .copied()
+        .filter(|&r| {
+            !root.rinfos[r].pseudoconstant && !super::equivclass::is_redundant_with_indexclauses(root, r, indexclauses)
+        })
+        .collect()
+}
+
 /// index_pages_fetched returns how many pages a scan that fetches a number of rows from a table of a number of pages
 /// reads, given the cache that the query's tables share, as Postgres' function of the same name estimates it by the
 /// Mackert and Lohman formula.
-fn index_pages_fetched(root: &PlannerInfo<'_, '_>, tuples_fetched: f64, pages: f64, index_pages: f64) -> f64 {
+pub fn index_pages_fetched(root: &PlannerInfo<'_, '_>, tuples_fetched: f64, pages: f64, index_pages: f64) -> f64 {
     let t = pages.max(1.0);
     let total_pages = (root.total_table_pages + index_pages).max(1.0);
     let b = match EFFECTIVE_CACHE_SIZE * t / total_pages {
@@ -463,6 +530,36 @@ pub fn cost_nestloop(
     startup_cost += restrict_qual_cost.startup;
     run_cost += (CPU_TUPLE_COST + restrict_qual_cost.per_tuple) * ntuples;
     (disabled_nodes, startup_cost, startup_cost + run_cost)
+}
+
+/// has_indexed_join_quals reports whether a nested loop's inner index path searches by each join clause that it is
+/// parameterized by, so the join tests nothing else, as Postgres' function of the same name does. Doltgres' joins test
+/// again the clauses that Postgres moves into the inner path, which do not count as clauses the join still tests.
+pub fn has_indexed_join_quals(
+    root: &mut PlannerInfo<'_, '_>,
+    joinrelids: &Relids,
+    inner: &Path,
+    joinrestrictinfo: &[RinfoId],
+) -> bool {
+    let inner_and_outer = inner.relids.union(&inner.param);
+    if joinrestrictinfo.iter().any(|&r| !join_clause_is_movable_into(&root.rinfos[r], &inner.relids, &inner_and_outer))
+    {
+        return false;
+    }
+    let Some(param_info) = super::relnode::get_baserel_parampathinfo(root, inner.parent, &inner.param) else {
+        return false;
+    };
+    let PathKind::IndexScan(index_path) = &inner.kind else { return false };
+    let mut found_one = false;
+    for rinfo in param_info.ppi_clauses {
+        if join_clause_is_movable_into(&root.rinfos[rinfo], &inner.relids, joinrelids) {
+            if !super::equivclass::is_redundant_with_indexclauses(root, rinfo, &index_path.indexclauses) {
+                return false;
+            }
+            found_one = true;
+        }
+    }
+    found_one
 }
 
 /// exec_choose_hash_table_size returns the buckets and batches of a hash table of a number of rows of a width, as
@@ -616,6 +713,15 @@ pub fn set_rel_width(root: &mut PlannerInfo<'_, '_>, rel: usize) {
         };
     }
     root.rels[rel].reltarget.width = tuple_width;
+}
+
+/// get_parameterized_baserel_size returns the rows of a base relation that its restrictions and a parameterization's
+/// join clauses keep, as Postgres' function of the same name does.
+pub fn get_parameterized_baserel_size(root: &PlannerInfo<'_, '_>, rel: usize, param_clauses: &[RinfoId]) -> f64 {
+    let allclauses: Vec<RinfoId> = param_clauses.iter().chain(&root.rels[rel].baserestrictinfo).copied().collect();
+    let nrows =
+        clamp_row_est(root.rels[rel].tuples * clauselist_selectivity(root, &allclauses, rel, JoinType::Inner, None));
+    nrows.min(root.rels[rel].rows)
 }
 
 /// set_joinrel_size_estimates estimates the rows of a join relation, as Postgres' function of the same name does.

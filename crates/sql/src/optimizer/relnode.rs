@@ -58,13 +58,15 @@ pub fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, relid: usize) {
             let analyzed = autovacuumed || vacuumed == Some(true);
             rel.stats = analyzed.then(|| crate::colstats::table_stats(root.ctx, table)).flatten();
             rel.notnullattnums = (0..table.columns.len()).filter(|&c| !table.columns[c].nullable).collect();
-            rel.indexlist = super::indxpath::get_relation_indexes(table);
         }
         RteKind::Plan(plan) => rel.tuples = crate::joins::estimate(root.ctx, plan),
         RteKind::Result => rel.tuples = 1.0,
         RteKind::Subquery(..) | RteKind::Join(_) => unreachable!("only base relations are built"),
     }
     root.rels[relid] = rel;
+    if let RteKind::Relation(_, table) = &rte.kind {
+        root.rels[relid].indexlist = super::indxpath::get_relation_indexes(root, relid, table);
+    }
 }
 
 /// find_join_rel returns the index of the join relation of a set of relations, when it was built, as Postgres'
@@ -254,4 +256,34 @@ fn subbuild_joinrel_restrictlist(
         }
     }
     new_restrictlist
+}
+
+/// get_baserel_parampathinfo returns what a parameterization by outer relations gives a base relation's paths, building
+/// it when it is new: the join clauses movable into the relation and the equalities that classes imply with the outer
+/// relations, and the rows that remain, as Postgres' function of the same name does.
+pub fn get_baserel_parampathinfo(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    required_outer: &Relids,
+) -> Option<super::nodes::ParamPathInfo> {
+    if required_outer.is_empty() {
+        return None;
+    }
+    if let Some(ppi) = root.rels[rel].ppilist.iter().find(|p| p.ppi_req_outer == *required_outer) {
+        return Some(ppi.clone());
+    }
+    let baserelids = root.rels[rel].relids.clone();
+    let joinrelids = baserelids.union(required_outer);
+    let mut pclauses: Vec<RinfoId> = root.rels[rel]
+        .joininfo
+        .iter()
+        .copied()
+        .filter(|&r| super::restrictinfo::join_clause_is_movable_into(&root.rinfos[r], &baserelids, &joinrelids))
+        .collect();
+    pclauses.extend(generate_join_implied_equalities(root, &joinrelids, required_outer, rel, 0));
+    let rows = super::costsize::get_parameterized_baserel_size(root, rel, &pclauses);
+    let ppi =
+        super::nodes::ParamPathInfo { ppi_req_outer: required_outer.clone(), ppi_rows: rows, ppi_clauses: pclauses };
+    root.rels[rel].ppilist.push(ppi.clone());
+    Some(ppi)
 }

@@ -791,6 +791,48 @@ pub fn choose_with_cover(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) 
     Some((scan, covered))
 }
 
+/// scan_of_index returns the scan of one index of a table, in its order or the reverse, whose ranges the conjuncts of
+/// a predicate narrow, with whether those ranges hold exactly the rows that the predicate keeps, as the planner's
+/// index paths read an index that they chose. Without a predicate the scan reads every entry.
+pub(crate) fn scan_of_index(
+    ctx: &mut Ctx<'_>,
+    table: &TableDef,
+    index: Option<usize>,
+    predicate: Option<&Expr>,
+    reverse: bool,
+) -> Option<(IndexScan, bool)> {
+    let columns: Vec<(String, crate::catalog::ColumnType)> = match index {
+        Some(i) => {
+            table.indexes[i].columns.iter().map(|&c| (index_column_name(table, c), index_type(table, c))).collect()
+        }
+        None => {
+            table.key_columns.iter().map(|&c| (table.columns[c].name.to_lowercase(), table.columns[c].ty)).collect()
+        }
+    };
+    let scan = |ranges| IndexScan {
+        table: Box::new(table.clone()),
+        index,
+        ranges,
+        reverse,
+        nearest: None,
+        needed: None,
+        lookup_heavy: None,
+    };
+    let Some(predicate) = predicate else { return Some((scan(IndexBuilder::new(&columns).ranges()), true)) };
+    let rules = ctx.index_rules(table).ok()?;
+    let hidden = (0..table.hidden.len()).map(|k| index_column_name(table, HIDDEN_BASE + k));
+    let hidden = hidden.zip(rules.hidden().iter().cloned()).collect();
+    let mut coster =
+        Coster { table, hidden, next: 1, equalities: BTreeSet::new(), null_tests: BTreeSet::new(), complete: true };
+    let root = coster.build_root(ctx, &with_like_bounds(table, predicate))?;
+    let candidate =
+        candidates(table, rules.predicates(), &conjuncts(predicate)).into_iter().find(|c| c.index == index)?;
+    let cost = coster.cost(&root, &candidate);
+    let ranges = coster.build_ranges(&root, &columns, &cost.filters);
+    let covered = coster.complete && coster.covers(&root, &cost.filters);
+    Some((scan(ranges), covered))
+}
+
 /// with_like_bounds returns a predicate with each LIKE that its ANDs reach bounded by the fixed prefix of its pattern,
 /// as Doltgres' AddLikePrefixRanges does, so that an index on the column can serve it.
 fn with_like_bounds(table: &TableDef, e: &Expr) -> Expr {
@@ -807,31 +849,39 @@ fn with_like_bounds(table: &TableDef, e: &Expr) -> Expr {
             if !matches!(table.columns.get(*c).map(|c| c.ty.oid), Some(crate::oid::TEXT | crate::oid::VARCHAR)) {
                 return e.clone();
             }
-            let prefix = match pattern.find(['%', '_', '\\']) {
-                Some(i) if pattern[i..].starts_with('\\') => return e.clone(),
-                Some(i) => &pattern[..i],
-                None => pattern.as_str(),
-            };
-            if prefix.is_empty() {
-                return e.clone();
-            }
+            let Some((lower, upper)) = like_prefix_bounds(pattern) else { return e.clone() };
             let bound = |op: CmpOp, text: String| {
                 Expr::Compare(op, Box::new(column.clone()), Box::new(Expr::Const(Value::Text(text))))
             };
-            let mut bounds = bound(CmpOp::Ge, prefix.to_string());
-            let last = prefix.chars().next_back().unwrap_or_default();
-            let next = match last {
-                '\u{D7FF}' => Some('\u{E000}'),
-                last => char::from_u32(last as u32 + 1),
-            };
-            if let Some(next) = next {
-                let upper = format!("{}{next}", &prefix[..prefix.len() - last.len_utf8()]);
+            let mut bounds = bound(CmpOp::Ge, lower);
+            if let Some(upper) = upper {
                 bounds = and(bounds, bound(CmpOp::Lt, upper));
             }
             and(bounds, e.clone())
         }
         other => other.clone(),
     }
+}
+
+/// like_prefix_bounds returns the bounds of the strings that a LIKE pattern's fixed prefix starts, at or above the
+/// prefix and below the prefix with its last character's successor, as Postgres' like_support finds them, or None
+/// when the pattern starts with a wildcard or an escape.
+pub(crate) fn like_prefix_bounds(pattern: &str) -> Option<(String, Option<String>)> {
+    let prefix = match pattern.find(['%', '_', '\\']) {
+        Some(i) if pattern[i..].starts_with('\\') => return None,
+        Some(i) => &pattern[..i],
+        None => pattern,
+    };
+    if prefix.is_empty() {
+        return None;
+    }
+    let last = prefix.chars().next_back().unwrap_or_default();
+    let next = match last {
+        '\u{D7FF}' => Some('\u{E000}'),
+        last => char::from_u32(last as u32 + 1),
+    };
+    let upper = next.map(|next| format!("{}{next}", &prefix[..prefix.len() - last.len_utf8()]));
+    Some((prefix.to_string(), upper))
 }
 
 /// conjuncts returns the expressions that a predicate ANDs together.
@@ -1597,7 +1647,7 @@ fn index_orders(table: &TableDef, index: Option<usize>) -> Vec<Order> {
 
 /// hash_ordered reports whether an index orders its keys by content hashes rather than values, as Dolt's
 /// HasContentHashedField does: a unique index with a column stored out of band or adaptively.
-fn hash_ordered(table: &TableDef, index: Option<usize>) -> bool {
+pub(crate) fn hash_ordered(table: &TableDef, index: Option<usize>) -> bool {
     let (unique, columns) = match index {
         Some(i) => (table.indexes[i].unique, &table.indexes[i].columns),
         None => (true, &table.key_columns),
