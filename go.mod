@@ -11,7 +11,7 @@ require (
 	github.com/dolthub/dolt/go v0.40.5-0.20261009172441-a4d1e124fbc2
 	github.com/dolthub/eventsapi_schema v0.0.0-20260715220557-d9b4a1c6b4d4
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20261008232330-722293a87ffd
+	github.com/dolthub/go-mysql-server v0.20.1-0.20261009223836-763041461f6c
 	github.com/dolthub/pg_query_go/v6 v6.0.0-20260922094746-ae7577e21dfe
 	github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166
 	github.com/dolthub/vitess v0.0.0-20261007222241-441dd42e89d4

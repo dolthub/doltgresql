@@ -152,6 +152,7 @@ func Init() {
 	initHasSchemaPrivilege()
 	initHashText()
 	initInitcap()
+	initJsonArrayElements()
 	initJsonArrayLength()
 	initJsonObjectKeys()
 	initJsonStripNulls()
