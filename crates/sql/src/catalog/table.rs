@@ -134,6 +134,8 @@ pub struct TableDef {
     /// The comment that COMMENT ON TABLE gives the table, which is empty without one.
     pub comment: String,
     pub table: Table,
+    /// The name that a query's FROM gives the table, which EXPLAIN shows, or None without one.
+    pub alias: Option<String>,
 }
 
 /// Primary is a primary key constraint's name, empty for the default `<table>_pkey`, and whether it is DEFERRABLE
@@ -350,6 +352,7 @@ impl TableDef {
             initially_deferred: clustered.initially_deferred,
         };
         Ok(TableDef {
+            alias: None,
             schema: schema.to_string(),
             name: name.to_string(),
             primary,

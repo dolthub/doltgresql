@@ -160,6 +160,7 @@ fn table(schema: &str, name: &str, columns: Vec<Column>) -> TableDef {
         })
         .collect();
     TableDef {
+        alias: None,
         schema: schema.to_string(),
         name: name.to_string(),
         primary: Default::default(),

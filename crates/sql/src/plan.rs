@@ -1234,6 +1234,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                         })
                         .collect(),
                 };
+                let table = TableDef { alias: alias.map(|a| a.aliasname.clone()), ..table };
                 Ok((Plan::Scan(Box::new(table), None), scope))
             }
             Some(NodeEnum::JoinExpr(join)) => self.plan_join(join),
@@ -3106,6 +3107,14 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
         }
         plan => plan,
     };
+    let plan = match plan {
+        Plan::Join { left, right, kind, condition, lateral: false, method }
+            if matches!(kind, JoinKind::Left | JoinKind::Right | JoinKind::Anti | JoinKind::Semi) =>
+        {
+            return push_beside_outer_join(*left, *right, kind, condition, method, predicate);
+        }
+        plan => plan,
+    };
     let Plan::Join { left, right, kind: JoinKind::Inner, condition, lateral, method } = plan else {
         return Plan::Filter { input: Box::new(plan), predicate };
     };
@@ -3154,6 +3163,48 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
     }
     let condition = and(condition.into_iter().chain(to_join).collect());
     Plan::Join { left: Box::new(left), right: Box::new(right), kind: JoinKind::Inner, condition, lateral, method }
+}
+
+/// push_beside_outer_join pushes the conditions of a filter above an outer, semi, or anti join that read only the
+/// input whose rows the join keeps whole, the left one or a right join's right one, down into that input, as Postgres
+/// distributes quals that only that side's relations reference, keeping the others above the join.
+fn push_beside_outer_join(
+    left: Plan,
+    right: Plan,
+    kind: JoinKind,
+    condition: Option<Expr>,
+    method: JoinMethod,
+    predicate: Expr,
+) -> Plan {
+    let width = left.width();
+    let (mut to_left, mut to_right, mut kept) = (Vec::new(), Vec::new(), Vec::new());
+    for c in crate::indexscan::conjuncts(&predicate) {
+        let (mut reads_left, mut reads_right) = (false, false);
+        c.visit(&mut |e| match e {
+            Expr::Column(i) if *i >= width => reads_right = true,
+            Expr::Column(_) => reads_left = true,
+            _ => {}
+        });
+        match (reads_left, reads_right, has_subquery(c), kind) {
+            (_, false, false, JoinKind::Left | JoinKind::Anti | JoinKind::Semi) => to_left.push(c.clone()),
+            (false, true, false, JoinKind::Right) => to_right.push(shift_columns(c.clone(), width)),
+            _ => kept.push(c.clone()),
+        }
+    }
+    let and = |conditions: Vec<Expr>| conditions.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+    let left = match and(to_left) {
+        Some(condition) => push_down(left, condition),
+        None => left,
+    };
+    let right = match and(to_right) {
+        Some(condition) => push_down(right, condition),
+        None => right,
+    };
+    let join = Plan::Join { left: Box::new(left), right: Box::new(right), kind, condition, lateral: false, method };
+    match and(kept) {
+        Some(predicate) => Plan::Filter { input: Box::new(join), predicate },
+        None => join,
+    }
 }
 
 /// implied_equalities returns the equalities of columns with constants that a set of conditions imply without

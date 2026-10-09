@@ -15,10 +15,14 @@
 //! EXPLAIN: a query's plan printed in Postgres' text format, with Doltgres-specific `Index Columns` and `Index Ranges`
 //! lines that give an index scan's key columns and its ranges in go-mysql-server's notation.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+
 use pg_query::NodeEnum;
 use pg_query::protobuf::ExplainStmt;
 
 use crate::Outcome;
+use crate::catalog::table::TableDef;
 use crate::error::{PgError, Result};
 use crate::expr::{ArithOp, CmpOp, Expr};
 use crate::plan::{JoinKind, JoinMethod, Plan, Planner, SetOp};
@@ -73,13 +77,100 @@ fn expr_text(e: &Expr, columns: &[String]) -> String {
     }
 }
 
-/// columns returns the names of a plan's columns, which conditions over its rows print.
-fn columns(plan: &Plan) -> Vec<String> {
+thread_local! {
+    /// RELATIONS are the names that the plan being printed gives the tables it scans, by the addresses of their
+    /// definitions, and whether the conditions of the nodes above its scans qualify column names with them, as
+    /// Postgres does once a query reads more than one relation.
+    static RELATIONS: RefCell<(HashMap<usize, String>, bool)> = RefCell::new((HashMap::new(), false));
+}
+
+/// relation_name returns the name that EXPLAIN gives a scanned table: its alias in the query or its own name, made
+/// unique among the plan's relations as Postgres' select_rtable_names_for_explain makes it.
+fn relation_name(table: &TableDef) -> String {
+    let address = table as *const TableDef as usize;
+    RELATIONS
+        .with(|r| r.borrow().0.get(&address).cloned())
+        .unwrap_or_else(|| table.alias.clone().unwrap_or_else(|| table.name.clone()))
+}
+
+/// scan_target returns how a scan line names a table: its name, followed by the name the plan gives it when that
+/// differs.
+fn scan_target(table: &TableDef) -> String {
+    let name = relation_name(table);
+    match name == table.name {
+        true => crate::engine::quote_identifier(&table.name),
+        false => {
+            format!("{} {}", crate::engine::quote_identifier(&table.name), crate::engine::quote_identifier(&name))
+        }
+    }
+}
+
+/// name_relations names the tables that a plan scans, in the order it reads them, numbering a name that repeats.
+fn name_relations(plan: &Plan, names: &mut HashMap<usize, String>, taken: &mut HashMap<String, usize>) {
+    let mut name = |table: &TableDef| {
+        let base = table.alias.clone().unwrap_or_else(|| table.name.clone());
+        let count = taken.entry(base.clone()).or_insert(0);
+        let unique = if *count == 0 { base.clone() } else { format!("{base}_{count}") };
+        *count += 1;
+        names.insert(table as *const TableDef as usize, unique);
+    };
+    match plan {
+        Plan::Scan(table, _) => name(table),
+        Plan::IndexScan(scan) => name(&scan.table),
+        Plan::Join { left, right, .. } | Plan::SetOp { left, right, .. } => {
+            name_relations(left, names, taken);
+            name_relations(right, names, taken);
+        }
+        Plan::Recursive { anchor, step, .. } => {
+            name_relations(anchor, names, taken);
+            name_relations(step, names, taken);
+        }
+        Plan::Filter { input, .. }
+        | Plan::Project { input, .. }
+        | Plan::Aggregate { input, .. }
+        | Plan::Sort { input, .. }
+        | Plan::Distinct { input, .. }
+        | Plan::Limit { input, .. }
+        | Plan::ProjectSet { input, .. }
+        | Plan::Window { input, .. }
+        | Plan::Once(input) => name_relations(input, names, taken),
+        _ => {}
+    }
+}
+
+/// qualify returns a column name prefixed with its relation's name when the plan's conditions qualify names.
+fn qualify(relation: &str, column: &str) -> String {
+    match RELATIONS.with(|r| r.borrow().1) {
+        true => format!("{relation}.{column}"),
+        false => column.to_string(),
+    }
+}
+
+/// own_columns returns the names of a scan's columns as its own conditions print them, unqualified, or those of any
+/// other plan as `columns` gives them.
+fn own_columns(plan: &Plan) -> Vec<String> {
     match plan {
         Plan::Scan(table, _) => table.columns.iter().map(|c| c.name.clone()).collect(),
         Plan::IndexScan(scan) => scan.table.columns.iter().map(|c| c.name.clone()).collect(),
         Plan::Catalog(table) => table.columns.iter().map(|c| c.name.to_string()).collect(),
         Plan::CatalogIndexScan(scan) => scan.table.columns.iter().map(|c| c.name.to_string()).collect(),
+        other => columns(other),
+    }
+}
+
+/// columns returns the names of a plan's columns, which conditions over its rows print.
+fn columns(plan: &Plan) -> Vec<String> {
+    match plan {
+        Plan::Scan(table, _) => {
+            let relation = relation_name(table);
+            table.columns.iter().map(|c| qualify(&relation, &c.name)).collect()
+        }
+        Plan::IndexScan(scan) => {
+            let relation = relation_name(&scan.table);
+            scan.table.columns.iter().map(|c| qualify(&relation, &c.name)).collect()
+        }
+        Plan::Catalog(table) => table.columns.iter().map(|c| qualify(table.name, c.name)).collect(),
+        Plan::CatalogIndexScan(scan) => scan.table.columns.iter().map(|c| qualify(scan.table.name, c.name)).collect(),
         Plan::Filter { input, .. }
         | Plan::Sort { input, .. }
         | Plan::Limit { input, .. }
@@ -135,7 +226,7 @@ impl Printer {
     fn node<'p>(&mut self, plan: &'p Plan, depth: usize, mut filters: Vec<String>, mut evaluated: Vec<&'p Expr>) {
         let (name, mut properties, children): (String, Vec<String>, Vec<Child<'_>>) = match plan {
             Plan::Filter { input, predicate } => {
-                filters.insert(0, format!("Filter: {}", expr_text(predicate, &columns(input))));
+                filters.insert(0, format!("Filter: {}", expr_text(predicate, &own_columns(input))));
                 evaluated.push(predicate);
                 return self.node(input, depth, filters, evaluated);
             }
@@ -144,9 +235,7 @@ impl Printer {
                 return self.node(input, depth, filters, evaluated);
             }
             Plan::Once(input) => return self.node(input, depth, filters, evaluated),
-            Plan::Scan(table, _) => {
-                (format!("Seq Scan on {}", crate::engine::quote_identifier(&table.name)), vec![], vec![])
-            }
+            Plan::Scan(table, _) => (format!("Seq Scan on {}", scan_target(table)), vec![], vec![]),
             Plan::IndexScan(scan) => {
                 let descending: Vec<bool> = match scan.index {
                     Some(i) => scan.table.indexes[i].descending.clone(),
@@ -167,7 +256,7 @@ impl Printer {
                 let mut properties = vec![format!("Index Columns: {}", names.join(", "))];
                 match &scan.nearest {
                     Some(nearest) => {
-                        properties.push(format!("Order By: {}", expr_text(&nearest.order, &columns(plan))))
+                        properties.push(format!("Order By: {}", expr_text(&nearest.order, &own_columns(plan))))
                     }
                     None => properties.push(format!("Index Ranges: {}", crate::ranges::ranges_text(&scan.ranges))),
                 }
@@ -176,7 +265,7 @@ impl Printer {
                         "Index Scan{} using {} on {}",
                         if scan.reverse { " Backward" } else { "" },
                         crate::engine::quote_identifier(&scan.index_name()),
-                        crate::engine::quote_identifier(&scan.table.name)
+                        scan_target(&scan.table)
                     ),
                     properties,
                     vec![],
@@ -341,7 +430,7 @@ impl Printer {
             "{}->  Index Scan using {} on {}",
             " ".repeat(6 * (depth - 1) + 2),
             crate::engine::quote_identifier(&lookup.index),
-            crate::engine::quote_identifier(&lookup.relation)
+            lookup.relation
         ));
         self.lines.push(format!("{pad}Index Columns: {}", lookup.columns.join(", ")));
         let conditions: Vec<String> = lookup
@@ -352,7 +441,7 @@ impl Printer {
             .collect();
         self.lines.push(format!("{pad}Index Cond: {}", conditions.join(" AND ")));
         if let Plan::Filter { input, predicate } = lookup.right {
-            self.lines.push(format!("{pad}Filter: {}", expr_text(predicate, &columns(input))));
+            self.lines.push(format!("{pad}Filter: {}", expr_text(predicate, &own_columns(input))));
         }
     }
 }
@@ -363,7 +452,7 @@ impl<'p> Lookup<'p> {
         let (index, relation, columns, keys) = match method {
             JoinMethod::Lookup { scan, keys } => (
                 scan.index_name(),
-                scan.table.name.clone(),
+                scan_target(&scan.table),
                 scan.index_columns()
                     .iter()
                     .map(|&c| scan.table.index_column(c).map_or_else(String::new, |c| c.name.clone()))
@@ -394,8 +483,13 @@ fn catalog_name(plan: &Plan) -> String {
 
 /// lines returns the lines that EXPLAIN prints for a plan.
 pub fn lines(plan: &Plan) -> Vec<String> {
+    let mut names = HashMap::new();
+    name_relations(plan, &mut names, &mut HashMap::new());
+    let qualified = names.len() > 1;
+    RELATIONS.with(|r| *r.borrow_mut() = (names, qualified));
     let mut printer = Printer { lines: Vec::new(), subplans: 0 };
     printer.node(plan, 0, Vec::new(), Vec::new());
+    RELATIONS.with(|r| *r.borrow_mut() = (HashMap::new(), false));
     printer.lines
 }
 

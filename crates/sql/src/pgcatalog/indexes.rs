@@ -133,6 +133,7 @@ fn table_def(table: &CatalogTable, indexes: &[&CatalogIndex]) -> TableDef {
         })
         .collect();
     TableDef {
+        alias: None,
         schema: table.schema.to_string(),
         name: table.name.to_string(),
         primary: Default::default(),
