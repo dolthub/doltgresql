@@ -57,6 +57,30 @@ pub fn encode_field(value: &Value, field_encoding: u8, ty: ColumnType) -> Result
     }))
 }
 
+/// decode_field_into reads a field into a row's slot as `decode_field` does, writing text over the slot's own text so
+/// that a scan reuses its buffers from row to row.
+pub fn decode_field_into(
+    db: &Database,
+    field: Option<&[u8]>,
+    field_encoding: u8,
+    ty: ColumnType,
+    slot: &mut Value,
+) -> Result<()> {
+    let text = match (field, field_encoding) {
+        (Some(field), encoding::STRING) => field.strip_suffix(&[0]),
+        (Some([0, rest @ ..]), encoding::STRING_ADAPTIVE) if ty.oid != crate::oid::XML => Some(rest),
+        _ => None,
+    };
+    match (text.map(std::str::from_utf8), slot) {
+        (Some(Ok(text)), Value::Text(buffer)) => {
+            buffer.clear();
+            buffer.push_str(text);
+        }
+        (_, slot) => *slot = decode_field(db, field, field_encoding, ty)?,
+    }
+    Ok(())
+}
+
 /// decode_field reads a value of the type from a tuple field of the encoding, where None is NULL.
 pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8, ty: ColumnType) -> Result<Value> {
     let Some(field) = field else { return Ok(Value::Null) };

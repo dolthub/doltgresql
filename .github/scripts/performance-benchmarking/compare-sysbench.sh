@@ -1,8 +1,10 @@
 #!/bin/bash
 # Runs DoltHub's published sysbench tests for Doltgres (its Lua scripts plus sysbench's oltp tests, uniform keys,
 # prepared statements off, one thread) on a fresh server for each test, once with the main branch's server and once
-# with the pull request's, and prints a markdown table of their average latencies and transactions per second. Given
-# the bin directory of a Postgres 15 install, it also runs each test on a fresh Postgres database for comparison.
+# with the pull request's, and prints markdown tables of their average latencies and transactions per second, one for
+# the read tests and one for the write tests. Given the bin directory of a Postgres 15 install, it also runs each test
+# on a fresh Postgres database for comparison, and ends with the pull request's tps as a percentage of Postgres',
+# averaged (geometrically, so that one far faster test doesn't swamp the rest) across the reads and across the writes.
 #   compare-sysbench.sh <main binary> <pull request binary> <lua scripts dir> <seconds per test> [postgres bin dir]
 set -uo pipefail
 
@@ -11,9 +13,10 @@ pr_bin=$2
 lua=$3
 secs=$4
 pg_bin=${5:-}
-tests="oltp_read_only oltp_point_select select_random_points select_random_ranges covering_index_scan_postgres
+read_tests="oltp_read_only oltp_point_select select_random_points select_random_ranges covering_index_scan_postgres
 index_scan_postgres table_scan_postgres groupby_scan_postgres index_join_scan_postgres types_table_scan_postgres
-index_join_postgres oltp_read_write oltp_update_index oltp_update_non_index oltp_insert oltp_write_only
+index_join_postgres"
+write_tests="oltp_read_write oltp_update_index oltp_update_non_index oltp_insert oltp_write_only
 oltp_delete_insert_postgres types_delete_insert_postgres"
 port=54397
 pg_port=54398
@@ -69,16 +72,33 @@ if [ -n "$pg_bin" ]; then
   trap '"$pg_bin/pg_ctl" -D "$work/pg" -m fast stop > /dev/null' EXIT
 fi
 
-echo "| Test | main latency (ms) | PR latency (ms) | Change | main tps | PR tps | Postgres tps | PR / Postgres |"
-echo "| --- | --- | --- | --- | --- | --- | --- | --- |"
-for test in $tests; do
-  read -r main_avg main_tps <<< "$(run_test "$main_bin" "$test")"
-  read -r pr_avg pr_tps <<< "$(run_test "$pr_bin" "$test")"
-  pg_tps=n/a
-  if [ -n "$pg_bin" ]; then
-    pg_tps=$(run_postgres_test "$test")
-  fi
-  change=$(awk -v a="$main_avg" -v b="$pr_avg" 'BEGIN { if (a + 0 > 0 && b + 0 > 0) printf "%+.1f%%", 100 * (b - a) / a; else print "n/a" }')
-  ratio=$(awk -v a="$pg_tps" -v b="$pr_tps" 'BEGIN { if (a + 0 > 0 && b + 0 > 0) printf "%.1f%%", 100 * b / a; else print "n/a" }')
-  echo "| $test | $main_avg | $pr_avg | $change | $main_tps | $pr_tps | $pg_tps | $ratio |"
-done
+# run_table prints the table of a group of tests, then the geometric mean across them of the pull request's tps as a
+# percentage of Postgres', or n/a, on its own last line.
+run_table() {
+  local total=0 count=0
+  echo "| Test | main latency (ms) | PR latency (ms) | Change | main tps | PR tps | Postgres tps | PR / Postgres |"
+  echo "| --- | --- | --- | --- | --- | --- | --- | --- |"
+  for test in $1; do
+    read -r main_avg main_tps <<< "$(run_test "$main_bin" "$test")"
+    read -r pr_avg pr_tps <<< "$(run_test "$pr_bin" "$test")"
+    pg_tps=n/a
+    if [ -n "$pg_bin" ]; then
+      pg_tps=$(run_postgres_test "$test")
+    fi
+    change=$(awk -v a="$main_avg" -v b="$pr_avg" 'BEGIN { if (a + 0 > 0 && b + 0 > 0) printf "%+.1f%%", 100 * (b - a) / a; else print "n/a" }')
+    ratio=$(awk -v a="$pg_tps" -v b="$pr_tps" 'BEGIN { if (a + 0 > 0 && b + 0 > 0) printf "%.1f%%", 100 * b / a; else print "n/a" }')
+    if awk -v a="$pg_tps" -v b="$pr_tps" 'BEGIN { exit !(a + 0 > 0 && b + 0 > 0) }'; then
+      total=$(awk -v t="$total" -v a="$pg_tps" -v b="$pr_tps" 'BEGIN { print t + log(100 * b / a) }')
+      count=$((count + 1))
+    fi
+    echo "| $test | $main_avg | $pr_avg | $change | $main_tps | $pr_tps | $pg_tps | $ratio |"
+  done
+  awk -v t="$total" -v c="$count" 'BEGIN { if (c > 0) printf "%.1f%%\n", exp(t / c); else print "n/a" }'
+}
+
+reads=$(run_table "$read_tests")
+writes=$(run_table "$write_tests")
+printf '**Reads**\n\n%s\n\n**Writes**\n\n%s\n' "$(echo "$reads" | sed '$d')" "$(echo "$writes" | sed '$d')"
+if [ -n "$pg_bin" ]; then
+  printf '\n%s reads, %s writes vs Postgres\n' "$(echo "$reads" | tail -1)" "$(echo "$writes" | tail -1)"
+fi

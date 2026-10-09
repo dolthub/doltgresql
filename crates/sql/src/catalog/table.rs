@@ -26,7 +26,7 @@ use store::Hash;
 
 use super::{ColumnType, builtin_type_by_id};
 use crate::error::{PgError, Result, code};
-use crate::storage::{compare_key_field, decode_field, encode_field, place_adaptive};
+use crate::storage::{compare_key_field, decode_field_into, encode_field, place_adaptive};
 use crate::types::Value;
 
 /// COLLATION is the collation of every Doltgres schema, utf8mb4_0900_bin.
@@ -640,7 +640,7 @@ impl TableDef {
         let wanted = |i: usize| needed.is_none_or(|n| n[i]);
         for (field, &i) in self.key_columns.iter().enumerate() {
             if wanted(i) {
-                row[i] = decode_field(db, key.field(field)?, self.columns[i].encoding, self.columns[i].ty)?;
+                decode_field_into(db, key.field(field)?, self.columns[i].encoding, self.columns[i].ty, &mut row[i])?;
             }
         }
         let mut cardinality = 1;
@@ -653,7 +653,8 @@ impl TableDef {
         };
         for (field, &i) in self.value_columns.iter().enumerate() {
             if wanted(i) {
-                row[i] = decode_field(db, value.field(field + offset)?, self.columns[i].encoding, self.columns[i].ty)?;
+                let field = value.field(field + offset)?;
+                decode_field_into(db, field, self.columns[i].encoding, self.columns[i].ty, &mut row[i])?;
             }
         }
         Ok(cardinality)

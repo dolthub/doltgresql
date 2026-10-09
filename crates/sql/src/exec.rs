@@ -242,17 +242,18 @@ impl Rows for ProjectRows<'_> {
             return Ok(false);
         }
         let row = &mut self.input_row;
-        out.clear();
-        for (expr, &moves) in self.exprs.iter().zip(&self.moves) {
-            out.push(match expr {
-                _ if moves => Value::Null,
-                Expr::Column(i) => row[*i].clone(),
-                expr => expr.eval(ctx, row)?,
-            });
+        out.resize(self.exprs.len(), Value::Null);
+        for ((expr, &moves), value) in self.exprs.iter().zip(&self.moves).zip(out.iter_mut()) {
+            if !moves {
+                *value = match expr {
+                    Expr::Column(i) => row[*i].clone(),
+                    expr => expr.eval(ctx, row)?,
+                };
+            }
         }
         for ((expr, &moves), value) in self.exprs.iter().zip(&self.moves).zip(out.iter_mut()) {
             if let (true, Expr::Column(i)) = (moves, expr) {
-                *value = std::mem::replace(&mut row[*i], Value::Null);
+                std::mem::swap(&mut row[*i], value);
             }
         }
         Ok(true)
