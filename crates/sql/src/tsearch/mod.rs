@@ -25,7 +25,7 @@ use crate::basetypes::textsearch::{Builder, Lexeme, MAX_POSITION, Mode, Operator
 use crate::error::{PgError, Result, code};
 
 /// MAX_LEXEME is the length in bytes of the longest lexeme that a vector can hold.
-const MAX_LEXEME: usize = 2047;
+pub(crate) const MAX_LEXEME: usize = 2047;
 
 /// MAX_POSITIONS is how many positions to_tsvector keeps for a lexeme.
 const MAX_POSITIONS: usize = 255;
@@ -119,7 +119,7 @@ pub(crate) struct Word {
 }
 
 /// long_word_notice returns the notice for a word that is too long to index.
-fn long_word_notice() -> PgError {
+pub(crate) fn long_word_notice() -> PgError {
     PgError {
         detail: Some(format!("Words longer than {MAX_LEXEME} characters are ignored.")),
         ..PgError::notice(code::PROGRAM_LIMIT_EXCEEDED, "word is too long to be indexed")

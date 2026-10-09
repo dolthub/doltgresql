@@ -156,7 +156,7 @@ pub fn out_of_range(type_oid: u32, text: &str) -> PgError {
 
 /// parse_integer reads an integer as Postgres' integer input functions do: optional whitespace, a sign, and digits
 /// (with underscores between digit groups, or a 0x, 0o, or 0b prefix).
-fn parse_integer(text: &str, type_oid: u32, min: i128, max: i128) -> Result<i128> {
+pub(crate) fn parse_integer(text: &str, type_oid: u32, min: i128, max: i128) -> Result<i128> {
     let trimmed = text.trim_matches(|c: char| c.is_ascii_whitespace());
     let (negative, digits) = match trimmed.as_bytes().first() {
         Some(b'-') => (true, &trimmed[1..]),

@@ -10661,3 +10661,264 @@ fn test_text_search_parsing() {
         },
     ]);
 }
+
+#[test]
+fn test_text_search_rewrite_and_headline() {
+    run_scripts(&[
+        ScriptTest {
+            name: "ts_rewrite",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE test_tsquery (txtkeyword TEXT, txtsample TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO test_tsquery VALUES ('New York', 'new & york | big & apple | nyc'), ('Moscow', 'moskva | moscow'), ('''Sanct Peter''', 'Peterburg | peter | ''Sanct Peterburg'''), ('''foo bar qq''', 'foo & (bar | qq) & city'), ('1 & (2 <-> 3)', '2 <-> 4'), ('5 <-> 6', '5 <-> 7');",
+                    expected: Expected::Tag("INSERT 0 6"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE test_tsquery ADD COLUMN keyword tsquery;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE test_tsquery SET keyword = to_tsquery('english', txtkeyword);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error in tsquery: "New York""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE test_tsquery ADD COLUMN sample tsquery;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE test_tsquery SET sample = to_tsquery('english', txtsample::text);",
+                    expected: Expected::Tag("UPDATE 6"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rewrite('foo & bar & qq & new & york', 'new & york'::tsquery, 'big & apple | nyc | new & york & city');",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rewrite", TSQUERY)],
+                        rows: &[
+                            &[T("'foo' & 'bar' & 'qq' & ( 'city' & 'new' & 'york' | 'nyc' | 'big' & 'apple' )")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rewrite(ts_rewrite('new & !york ', 'york', '!jersey'), 'jersey', 'mexico');",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rewrite", TSQUERY)],
+                        rows: &[
+                            &[T("'new' & !!'mexico'")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rewrite('moscow & hotel', 'SELECT keyword, sample FROM test_tsquery'::text);",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rewrite", TSQUERY)],
+                        rows: &[
+                            &[T("'moscow' & 'hotel'")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rewrite('bar & qq & foo & (new <-> york)', 'SELECT keyword, sample FROM test_tsquery'::text);",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rewrite", TSQUERY)],
+                        rows: &[
+                            &[T("'foo' & 'bar' & 'qq' & 'new' <-> 'york'")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rewrite('5 <-> (1 & (2 <-> 3))', 'SELECT keyword, sample FROM test_tsquery'::text);",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rewrite", TSQUERY)],
+                        rows: &[
+                            &[T("'5' <-> ( '1' & '2' <-> '3' )")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rewrite(to_tsquery('5 & (6 | 5)'), to_tsquery('5'), to_tsquery(''));",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rewrite", TSQUERY)],
+                        rows: &[
+                            &[T("'6'")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    notices: &[Diagnostic { code: "00000", message: r#"text-search query doesn't contain lexemes: """#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rewrite(to_tsquery('!5'), to_tsquery('5'), to_tsquery(''));",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rewrite", TSQUERY)],
+                        rows: &[
+                            &[T("")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    notices: &[Diagnostic { code: "00000", message: r#"text-search query doesn't contain lexemes: """#, ..N }],
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rewrite(tsquery_phrase('foo', 'foo'), 'foo', 'bar | baz');",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rewrite", TSQUERY)],
+                        rows: &[
+                            &[T("( 'bar' | 'baz' ) <-> ( 'bar' | 'baz' )")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rewrite('a & b & c & d', 'b & d', 'x'), ts_rewrite('a | b | c', 'c | a', 'z & y'), ts_rewrite('a:A & b', 'a', 'c:*');",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_rewrite", TSQUERY), Column("ts_rewrite", TSQUERY), Column("ts_rewrite", TSQUERY)],
+                        rows: &[
+                            &[T("'c' & 'a' & 'x'"), T("'b' | 'z' & 'y'"), T("'b' & 'c':*")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_rewrite('a', 'SELECT 1, 2');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "ts_rewrite query must return two tsquery columns", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "ts_headline",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT ts_headline('english', 'Lorem ipsum urna.  Nullam nullam ullamcorper urna.', to_tsquery('english','Lorem') && phraseto_tsquery('english','ullamcorper urna'), 'MaxWords=100, MinWords=1');",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_headline", TEXT)],
+                        rows: &[
+                            &[T("<b>Lorem</b> ipsum <b>urna</b>.  Nullam nullam <b>ullamcorper</b> <b>urna</b>")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_headline('simple', '1 2 3 1 3'::text, '1 <-> 3', 'MaxWords=2, MinWords=1'), ts_headline('simple', '1 2 3 1 3'::text, '1 & 3', 'MaxWords=4, MinWords=1');",
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_headline", TEXT), Column("ts_headline", TEXT)],
+                        rows: &[
+                            &[T("<b>1</b> <b>3</b>"), T("<b>1</b> 2 <b>3</b>")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ts_headline('english', 'Day after day, day after day, We stuck, nor breath nor motion, As idle as a painted Ship Upon a painted Ocean. Water, water, every where And all the boards did shrink; Water, water, every where, Nor any drop to drink.', to_tsquery('english', 'ocean'), 'MaxFragments=2, MaxWords=5, MinWords=2, StartSel=<<, StopSel=>>, FragmentDelimiter=" | "');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_headline", TEXT)],
+                        rows: &[
+                            &[T("painted <<Ocean>>. Water, water, every")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ts_headline('english', '<html><b>Sea</b> <a href="x">view</a> wow</html>', to_tsquery('english', 'sea&view'), 'HighlightAll=true');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_headline", TEXT)],
+                        rows: &[
+                            &[T(r#"<html><b><b>Sea</b></b> <a href="x"><b>view</b></a> wow</html>"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_headline('foo bar', 'bar'::tsquery, 'Bogus=1');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized headline parameter: "Bogus""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT ts_headline('foo bar', 'bar'::tsquery, 'MinWords=5, MaxWords=4');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "MinWords should be less than MaxWords", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ts_headline('{"a": "aaa bbb", "b": {"c": "ccc ddd fff"}, "d": ["ggg hhh", 1.50, true]}'::json, tsquery('bbb & ddd & hhh')), ts_headline('{"a": "aaa bbb", "b": {"c": "ccc ddd fff"}}'::jsonb, tsquery('bbb & ddd'));"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ts_headline", JSON), Column("ts_headline", JSONB)],
+                        rows: &[
+                            &[T(r#"{"a":"aaa <b>bbb</b>","b":{"c":"ccc <b>ddd</b> fff"},"d":["ggg <b>hhh</b>",1.50,true]}"#), T(r#"{"a": "aaa <b>bbb</b>", "b": {"c": "ccc <b>ddd</b> fff"}}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "text search matching of text",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT 'the cats sat' @@ 'cat'::tsquery, 'the cats sat' @@ 'cats & sat', ts_match_tt('foo bar', 'bars'), 'a b' @@ to_tsquery('simple', 'a');",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("ts_match_tt", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE tv (a tsvector);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO tv VALUES ('wr qh'), ('wr'), ('x');",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM tv WHERE a @@ ANY ('{wr,qh}');",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

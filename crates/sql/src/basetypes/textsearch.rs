@@ -1002,7 +1002,7 @@ fn children(query: &Query) -> Vec<&Query> {
 
 /// legacy_crc32 returns the CRC that Postgres keeps for a tsquery lexeme, its LEGACY_CRC32, which feeds bytes from the
 /// high end into the reflected CRC-32 table.
-fn legacy_crc32(bytes: &[u8]) -> i32 {
+pub(crate) fn legacy_crc32(bytes: &[u8]) -> i32 {
     let entry = |index: u32| (0..8).fold(index, |c, _| if c & 1 != 0 { 0xEDB8_8320 ^ (c >> 1) } else { c >> 1 });
     let crc = bytes.iter().fold(u32::MAX, |crc, &b| entry(((crc >> 24) ^ u32::from(b)) & 0xFF) ^ (crc << 8));
     !crc as i32

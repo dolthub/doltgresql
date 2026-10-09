@@ -1466,7 +1466,16 @@ impl<'b, 'a> Binder<'b, 'a> {
                 let left = self.bind(operand(&e.lexpr)?)?;
                 let mut right = self.bind(operand(&e.rexpr)?)?;
                 if right.1.oid == oid::UNKNOWN {
-                    let array_type = if left.1.oid == oid::UNKNOWN { oid::TEXT_ARRAY } else { array_of(left.1.oid) };
+                    let operand = functions::exists(&op)
+                        .then(|| functions::resolve(&op, &[left.1.oid, oid::UNKNOWN], e.location).ok())
+                        .flatten()
+                        .map(|resolved| functions::function(resolved.index).args[1])
+                        .filter(|&t| t != oid::UNKNOWN && array_of(t) != 0);
+                    let array_type = match (left.1.oid, operand) {
+                        (oid::UNKNOWN, _) => oid::TEXT_ARRAY,
+                        (_, Some(operand)) => array_of(operand),
+                        (left, None) => array_of(left),
+                    };
                     if let Expr::Param(i) = right.0
                         && self.ctx.parameters[i] == 0
                     {
@@ -1971,6 +1980,13 @@ impl<'b, 'a> Binder<'b, 'a> {
             && let Ok(resolved) = functions::resolve(op, &[lt, rt], location)
         {
             return self.operator_call(resolved, left, right, location);
+        }
+        let generic = matches!(op, "=" | "<>" | "!=" | "<" | "<=" | ">" | ">=" | "||" | "+" | "-" | "*" | "/" | "%");
+        if textual(lt) && textual(rt) && !generic && functions::exists(op) {
+            let as_text = |t: u32| if t == oid::UNKNOWN { oid::TEXT } else { t };
+            if let Ok(resolved) = functions::resolve(op, &[as_text(lt), as_text(rt)], location) {
+                return self.operator_call(resolved, left, right, location);
+            }
         }
         let other = |t: u32| !textual(t) && !matches!(t, oid::JSON | oid::JSONB) && !is_array_type(t);
         if op == "||" && ((textual(lt) && other(rt)) || (other(lt) && textual(rt))) {
