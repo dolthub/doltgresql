@@ -2001,11 +2001,11 @@ impl<'b, 'a> Planner<'b, 'a> {
             }
         }
         if let Some(calls) = windows.filter(|calls| !calls.is_empty()) {
-            let input_width = plan.width();
-            let place = |expr: Expr| replace_windows(expr, input_width);
+            let (windowed, columns) = window_plan(plan, calls, &sorts);
+            let place = |expr: Expr| replace_windows(expr, &columns);
             targets = targets.into_iter().map(|(e, t, n, l)| (place(e), t, n, l)).collect();
             sorts = sorts.into_iter().map(|(e, d, n)| (place(e), d, n)).collect();
-            plan = Plan::Window { input: Box::new(plan), calls };
+            plan = windowed;
         }
         if !set_functions.is_empty() {
             let mut levels: Vec<usize> = Vec::with_capacity(set_functions.len());
@@ -2349,12 +2349,73 @@ fn replace_set_functions(expr: Expr, columns: &[usize]) -> Expr {
     }
 }
 
-/// replace_windows replaces window call references with the columns that a window node appends after its input's.
-fn replace_windows(expr: Expr, input_width: usize) -> Expr {
+/// replace_windows replaces window call references with the columns that the window nodes append their values in.
+fn replace_windows(expr: Expr, columns: &[usize]) -> Expr {
     match expr {
-        Expr::WindowRef(k) => Expr::Column(input_width + k),
-        other => other.map_children(&mut |child| replace_windows(child, input_width)),
+        Expr::WindowRef(k) => Expr::Column(columns[k]),
+        other => other.map_children(&mut |child| replace_windows(child, columns)),
     }
+}
+
+/// window_plan returns the plan of window calls over an input: for each set of calls that share a partition and order,
+/// a sort of the rows by its partition and then its order, unless the rows are already in that order, under a window
+/// node of those calls, in the order of Postgres' select_active_windows, with the column of each call's value. Keys
+/// compare by their first appearance among the ORDER BY expressions and then the windows' keys, as Postgres numbers
+/// them.
+fn window_plan(
+    input: Plan,
+    calls: Vec<crate::window::WindowCall>,
+    order_by: &[(Expr, bool, bool)],
+) -> (Plan, Vec<usize>) {
+    let input_width = input.width();
+    let mut actives: Vec<(Vec<SortKey>, Vec<usize>)> = Vec::new();
+    for (k, call) in calls.iter().enumerate() {
+        let mut unique_order: Vec<SortKey> =
+            call.partition.iter().map(|e| SortKey { expr: e.clone(), descending: false, nulls_first: false }).collect();
+        for key in &call.order {
+            if !unique_order.contains(key) {
+                unique_order.push(key.clone());
+            }
+        }
+        match actives.iter_mut().find(|(order, _)| *order == unique_order) {
+            Some((_, members)) => members.push(k),
+            None => actives.push((unique_order, vec![k])),
+        }
+    }
+    let mut refs: Vec<&Expr> = order_by.iter().map(|(e, ..)| e).collect();
+    for (unique_order, _) in &actives {
+        for key in unique_order {
+            if !refs.contains(&&key.expr) {
+                refs.push(&key.expr);
+            }
+        }
+    }
+    let rank = |key: &SortKey| (refs.iter().position(|e| **e == key.expr), key.descending, key.nulls_first);
+    let mut order: Vec<usize> = (0..actives.len()).collect();
+    order.sort_by(|&a, &b| {
+        let (a, b) = (&actives[a].0, &actives[b].0);
+        a.iter().zip(b).map(|(x, y)| rank(y).cmp(&rank(x))).find(|o| o.is_ne()).unwrap_or(b.len().cmp(&a.len()))
+    });
+    let mut plan = input;
+    let mut sorted: Vec<SortKey> = Vec::new();
+    let mut columns = vec![0; calls.len()];
+    let mut width = input_width;
+    let mut calls: Vec<Option<crate::window::WindowCall>> = calls.into_iter().map(Some).collect();
+    for i in order {
+        let (unique_order, members) = &actives[i];
+        if !unique_order.is_empty() && !sorted.starts_with(unique_order) {
+            plan = Plan::Sort { input: Box::new(plan), keys: unique_order.clone() };
+            sorted = unique_order.clone();
+        }
+        let mut group = Vec::new();
+        for &k in members {
+            columns[k] = width;
+            width += 1;
+            group.push(calls[k].take().expect("each call in one window"));
+        }
+        plan = Plan::Window { input: Box::new(plan), calls: group };
+    }
+    (plan, columns)
 }
 
 /// target_expression returns the expression of a simple SELECT's output column, by position.
@@ -2828,7 +2889,7 @@ impl Plan {
                 }
             }
             Plan::BitmapHeapScan(scan) => {
-                map(&mut scan.recheck, depth);
+                scan.recheck.iter_mut().for_each(|e| map(e, depth));
                 scan.bitmap.conditions_mut().into_iter().for_each(|e| map(e, depth));
             }
             Plan::Values(rows) => rows.iter_mut().flatten().for_each(|e| map(e, depth)),
@@ -3380,6 +3441,10 @@ fn strict_columns(condition: &Expr, out: &mut BTreeSet<usize>) {
         Expr::Compare(_, l, r) => {
             strict_reads(l, out);
             strict_reads(r, out);
+        }
+        Expr::RowCompare(_, l, r) => {
+            strict_reads(&l[0], out);
+            strict_reads(&r[0], out);
         }
         Expr::IsNull(e, true) | Expr::BoolTest(e, Some(_), false) => strict_reads(e, out),
         Expr::Func(f, args) if crate::functions::function(*f).strict => args.iter().for_each(|a| strict_reads(a, out)),

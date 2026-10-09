@@ -51,6 +51,10 @@ fn expr_text(e: &Expr, columns: &[String]) -> String {
         Expr::Const(v) => v.output().unwrap_or_default(),
         Expr::Param(i) => format!("${}", i + 1),
         Expr::Compare(op, l, r) => format!("({} {} {})", text(l), cmp_text(*op), text(r)),
+        Expr::RowCompare(op, l, r) => {
+            let row = |fields: &[Expr]| fields.iter().map(text).collect::<Vec<String>>().join(", ");
+            format!("(ROW({}) {} ROW({}))", row(l), cmp_text(*op), row(r))
+        }
         Expr::And(l, r) => format!("({} AND {})", text(l), text(r)),
         Expr::Or(l, r) => format!("({} OR {})", text(l), text(r)),
         Expr::Not(inner) => format!("(NOT {})", text(inner)),
@@ -277,7 +281,7 @@ impl Printer {
             }
             Plan::BitmapHeapScan(scan) => (
                 format!("Bitmap Heap Scan on {}", scan_target(&scan.table)),
-                vec![format!("Recheck Cond: {}", expr_text(&scan.recheck, &own_columns(plan)))],
+                scan.recheck.iter().map(|e| format!("Recheck Cond: {}", expr_text(e, &own_columns(plan)))).collect(),
                 vec![Child::Bitmap(&scan.bitmap)],
             ),
             Plan::Sort { input, keys } => {

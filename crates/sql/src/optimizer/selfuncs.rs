@@ -109,6 +109,20 @@ fn values_equal(a: &Value, b: &Value) -> bool {
     std::mem::discriminant(a) == std::mem::discriminant(b) && crate::expr::compare_values(a, b).is_eq()
 }
 
+/// rowcomparesel returns the selectivity of a row comparison from its first pair of fields alone, compared as an
+/// ordinary comparison, as Postgres' function of the same name estimates it.
+pub fn rowcomparesel(
+    root: &PlannerInfo<'_, '_>,
+    op: crate::expr::CmpOp,
+    (left, right): (&Expr, &Expr),
+    varrelid: usize,
+    jointype: super::nodes::JoinType,
+    sjinfo: Option<&SpecialJoinInfo>,
+) -> f64 {
+    let opclause = Expr::Compare(op, Box::new(left.clone()), Box::new(right.clone()));
+    super::clausesel::clause_selectivity(root, &opclause, None, varrelid, jointype, sjinfo)
+}
+
 /// eqjoinsel returns the selectivity of an equality join clause between two expressions, as Postgres' eqjoinsel
 /// estimates it for the join it is part of.
 pub fn eqjoinsel(root: &PlannerInfo<'_, '_>, left: &Expr, right: &Expr, sjinfo: &SpecialJoinInfo) -> f64 {
@@ -465,7 +479,7 @@ pub fn btcostestimate(root: &PlannerInfo<'_, '_>, rel: usize, path: &IndexPath, 
         }
         for &q in &iclause.indexquals {
             match &root.rinfos[q].clause {
-                Expr::Compare(_, l, _) if matches!(**l, Expr::Row(..)) => found_row_compare = true,
+                Expr::RowCompare(..) => found_row_compare = true,
                 Expr::Compare(crate::expr::CmpOp::Eq, ..) => eq_qual_here = true,
                 Expr::AnyArray(_, array, _) => {
                     let alength = estimate_array_length(array);

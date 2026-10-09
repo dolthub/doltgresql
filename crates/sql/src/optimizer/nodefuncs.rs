@@ -40,6 +40,7 @@ pub fn query_expr_type(glob: &super::nodes::PlannerGlobal, parse: &Query, e: &Ex
         },
         Expr::Cast(_, ty, _) | Expr::Arith(.., ty) | Expr::Neg(_, ty) => Some(ty.oid),
         Expr::Compare(..)
+        | Expr::RowCompare(..)
         | Expr::And(..)
         | Expr::Or(..)
         | Expr::Not(_)

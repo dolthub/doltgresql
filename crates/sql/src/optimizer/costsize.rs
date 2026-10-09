@@ -147,6 +147,7 @@ pub fn cost_qual_eval_node(e: &Expr) -> QualCost {
             | Expr::ArraySubquery(..)
             | Expr::AnySubquery(..) => CPU_OPERATOR_COST,
             Expr::AnyArray(..) => CPU_OPERATOR_COST * 0.5 * 10.0,
+            Expr::RowCompare(_, fields, _) => CPU_OPERATOR_COST * fields.len() as f64,
             _ => 0.0,
         }
     });

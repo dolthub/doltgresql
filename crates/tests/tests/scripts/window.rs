@@ -1350,3 +1350,98 @@ fn test_moving_window_frames() {
         },
     ]);
 }
+
+#[test]
+fn test_window_sort_order() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Window rows come out in the order of the last window's sort",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE wo (id INT PRIMARY KEY, p INT, o INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO wo VALUES (1, 2, 1), (2, 1, 2), (3, 2, 0), (4, 1, 1), (5, 3, 5);",
+                    expected: Expected::Tag("INSERT 0 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, p, o, row_number() OVER (PARTITION BY p ORDER BY o) FROM wo;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("p", INT4), Column("o", INT4), Column("row_number", INT8)],
+                        rows: &[
+                            &[T("4"), T("1"), T("1"), T("1")],
+                            &[T("2"), T("1"), T("2"), T("2")],
+                            &[T("3"), T("2"), T("0"), T("1")],
+                            &[T("1"), T("2"), T("1"), T("2")],
+                            &[T("5"), T("3"), T("5"), T("1")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, sum(o) OVER (PARTITION BY p), rank() OVER (ORDER BY o DESC) FROM wo;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("sum", INT8), Column("rank", INT8)],
+                        rows: &[
+                            &[T("2"), T("3"), T("2")],
+                            &[T("4"), T("3"), T("3")],
+                            &[T("1"), T("1"), T("3")],
+                            &[T("3"), T("1"), T("5")],
+                            &[T("5"), T("5"), T("1")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, rank() OVER (ORDER BY o DESC), sum(o) OVER (PARTITION BY p) FROM wo;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("rank", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("5"), T("1"), T("5")],
+                            &[T("2"), T("2"), T("3")],
+                            &[T("4"), T("3"), T("3")],
+                            &[T("1"), T("3"), T("1")],
+                            &[T("3"), T("5"), T("1")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, count(*) OVER (PARTITION BY p ORDER BY o), count(*) OVER (PARTITION BY p) FROM wo;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("count", INT8), Column("count", INT8)],
+                        rows: &[
+                            &[T("4"), T("1"), T("2")],
+                            &[T("2"), T("2"), T("2")],
+                            &[T("3"), T("1"), T("2")],
+                            &[T("1"), T("2"), T("2")],
+                            &[T("5"), T("1"), T("1")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, count(*) OVER () FROM wo WHERE id > 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("count", INT8)],
+                        rows: &[
+                            &[T("3"), T("3")],
+                            &[T("4"), T("3")],
+                            &[T("5"), T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

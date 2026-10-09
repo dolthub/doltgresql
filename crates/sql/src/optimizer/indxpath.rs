@@ -985,6 +985,7 @@ fn match_clause_to_indexcol(
         Expr::Compare(..) => match_opclause_to_indexcol(root, rel, rinfo, indexcol, &info),
         Expr::Func(..) => match_funcclause_to_indexcol(root, rel, rinfo, indexcol, &info),
         Expr::AnyArray(..) => match_saopclause_to_indexcol(root, rel, rinfo, indexcol, &info),
+        Expr::RowCompare(..) => match_rowcompare_to_indexcol(root, rel, rinfo, indexcol, &info),
         _ if root.rinfos[rinfo].orclause.is_some() => match_orclause_to_indexcol(root, rel, rinfo, indexcol, &info),
         Expr::IsNull(arg, _) if !matches!(**arg, Expr::Row(..)) => {
             match_index_to_operand(root, arg, indexcol, &info, rel).then_some(plain)
@@ -1144,6 +1145,82 @@ fn match_saopclause_to_indexcol(
         return None;
     }
     Some(IndexClause { rinfo, indexquals: vec![rinfo], lossy: false, indexcol })
+}
+
+/// match_rowcompare_to_indexcol returns the index clause that a row comparison makes when the first field of one side
+/// is an index column and the first field of the other reads no Var of its relation, as Postgres' function of the
+/// same name does.
+fn match_rowcompare_to_indexcol(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    rinfo: RinfoId,
+    indexcol: usize,
+    index: &IndexOptInfo,
+) -> Option<IndexClause> {
+    let Expr::RowCompare(op, largs, rargs) = &root.rinfos[rinfo].clause else { return None };
+    let (op, leftop, rightop) = (*op, &largs[0], &rargs[0]);
+    let usable = |root: &PlannerInfo<'_, '_>, other: &Expr| {
+        !pull_varnos(root, other).is_member(rel) && !super::clauses::contain_volatile_functions(root.glob, other)
+    };
+    let (expr_op, other, var_on_left) =
+        if match_index_to_operand(root, leftop, indexcol, index, rel) && usable(root, rightop) {
+            (op, rightop, true)
+        } else if match_index_to_operand(root, rightop, indexcol, index, rel) && usable(root, leftop) {
+            (crate::indexscan::swap(op), leftop, false)
+        } else {
+            return None;
+        };
+    if !in_opfamily(root, expr_op, other, index.opfamily[indexcol]) {
+        return None;
+    }
+    expand_indexqual_rowcompare(root, rel, rinfo, indexcol, index, expr_op, var_on_left)
+}
+
+/// expand_indexqual_rowcompare returns the index clause of a row comparison whose first fields an index column
+/// matches: the comparison itself when its index columns are on the left and every field pair matches one, and
+/// otherwise the comparison of the leading pairs that match, with the index columns on the left, where an ordering
+/// that is strict becomes one that is not when pairs after them are left out, as Postgres' function of the same name
+/// does.
+fn expand_indexqual_rowcompare(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    rinfo: RinfoId,
+    indexcol: usize,
+    index: &IndexOptInfo,
+    expr_op: CmpOp,
+    var_on_left: bool,
+) -> Option<IndexClause> {
+    let Expr::RowCompare(_, largs, rargs) = root.rinfos[rinfo].clause.clone() else { return None };
+    let (var_args, non_var_args) = if var_on_left { (largs, rargs) } else { (rargs, largs) };
+    let mut matching_cols = 1;
+    while matching_cols < var_args.len() {
+        let (varop, constop) = (&var_args[matching_cols], &non_var_args[matching_cols]);
+        if pull_varnos(root, constop).is_member(rel) || super::clauses::contain_volatile_functions(root.glob, constop) {
+            break;
+        }
+        let matched = (0..index.nkeycolumns).any(|i| {
+            match_index_to_operand(root, varop, i, index, rel) && in_opfamily(root, expr_op, constop, index.opfamily[i])
+        });
+        if !matched {
+            break;
+        }
+        matching_cols += 1;
+    }
+    let lossy = matching_cols != var_args.len();
+    if var_on_left && !lossy {
+        return Some(IndexClause { rinfo, indexquals: vec![rinfo], lossy, indexcol });
+    }
+    let new_op = match (lossy, expr_op) {
+        (true, CmpOp::Lt) => CmpOp::Le,
+        (true, CmpOp::Gt) => CmpOp::Ge,
+        (_, op) => op,
+    };
+    let clause = match matching_cols {
+        1 => Expr::Compare(new_op, Box::new(var_args[0].clone()), Box::new(non_var_args[0].clone())),
+        _ => Expr::RowCompare(new_op, var_args[..matching_cols].to_vec(), non_var_args[..matching_cols].to_vec()),
+    };
+    let indexqual = make_simple_restrictinfo(root, clause);
+    Some(IndexClause { rinfo, indexquals: vec![indexqual], lossy, indexcol })
 }
 
 /// match_orclause_to_indexcol returns the index clause that an OR of equalities of an index column with expressions

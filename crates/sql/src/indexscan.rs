@@ -756,7 +756,7 @@ pub fn choose_with_cover(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) 
     let hidden = hidden.zip(rules.hidden().iter().cloned()).collect();
     let mut coster =
         Coster { table, hidden, next: 1, equalities: BTreeSet::new(), null_tests: BTreeSet::new(), complete: true };
-    let root = coster.build_root(ctx, &with_like_bounds(table, predicate))?;
+    let root = coster.build_root(ctx, &with_like_bounds(table, &predicate.clone().expand_row_compares()))?;
     let candidates = candidates(table, rules.predicates(), &conjuncts(predicate));
     let mut best = Best { candidate: None, cost: Cost::default() };
     for candidate in &candidates {
@@ -824,7 +824,7 @@ pub(crate) fn scan_of_index(
     let hidden = hidden.zip(rules.hidden().iter().cloned()).collect();
     let mut coster =
         Coster { table, hidden, next: 1, equalities: BTreeSet::new(), null_tests: BTreeSet::new(), complete: true };
-    let root = coster.build_root(ctx, &with_like_bounds(table, predicate))?;
+    let root = coster.build_root(ctx, &with_like_bounds(table, &predicate.clone().expand_row_compares()))?;
     let candidate =
         candidates(table, rules.predicates(), &conjuncts(predicate)).into_iter().find(|c| c.index == index)?;
     let cost = coster.cost(&root, &candidate);
@@ -1357,9 +1357,9 @@ fn primary_key_of(table: &TableDef, index: &crate::catalog::table::IndexDef, key
 pub struct BitmapHeapScan {
     pub table: Box<TableDef>,
     pub bitmap: Bitmap,
-    /// The conditions of the bitmap's index scans, which EXPLAIN shows, and which the scan tests on each row when it
-    /// is lossy, as the ranges of some index scan keep keys that its conditions do not.
-    pub recheck: Expr,
+    /// The clauses that the bitmap's index scans answer and no filter above tests, which EXPLAIN shows, and which the
+    /// scan tests on each row when it is lossy, as the ranges of some index scan keep keys that its conditions do not.
+    pub recheck: Option<Expr>,
     pub lossy: bool,
     /// The table columns that the plan above the scan reads, or None for every column.
     pub needed: Option<Vec<usize>>,
@@ -1488,7 +1488,10 @@ impl BitmapHeapScan {
             }
             let mut row = Vec::new();
             let cardinality = table.decode_columns_into(ctx.db, key, stored, needed.as_deref(), &mut row)?;
-            if lossy && !self.recheck.is_true(ctx, &row)? {
+            if lossy
+                && let Some(recheck) = &self.recheck
+                && !recheck.is_true(ctx, &row)?
+            {
                 continue;
             }
             for _ in 1..cardinality {
@@ -2267,7 +2270,7 @@ fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) -> bool {
             Vec::new()
         }
         Plan::BitmapHeapScan(scan) => {
-            read(&mut std::iter::once(&scan.recheck).chain(scan.bitmap.conditions()));
+            read(&mut scan.recheck.iter().chain(scan.bitmap.conditions()));
             Vec::new()
         }
         Plan::Values(rows) => {

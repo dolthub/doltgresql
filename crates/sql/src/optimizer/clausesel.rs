@@ -199,6 +199,9 @@ fn clause_selectivity_uncached(
             let s2 = clause_selectivity(root, b, None, varrelid, jointype, sjinfo);
             s1 + s2 - s1 * s2
         }
+        Expr::RowCompare(op, l, r) => {
+            super::selfuncs::rowcomparesel(root, *op, (&l[0], &r[0]), varrelid, jointype, sjinfo)
+        }
         Expr::Compare(op, l, r) if treat_as_join_clause() => {
             let sjinfo = sjinfo.expect("join clauses have a join");
             match op {

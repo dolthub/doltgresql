@@ -251,6 +251,7 @@ pub fn selectivity(stats: &TableStats, condition: &Expr) -> f64 {
             },
         },
         Expr::Column(_) => column(condition).map_or(DEFAULT_SEL, |c| equal_selectivity(c, &Value::Bool(true))),
+        Expr::RowCompare(..) => selectivity(stats, &condition.clone().expand_row_compares()),
         _ => DEFAULT_SEL,
     };
     selectivity.clamp(0.0, 1.0)

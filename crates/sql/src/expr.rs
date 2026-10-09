@@ -143,6 +143,9 @@ pub enum Expr {
     Arith(ArithOp, Box<Expr>, Box<Expr>, ColumnType),
     Neg(Box<Expr>, ColumnType),
     Compare(CmpOp, Box<Expr>, Box<Expr>),
+    /// A comparison of two rows of fields by an ordering operator, which the first pair of fields that differ decides,
+    /// and which is NULL when a pair before that has a NULL, as Postgres' RowCompareExpr is.
+    RowCompare(CmpOp, Vec<Expr>, Vec<Expr>),
     Concat(Box<Expr>, Box<Expr>),
     And(Box<Expr>, Box<Expr>),
     Or(Box<Expr>, Box<Expr>),
@@ -1265,6 +1268,24 @@ impl Binder<'_, '_> {
                 Ok(result)
             }
             "<" | "<=" | ">" | ">=" => {
+                let mut pairs = (0..=last).map(|i| pair(self, op, i)).collect::<Result<Vec<Expr>>>()?;
+                if pairs.len() == 1 {
+                    return Ok(pairs.remove(0));
+                }
+                let mut sides: (Vec<Expr>, Vec<Expr>) = (Vec::new(), Vec::new());
+                let mut cmp = None;
+                for compared in pairs {
+                    let Expr::Compare(c, l, r) = compared else { break };
+                    if cmp.is_some_and(|cmp| cmp != c) {
+                        break;
+                    }
+                    cmp = Some(c);
+                    sides.0.push(*l);
+                    sides.1.push(*r);
+                }
+                if let Some(cmp) = cmp.filter(|_| sides.0.len() == left.len()) {
+                    return Ok(Expr::RowCompare(cmp, sides.0, sides.1));
+                }
                 let strict = if op.starts_with('<') { "<" } else { ">" };
                 let mut result = pair(self, op, last)?;
                 for i in (0..last).rev() {
@@ -3332,6 +3353,20 @@ impl Expr {
                 }
                 Value::Bool(op.test(compare_values(&left, &right)))
             }
+            Expr::RowCompare(op, left, right) => {
+                let mut order = Ordering::Equal;
+                for (l, r) in left.iter().zip(right) {
+                    let (l, r) = (l.eval(ctx, row)?, r.eval(ctx, row)?);
+                    if l.is_null() || r.is_null() {
+                        return Ok(Value::Null);
+                    }
+                    order = compare_values(&l, &r);
+                    if order != Ordering::Equal {
+                        break;
+                    }
+                }
+                Value::Bool(op.test(order))
+            }
             Expr::Concat(left, right) => match (left.eval(ctx, row)?, right.eval(ctx, row)?) {
                 (Value::Null, _) | (_, Value::Null) => Value::Null,
                 (l, r) => Value::Text(format!("{}{}", l.output().unwrap_or_default(), r.output().unwrap_or_default())),
@@ -3724,6 +3759,10 @@ impl Expr {
                 let l = b(l);
                 Expr::Compare(op, l, b(r))
             }
+            Expr::RowCompare(op, l, r) => {
+                let l = l.into_iter().map(&mut *f).collect();
+                Expr::RowCompare(op, l, r.into_iter().map(&mut *f).collect())
+            }
             Expr::Concat(l, r) => {
                 let l = b(l);
                 Expr::Concat(l, b(r))
@@ -3797,6 +3836,29 @@ impl Expr {
         }
     }
 
+    /// expand_row_compares replaces each row comparison in the expression with the ANDs and ORs of comparisons of its
+    /// fields that decide it the same way: the first pair compared strictly, or equal and the rest of the row compared.
+    pub(crate) fn expand_row_compares(self) -> Expr {
+        let Expr::RowCompare(op, left, right) = self else {
+            return self.map_children(&mut |c| c.expand_row_compares());
+        };
+        let strict = match op {
+            CmpOp::Lt | CmpOp::Le => CmpOp::Lt,
+            _ => CmpOp::Gt,
+        };
+        let pairs: Vec<(Expr, Expr)> = left
+            .into_iter()
+            .map(Expr::expand_row_compares)
+            .zip(right.into_iter().map(Expr::expand_row_compares))
+            .collect();
+        let compare = |op: CmpOp, (l, r): &(Expr, Expr)| Expr::Compare(op, Box::new(l.clone()), Box::new(r.clone()));
+        let (last, rest) = pairs.split_last().expect("a row of fields");
+        rest.iter().rev().fold(compare(op, last), |result, pair| {
+            let equal = Expr::And(Box::new(compare(CmpOp::Eq, pair)), Box::new(result));
+            Expr::Or(Box::new(compare(strict, pair)), Box::new(equal))
+        })
+    }
+
     /// visit calls the function on the expression and each of its descendants, outside subquery plans.
     pub fn visit(&self, f: &mut dyn FnMut(&Expr)) {
         f(self);
@@ -3831,6 +3893,7 @@ impl Expr {
             | Expr::Xml(_, args)
             | Expr::Grouping(args, ..)
             | Expr::Row(args, _) => args.iter().for_each(|a| a.visit(f)),
+            Expr::RowCompare(_, l, r) => l.iter().chain(r).for_each(|a| a.visit(f)),
             Expr::Subscript(base, subscripts, _) => {
                 base.visit(f);
                 for (l, u) in subscripts {

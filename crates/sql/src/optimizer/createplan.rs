@@ -237,16 +237,18 @@ fn create_indexscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, best_path: 
 }
 
 /// create_bitmap_scan_plan makes the plan of a scan of a base relation's rows whose keys a tree of index scans finds,
-/// as Postgres' function of the same name does: a bitmap heap scan that tests the conditions of the tree's index scans
-/// on each row when their ranges keep more keys than the conditions do, under the restrictions and parameterizing
-/// join clauses that the tree does not answer. A parameterized scan reads the columns of the outer rows of the given
-/// layout as `Expr::Outer(0, _)`, which `read_lateral_row` turns into reads of the enclosing row.
+/// as Postgres' function of the same name does: a bitmap heap scan under the restrictions and parameterizing join
+/// clauses that the tree's index conditions do not give, which rechecks on each row the clauses that the tree answers
+/// and the filter does not test when an index scan's ranges keep keys that its conditions do not. A parameterized
+/// scan reads the columns of the outer rows of the given layout as `Expr::Outer(0, _)`, which `read_lateral_row` turns
+/// into reads of the enclosing row.
 fn create_bitmap_scan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, outer: &[Slot]) -> (Plan, Vec<Slot>) {
     let PathKind::BitmapHeapScan(bitmapqual) = &path.kind else { unreachable!("a bitmap heap scan path") };
     let rel = path.parent;
     let table = root.parse.rte(rel).table().expect("a bitmap scan reads a table").clone();
     let mut exact = true;
-    let (bitmap, bitmapqualorig) = create_bitmap_subplan(root, rel, &table, bitmapqual, outer, &mut exact);
+    let subplan = create_bitmap_subplan(root, rel, &table, bitmapqual, outer, &mut exact);
+    let (bitmap, bitmapqualorig, indexquals, index_ecs) = subplan;
     let mut scan_clauses = root.rels[rel].baserestrictinfo.clone();
     if let Some(ppi) = super::relnode::get_baserel_parampathinfo(root, rel, &path.param) {
         scan_clauses.extend(ppi.ppi_clauses);
@@ -255,7 +257,9 @@ fn create_bitmap_scan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, outer: &
         .into_iter()
         .filter(|&r| {
             let rinfo = &root.rinfos[r];
-            !rinfo.pseudoconstant && !bitmapqualorig.iter().any(|q| same_clause(q, &rinfo.clause))
+            !rinfo.pseudoconstant
+                && !indexquals.iter().any(|q| same_clause(q, &rinfo.clause))
+                && !rinfo.parent_ec.is_some_and(|ec| index_ecs.contains(&ec))
         })
         .collect();
     let qpqual = order_qual_clauses(root, qpqual);
@@ -263,9 +267,9 @@ fn create_bitmap_scan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, outer: &
     let to_row = |root: &PlannerInfo<'_, '_>, e: Expr| param_positional(root, e, &layout, outer);
     let recheck = bitmapqualorig
         .into_iter()
+        .filter(|q| !qpqual.iter().any(|&r| same_clause(q, &root.rinfos[r].clause)))
         .map(|e| to_row(root, e))
-        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)))
-        .unwrap_or(Expr::Const(Value::Bool(true)));
+        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
     let scan =
         crate::indexscan::BitmapHeapScan { table: Box::new(table), bitmap, recheck, lossy: !exact, needed: None };
     let predicate = qpqual
@@ -279,10 +283,14 @@ fn create_bitmap_scan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, outer: &
     }
 }
 
-/// create_bitmap_subplan makes the tree of index scans of a bitmap path, returning it with the clauses it answers, and
-/// clearing `exact` when an index scan's ranges keep keys that its clauses do not, as Postgres' function of the same
-/// name does. An index scan whose clauses read outer rows keeps them, over the outer rows of the given layout, to build
-/// its ranges each time it runs.
+/// BitmapSubplan is the tree of index scans of a bitmap path, with the clauses it answers, the index conditions that it
+/// searches by, and the equivalence classes that those conditions come from.
+type BitmapSubplan = (crate::indexscan::Bitmap, Vec<Expr>, Vec<Expr>, Vec<super::nodes::EcId>);
+
+/// create_bitmap_subplan makes the tree of index scans of a bitmap path, with the clauses it answers, the index
+/// conditions that it searches by, and their equivalence classes, clearing `exact` when an index scan's ranges keep
+/// keys that its conditions do not, as Postgres' function of the same name does. An index scan whose conditions read
+/// outer rows keeps them, over the outer rows of the given layout, to build its ranges each time it runs.
 fn create_bitmap_subplan(
     root: &mut PlannerInfo<'_, '_>,
     rel: usize,
@@ -290,32 +298,47 @@ fn create_bitmap_subplan(
     bitmapqual: &Path,
     outer: &[Slot],
     exact: &mut bool,
-) -> (crate::indexscan::Bitmap, Vec<Expr>) {
+) -> BitmapSubplan {
     use crate::indexscan::Bitmap;
+    let and = |quals: Vec<Expr>| quals.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
     match &bitmapqual.kind {
         PathKind::BitmapAnd(bpath) => {
-            let mut children = Vec::new();
-            let mut quals = Vec::new();
+            let (mut children, mut quals, mut indexquals, mut index_ecs) =
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new());
             for subpath in &bpath.bitmapquals {
-                let (child, subqual) = create_bitmap_subplan(root, rel, table, subpath, outer, exact);
+                let (child, subqual, subindexqual, subindex_ecs) =
+                    create_bitmap_subplan(root, rel, table, subpath, outer, exact);
                 children.push(child);
-                quals.extend(subqual);
+                for q in subqual {
+                    if !quals.contains(&q) {
+                        quals.push(q);
+                    }
+                }
+                for q in subindexqual {
+                    if !indexquals.contains(&q) {
+                        indexquals.push(q);
+                    }
+                }
+                index_ecs.extend(subindex_ecs);
             }
-            (Bitmap::And(children), quals)
+            (Bitmap::And(children), quals, indexquals, index_ecs)
         }
         PathKind::BitmapOr(bpath) => {
-            let mut children = Vec::new();
-            let mut subquals = Vec::new();
+            let (mut children, mut subquals, mut subindexquals) = (Vec::new(), Vec::new(), Vec::new());
             for subpath in &bpath.bitmapquals {
-                let (child, subqual) = create_bitmap_subplan(root, rel, table, subpath, outer, exact);
+                let (child, subqual, subindexqual, _) = create_bitmap_subplan(root, rel, table, subpath, outer, exact);
                 children.push(child);
-                subquals.push(subqual.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))));
+                subquals.push(and(subqual));
+                subindexquals.push(and(subindexqual));
             }
-            let qual = subquals
-                .into_iter()
-                .collect::<Option<Vec<Expr>>>()
-                .and_then(|quals| quals.into_iter().reduce(|a, b| Expr::Or(Box::new(a), Box::new(b))));
-            (Bitmap::Or(children), qual.into_iter().collect())
+            let or = |quals: Vec<Option<Expr>>| -> Vec<Expr> {
+                let quals: Option<Vec<Expr>> = quals.into_iter().collect();
+                quals
+                    .and_then(|quals| quals.into_iter().reduce(|a, b| Expr::Or(Box::new(a), Box::new(b))))
+                    .into_iter()
+                    .collect()
+            };
+            (Bitmap::Or(children), or(subquals), or(subindexquals), Vec::new())
         }
         PathKind::IndexScan(ipath) => {
             let info = &root.rels[rel].indexlist[ipath.index];
@@ -327,28 +350,23 @@ fn create_bitmap_subplan(
                     quals.push(pred);
                 }
             }
-            *exact &= ipath.indexclauses.iter().all(|iclause| !iclause.lossy);
             let indexquals: Vec<Expr> = ipath
                 .indexclauses
                 .iter()
                 .flat_map(|iclause| &iclause.indexquals)
                 .map(|&r| root.rinfos[r].clause.clone())
                 .collect();
+            let index_ecs: Vec<super::nodes::EcId> =
+                ipath.indexclauses.iter().filter_map(|iclause| root.rinfos[iclause.rinfo].parent_ec).collect();
             let every = |root: &mut PlannerInfo<'_, '_>| {
                 crate::indexscan::scan_of_index(root.ctx, table, index, None, false).expect("a scan of every entry").0
             };
             if !bitmapqual.param.is_empty() {
                 let layout = base_slots(rel, table.columns.len());
-                let cond = indexquals
-                    .into_iter()
-                    .map(|e| param_positional(root, e, &layout, outer))
-                    .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
-                return (Bitmap::Index(Box::new(every(root)), cond), quals);
+                let cond = and(indexquals.iter().map(|e| param_positional(root, e.clone(), &layout, outer)).collect());
+                return (Bitmap::Index(Box::new(every(root)), cond), quals, indexquals, index_ecs);
             }
-            let predicate = indexquals
-                .into_iter()
-                .map(|e| to_attnos(root, e, rel))
-                .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+            let predicate = and(indexquals.iter().map(|e| to_attnos(root, e.clone(), rel)).collect());
             let scan = match crate::indexscan::scan_of_index(root.ctx, table, index, predicate.as_ref(), false) {
                 Some((scan, covered)) => {
                     *exact &= covered;
@@ -359,7 +377,7 @@ fn create_bitmap_subplan(
                     every(root)
                 }
             };
-            (Bitmap::Index(Box::new(scan), None), quals)
+            (Bitmap::Index(Box::new(scan), None), quals, indexquals, index_ecs)
         }
         _ => unreachable!("a bitmap tree holds index scans, BitmapAnds, and BitmapOrs"),
     }

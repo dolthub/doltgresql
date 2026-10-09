@@ -1620,3 +1620,94 @@ fn test_row_comparison_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_row_comparisons() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Row comparisons by ordering operators",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT ROW(1, NULL) < ROW(2, 1), ROW(1, NULL) < ROW(1, 2), ROW(NULL, 1) > ROW(0, 2), ROW(1, 2, 3) <= ROW(1, 2, 3);",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t"), Null, Null, T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE rcx (id INT PRIMARY KEY, a INT, b INT, c INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX rcx_ab ON rcx (a, b);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO rcx SELECT g, g / 100, g % 100, g % 7 FROM generate_series(1, 20000) g;",
+                    expected: Expected::Tag("INSERT 0 20000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ANALYZE rcx;",
+                    expected: Expected::Tag("ANALYZE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM rcx WHERE (a, b) > (199, 97) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("19998")],
+                            &[T("19999")],
+                            &[T("20000")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM rcx WHERE (a, c) >= (199, 5);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("30")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM rcx WHERE (199, 97) < (a, b);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id FROM rcx WHERE (a, b) <= (0, 3) ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
