@@ -1759,3 +1759,287 @@ fn calls_set_function(node: &pg_query::Node) -> bool {
         _ => false,
     })
 }
+
+/// MergeAction is what a WHEN clause of MERGE does to a row.
+enum MergeAction {
+    Update(Vec<(usize, Expr)>),
+    Delete,
+    Insert(Vec<Option<Expr>>),
+    Nothing,
+}
+
+/// MergeChange is a row change that MERGE makes: its event, the old and new rows, and the columns an update sets.
+type MergeChange = (Event, Option<Vec<Value>>, Option<Vec<Value>>, Vec<usize>);
+
+/// MergeClause is a WHEN clause of MERGE: whether it applies to a target row that a source row matches, its extra
+/// condition, and its action, which see the target row and then the source row for a matched row, and only the
+/// source row otherwise.
+struct MergeClause {
+    matched: bool,
+    condition: Option<Expr>,
+    action: MergeAction,
+}
+
+impl Ctx<'_> {
+    /// merge runs MERGE: each source row that the join condition matches with target rows takes the first WHEN
+    /// MATCHED clause whose condition holds for each of them, and each other source row the first WHEN NOT MATCHED
+    /// clause whose condition holds, as Postgres' ExecMerge does.
+    pub fn merge(&mut self, stmt: &pg_query::protobuf::MergeStmt) -> Result<Outcome> {
+        let relation = stmt.relation.as_ref().ok_or_else(|| PgError::internal("MERGE without a table"))?;
+        let table = match self.resolve_table(relation) {
+            Ok(table) => table,
+            Err(err) => match self.find_view(&relation.schemaname, &relation.relname)? {
+                Some(_) => {
+                    return Err(PgError {
+                        detail: Some("This operation is not supported for views.".into()),
+                        ..PgError::new(
+                            code::FEATURE_NOT_SUPPORTED,
+                            format!("cannot execute MERGE on relation \"{}\"", relation.relname),
+                        )
+                    });
+                }
+                None => return Err(err),
+            },
+        };
+        let object = Object::Table(table.schema.clone(), table.name.clone());
+        self.require(&object, "r", relation.location)?;
+        let alias = relation.alias.as_ref().map(|a| a.aliasname.clone());
+        let mut scope = table_scope(&table, alias.as_deref());
+        let source = stmt.source_relation.as_deref().ok_or_else(|| PgError::internal("MERGE without a source"))?;
+        let (source_plan, source_scope) = Planner { ctx: self, outer: Vec::new() }.plan_from(std::slice::from_ref(source))?;
+        scope.columns.extend(source_scope.columns.iter().cloned());
+        let mut binder = Binder::new(self, scope.clone());
+        binder.clause = "JOIN/ON";
+        let join = stmt.join_condition.as_deref().ok_or_else(|| PgError::internal("MERGE without a condition"))?;
+        let join = crate::expr::condition(binder.bind(join)?, "JOIN/ON", arg_location(join))?;
+        let target_name = alias.clone().unwrap_or_else(|| table.name.clone());
+        let mut clauses = Vec::with_capacity(stmt.merge_when_clauses.len());
+        let mut events = Vec::new();
+        for clause in &stmt.merge_when_clauses {
+            let bound = self.merge_clause(clause, &table, &scope, &source_scope, &mut events);
+            clauses.push(bound.map_err(|err| hidden_target(err, &table, &target_name))?);
+        }
+        for (_, privilege) in &events {
+            self.require(&object, privilege, relation.location)?;
+        }
+        let rules = self.row_rules(&table)?;
+        let triggers = self.table_triggers(&table)?;
+        let has = |event: Event| events.iter().any(|(e, _)| *e == event);
+        for event in [Event::Insert, Event::Update, Event::Delete] {
+            if has(event) {
+                triggers.statement(self, event, BEFORE, &[])?;
+            }
+        }
+        let targets = scan(self.db, &table)?;
+        let sources = source_plan.run(self)?;
+        let mut actions: Vec<MergeChange> = Vec::new();
+        let mut touched: Vec<Vec<u8>> = Vec::new();
+        for source in &sources {
+            let mut matched_any = false;
+            for target in &targets {
+                let mut combined = target.clone();
+                combined.extend(source.iter().cloned());
+                if !join.is_true(self, &combined)? {
+                    continue;
+                }
+                matched_any = true;
+                let Some(clause) = first_clause(self, &clauses, true, &combined)? else { continue };
+                if matches!(clause.action, MergeAction::Nothing) {
+                    continue;
+                }
+                let key = table.encode_row(self.db, target)?.0;
+                if touched.iter().any(|k| table.compare_keys(k, &key) == Ordering::Equal) {
+                    return Err(PgError {
+                        hint: Some("Ensure that not more than one source row matches any one target row.".into()),
+                        ..PgError::new(code::CARDINALITY_VIOLATION, "MERGE command cannot affect row a second time")
+                    });
+                }
+                touched.push(key);
+                match &clause.action {
+                    MergeAction::Update(assignments) => {
+                        let mut new_row = target.clone();
+                        for (i, expr) in assignments {
+                            new_row[*i] = match expr {
+                                Expr::Default(c) => default_value(self, &rules, *c)?,
+                                expr => expr.eval(self, &combined)?,
+                            };
+                        }
+                        let updated: Vec<usize> = assignments.iter().map(|(i, _)| *i).collect();
+                        let before = triggers.before_row(self, Event::Update, Some(target), Some(new_row), &updated)?;
+                        if let Some(mut new_row) = before {
+                            check_row(self, &table, &rules, &mut new_row)?;
+                            actions.push((Event::Update, Some(target.clone()), Some(new_row), updated));
+                        }
+                    }
+                    MergeAction::Delete => {
+                        if let Some(row) = triggers.before_row(self, Event::Delete, Some(target), None, &[])? {
+                            actions.push((Event::Delete, Some(row), None, Vec::new()));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if matched_any {
+                continue;
+            }
+            let combined = source;
+            let Some(clause) = first_clause(self, &clauses, false, combined)? else { continue };
+            let MergeAction::Insert(values) = &clause.action else { continue };
+            let mut row = Vec::with_capacity(table.columns.len());
+            for (i, value) in values.iter().enumerate() {
+                row.push(match value {
+                    Some(Expr::Default(c)) => default_value(self, &rules, *c)?,
+                    None => default_value(self, &rules, i)?,
+                    Some(expr) => expr.eval(self, combined)?,
+                });
+            }
+            if let Some(mut row) = triggers.before_row(self, Event::Insert, None, Some(row), &[])? {
+                check_row(self, &table, &rules, &mut row)?;
+                actions.push((Event::Insert, None, Some(row), Vec::new()));
+            }
+        }
+        let mut edits = Edits::deferring(self, &table)?;
+        for (_, old, new, _) in &actions {
+            if let Some(old) = old {
+                edits.delete(self, old)?;
+            }
+            if let Some(new) = new {
+                edits.insert(self, new)?;
+            }
+        }
+        edits.owe(self);
+        edits.apply(self.db, self.txn)?;
+        let changes: Vec<Change> = actions.iter().map(|(_, old, new, _)| (old.clone(), new.clone())).collect();
+        self.enforce_foreign_keys(&table, &changes)?;
+        for (event, old, new, updated) in &actions {
+            triggers.after_row(self, *event, old.as_deref(), new.as_deref(), updated)?;
+        }
+        for event in [Event::Delete, Event::Update, Event::Insert] {
+            if has(event) {
+                triggers.statement(self, event, AFTER, &[])?;
+            }
+        }
+        Ok(Outcome::command(format!("MERGE {}", actions.len())))
+    }
+
+    /// merge_clause binds a WHEN clause of MERGE, noting the change it makes in `events` with the privilege it needs.
+    fn merge_clause(
+        &mut self,
+        clause: &pg_query::Node,
+        table: &TableDef,
+        scope: &Scope,
+        source_scope: &Scope,
+        events: &mut Vec<(Event, &'static str)>,
+    ) -> Result<MergeClause> {
+        use pg_query::protobuf::{CmdType, MergeMatchKind};
+        let Some(NodeEnum::MergeWhenClause(clause)) = clause.node.as_ref() else {
+            return Err(PgError::internal("a MERGE clause that is not one"));
+        };
+        let matched = clause.match_kind == MergeMatchKind::MergeWhenMatched as i32;
+        let mut binder = Binder::new(self, if matched { scope.clone() } else { source_scope.clone() });
+        binder.clause = "WHEN";
+        let condition = match clause.condition.as_deref() {
+            Some(node) => Some(crate::expr::condition(binder.bind(node)?, "WHEN", arg_location(node))?),
+            None => None,
+        };
+        let action = match CmdType::try_from(clause.command_type) {
+            Ok(CmdType::CmdUpdate) => {
+                binder.clause = "UPDATE";
+                events.push((Event::Update, "w"));
+                MergeAction::Update(bind_assignments(&mut binder, table, &clause.target_list)?)
+            }
+            Ok(CmdType::CmdDelete) => {
+                events.push((Event::Delete, "d"));
+                MergeAction::Delete
+            }
+            Ok(CmdType::CmdInsert) => {
+                binder.clause = "VALUES";
+                events.push((Event::Insert, "a"));
+                let targets: Vec<usize> = match clause.target_list.is_empty() {
+                    true => (0..table.columns.len()).collect(),
+                    false => clause
+                        .target_list
+                        .iter()
+                        .filter_map(|t| match t.node.as_ref() {
+                            Some(NodeEnum::ResTarget(t)) => Some(t),
+                            _ => None,
+                        })
+                        .map(|t| {
+                            table.columns.iter().position(|c| c.name == t.name).ok_or_else(|| PgError {
+                                position: position(t.location),
+                                ..PgError::new(
+                                    code::UNDEFINED_COLUMN,
+                                    format!("column \"{}\" of relation \"{}\" does not exist", t.name, table.name),
+                                )
+                            })
+                        })
+                        .collect::<Result<_>>()?,
+                };
+                if clause.values.len() > targets.len() {
+                    return Err(PgError {
+                        position: position(arg_location(&clause.values[targets.len()])),
+                        ..PgError::new(code::SYNTAX_ERROR, "INSERT has more expressions than target columns")
+                    });
+                }
+                let mut values: Vec<Option<Expr>> = vec![None; table.columns.len()];
+                for (item, &target) in clause.values.iter().zip(&targets) {
+                    let column = &table.columns[target];
+                    values[target] = Some(match item.node.as_ref() {
+                        Some(NodeEnum::SetToDefault(_)) => Expr::Default(target),
+                        _ => {
+                            let bound = binder.bind(item)?;
+                            let bound = binder.reg_literal(bound, column.ty, arg_location(item))?;
+                            assign(bound, column.ty, &column.name, arg_location(item))?.0
+                        }
+                    });
+                }
+                MergeAction::Insert(values)
+            }
+            _ => MergeAction::Nothing,
+        };
+        Ok(MergeClause { matched, condition, action })
+    }
+}
+
+/// hidden_target explains an error of a WHEN NOT MATCHED clause of MERGE that refers to the target table, which such a
+/// clause cannot see, as Postgres does.
+fn hidden_target(err: PgError, table: &TableDef, name: &str) -> PgError {
+    if err.code == code::UNDEFINED_TABLE && err.message == format!("missing FROM-clause entry for table \"{name}\"") {
+        return PgError {
+            message: format!("invalid reference to FROM-clause entry for table \"{name}\""),
+            hint: Some(format!(
+                "There is an entry for table \"{name}\", but it cannot be referenced from this part of the query."
+            )),
+            ..err
+        };
+    }
+    let column = err.message.strip_prefix("column \"").and_then(|m| m.strip_suffix("\" does not exist"));
+    match column {
+        Some(column) if err.code == code::UNDEFINED_COLUMN && table.columns.iter().any(|c| c.name == column) => {
+            PgError {
+                hint: Some(format!(
+                    "There is a column named \"{column}\" in table \"{name}\", but it cannot be referenced from this part \
+                 of the query."
+                )),
+                ..err
+            }
+        }
+        _ => err,
+    }
+}
+
+/// first_clause returns the first WHEN clause of MERGE, for matched rows or for the others, whose condition holds.
+fn first_clause<'c>(
+    ctx: &mut Ctx<'_>,
+    clauses: &'c [MergeClause],
+    matched: bool,
+    row: &[Value],
+) -> Result<Option<&'c MergeClause>> {
+    for clause in clauses.iter().filter(|c| c.matched == matched) {
+        match &clause.condition {
+            Some(condition) if !condition.is_true(ctx, row)? => continue,
+            _ => return Ok(Some(clause)),
+        }
+    }
+    Ok(None)
+}

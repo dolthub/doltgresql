@@ -2634,6 +2634,7 @@ impl Ctx<'_> {
                 Some(outcome) => Ok(outcome),
                 None => self.plan_delete(delete)?.run(self),
             },
+            NodeEnum::MergeStmt(merge) => self.merge(merge),
             NodeEnum::CreateStmt(create) => self.create_table(create),
             NodeEnum::CreateTableAsStmt(create) => self.create_table_as(create),
             NodeEnum::CreateSchemaStmt(create) => self.create_schema(create),

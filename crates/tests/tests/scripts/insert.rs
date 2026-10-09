@@ -1137,3 +1137,190 @@ fn test_unique_statement_check_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_merge_statement() {
+    run_scripts(&[
+        ScriptTest {
+            name: "MERGE",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE target (tid integer, balance integer);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE source (sid integer, delta integer);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO target VALUES (1, 10),(2, 20),(3, 30);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO source VALUES (2, 5),(3, 20),(4, 40);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO target t USING source AS s ON t.tid = s.sid WHEN MATCHED THEN UPDATE SET balance = t.balance + delta WHEN NOT MATCHED THEN INSERT (balance, tid) VALUES (balance + delta, sid);",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "balance" does not exist"#, hint: r#"There is a column named "balance" in table "t", but it cannot be referenced from this part of the query."#, position: 165, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO target t USING source AS s ON t.tid = s.sid WHEN NOT MATCHED THEN INSERT (balance, tid) VALUES (t.balance, sid);",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"invalid reference to FROM-clause entry for table "t""#, hint: r#"There is an entry for table "t", but it cannot be referenced from this part of the query."#, position: 108, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO target t USING source AS s ON t.tid = s.sid WHEN NOT MATCHED AND t.balance > 0 THEN INSERT (tid) VALUES (sid);",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"invalid reference to FROM-clause entry for table "t""#, hint: r#"There is an entry for table "t", but it cannot be referenced from this part of the query."#, position: 77, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO target t USING source AS s ON t.tid = s.sid WHEN MATCHED THEN UPDATE SET balance = balance + delta WHEN NOT MATCHED THEN INSERT VALUES (sid, delta);",
+                    expected: Expected::Tag("MERGE 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM target ORDER BY tid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tid", INT4), Column("balance", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                            &[T("2"), T("25")],
+                            &[T("3"), T("50")],
+                            &[T("4"), T("40")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO target t USING source AS s ON t.tid = s.sid WHEN MATCHED AND t.balance > 30 THEN DELETE WHEN MATCHED THEN DO NOTHING;",
+                    expected: Expected::Tag("MERGE 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM target ORDER BY tid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tid", INT4), Column("balance", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                            &[T("2"), T("25")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO source VALUES (2, 7);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO target t USING source AS s ON t.tid = s.sid WHEN MATCHED THEN UPDATE SET balance = 0;",
+                    expected: Expected::Error(Diagnostic { code: "21000", message: "MERGE command cannot affect row a second time", hint: "Ensure that not more than one source row matches any one target row.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO target t USING (SELECT 9 AS sid, 99 AS delta) s ON t.tid = s.sid WHEN NOT MATCHED AND s.delta > 50 THEN INSERT (balance, tid) VALUES (s.delta, s.sid);",
+                    expected: Expected::Tag("MERGE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM target ORDER BY tid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tid", INT4), Column("balance", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                            &[T("2"), T("25")],
+                            &[T("9"), T("99")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "MERGE errors",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE merge_t (tid INTEGER, balance INTEGER);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE merge_s (sid INTEGER, delta INTEGER);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO merge_t VALUES (1, 10);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO merge_s VALUES (1, 5), (1, 6), (4, 40);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO merge_t t USING merge_s s ON t.tid = s.sid WHEN MATCHED THEN UPDATE SET balance = 0;",
+                    expected: Expected::Error(Diagnostic { code: "21000", message: "MERGE command cannot affect row a second time", hint: "Ensure that not more than one source row matches any one target row.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW merge_v AS SELECT * FROM merge_t;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO merge_v t USING merge_s s ON t.tid = s.sid WHEN MATCHED THEN DELETE;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"cannot execute MERGE on relation "merge_v""#, detail: "This operation is not supported for views.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO merge_t t USING merge_s s ON t.tid = s.sid WHEN MATCHED THEN UPDATE SET nosuch = 1;",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "nosuch" of relation "merge_t" does not exist"#, position: 84, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO merge_t t USING merge_s s ON t.tid = s.sid WHEN NOT MATCHED THEN INSERT VALUES (1, 2, 3);",
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "INSERT has more expressions than target columns", position: 98, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "MERGE INTO merge_t t USING merge_s s ON t.tid = s.sid WHEN NOT MATCHED THEN INSERT DEFAULT VALUES;",
+                    expected: Expected::Tag("MERGE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM merge_t ORDER BY tid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("tid", INT4), Column("balance", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                            &[Null, Null],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
