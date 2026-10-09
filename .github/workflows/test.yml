@@ -27,41 +27,30 @@ jobs:
         Get-TimeZone
     - name: Checkout code
       uses: actions/checkout@v6
-    - name: Set up Go
-      uses: actions/setup-go@v5
+    - name: Set up Rust
+      run: rustup toolchain install
+    - name: Cache Rust builds
+      uses: Swatinem/rust-cache@v2
       with:
-        go-version-file: go.mod
-      id: go
-    - name: Install ICU4C (MacOS)
-      if: ${{ matrix.platform == 'macos-latest' }}
-      run: |
-        dir=$(brew --cellar icu4c)
-        dir="$dir"/$(ls "$dir")
-        echo CGO_CPPFLAGS=-I$dir/include >> $GITHUB_ENV
-        echo CGO_LDFLAGS=-L$dir/lib >> $GITHUB_ENV
-    - name: Install ICU4C (Windows)
-      if: ${{ matrix.platform == 'windows-latest' }}
-      uses: msys2/setup-msys2@v2
-      with:
-        path-type: inherit
-        msystem: UCRT64
-        pacboy: icu:p toolchain:p pkg-config:p
-    - name: Build SQL Syntax
-      run: ./build.sh
-      working-directory: ./postgres/parser
-      shell: bash
+        key: ${{ github.workflow }}-${{ matrix.os }}${{ matrix.platform }}
     - name: Setup PostgreSQL
       uses: tj-actions/install-postgresql@v3
       with:
         postgresql-version: 15
-    - name: Test (MacOS)
-      if: ${{ matrix.platform == 'macos-latest' }}
-      run: go test --timeout=20m -skip="TestReplication" $(go list ./... | grep -v enginetest)
-    - name: Test (Windows)
-      if: ${{ matrix.platform == 'windows-latest' }}
-      shell: msys2 {0}
-      run: go.exe test --timeout=20m -skip="TestReplication" $(go.exe list ./... | grep -v enginetest)
-    - name: Test (Linux)
-      if: ${{ matrix.platform == 'ubuntu-latest' }}
-      # Enginetest harness breaks with race testing, not sure why yet
-      run: go test --timeout=20m -race -skip="TestReplication" $(go list ./... | grep -v enginetest)
+    - name: Build server
+      shell: bash
+      run: cargo build --release -p server
+    - name: Test crates
+      shell: bash
+      run: |
+        bin="$(pwd)/target/release/doltgres"
+        exclude="--exclude doltgres-tests --exclude driver"
+        # The admin tests start servers through the driver, which stops them with Unix signals.
+        if [ -f "$bin.exe" ]; then bin="$(cygpath -w "$bin.exe")"; exclude="$exclude --exclude admin"; fi
+        DOLTGRES_BIN_PATH="$bin" cargo test --profile quick --workspace $exclude --no-fail-fast
+    - name: Test scripts
+      shell: bash
+      run: |
+        bin="$(pwd)/target/release/doltgres"
+        if [ -f "$bin.exe" ]; then bin="$(cygpath -w "$bin.exe")"; fi
+        DOLTGRES_TEST_TARGET="doltgres:$bin" cargo test --profile quick -p doltgres-tests --no-fail-fast

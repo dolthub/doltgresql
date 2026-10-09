@@ -52,16 +52,17 @@ jobs:
           git fetch origin ${{ needs.resolve-main.outputs.main_sha }}
           git merge ${{ needs.resolve-main.outputs.main_sha }} --no-commit --no-ff
 
-      - name: Install Go
-        uses: actions/setup-go@v5
+      - name: Set up Rust
+        run: rustup toolchain install
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
         with:
-          go-version-file: go.mod
-          cache: true
+          key: ${{ github.workflow }}-${{ matrix.os }}${{ matrix.platform }}
 
       - name: Test PR branch
         continue-on-error: true
         run: |
-          ./postgres/parser/build.sh
           cd testing/go/regression
           mkdir -p out
           {
@@ -70,17 +71,19 @@ jobs:
             echo "merge_base=$(git merge-base HEAD ${{ needs.resolve-main.outputs.main_sha }})"
             git status --short --branch
             git diff --cached --stat
-            go version
-            go env
-            go list -m github.com/dolthub/dolt/go github.com/dolthub/go-mysql-server
+            rustc --version
           } > out/pr-metadata.txt
-          cd tool
+          cd ../../..
+          cargo build --release -p server 2>&1 | tee testing/go/regression/out/pr-go-test.log
+          cargo build --profile quick -p regression 2>&1 | tee -a testing/go/regression/out/pr-go-test.log
           set +e
-          go test --timeout=90m ./... --count=1 2>&1 | tee ../out/pr-go-test.log
+          timeout 90m target/quick/regression replay testing/go/regression \
+            "doltgres:$(pwd)/target/release/doltgres" testing/go/regression/out/results2.trackers \
+            2>&1 | tee -a testing/go/regression/out/pr-go-test.log
           test_status=${PIPESTATUS[0]}
           set -e
-          if [ -f ../out/results.trackers ]; then
-            cp ../out/results.trackers ../out/results2.trackers
+          if [ "$test_status" = "124" ]; then
+            echo "panic: test timed out" >> testing/go/regression/out/pr-go-test.log
           fi
           exit "$test_status"
 
@@ -88,7 +91,7 @@ jobs:
         run: |
           LOG=testing/go/regression/out/pr-go-test.log
           if [ -f "$LOG" ] && grep -q "panic: test timed out" "$LOG"; then
-            echo "::error::The PR regression test process hung and was killed by the 90m go test timeout. This is NOT a normal per-query test failure -- something deadlocked. See the goroutine dump in pr-go-test.log (uploaded as an artifact) to find what was stuck."
+            echo "::error::The PR regression replay hung and was killed by the 90m timeout. This is NOT a normal per-query test failure -- something deadlocked. See pr-go-test.log (uploaded as an artifact)."
             exit 1
           fi
 

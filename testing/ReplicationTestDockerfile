@@ -3,14 +3,11 @@ FROM postgres:16
 ENV POSTGRES_PASSWORD=password
 ENV POSTGRES_USER=postgres
 
-ENV GO_VERSION=1.23.3
-
-# Install Go
+# Install Rust
 RUN apt-get update && \
-    apt-get install -y wget sudo git build-essential libicu-dev && \
-    wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz && \
-    tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz && \
-    rm go${GO_VERSION}.linux-amd64.tar.gz
+    apt-get install -y curl sudo git build-essential clang libclang-dev && \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Install bats
 RUN git clone https://github.com/bats-core/bats-core.git
@@ -18,24 +15,14 @@ WORKDIR bats-core
 RUN ./install.sh $HOME
 ENV PATH="/root/bin/:${PATH}"
 
-# Set Go environment variables
-ENV PATH="/usr/local/go/bin:${PATH}"
-
 # Doltgres source
 WORKDIR /root/building
 COPY ./ ./doltgresql
 
-# Get rid of the generated tests, since we aren't going to run them and they don't build without more work
-RUN rm -rf ./doltgresql/testing/generation/
-
-# Build the parser
-WORKDIR /root/building/doltgresql/postgres/parser
-RUN bash ./build.sh
-
 # Build the doltgres binary, which we will need for bats, and put it on PATH
-WORKDIR /root/building/doltgresql/cmd/doltgres
-RUN go build .
-RUN cp ./doltgres /root/bin
+WORKDIR /root/building/doltgresql
+RUN rustup toolchain install && cargo build --profile quick -p server && cargo test --profile quick -p server --test replication --no-run
+RUN cp target/quick/doltgres /root/bin
 
 WORKDIR /root/building/doltgresql/
 
@@ -44,6 +31,6 @@ ENV RUN_DOLTGRES_REPLICATION_TESTS=true
 # This should be set in the github env, but set it here for local testing as well
 ENV GITHUB_ACTION=true
 
-# Run the test script, which starts postgres and then runs the Go script
+# Run the test script, which starts postgres and then runs the replication tests
 ENTRYPOINT ["testing/replication-test-entrypoint.sh"]
 

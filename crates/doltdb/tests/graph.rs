@@ -1,0 +1,118 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! The store crate's fixture databases, each with `graph.txt` holding the object graph that Dolt and Doltgres read.
+
+use std::path::{Path, PathBuf};
+
+use store::GenerationalStore;
+
+/// fixture returns the directory of a fixture's database, the one directory in it that holds a `.dolt` directory.
+fn fixture(name: &str) -> PathBuf {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../store/tests/fixtures").join(name);
+    std::fs::read_dir(&dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.join(".dolt").is_dir())
+        .unwrap_or_else(|| panic!("no database in {}", dir.display()))
+}
+
+/// check_fixture checks that the object graph matches the one Dolt and Doltgres read.
+fn check_fixture(name: &str) {
+    let dir = fixture(name);
+    let expected = std::fs::read_to_string(dir.join("graph.txt")).unwrap();
+    let store = GenerationalStore::open(&dir.join(".dolt/noms")).unwrap();
+    let actual = doltdb::dump_graph(&store, store.root()).unwrap();
+    assert!(expected == actual, "{name} differs from Dolt:\n{actual}");
+}
+
+#[test]
+fn reads_commits_and_working_sets() {
+    check_fixture("journal");
+}
+
+#[test]
+fn reads_the_graph_from_table_files() {
+    check_fixture("gc");
+}
+
+#[test]
+fn reads_the_graph_from_archives() {
+    check_fixture("archive");
+}
+
+#[test]
+fn reads_tables_with_large_values() {
+    check_fixture("large");
+}
+
+#[test]
+fn reads_merge_state() {
+    check_fixture("conflict");
+}
+
+#[test]
+fn reads_root_objects_and_tags() {
+    check_fixture("rich");
+}
+
+#[test]
+fn reads_multi_level_address_maps() {
+    check_fixture("wide");
+}
+
+#[test]
+fn reads_stashes_and_rebase_state() {
+    check_fixture("states");
+}
+
+#[test]
+fn reads_doltgres_0_50() {
+    check_fixture("doltgres-v0.50.0-gc");
+}
+
+#[test]
+fn reads_doltgres_0_56() {
+    check_fixture("doltgres-v0.56.0");
+}
+
+#[test]
+fn reads_doltgres_0_57() {
+    check_fixture("doltgres-v0.57.0-gc");
+}
+
+#[test]
+fn reads_doltgres_1_0() {
+    check_fixture("doltgres-v1.0.0");
+}
+
+#[test]
+fn reads_constraints_and_indexes() {
+    check_fixture("schemas");
+}
+
+#[test]
+fn reads_blobs_of_every_size() {
+    check_fixture("blobs");
+}
+
+#[test]
+fn reads_a_new_database() {
+    check_fixture("empty");
+}
+
+#[test]
+fn reads_a_table_with_rows() {
+    check_fixture("onetable");
+}

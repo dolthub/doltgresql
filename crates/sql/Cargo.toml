@@ -1,0 +1,44 @@
+[package]
+name = "sql"
+description = "The SQL engine: sessions, catalog, types, planning, and execution over Dolt storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+base64 = "0.22"
+blobstores = { path = "../blobstores" }
+chrono = "0.4"
+chrono-tz = "0.10"
+crc32c = "0.6"
+doltdb = { path = "../doltdb" }
+remotes = { path = "../remotes" }
+encoding_rs = "0.8"
+foldhash = "0.2"
+hashbrown = "0.17"
+hmac = "0.12"
+itoa = "1"
+md-5 = "0.10"
+num-bigint = "0.4"
+num-integer = "0.1"
+num-traits = "0.2"
+objects = { path = "../objects" }
+pbkdf2 = "0.12"
+pg_query = "6"
+rand = "0.8"
+regex = "1"
+ryu = "1"
+prolly = { path = "../prolly" }
+serde_json = "1"
+serial = { path = "../serial" }
+sha1 = "0.10"
+sha2 = "0.10"
+smallvec = "1"
+store = { path = "../store" }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+zstd = "0.13"
+fancy-regex = "0.19.2"
+
+[lints]
+workspace = true

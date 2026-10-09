@@ -1,0 +1,19 @@
+[package]
+name = "store"
+description = "Reads and writes Dolt's chunk storage: table files, archives, the chunk journal, and manifests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+crc32c = "0.6"
+sha2 = "0.10"
+snap = "1"
+zstd = "0.13"
+# libzstd 1.5.6, the version Dolt's gozstd bundles, so that archives compress to the same bytes.
+zstd-safe = "=7.2.1"
+zstd-sys = "=2.0.13"
+
+[lints]
+workspace = true

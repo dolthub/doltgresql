@@ -26,7 +26,7 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" =~ "attname" ]] || false
   [[ "$output" =~ "pk" ]] || false
-  [ "${#lines[@]}" -eq 2 ]
+  [ "${#lines[@]}" -eq 3 ]
 
     run query_server --csv -c "SELECT relname FROM pg_catalog.pg_class WHERE relname = 'test1';"
   [ "$status" -eq 0 ]
