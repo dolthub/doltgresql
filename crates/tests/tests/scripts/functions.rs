@@ -15562,7 +15562,7 @@ fn test_operator_implementation_functions() {
 }
 
 #[test]
-fn test_parse_ident() {
+fn test_parse_ident_splits() {
     run_scripts(&[
         ScriptTest {
             name: "parse_ident splits qualified identifiers as Postgres does",
@@ -15924,6 +15924,481 @@ fn test_quick_functions() {
                         columns: &[Column("d", INT4)],
                         rows: &[
                             &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_parse_ident() {
+    run_scripts(&[
+        ScriptTest {
+            name: "signatures and array result",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident('public'), parse_ident('"SomeSchema".some_table');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{public}"), T("{SomeSchema,some_table}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('Schema.Table'::text, true), parse_ident('Schema.Table'::text, false);",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{schema,table}"), T("{schema,table}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT pg_catalog.parse_ident('public'), pg_catalog.parse_ident('"SomeSchema".some_table', false);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{public}"), T("{SomeSchema,some_table}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_regprocedure('pg_catalog.parse_ident(text, boolean)')::oid;",
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", OID)],
+                        rows: &[
+                            &[T("1268")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('Schema.Table'::varchar), parse_ident('public'::name);",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{schema,table}"), T("{public}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT (parse_ident('"SomeSchema".some_table'))[1], (parse_ident('"SomeSchema".some_table'))[2], (parse_ident('public'))[2];"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT), Column("parse_ident", TEXT), Column("parse_ident", TEXT)],
+                        rows: &[
+                            &[T("SomeSchema"), T("some_table"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(parse_ident('public')), array_length(parse_ident('a.b.c.d.e'), 1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE), Column("array_length", INT4)],
+                        rows: &[
+                            &[T("text[]"), T("5")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident($1::text, $2::boolean);",
+                    bind_vars: &[BindVar::Str(r#""SomeSchema".SomeTable(integer)"#), BindVar::Bool(false)],
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{SomeSchema,sometable}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "quoted identifiers",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident('"SomeSchema".someTable'), parse_ident('"SomeSchema"."SomeTable"');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{SomeSchema,sometable}"), T("{SomeSchema,SomeTable}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT (parse_ident('"schema.with.dots"."table name"'))[1], (parse_ident('"schema.with.dots"."table name"'))[2];"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT), Column("parse_ident", TEXT)],
+                        rows: &[
+                            &[T("schema.with.dots"), T("table name")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT (parse_ident('"a""b"."c""d"'))[1], (parse_ident('"a""b"."c""d"'))[2];"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT), Column("parse_ident", TEXT)],
+                        rows: &[
+                            &[T(r#"a"b"#), T(r#"c"d"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT (parse_ident('"""foo"""'))[1], (parse_ident('""""'))[1];"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT), Column("parse_ident", TEXT)],
+                        rows: &[
+                            &[T(r#""foo""#), T(r#"""#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT (parse_ident('"  spaced  "'))[1], (parse_ident('"123"'))[1], (parse_ident('"char"'))[1];"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT), Column("parse_ident", TEXT), Column("parse_ident", TEXT)],
+                        rows: &[
+                            &[T("  spaced  "), T("123"), T("char")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT (parse_ident('"comma,brace{and}slash\"'))[1], (parse_ident('"O''Brien"'))[1];"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT), Column("parse_ident", TEXT)],
+                        rows: &[
+                            &[T(r#"comma,brace{and}slash\"#), T("O'Brien")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT (parse_ident(E'"line\nnext"'))[1];"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT)],
+                        rows: &[
+                            &[T(r#"line
+next"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident('"NULL"."a,b"');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T(r#"{"NULL","a,b"}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "unquoted identifiers and whitespace",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('_Schema9.Table$1'), parse_ident('select.from');",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{_schema9,table$1}"), T("{select,from}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident('  First . "  Second  " . Third  ');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T(r#"{first,"  Second  ",third}"#)],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident(E' \t\n\r\fFirst\t.\nSecond\r\f ');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{first,second}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('ÄBC.ÖDEF'), parse_ident('日本語.テーブル'), parse_ident('🐘.TABLE');",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{Äbc,Ödef}"), T("{日本語,テーブル}"), T("{🐘,table}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (parse_ident('E\u{301}COLE'))[1];",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT)],
+                        rows: &[
+                            &[T("e\u{301}cole")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (parse_ident('\u{a0}FOO\u{a0}'))[1];",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT)],
+                        rows: &[
+                            &[T("\u{a0}foo\u{a0}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "non-strict trailing input",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('Schema.Function(integer, text)', false);",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{schema,function}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('foo.boo[]', false), parse_ident('aaa.a%b', false);",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{foo,boo}"), T("{aaa,a}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('foo bar.baz', false), parse_ident('foo;bar', false);",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{foo}"), T("{foo}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident('"Foo"bar', false), parse_ident('foo"bar', false);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{Foo}"), T("{foo}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident('"Foo"."Bar" (integer)', false);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{Foo,Bar}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT parse_ident(E'foo\013bar', false), parse_ident('foo/*comment*/.bar', false);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("{foo}"), T("{foo}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "long identifiers",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT (parse_ident(repeat('A', 100)))[1];",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT)],
+                        rows: &[
+                            &[T("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT length((parse_ident('"' || repeat('X', 100) || '".' || repeat('Y', 100)))[1]), length((parse_ident('"' || repeat('X', 100) || '".' || repeat('Y', 100)))[2]);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("length", INT4), Column("length", INT4)],
+                        rows: &[
+                            &[T("100"), T("100")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT length((parse_ident(repeat('Ä', 100)))[1]), octet_length((parse_ident(repeat('Ä', 100)))[1]);",
+                    expected: Expected::Rows {
+                        columns: &[Column("length", INT4), Column("octet_length", INT4)],
+                        rows: &[
+                            &[T("100"), T("200")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "null arguments",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident(NULL), parse_ident(NULL::text);",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[Null, Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident(NULL, true), parse_ident(NULL, false), parse_ident(NULL, NULL);",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[Null, Null, Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT parse_ident('public', NULL::boolean), parse_ident('invalid..name', NULL::boolean);",
+                    expected: Expected::Rows {
+                        columns: &[Column("parse_ident", TEXT_ARRAY), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[Null, Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "column arguments",
+            set_up_script: &[
+                "CREATE TABLE parse_ident_inputs (id integer PRIMARY KEY, input text, strict_mode boolean);",
+                r#"INSERT INTO parse_ident_inputs VALUES (1, 'PUBLIC', true), (2, '"SomeSchema".SomeTable', false), (3, NULL, true), (4, 'invalid..name', NULL);"#,
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT id, parse_ident(input, strict_mode) FROM parse_ident_inputs ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{public}")],
+                            &[T("2"), T("{SomeSchema,sometable}")],
+                            &[T("3"), Null],
+                            &[T("4"), Null],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, parse_ident(input) FROM parse_ident_inputs WHERE id < 4 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("parse_ident", TEXT_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{public}")],
+                            &[T("2"), T("{SomeSchema,sometable}")],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "PostgREST computed relationship schema",
+            set_up_script: &[
+                "CREATE FUNCTION public.parse_ident_computed_rel(integer) RETURNS integer LANGUAGE SQL AS 'SELECT $1';",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT (parse_ident(p.pronamespace::regnamespace::text))[1] AS schema FROM pg_catalog.pg_proc p WHERE p.proname = 'parse_ident_computed_rel';",
+                    expected: Expected::Rows {
+                        columns: &[Column("schema", TEXT)],
+                        rows: &[
+                            &[T("public")],
                         ],
                         tag: "SELECT 1",
                     },

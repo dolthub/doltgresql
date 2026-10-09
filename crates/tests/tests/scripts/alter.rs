@@ -292,3 +292,121 @@ fn test_owner_to_relations() {
         },
     ]);
 }
+
+#[test]
+fn test_alter_table_add_enum_column_default() {
+    run_scripts(&[
+        ScriptTest {
+            name: "enum default controls",
+            set_up_script: &[
+                "CREATE TYPE enum_default_probe AS ENUM ('x');",
+                "CREATE TABLE enum_default_no_default_control (id integer);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE enum_default_create_control (value enum_default_probe DEFAULT 'x');",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO enum_default_create_control DEFAULT VALUES;",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT value FROM enum_default_create_control;",
+                    expected: Expected::Rows {
+                        columns: &[Column("value", USER_DEFINED)],
+                        rows: &[
+                            &[T("x")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE enum_default_no_default_control ADD COLUMN value enum_default_probe;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "add enum column with string literal default",
+            set_up_script: &[
+                "CREATE TYPE enum_default_probe AS ENUM ('x');",
+                "CREATE TABLE enum_default_probe_table (id integer);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "ALTER TABLE enum_default_probe_table ADD COLUMN value enum_default_probe DEFAULT 'x';",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO enum_default_probe_table (id) VALUES (1);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, value FROM enum_default_probe_table;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("value", USER_DEFINED)],
+                        rows: &[
+                            &[T("1"), T("x")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "add schema qualified enum column with not null default",
+            set_up_script: &[
+                "CREATE SCHEMA auth;",
+                "CREATE TYPE auth.oauth_client_type AS ENUM ('confidential', 'public');",
+                "CREATE TABLE auth.oauth_clients (id integer);",
+                "INSERT INTO auth.oauth_clients VALUES (1);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "ALTER TABLE auth.oauth_clients ADD COLUMN IF NOT EXISTS client_type auth.oauth_client_type NOT NULL DEFAULT 'confidential';",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, client_type FROM auth.oauth_clients;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("client_type", USER_DEFINED)],
+                        rows: &[
+                            &[T("1"), T("confidential")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO auth.oauth_clients (id) VALUES (2);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, client_type FROM auth.oauth_clients ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("client_type", USER_DEFINED)],
+                        rows: &[
+                            &[T("1"), T("confidential")],
+                            &[T("2"), T("confidential")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
