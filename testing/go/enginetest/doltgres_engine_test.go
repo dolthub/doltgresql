@@ -527,12 +527,6 @@ func TestAggregationScripts(t *testing.T) {
 	enginetest.TestAggregationScripts(t, h)
 }
 
-func TestAlterTableScripts(t *testing.T) {
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	enginetest.TestAlterTableScripts(t, h)
-}
-
 func TestAutoIncrementScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
@@ -545,15 +539,6 @@ func TestCharsetCollationScripts(t *testing.T) {
 	})
 	defer h.Close()
 	enginetest.TestCharsetCollationScripts(t, h)
-}
-
-func TestColumnDefaultsScripts(t *testing.T) {
-	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"update columns with default", // broken, see repro in update_test.go
-		"preserve now()",              // harness error
-	})
-	defer h.Close()
-	enginetest.TestColumnDefaultsScripts(t, h)
 }
 
 func TestConversionsScripts(t *testing.T) {
@@ -1142,10 +1127,23 @@ func TestInnerNestedInNaturalJoins(t *testing.T) {
 }
 
 func TestColumnDefaults(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"update columns with default", // broken, see repro in update_test.go
+		"preserve now()",              // harness error
+	})
 	defer h.Close()
-	enginetest.TestColumnDefaults(t, h)
+
+	// The legacy suite is unsupported; retain the relocated self-contained cases.
+	t.Run("legacy scripts", func(t *testing.T) { t.Skip("legacy TestColumnDefaults suite is not supported") })
+	testRelocatedScripts(t, h, queries.ColumnDefaultTests,
+		"ALTER TABLE, ALTER COLUMN SET, DROP DEFAULT",
+		"alter json column default; from scorewarrior: https://github.com/dolthub/dolt/issues/4543",
+		"update columns with default",
+		"preserve now()",
+		"bit default value",
+		"DEFAULT(col) expression",
+		"inserting and updating using default values",
+	)
 }
 
 func TestOnUpdateExprScripts(t *testing.T) {
@@ -1156,11 +1154,16 @@ func TestOnUpdateExprScripts(t *testing.T) {
 }
 
 func TestAlterTable(t *testing.T) {
-	t.Skip()
-	// This is a newly added test in GMS that dolt doesn't support yet
-	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{"ALTER TABLE t42 ADD COLUMN s varchar(20), drop check check1"})
+	h := newDoltgresServerHarness(t)
 	defer h.Close()
-	enginetest.TestAlterTable(t, h)
+
+	// The legacy suite is unsupported; retain the relocated self-contained cases.
+	t.Run("legacy scripts", func(t *testing.T) { t.Skip("legacy TestAlterTable suite is not supported") })
+	testRelocatedScripts(t, h, queries.AlterTableScripts,
+		"alter table out of range value error of column type change",
+		"Multialter DDL with ADD/DROP INDEX",
+		"ALTER TABLE MULTI ADD/DROP COLUMN",
+	)
 }
 
 func TestVariables(t *testing.T) {
