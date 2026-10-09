@@ -933,6 +933,7 @@ impl Ctx<'_> {
             catalog: None,
             variables: Vec::new(),
             expanding: Vec::new(),
+            deferred_sublinks: Vec::new(),
         };
         f(&mut ctx)
     }

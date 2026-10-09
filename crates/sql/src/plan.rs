@@ -1732,7 +1732,7 @@ impl<'b, 'a> Planner<'b, 'a> {
     /// plan_select plans a simple SELECT, leaving its FROM and WHERE clauses unplanned when `defer` asks for a subquery
     /// that the query around it may pull up. The ported optimizer, when it is on, plans them last, once it knows what
     /// the rest of the query reads.
-    fn plan_select(&mut self, select: &SelectStmt, defer: bool) -> Result<Query> {
+    pub(crate) fn plan_select(&mut self, select: &SelectStmt, defer: bool) -> Result<Query> {
         let (mut plan, scope) = self.plan_from(&select.from_clause)?;
         if let Some(node) = select.where_clause.as_deref() {
             if has_aggregate(node) {
@@ -1741,9 +1741,16 @@ impl<'b, 'a> Planner<'b, 'a> {
                     ..PgError::new(code::GROUPING_ERROR, "aggregate functions are not allowed in WHERE")
                 });
             }
+            let deferred = match crate::optimizer::enabled() && !matches!(plan, Plan::OneRow) {
+                true => top_level_sublinks(node),
+                false => Vec::new(),
+            };
+            let saved = std::mem::replace(&mut self.ctx.deferred_sublinks, deferred);
             let mut binder = self.binder(scope.clone());
             binder.clause = "WHERE";
-            let predicate = crate::expr::condition(binder.bind(node)?, "WHERE", crate::expr::arg_location(node))?;
+            let bound = binder.bind(node);
+            self.ctx.deferred_sublinks = saved;
+            let predicate = crate::expr::condition(bound?, "WHERE", crate::expr::arg_location(node))?;
             let mut kept = Vec::new();
             let mut existences = Vec::new();
             for c in crate::indexscan::conjuncts(&predicate) {
@@ -1756,7 +1763,8 @@ impl<'b, 'a> Planner<'b, 'a> {
                 }
             }
             if crate::optimizer::enabled() {
-                if let Some(predicate) = kept.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
+                let quals = kept.into_iter().chain(existences);
+                if let Some(predicate) = quals.reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
                     plan = Plan::Filter { input: Box::new(plan), predicate };
                 }
             } else {
@@ -1764,9 +1772,9 @@ impl<'b, 'a> Planner<'b, 'a> {
                     plan = push_down(plan, kept);
                 }
                 plan = self.use_indexes(plan);
-            }
-            for existence in existences {
-                plan = crate::joins::filter_existence(plan, existence);
+                for existence in existences {
+                    plan = crate::joins::filter_existence(plan, existence);
+                }
             }
         }
         let hints = crate::joins::hints(&self.ctx.session.source);
@@ -2126,10 +2134,52 @@ impl<'b, 'a> Planner<'b, 'a> {
     }
 }
 
+/// top_level_sublinks returns the locations of the `EXISTS`, `NOT EXISTS`, and `IN` subqueries among a WHERE
+/// clause's top-level conditions, which Postgres' pull_up_sublinks may turn into joins.
+fn top_level_sublinks(node: &Node) -> Vec<i32> {
+    use pg_query::protobuf::{BoolExprType, SubLinkType};
+    match node.node.as_ref() {
+        Some(NodeEnum::BoolExpr(b)) if b.boolop == BoolExprType::AndExpr as i32 => {
+            b.args.iter().flat_map(top_level_sublinks).collect()
+        }
+        Some(NodeEnum::BoolExpr(b)) if b.boolop == BoolExprType::NotExpr as i32 => {
+            match b.args.first().and_then(|a| a.node.as_ref()) {
+                Some(NodeEnum::SubLink(link)) if link.sub_link_type == SubLinkType::ExistsSublink as i32 => {
+                    vec![link.location]
+                }
+                _ => Vec::new(),
+            }
+        }
+        Some(NodeEnum::SubLink(link))
+            if link.sub_link_type == SubLinkType::ExistsSublink as i32
+                || link.sub_link_type == SubLinkType::AnySublink as i32 =>
+        {
+            vec![link.location]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// is_simple_exists reports whether an `EXISTS` subquery is a plain SELECT whose rows a query around it may join,
+/// as Postgres' simplify_EXISTS_query requires: one without WITH, a set operation, VALUES, aggregates, HAVING, window
+/// functions, OFFSET, or locking, where any GROUP BY, DISTINCT, ORDER BY, or positive LIMIT changes nothing.
+pub(crate) fn is_simple_exists(select: &SelectStmt) -> bool {
+    let op = SetOperation::try_from(select.op).unwrap_or(SetOperation::SetopNone);
+    matches!(op, SetOperation::SetopNone | SetOperation::Undefined)
+        && select.with_clause.is_none()
+        && select.into_clause.is_none()
+        && select.values_lists.is_empty()
+        && select.having_clause.is_none()
+        && select.window_clause.is_empty()
+        && select.limit_offset.is_none()
+        && select.locking_clause.is_empty()
+        && !select.target_list.iter().any(|t| has_aggregate(t) || crate::window::has_window(t))
+}
+
 /// is_simple_subquery reports whether a subquery in FROM is a plain SELECT that a query around it may pull up into
 /// its own join tree, as Postgres' is_simple_subquery requires: no WITH, set operation, VALUES, grouping, aggregate,
 /// window function, DISTINCT, ORDER BY, LIMIT, or locking.
-fn is_simple_subquery(select: &SelectStmt) -> bool {
+pub(crate) fn is_simple_subquery(select: &SelectStmt) -> bool {
     let op = SetOperation::try_from(select.op).unwrap_or(SetOperation::SetopNone);
     matches!(op, SetOperation::SetopNone | SetOperation::Undefined)
         && select.with_clause.is_none()
@@ -3450,6 +3500,15 @@ pub(crate) fn index_row(ctx: &mut Ctx<'_>, inner: &[Expr], index: &mut RowIndex,
         buckets.len() - 1
     });
     buckets[bucket].push(j);
+}
+
+/// share_subquery returns the plan of a subquery expression as it runs for each enclosing row: once for all of them
+/// when it reads none of their columns, and otherwise with its filtered scans shared between runs.
+pub(crate) fn share_subquery(plan: Plan, uncorrelated: bool) -> Plan {
+    match uncorrelated {
+        true => Plan::Once(Box::new(plan)),
+        false => share_scans(plan),
+    }
 }
 
 /// share_scans wraps the table scan under the filter of a subquery that reads its enclosing rows in a `Once` plan, so

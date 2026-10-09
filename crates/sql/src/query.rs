@@ -65,6 +65,9 @@ pub struct Ctx<'a> {
     pub variables: Vec<String>,
     /// The views being expanded while planning, outermost first, by schema and name.
     pub expanding: Vec<(String, String)>,
+    /// The locations of the subqueries of the WHERE clause being bound that the ported optimizer may turn into joins,
+    /// which their binding leaves unplanned when it can.
+    pub deferred_sublinks: Vec<i32>,
 }
 
 /// column returns the description of a result column of the type.

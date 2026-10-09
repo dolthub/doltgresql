@@ -834,7 +834,7 @@ fn lowest_level(e: &Expr, nesting: i64) -> Option<i64> {
 }
 
 /// plan_lowest_level returns the outermost row that a subquery's plan reads, as `lowest_level` counts rows.
-fn plan_lowest_level(plan: &Plan) -> Option<i64> {
+pub(crate) fn plan_lowest_level(plan: &Plan) -> Option<i64> {
     let (mut lowest, mut known) = (i64::MAX, true);
     let reachable = plan.clone().map_exprs(0, &mut |e, depth| {
         match lowest_level(&e, depth as i64) {

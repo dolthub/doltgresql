@@ -33,8 +33,11 @@ mod prepjointree;
 mod relnode;
 mod restrictinfo;
 mod selfuncs;
+mod subselect;
 
 use std::collections::{BTreeSet, HashMap};
+
+pub(crate) use subselect::{plan_sublink, sublink_convertible};
 
 use nodes::{
     FromExpr, JoinExpr, JoinTreeNode, JoinType, Query, RangeTblEntry, RelOptInfo, Relids, SpecialJoinInfo, var,
@@ -200,6 +203,7 @@ fn decomposable(join: &Plan) -> bool {
 fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, needed: Option<BTreeSet<usize>>) -> Plan {
     let (mut rtable, mut output) = (Vec::new(), Vec::new());
     let node = build_jointree(ctx, from, &mut rtable, &mut output, false);
+    let (node, quals) = subselect::pull_up_sublinks(ctx, node, quals, &mut rtable, &output);
     let (kept, later): (Vec<Expr>, Vec<Expr>) = quals.into_iter().partition(|q| !crate::plan::has_subquery(q));
     let mut jointree =
         FromExpr { fromlist: vec![node], quals: kept.into_iter().map(|q| to_vars(q, &output)).collect() };
@@ -243,7 +247,7 @@ fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, needed: Option
 /// into the join tree, as Postgres' pull_up_subqueries pulls up a simple subquery, unless one of its expressions
 /// would need a PlaceHolderVar, which is not ported yet. Any other input, or any join that is lateral, already
 /// planned, or has a subquery in its condition, becomes a relation of its own.
-fn build_jointree(
+pub(super) fn build_jointree(
     ctx: &mut Ctx<'_>,
     plan: Plan,
     rtable: &mut Vec<RangeTblEntry>,

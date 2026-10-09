@@ -1777,15 +1777,39 @@ impl<'b, 'a> Binder<'b, 'a> {
             return Err(PgError::internal("a subquery without a SELECT"));
         };
         let reach = std::mem::replace(&mut self.ctx.outer_reach, usize::MAX);
-        let query = Planner { ctx: &mut *self.ctx, outer: self.scopes.clone() }.plan_query(select);
+        let kind = T::try_from(link.sub_link_type).unwrap_or(T::ExprSublink);
+        let simple = match kind {
+            T::ExistsSublink => crate::plan::is_simple_exists(select),
+            _ => crate::plan::is_simple_subquery(select),
+        };
+        let deferred = self.ctx.deferred_sublinks.contains(&link.location) && simple;
+        let mut planner = Planner { ctx: &mut *self.ctx, outer: self.scopes.clone() };
+        let query = match deferred {
+            true => planner.plan_select(select, true),
+            false => planner.plan_query(select),
+        };
         let inner = std::mem::replace(&mut self.ctx.outer_reach, reach);
         self.ctx.outer_reach = reach.min(inner);
         let mut query = query?;
-        query.plan = match inner >= self.scopes.len() {
-            true => Plan::Once(Box::new(query.plan)),
-            false => crate::plan::share_scans(query.plan),
-        };
-        let kind = T::try_from(link.sub_link_type).unwrap_or(T::ExprSublink);
+        let uncorrelated = inner >= self.scopes.len();
+        if !deferred {
+            query.plan = crate::plan::share_subquery(query.plan, uncorrelated);
+        }
+        let (bound, ty) = self.sublink_test(link, kind, query)?;
+        match deferred && !crate::optimizer::sublink_convertible(&bound) {
+            true => Ok((crate::optimizer::plan_sublink(self.ctx, bound, uncorrelated), ty)),
+            false => Ok((bound, ty)),
+        }
+    }
+
+    /// sublink_test binds the test of a subquery expression of a kind over its planned query.
+    fn sublink_test(
+        &mut self,
+        link: &pg_query::protobuf::SubLink,
+        kind: pg_query::protobuf::SubLinkType,
+        query: crate::plan::Query,
+    ) -> Result<Bound> {
+        use pg_query::protobuf::SubLinkType as T;
         match kind {
             T::ExistsSublink => Ok((Expr::Exists(Box::new(query.plan)), typ(oid::BOOL))),
             T::ExprSublink => {
