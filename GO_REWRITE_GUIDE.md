@@ -276,6 +276,25 @@ No more phase names. Priorities: keep CI green, raise the regression replay (goa
 gaps (missing functions, casts, and so on; `testing/go/regression/out/tools/missing_functions.sh` lists the built-in functions Postgres has and
 the server lacks), and move performance toward Postgres 15's.
 
+The loop that drives this work:
+
+1. Replay the whole regression suite, dump the trackers, and group the failures by their normalized error message
+   (quoted names and numbers replaced) across all files. Pick the largest coherent cluster, not the worst file: one
+   missing type family (ranges and multiranges) failed about 850 statements across several files.
+2. Implement the feature by porting Postgres' own C semantics (for ranges, `rangetypes.c` and `multirangetypes.c`:
+   bound comparison, canonical forms, parse and quote rules, and the exact error codes and details).
+3. While building, diff each batch of statements between a fresh server and a real Postgres 15 with a small script
+   (`rq.sh`: start the server on a temporary directory, run the SQL through psql against both, diff the outputs).
+   Error codes need psql's `\set VERBOSITY verbose` or a recorded test to show.
+4. Replay just the affected files plus `test_setup`, which creates the `regression` database the other files need
+   (`replay_some.sh <name> <files...>`, which prints the per-file results and the top remaining errors).
+5. Record kept tests from SQL files on PG15, run the whole scripts suite, and commit.
+
+Fixing one feature often exposes a general gap behind it. Ranges needed polymorphic user-defined functions (Postgres
+resolves `anyelement`, `anyarray`, and `anyrange` per call, rejects at CREATE a polymorphic result no input can
+decide, and skips body analysis for polymorphic SQL functions), which in turn exposed that PL/pgSQL's `$N`
+references never reached the Nth parameter.
+
 ## 4. Habits and tooling worth copying
 
 - **A handoff file** (untracked) with an "Exact position" section at the top: the last commit, what is in progress,
