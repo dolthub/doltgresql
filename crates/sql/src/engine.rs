@@ -719,6 +719,7 @@ impl Engine {
                 trigger_depth: 0,
                 cursors: Vec::new(),
                 defining_view: false,
+                expected_columns: None,
                 id: NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 advisory: self.shared.advisory.clone(),
                 pending_copy: None,
@@ -837,6 +838,9 @@ pub struct SessionState {
     /// Whether CREATE VIEW is planning its query, which reads no rows, so that the tables it reads need no privileges
     /// yet, as Postgres checks them only when the view is used.
     pub defining_view: bool,
+    /// The columns that the column definition list of the function scan running asks a record-returning function
+    /// for, as Postgres hands it to the function as its expected row.
+    pub expected_columns: Option<Vec<(String, crate::catalog::ColumnType)>>,
     /// The session's number among the engine's sessions, which advisory locks record their holders by.
     pub id: u64,
     /// The engine's advisory locks.

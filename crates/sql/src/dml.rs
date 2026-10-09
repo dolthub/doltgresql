@@ -1245,6 +1245,21 @@ fn bind_assignments(
         })?;
         let value = target.val.as_deref().ok_or_else(|| PgError::internal("an assignment without a value"))?;
         let column = &table.columns[i];
+        if !target.indirection.is_empty() && column.ty.oid == crate::oid::JSONB {
+            let (path, expect_array) = binder.jsonb_path(&target.indirection)?;
+            let bound = binder.bind(value)?;
+            let value = assign(bound, column.ty, &column.name, arg_location(value))?.0;
+            let base = match assignments.iter().position(|(c, _)| *c == i) {
+                Some(at) => assignments.remove(at).1,
+                None => Expr::Column(i),
+            };
+            let types = [crate::oid::JSONB, crate::oid::TEXT_ARRAY, crate::oid::BOOL, crate::oid::JSONB];
+            let resolved =
+                crate::functions::resolve(crate::functions::json::SUBSCRIPT_ASSIGN, &types, target.location)?;
+            let args = vec![base, path, Expr::Const(Value::Bool(expect_array)), value];
+            assignments.push((i, Expr::Func(resolved.index, args)));
+            continue;
+        }
         if !target.indirection.is_empty() {
             let subscripted = matches!(target.indirection[0].node, Some(NodeEnum::AIndices(_)));
             if subscripted && !crate::array::is_array_type(column.ty.oid) {

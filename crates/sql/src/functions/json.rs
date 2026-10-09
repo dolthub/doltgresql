@@ -74,6 +74,14 @@ pub const FUNCTIONS: &[Function] = &[
     f("jsonb_strip_nulls", &[JSONB], JSONB, strip_nulls),
     f("json_strip_nulls", &[JSON], JSON, strip_nulls),
     f("jsonb_pretty", &[JSONB], TEXT, pretty),
+    Function {
+        name: SUBSCRIPT_ASSIGN,
+        args: &[JSONB, TEXT_ARRAY, BOOL, JSONB],
+        ret: JSONB,
+        strict: false,
+        variadic: false,
+        implementation: subscript_assign,
+    },
     f("jsonb_set", &[JSONB, TEXT_ARRAY, JSONB], JSONB, set),
     f("jsonb_set", &[JSONB, TEXT_ARRAY, JSONB, BOOL], JSONB, set),
     f("jsonb_insert", &[JSONB, TEXT_ARRAY, JSONB], JSONB, insert),
@@ -973,4 +981,110 @@ fn json_object(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// jsonb_object builds a jsonb object from text pairs.
 fn jsonb_object(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Jsonb(Box::new(json::normalize(Json::Object(object_from_arguments(args)?)))))
+}
+
+/// SUBSCRIPT_ASSIGN is the hidden function that assigns through jsonb subscripts, taking the document, the path, whether
+/// the first subscript is an integer, and the value.
+pub const SUBSCRIPT_ASSIGN: &str = "__doltgres_jsonb_subscript_assign";
+
+/// subscript_assign sets the value at a path of a jsonb document as Postgres' jsonb_subscript_assign does, starting a
+/// NULL document as an empty array when the first subscript is an integer and as an empty object otherwise.
+fn subscript_assign(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let Value::Array(path) = &args[1] else { return Err(PgError::internal("a jsonb path that is not an array")) };
+    let mut steps = Vec::with_capacity(path.values.len());
+    for step in &path.values {
+        match step.output() {
+            Some(step) => steps.push(step),
+            None => {
+                return Err(PgError::new(
+                    code::NULL_VALUE_NOT_ALLOWED,
+                    "jsonb subscript in assignment must not be null",
+                ));
+            }
+        }
+    }
+    let mut json = match (&args[0], &args[2]) {
+        (Value::Null, Value::Bool(true)) => Json::Array(Vec::new()),
+        (Value::Null, _) => Json::Object(Vec::new()),
+        (document_value, _) => document(document_value)?,
+    };
+    assign_path(&mut json, &steps, 0, document(&args[3])?)?;
+    Ok(Value::Jsonb(Box::new(json)))
+}
+
+/// path_index reads a path element as an array index the way strtoint does, or None when it is not one.
+fn path_index(step: &str) -> Option<i32> {
+    step.trim_start().parse().ok()
+}
+
+/// assign_path sets the value at a path below a level, creating missing levels and filling gaps in arrays with nulls,
+/// as Postgres' setPath does with JB_PATH_CREATE, JB_PATH_FILL_GAPS, and JB_PATH_CONSISTENT_POSITION.
+fn assign_path(json: &mut Json, path: &[String], level: usize, value: Json) -> Result<()> {
+    let last = level + 1 == path.len();
+    match json {
+        Json::Object(pairs) => {
+            let key = &path[level];
+            match pairs.iter_mut().find(|(k, _)| k == key) {
+                Some((_, existing)) if last => *existing = value,
+                Some((_, existing)) => assign_path(existing, path, level + 1, value)?,
+                None => {
+                    let element = if last { value } else { build_path(path, level + 1, value) };
+                    pairs.push((key.clone(), element));
+                    *json = json::normalize(std::mem::replace(json, Json::Null));
+                }
+            }
+        }
+        Json::Array(items) => {
+            let Some(mut index) = path_index(&path[level]) else {
+                return Err(PgError::new(
+                    code::INVALID_TEXT_REPRESENTATION,
+                    format!("path element at position {} is not an integer: \"{}\"", level + 1, path[level]),
+                ));
+            };
+            let len = items.len() as i32;
+            if index < 0 {
+                if -index > len {
+                    return Err(PgError::new(
+                        code::INVALID_PARAMETER_VALUE,
+                        format!("path element at position {} is out of range: {index}", level + 1),
+                    ));
+                }
+                index += len;
+            }
+            if index < len {
+                let existing = &mut items[index as usize];
+                match last {
+                    true => *existing = value,
+                    false => assign_path(existing, path, level + 1, value)?,
+                }
+            } else {
+                items.extend(std::iter::repeat_n(Json::Null, (index - len) as usize));
+                items.push(if last { value } else { build_path(path, level + 1, value) });
+            }
+        }
+        _ => {
+            return Err(PgError {
+                detail: Some("The path assumes key is a composite object, but it is a scalar value.".into()),
+                ..PgError::new(code::INVALID_PARAMETER_VALUE, "cannot replace existing key")
+            });
+        }
+    }
+    Ok(())
+}
+
+/// build_path returns the levels of a path from one level down, an array padded with nulls for an integer element and
+/// an object otherwise, holding the value at the end, as Postgres' push_path builds them.
+fn build_path(path: &[String], level: usize, value: Json) -> Json {
+    if level == path.len() {
+        return value;
+    }
+    let inner = build_path(path, level + 1, value);
+    match path_index(&path[level]) {
+        Some(index) => {
+            let mut items = vec![Json::Null; index.max(0) as usize];
+            items.push(inner);
+            Json::Array(items)
+        }
+        None => Json::Object(vec![(path[level].clone(), inner)]),
+    }
 }

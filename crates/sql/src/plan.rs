@@ -113,6 +113,7 @@ pub enum Plan {
         call: Expr,
         ordinality: bool,
         width: usize,
+        defined: Option<Vec<(String, ColumnType)>>,
     },
     /// The rows that differ between two queries' results, with a row number when asked.
     QueryDiff(Box<crate::dolt::querydiff::QueryDiff>, bool),
@@ -1512,6 +1513,15 @@ impl<'b, 'a> Planner<'b, 'a> {
                     origin: (0, 0),
                 })
                 .collect(),
+            _ if ty.oid == oid::RECORD && function.coldeflist.is_empty() => {
+                return Err(PgError {
+                    position: crate::expr::position(call.location),
+                    ..PgError::new(
+                        code::SYNTAX_ERROR,
+                        "a column definition list is required for functions returning \"record\"",
+                    )
+                });
+            }
             _ => vec![ScopeColumn { table: table.clone(), name: column_name, ty, hidden: false, origin: (0, 0) }],
         };
         if !function.coldeflist.is_empty() {
@@ -1548,7 +1558,9 @@ impl<'b, 'a> Planner<'b, 'a> {
             let name = renames.get(1).map_or("ordinality".to_string(), |r| r.to_string());
             columns.push(ScopeColumn { table, name, ty: typ(oid::INT8), hidden: false, origin: (0, 0) });
         }
-        Ok((Plan::Function { call: expr, ordinality: function.ordinality, width }, Scope { columns }))
+        let defined =
+            (!function.coldeflist.is_empty()).then(|| columns.iter().map(|c| (c.name.clone(), c.ty)).collect());
+        Ok((Plan::Function { call: expr, ordinality: function.ordinality, width, defined }, Scope { columns }))
     }
 
     /// plan_rows_from plans several set-returning calls in FROM, each giving one column.
@@ -2788,8 +2800,11 @@ impl Plan {
                 }
                 rows
             }
-            Plan::Function { call, ordinality, width } => {
-                let rows = set_rows(ctx, call, &[])?;
+            Plan::Function { call, ordinality, width, defined } => {
+                let expected = std::mem::replace(&mut ctx.session.expected_columns, defined.clone());
+                let rows = set_rows(ctx, call, &[]);
+                ctx.session.expected_columns = expected;
+                let rows = rows?;
                 rows.into_iter()
                     .enumerate()
                     .map(|(i, v)| {

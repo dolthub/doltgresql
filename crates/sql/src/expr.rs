@@ -2274,18 +2274,26 @@ impl<'b, 'a> Binder<'b, 'a> {
     /// jsonb_subscripts binds subscripts of a jsonb value as the path of a `#>` lookup, each read as an integer or as
     /// text, as Postgres' jsonb_subscript_transform does.
     fn jsonb_subscripts(&mut self, base: Bound, items: &[Node], location: i32) -> Result<Bound> {
+        let (path, _) = self.jsonb_path(items)?;
+        self.binary("#>", base, (path, typ(oid::TEXT_ARRAY)), location)
+    }
+
+    /// jsonb_path binds jsonb subscripts as a text array path, reporting whether the first subscript is an integer.
+    pub fn jsonb_path(&mut self, items: &[Node]) -> Result<(Expr, bool)> {
         let mut path = Vec::with_capacity(items.len());
+        let mut first_integer = None;
         for item in items {
             let Some(NodeEnum::AIndices(indices)) = item.node.as_ref() else {
                 return Err(PgError::unsupported("field selection"));
             };
-            let index = indices.uidx.as_deref().ok_or_else(|| PgError::internal("a subscript without an index"))?;
             if indices.is_slice {
+                let bound = indices.uidx.as_deref().or(indices.lidx.as_deref());
                 return Err(PgError {
-                    position: position(arg_location(index)),
+                    position: bound.and_then(|b| position(arg_location(b))),
                     ..PgError::new(code::DATATYPE_MISMATCH, "jsonb subscript does not support slices")
                 });
             }
+            let index = indices.uidx.as_deref().ok_or_else(|| PgError::internal("a subscript without an index"))?;
             let (expr, ty) = self.bind(index)?;
             let target = match ty.oid {
                 oid::UNKNOWN => oid::TEXT,
@@ -2301,11 +2309,11 @@ impl<'b, 'a> Binder<'b, 'a> {
                         )
                     })?,
             };
+            first_integer.get_or_insert(target == oid::INT4);
             let bound = coerce((expr, ty), typ(target), false, arg_location(index))?;
             path.push(coerce(bound, typ(oid::TEXT), true, arg_location(index))?.0);
         }
-        let path = (Expr::Array(oid::TEXT, path, false), typ(oid::TEXT_ARRAY));
-        self.binary("#>", base, path, location)
+        Ok((Expr::Array(oid::TEXT, path, false), first_integer.unwrap_or(false)))
     }
 
     /// array_binary binds an operator with an array operand, or returns None when no array operator matches.

@@ -30,6 +30,11 @@ const fn f(name: &'static str, args: &'static [u32], implementation: super::Impl
     Function { name, args, ret: ANYELEMENT, strict: false, variadic: false, implementation }
 }
 
+/// to declares a strict function that builds records of the columns of a function scan's column definition list.
+const fn to(name: &'static str, args: &'static [u32], implementation: super::Implementation) -> Function {
+    Function { name, args, ret: crate::oid::RECORD, strict: true, variadic: false, implementation }
+}
+
 /// FUNCTIONS are the populate functions.
 pub const FUNCTIONS: &[Function] = &[
     f("json_populate_record", &[ANYELEMENT, JSON], |ctx, args| record(ctx, args, "json_populate_record")),
@@ -40,6 +45,10 @@ pub const FUNCTIONS: &[Function] = &[
         recordset(ctx, args, "json_populate_recordset")
     }),
     f("jsonb_populate_recordset", &[ANYELEMENT, JSONB], |ctx, args| recordset(ctx, args, "jsonb_populate_recordset")),
+    to("json_to_record", &[JSON], |ctx, args| to_record(ctx, args, "json_to_record")),
+    to("jsonb_to_record", &[JSONB], |ctx, args| to_record(ctx, args, "jsonb_to_record")),
+    to("json_to_recordset", &[JSON], |ctx, args| to_record(ctx, args, "json_to_recordset")),
+    to("jsonb_to_recordset", &[JSONB], |ctx, args| to_record(ctx, args, "jsonb_to_recordset")),
 ];
 
 /// NAMES are the functions whose binder passes the composite type as a last argument.
@@ -107,12 +116,22 @@ impl<'a> Js<'a> {
 
 /// composite_type returns the attributes of the composite type a populate function builds, which for an anonymous
 /// record are its base record's fields, failing as Postgres does for a type that is not a composite one.
-fn composite_type(type_oid: u32, base_record: &Value, function: &str) -> Result<Vec<(String, ColumnType)>> {
+fn composite_type(
+    ctx: &Ctx<'_>,
+    type_oid: u32,
+    base_record: &Value,
+    function: &str,
+) -> Result<Vec<(String, ColumnType)>> {
     let base = crate::usertypes::base_type(typ(type_oid));
     match crate::usertypes::get(base.oid).map(|t| t.kind.clone()) {
         Some(Kind::Composite(attributes)) => Ok(attributes),
         _ if let Value::Record(fields) = base_record => {
             Ok(fields.iter().enumerate().map(|(i, v)| (format!("f{}", i + 1), typ(super::value_type(v)))).collect())
+        }
+        _ if base.oid == crate::oid::RECORD
+            && let Some(columns) = &ctx.session.expected_columns =>
+        {
+            Ok(columns.clone())
         }
         _ if base.oid == crate::oid::RECORD => Err(PgError {
             hint: Some(
@@ -144,7 +163,7 @@ fn with_input<T>(input: &Value, run: &mut dyn FnMut(Js<'_>) -> Result<T>) -> Res
 /// record builds a value of a composite type from a JSON object, taking the base record's fields for missing keys.
 fn record(ctx: &mut Ctx<'_>, args: &[Value], function: &str) -> Result<Value> {
     let type_oid = type_argument(args);
-    let attributes = composite_type(type_oid, &args[0], function)?;
+    let attributes = composite_type(ctx, type_oid, &args[0], function)?;
     let (base, input) = (&args[0], &args[1]);
     if input.is_null() {
         return Ok(base.clone());
@@ -163,7 +182,7 @@ fn record(ctx: &mut Ctx<'_>, args: &[Value], function: &str) -> Result<Value> {
 /// recordset builds a value of a composite type from each object of a JSON array.
 fn recordset(ctx: &mut Ctx<'_>, args: &[Value], function: &str) -> Result<Value> {
     let type_oid = type_argument(args);
-    let attributes = composite_type(type_oid, &args[0], function)?;
+    let attributes = composite_type(ctx, type_oid, &args[0], function)?;
     let (base, input) = (&args[0], &args[1]);
     if input.is_null() {
         return Ok(Value::Set(Vec::new()));
@@ -185,6 +204,16 @@ fn recordset(ctx: &mut Ctx<'_>, args: &[Value], function: &str) -> Result<Value>
         }
         Ok(Value::Set(rows))
     })
+}
+
+/// to_record builds records of the columns of a function scan's column definition list from a JSON object, or a
+/// set of them from an array of objects, as Postgres' json_to_record and json_to_recordset functions do.
+fn to_record(ctx: &mut Ctx<'_>, args: &[Value], function: &str) -> Result<Value> {
+    let args = [Value::Null, args[0].clone(), Value::Int8(i64::from(crate::oid::RECORD))];
+    match function.ends_with("set") {
+        true => recordset(ctx, &args, function),
+        false => record(ctx, &args, function),
+    }
 }
 
 /// type_argument returns the composite type that the binder passes last.

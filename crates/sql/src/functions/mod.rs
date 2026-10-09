@@ -133,6 +133,8 @@ const SET_RETURNING: &[&str] = &[
     "jsonb_path_query",
     "json_populate_recordset",
     "jsonb_populate_recordset",
+    "json_to_recordset",
+    "jsonb_to_recordset",
     "jsonb_path_query_tz",
     "jsonb_object_keys",
     "json_object_keys",

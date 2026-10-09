@@ -5253,3 +5253,183 @@ SELECT jsonb_populate_record(null::record, '{"x": 0, "y": 1}');"#,
         },
     ]);
 }
+
+#[test]
+fn test_json_to_record_and_subscript_assignment() {
+    run_scripts(&[
+        ScriptTest {
+            name: "json_to_record and json_to_recordset",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM json_to_record('{"a":1,"b":"foo","c":"bar"}') AS x(a int, b text, d text);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT), Column("d", TEXT)],
+                        rows: &[
+                            &[T("1"), T("foo"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM json_to_recordset('[{"a":1,"b":"foo","d":false},{"a":2,"b":"bar","c":true}]') AS x(a int, b text, c boolean);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT), Column("c", BOOL)],
+                        rows: &[
+                            &[T("1"), T("foo"), Null],
+                            &[T("2"), T("bar"), T("t")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM jsonb_to_recordset('[{"a":1,"b":{"d":"foo"},"c":true},{"a":2,"c":false,"b":{"d":"bar"}}]') AS x(a int, b jsonb, c boolean);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", JSONB), Column("c", BOOL)],
+                        rows: &[
+                            &[T("1"), T(r#"{"d": "foo"}"#), T("t")],
+                            &[T("2"), T(r#"{"d": "bar"}"#), T("f")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM json_to_record('{"ia": [[1, 2], [3, 4]]}') AS x(ia _int4);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("ia", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,2},{3,4}}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM jsonb_to_record('{"ia": 123}') AS x(ia _int4);"#,
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected JSON array", hint: r#"See the value of key "ia"."#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM json_populate_record(NULL::record, '{"x": 776}') AS (x int, y int);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("x", INT4), Column("y", INT4)],
+                        rows: &[
+                            &[T("776"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT json_to_record('{"a":1}');"#,
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "could not determine row type for result of json_to_record", hint: "Provide a non-null record argument, or call the function in the FROM clause using a column definition list.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM json_to_record('{"a":1}');"#,
+                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"a column definition list is required for functions returning "record""#, position: 15, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT * FROM json_to_recordset('{"a":1}') AS x(a int);"#,
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "cannot call json_to_recordset on an object", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "jsonb subscript assignment",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE js (id INT, j jsonb);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO js VALUES (1, '{}'), (2, '{"key": "value"}'), (3, NULL), (4, '[1, 2]'), (5, '5');"#,
+                    expected: Expected::Tag("INSERT 0 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE js SET j['a'] = '1' WHERE id = 1;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"UPDATE js SET j['a']['b']['c'] = '"deep"' WHERE id = 2;"#,
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"UPDATE js SET j[2] = '"x"' WHERE id = 3;"#,
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE js SET j[5] = '7', j[0] = '0' WHERE id = 4;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM js ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("j", JSONB)],
+                        rows: &[
+                            &[T("1"), T(r#"{"a": 1}"#)],
+                            &[T("2"), T(r#"{"a": {"b": {"c": "deep"}}, "key": "value"}"#)],
+                            &[T("3"), T(r#"[null, null, "x"]"#)],
+                            &[T("4"), T("[0, 2, null, null, null, 7]")],
+                            &[T("5"), T("5")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE js SET j['a'] = '1' WHERE id = 5;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "cannot replace existing key", detail: "The path assumes key is a composite object, but it is a scalar value.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE js SET j[-10] = '1' WHERE id = 4;",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "path element at position 1 is out of range: -10", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE js SET j['x'] = '1' WHERE id = 4;",
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"path element at position 1 is not an integer: "x""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE js SET j[NULL::int] = '1' WHERE id = 1;",
+                    expected: Expected::Error(Diagnostic { code: "22004", message: "jsonb subscript in assignment must not be null", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ('[1, "2", null]'::jsonb)[1:];"#,
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "jsonb subscript does not support slices", position: 34, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT ('[1, "2", null]'::jsonb)[1:2];"#,
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "jsonb subscript does not support slices", position: 36, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
