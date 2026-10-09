@@ -174,6 +174,7 @@ func Init() {
 	initNumNulls()
 	initObjDescription()
 	initOctetLength()
+	initParseIdent()
 	initPgAvailableExtensionVersions()
 	initPgBackendPid()
 	initPgCharToEncoding()
