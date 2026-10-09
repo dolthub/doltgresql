@@ -138,6 +138,9 @@ func (db *Database) removeRolePrivileges(roleID RoleID) {
 			delete(db.routinePrivileges.Data, key)
 		}
 	}
+	db.defaultPrivileges.removeRoles(func(id RoleID) bool {
+		return id == roleID
+	})
 }
 
 // removeRoleFromPrivilegeMap removes grants made by the given role and reports whether the map is empty.
@@ -310,7 +313,7 @@ func newEmptyDatabase() Database {
 		sequencePrivileges: NewSequencePrivileges(),
 		routinePrivileges:  NewRoutinePrivileges(),
 		roleMembership:     NewRoleMembership(),
-    defaultPrivileges:  NewDefaultPrivileges(),
+		defaultPrivileges:  NewDefaultPrivileges(),
 	}
 }
 

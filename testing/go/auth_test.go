@@ -177,6 +177,8 @@ func TestAlterDefaultPrivileges(t *testing.T) {
 				authTestCreateSuperUser,
 				`CREATE USER func_reader PASSWORD 'a';`,
 				`GRANT USAGE ON SCHEMA public TO func_reader;`,
+				// EXECUTE on functions is granted to PUBLIC by default, so it must be revoked for this test
+				`ALTER DEFAULT PRIVILEGES FOR ROLE auth_test_super REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -214,6 +216,115 @@ func TestAlterDefaultPrivileges(t *testing.T) {
 					Username: `func_reader`,
 					Password: `a`,
 					Expected: []sql.Row{{42}},
+				},
+			},
+		},
+		{
+			Name: `functions are executable by PUBLIC by default`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER func_caller PASSWORD 'a';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE FUNCTION public_func() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT public_func();`,
+					Username: `func_caller`,
+					Password: `a`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR ROLE auth_test_super REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE FUNCTION private_func() RETURNS int AS $$ BEGIN RETURN 2; END; $$ LANGUAGE plpgsql;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       `SELECT private_func();`,
+					Username:    `func_caller`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `SELECT public_func();`,
+					Username: `func_caller`,
+					Password: `a`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `ALTER DEFAULT PRIVILEGES FOR ROLE auth_test_super GRANT EXECUTE ON FUNCTIONS TO PUBLIC;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE FUNCTION public_again() RETURNS int AS $$ BEGIN RETURN 3; END; $$ LANGUAGE plpgsql;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT public_again();`,
+					Username: `func_caller`,
+					Password: `a`,
+					Expected: []sql.Row{{3}},
+				},
+			},
+		},
+		{
+			Name: `DROP ROLE removes default privileges referencing the role`,
+			SetUpScript: []string{
+				authTestCreateSuperUser,
+				`CREATE USER dp_owner PASSWORD 'a';`,
+				`CREATE USER dp_grantee PASSWORD 'a';`,
+				`CREATE USER dp_other PASSWORD 'a';`,
+				`GRANT CREATE ON SCHEMA public TO dp_owner;`,
+				`ALTER DEFAULT PRIVILEGES FOR ROLE dp_owner REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
+				`ALTER DEFAULT PRIVILEGES FOR ROLE dp_owner GRANT EXECUTE ON FUNCTIONS TO dp_grantee;`,
+				`ALTER DEFAULT PRIVILEGES FOR ROLE dp_owner GRANT SELECT ON TABLES TO dp_grantee;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `DROP ROLE dp_grantee;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `CREATE FUNCTION dp_func() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+					Username: `dp_owner`,
+					Password: `a`,
+					Expected: []sql.Row{},
+				},
+				{
+					// Dropping the only grantee must not undo the revoke from PUBLIC
+					Query:       `SELECT dp_func();`,
+					Username:    `dp_other`,
+					Password:    `a`,
+					ExpectedErr: `denied`,
+				},
+				{
+					Query:    `DROP FUNCTION dp_func();`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DROP ROLE dp_owner;`,
+					Username: authTestSuperUser,
+					Password: authTestSuperPass,
+					Expected: []sql.Row{},
 				},
 			},
 		},
@@ -650,6 +761,8 @@ func TestAuthTests(t *testing.T) {
 				`CREATE TABLE drop_role_table (v integer);`,
 				`INSERT INTO drop_role_table VALUES (1);`,
 				`CREATE SEQUENCE drop_role_sequence;`,
+				// EXECUTE on functions is granted to PUBLIC by default, so it must be revoked for this test
+				`ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
 				`CREATE FUNCTION drop_role_routine() RETURNS integer AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
 				`CREATE ROLE dropped_group;`,
 				`CREATE USER surviving_member PASSWORD 'password';`,
@@ -1170,6 +1283,8 @@ func TestAuthTests(t *testing.T) {
 			SetUpScript: []string{
 				authTestCreateSuperUser,
 				`CREATE USER user1 PASSWORD 'a';`,
+				// EXECUTE on functions is granted to PUBLIC by default, so it must be revoked for this test
+				`ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
 				"CREATE FUNCTION testfunc1() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql",
 				"CREATE FUNCTION testfunc2() RETURNS int AS $$ BEGIN RETURN 2; END; $$ LANGUAGE plpgsql",
 			},
@@ -1232,6 +1347,8 @@ func TestAuthTests(t *testing.T) {
 				authTestCreateSuperUser,
 				`CREATE USER user1 PASSWORD 'a';`,
 				`CREATE TABLE test (v1 TEXT);`,
+				// EXECUTE on functions is granted to PUBLIC by default, so it must be revoked for this test
+				`ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
 				`CREATE PROCEDURE public.interpreted_example_1(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('1' || input); END; $$ LANGUAGE plpgsql;`,
 				`CREATE PROCEDURE interpreted_example_3(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('3' || input); END; $$ LANGUAGE plpgsql;`,
 				`GRANT ALL PRIVILEGES ON test TO user1 WITH GRANT OPTION;`,

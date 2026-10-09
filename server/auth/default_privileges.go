@@ -56,7 +56,7 @@ func AddDefaultPrivilege(key DefaultPrivilegeKey, grantee RoleID, privilege Gran
 	if !ok {
 		dpv = DefaultPrivilegeValue{
 			Key:      key,
-			Grantees: make(map[RoleID]DefaultPrivilegeGranteeValue),
+			Grantees: builtInDefaultGrantees(key),
 		}
 	}
 	granteeValue, ok := dpv.Grantees[grantee]
@@ -73,7 +73,7 @@ func AddDefaultPrivilege(key DefaultPrivilegeKey, grantee RoleID, privilege Gran
 	}
 	privilegeMap[privilege] = withGrantOption
 	dpv.Grantees[grantee] = granteeValue
-	globalDatabase.defaultPrivileges.Data[key] = dpv
+	storeDefaultPrivilegeValue(dpv)
 }
 
 // RemoveDefaultPrivilege removes a default privilege entry from the global database.
@@ -81,7 +81,14 @@ func AddDefaultPrivilege(key DefaultPrivilegeKey, grantee RoleID, privilege Gran
 func RemoveDefaultPrivilege(key DefaultPrivilegeKey, grantee RoleID, privilege GrantedPrivilege, grantOptionOnly bool) {
 	dpv, ok := globalDatabase.defaultPrivileges.Data[key]
 	if !ok {
-		return
+		builtIn := builtInDefaultGrantees(key)
+		if len(builtIn) == 0 {
+			return
+		}
+		dpv = DefaultPrivilegeValue{
+			Key:      key,
+			Grantees: builtIn,
+		}
 	}
 	granteeValue, ok := dpv.Grantees[grantee]
 	if !ok {
@@ -116,11 +123,108 @@ func RemoveDefaultPrivilege(key DefaultPrivilegeKey, grantee RoleID, privilege G
 	} else {
 		dpv.Grantees[grantee] = granteeValue
 	}
-	if len(dpv.Grantees) == 0 {
-		delete(globalDatabase.defaultPrivileges.Data, key)
+	storeDefaultPrivilegeValue(dpv)
+}
+
+// storeDefaultPrivilegeValue stores the given value in the global database. An entry that matches the built-in defaults
+// is removed, as is an empty schema-specific entry. An empty global entry is kept, since it overrides the built-in
+// defaults (e.g. after revoking EXECUTE on functions from PUBLIC).
+func storeDefaultPrivilegeValue(dpv DefaultPrivilegeValue) {
+	builtIn := builtInDefaultGrantees(dpv.Key)
+	if (len(builtIn) == 0 && len(dpv.Grantees) == 0) || (len(builtIn) > 0 && defaultGranteesEqual(dpv.Grantees, builtIn)) {
+		delete(globalDatabase.defaultPrivileges.Data, dpv.Key)
 	} else {
-		globalDatabase.defaultPrivileges.Data[key] = dpv
+		globalDatabase.defaultPrivileges.Data[dpv.Key] = dpv
 	}
+}
+
+// builtInDefaultGrantees returns the privileges that PostgreSQL grants to non-owners on newly created objects when no
+// global default privilege entry exists for the owner. Only global (non-schema-specific) keys have built-in defaults,
+// as schema-specific entries are applied in addition to the global ones.
+func builtInDefaultGrantees(key DefaultPrivilegeKey) map[RoleID]DefaultPrivilegeGranteeValue {
+	grantees := make(map[RoleID]DefaultPrivilegeGranteeValue)
+	if !hasBuiltInDefaults(key) {
+		return grantees
+	}
+	switch key.ObjectType {
+	case PrivilegeObject_FUNCTION:
+		public := GetRole("public")
+		if !public.IsValid() {
+			return grantees
+		}
+		grantees[public.ID()] = DefaultPrivilegeGranteeValue{
+			Grantee: public.ID(),
+			Privileges: map[Privilege]map[GrantedPrivilege]bool{
+				Privilege_EXECUTE: {GrantedPrivilege{Privilege: Privilege_EXECUTE, GrantedBy: key.OwnerRole}: false},
+			},
+		}
+	}
+	return grantees
+}
+
+// hasBuiltInDefaults returns whether PostgreSQL grants privileges to non-owners on new objects for the given key when
+// no default privilege entry exists. For such keys, an entry without any grantees is meaningful, as it removes the
+// built-in defaults.
+func hasBuiltInDefaults(key DefaultPrivilegeKey) bool {
+	return key.Schema == "" && key.ObjectType == PrivilegeObject_FUNCTION
+}
+
+// removeRoles removes the default privileges owned by, granted to, or granted by any role for which |isRemoved|
+// returns true.
+func (dp *DefaultPrivileges) removeRoles(isRemoved func(RoleID) bool) {
+	for key, value := range dp.Data {
+		if isRemoved(key.OwnerRole) {
+			delete(dp.Data, key)
+			continue
+		}
+		for grantee, granteeValue := range value.Grantees {
+			if isRemoved(grantee) {
+				delete(value.Grantees, grantee)
+				continue
+			}
+			for privilege, grants := range granteeValue.Privileges {
+				for grant := range grants {
+					if isRemoved(grant.GrantedBy) {
+						delete(grants, grant)
+					}
+				}
+				if len(grants) == 0 {
+					delete(granteeValue.Privileges, privilege)
+				}
+			}
+			if len(granteeValue.Privileges) == 0 {
+				delete(value.Grantees, grantee)
+			}
+		}
+		if len(value.Grantees) == 0 && !hasBuiltInDefaults(key) {
+			delete(dp.Data, key)
+		}
+	}
+}
+
+// defaultGranteesEqual returns whether the two grantee maps contain the same privileges.
+func defaultGranteesEqual(a, b map[RoleID]DefaultPrivilegeGranteeValue) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for grantee, aValue := range a {
+		bValue, ok := b[grantee]
+		if !ok || len(aValue.Privileges) != len(bValue.Privileges) {
+			return false
+		}
+		for privilege, aMap := range aValue.Privileges {
+			bMap, ok := bValue.Privileges[privilege]
+			if !ok || len(aMap) != len(bMap) {
+				return false
+			}
+			for grantedPrivilege, withGrantOption := range aMap {
+				if bWithGrantOption, ok := bMap[grantedPrivilege]; !ok || bWithGrantOption != withGrantOption {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // GetAllDefaultPrivileges returns all default privilege entries.
@@ -133,8 +237,9 @@ func GetAllDefaultPrivileges() []DefaultPrivilegeValue {
 }
 
 // ApplyDefaultPrivilegesForNewTable applies any matching default privileges to a newly created table.
-// Must be called under LockWrite.
-func ApplyDefaultPrivilegesForNewTable(ownerRoleID RoleID, schemaName, tableName string) {
+// Returns whether any privileges were added. Must be called under LockWrite.
+func ApplyDefaultPrivilegesForNewTable(ownerRoleID RoleID, schemaName, tableName string) bool {
+	applied := false
 	for key, dpv := range globalDatabase.defaultPrivileges.Data {
 		if key.OwnerRole != ownerRoleID || key.ObjectType != PrivilegeObject_TABLE {
 			continue
@@ -145,6 +250,7 @@ func ApplyDefaultPrivilegesForNewTable(ownerRoleID RoleID, schemaName, tableName
 		for granteeID, granteeValue := range dpv.Grantees {
 			for _, privilegeMap := range granteeValue.Privileges {
 				for grantedPriv, withGrantOption := range privilegeMap {
+					applied = true
 					AddTablePrivilege(TablePrivilegeKey{
 						Role:  granteeID,
 						Table: doltdb.TableName{Name: tableName, Schema: schemaName},
@@ -153,11 +259,13 @@ func ApplyDefaultPrivilegesForNewTable(ownerRoleID RoleID, schemaName, tableName
 			}
 		}
 	}
+	return applied
 }
 
 // ApplyDefaultPrivilegesForNewSequence applies any matching default privileges to a newly created sequence.
-// Must be called under LockWrite.
-func ApplyDefaultPrivilegesForNewSequence(ownerRoleID RoleID, schemaName, seqName string) {
+// Returns whether any privileges were added. Must be called under LockWrite.
+func ApplyDefaultPrivilegesForNewSequence(ownerRoleID RoleID, schemaName, seqName string) bool {
+	applied := false
 	for key, dpv := range globalDatabase.defaultPrivileges.Data {
 		if key.OwnerRole != ownerRoleID || key.ObjectType != PrivilegeObject_SEQUENCE {
 			continue
@@ -168,6 +276,7 @@ func ApplyDefaultPrivilegesForNewSequence(ownerRoleID RoleID, schemaName, seqNam
 		for granteeID, granteeValue := range dpv.Grantees {
 			for _, privilegeMap := range granteeValue.Privileges {
 				for grantedPriv, withGrantOption := range privilegeMap {
+					applied = true
 					AddSequencePrivilege(SequencePrivilegeKey{
 						Role:   granteeID,
 						Schema: schemaName,
@@ -177,11 +286,28 @@ func ApplyDefaultPrivilegesForNewSequence(ownerRoleID RoleID, schemaName, seqNam
 			}
 		}
 	}
+	return applied
 }
 
 // ApplyDefaultPrivilegesForNewRoutine applies any matching default privileges to a newly created function or procedure.
-// Must be called under LockWrite.
-func ApplyDefaultPrivilegesForNewRoutine(ownerRoleID RoleID, schemaName, routineName string) {
+// Returns whether any privileges were added. Must be called under LockWrite.
+func ApplyDefaultPrivilegesForNewRoutine(ownerRoleID RoleID, schemaName, routineName string) bool {
+	applied := false
+	globalKey := DefaultPrivilegeKey{OwnerRole: ownerRoleID, ObjectType: PrivilegeObject_FUNCTION}
+	if _, ok := globalDatabase.defaultPrivileges.Data[globalKey]; !ok {
+		for granteeID, granteeValue := range builtInDefaultGrantees(globalKey) {
+			for _, privilegeMap := range granteeValue.Privileges {
+				for grantedPriv, withGrantOption := range privilegeMap {
+					applied = true
+					AddRoutinePrivilege(RoutinePrivilegeKey{
+						Role:   granteeID,
+						Schema: schemaName,
+						Name:   routineName,
+					}, grantedPriv, withGrantOption)
+				}
+			}
+		}
+	}
 	for key, dpv := range globalDatabase.defaultPrivileges.Data {
 		if key.OwnerRole != ownerRoleID || key.ObjectType != PrivilegeObject_FUNCTION {
 			continue
@@ -192,6 +318,7 @@ func ApplyDefaultPrivilegesForNewRoutine(ownerRoleID RoleID, schemaName, routine
 		for granteeID, granteeValue := range dpv.Grantees {
 			for _, privilegeMap := range granteeValue.Privileges {
 				for grantedPriv, withGrantOption := range privilegeMap {
+					applied = true
 					AddRoutinePrivilege(RoutinePrivilegeKey{
 						Role:   granteeID,
 						Schema: schemaName,
@@ -201,6 +328,7 @@ func ApplyDefaultPrivilegesForNewRoutine(ownerRoleID RoleID, schemaName, routine
 			}
 		}
 	}
+	return applied
 }
 
 // DefaultPrivilegeObjTypeChar returns the PostgreSQL pg_default_acl defaclobjtype character for a PrivilegeObject.

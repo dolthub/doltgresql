@@ -18,6 +18,7 @@ import (
 	"context"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
@@ -61,16 +62,18 @@ func (n *AlterDefaultPrivileges) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIt
 		return nil, errors.New("ALTER DEFAULT PRIVILEGES does not yet support CASCADE")
 	}
 	var err error
+	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
 		err = n.execute(ctx)
 		if err != nil {
 			return
 		}
-		err = auth.PersistChanges()
+		err = auth.PersistChanges(ctx, &rsc)
 	})
 	if err != nil {
 		return nil, err
 	}
+	auth.WaitForReplication(ctx, rsc)
 	return sql.RowsToRowIter(), nil
 }
 
@@ -147,11 +150,7 @@ func (n *AlterDefaultPrivileges) execute(ctx *sql.Context) error {
 func (n *AlterDefaultPrivileges) resolveOwnerRole(ctx *sql.Context) (auth.Role, error) {
 	// empty means current user
 	if n.OwnerRole == "" {
-		userRole := auth.GetRole(ctx.Client().User)
-		if !userRole.IsValid() {
-			return auth.Role{}, errors.Errorf(`role "%s" does not exist`, ctx.Client().User)
-		}
-		return userRole, nil
+		return auth.CurrentRoleLocked(ctx)
 	} else {
 		role := auth.GetRole(n.OwnerRole)
 		if !role.IsValid() {
@@ -159,4 +158,28 @@ func (n *AlterDefaultPrivileges) resolveOwnerRole(ctx *sql.Context) (auth.Role, 
 		}
 		return role, nil
 	}
+}
+
+// applyDefaultPrivilegesForNewObject applies the default privileges for an object that the current role just created,
+// using |apply| to add the privileges for the given owner. The auth database is only persisted when |apply| reports
+// that privileges were added, so that creating objects does not rewrite (and replicate) it unnecessarily.
+func applyDefaultPrivilegesForNewObject(ctx *sql.Context, apply func(owner auth.RoleID) bool) error {
+	var err error
+	var rsc doltdb.ReplicationStatusController
+	auth.LockWrite(func() {
+		owner, roleErr := auth.CurrentRoleLocked(ctx)
+		if roleErr != nil {
+			// The object has already been created, and without a session role there is no owner whose default
+			// privileges apply (such as for internal contexts), so there is nothing to do.
+			return
+		}
+		if apply(owner.ID()) {
+			err = auth.PersistChanges(ctx, &rsc)
+		}
+	})
+	if err != nil {
+		return err
+	}
+	auth.WaitForReplication(ctx, rsc)
+	return nil
 }

@@ -102,22 +102,16 @@ func (c *CreateTable) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sq
 		}
 	}
 
-	ownerRole := auth.GetRole(ctx.Client().User)
-	if ownerRole.IsValid() {
-		return &createTableDefaultPrivsIter{
-			inner:      createTableIter,
-			ownerID:    ownerRole.ID(),
-			schemaName: schemaName,
-			tableName:  c.gmsCreateTable.Name(),
-		}, nil
-	}
-	return createTableIter, nil
+	return &createTableDefaultPrivsIter{
+		inner:      createTableIter,
+		schemaName: schemaName,
+		tableName:  c.gmsCreateTable.Name(),
+	}, nil
 }
 
 // createTableDefaultPrivsIter wraps the create table iter to apply default privileges after creation.
 type createTableDefaultPrivsIter struct {
 	inner      sql.RowIter
-	ownerID    auth.RoleID
 	schemaName string
 	tableName  string
 	applied    bool
@@ -127,10 +121,8 @@ func (i *createTableDefaultPrivsIter) Next(ctx *sql.Context) (sql.Row, error) {
 	row, err := i.inner.Next(ctx)
 	if err == io.EOF && !i.applied {
 		i.applied = true
-		var applyErr error
-		auth.LockWrite(func() {
-			auth.ApplyDefaultPrivilegesForNewTable(i.ownerID, i.schemaName, i.tableName)
-			applyErr = auth.PersistChanges()
+		applyErr := applyDefaultPrivilegesForNewObject(ctx, func(owner auth.RoleID) bool {
+			return auth.ApplyDefaultPrivilegesForNewTable(owner, i.schemaName, i.tableName)
 		})
 		if applyErr != nil {
 			return nil, applyErr

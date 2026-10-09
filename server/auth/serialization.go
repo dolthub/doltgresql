@@ -76,7 +76,7 @@ func (db *Database) deserialize(data []byte) error {
 		err = db.deserializeV0(reader)
 	case 1:
 		err = db.deserializeV1(reader)
-  case 2:
+	case 2:
 		err = db.deserializeV2(reader)
 	default:
 		return errors.Errorf("Authorization database format %d is not supported, please upgrade Doltgres", version)
@@ -129,6 +129,10 @@ func (db *Database) removeInvalidRoleReferences() {
 			delete(db.routinePrivileges.Data, key)
 		}
 	}
+	db.defaultPrivileges.removeRoles(func(id RoleID) bool {
+		_, ok := db.rolesByID[id]
+		return !ok
+	})
 	for member, groups := range db.roleMembership.Data {
 		if _, ok := db.rolesByID[member]; !ok {
 			delete(db.roleMembership.Data, member)
@@ -186,8 +190,8 @@ func (db *Database) deserializeV0(reader *utils.Reader) error {
 	db.routinePrivileges.deserialize(0, reader)
 	// Read the role membership
 	db.roleMembership.deserialize(0, reader)
-	// V0 has no default privileges; initialize empty
-	db.defaultPrivileges = NewDefaultPrivileges()
+	// Read the default privileges
+	db.defaultPrivileges.deserialize(0, reader)
 	return nil
 }
 
@@ -215,7 +219,7 @@ func (db *Database) deserializeV1(reader *utils.Reader) error {
 	db.routinePrivileges.deserialize(1, reader)
 	// Read the role membership
 	db.roleMembership.deserialize(1, reader)
-	// V1 has no default privileges; initialize empty
+	// Read the default privileges
 	db.defaultPrivileges.deserialize(1, reader)
 	return nil
 }

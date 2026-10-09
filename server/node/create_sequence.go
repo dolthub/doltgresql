@@ -242,16 +242,11 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 			return nil, err
 		}
 	}
-	var authErr error
-	auth.LockWrite(func() {
-		ownerRole := auth.GetRole(ctx.Client().User)
-		if ownerRole.IsValid() {
-			auth.ApplyDefaultPrivilegesForNewSequence(ownerRole.ID(), c.sequence.Id.SchemaName(), c.sequence.Id.SequenceName())
-		}
-		authErr = auth.PersistChanges()
+	err = applyDefaultPrivilegesForNewObject(ctx, func(owner auth.RoleID) bool {
+		return auth.ApplyDefaultPrivilegesForNewSequence(owner, c.sequence.Id.SchemaName(), c.sequence.Id.SequenceName())
 	})
-	if authErr != nil {
-		return nil, authErr
+	if err != nil {
+		return nil, err
 	}
 	return sql.RowsToRowIter(), nil
 }

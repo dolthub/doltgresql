@@ -144,16 +144,11 @@ func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, err
 	if err != nil {
 		return nil, err
 	}
-	var authErr error
-	auth.LockWrite(func() {
-		ownerRole := auth.GetRole(ctx.Client().User)
-		if ownerRole.IsValid() {
-			auth.ApplyDefaultPrivilegesForNewRoutine(ownerRole.ID(), schemaName, c.ProcedureName)
-		}
-		authErr = auth.PersistChanges()
+	err = applyDefaultPrivilegesForNewObject(ctx, func(owner auth.RoleID) bool {
+		return auth.ApplyDefaultPrivilegesForNewRoutine(owner, schemaName, c.ProcedureName)
 	})
-	if authErr != nil {
-		return nil, authErr
+	if err != nil {
+		return nil, err
 	}
 	return sql.RowsToRowIter(), nil
 }
