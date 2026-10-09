@@ -618,6 +618,7 @@ impl Ctx<'_> {
         let column = &mut alteration.table.columns[i];
         column.ty = ty;
         column.encoding = ty.encoding();
+        column.legacy_array = false;
         alteration.rebuild = true;
         Ok(())
     }

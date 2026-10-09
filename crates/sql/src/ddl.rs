@@ -231,6 +231,7 @@ impl TableParts {
             mysql_type: String::new(),
             comment: String::new(),
             identity: 0,
+            legacy_array: false,
         };
         check_constraint_attributes(&def.constraints)?;
         let deferrals = column_deferrals(&def.constraints);
@@ -980,6 +981,7 @@ impl Ctx<'_> {
                     mysql_type: String::new(),
                     comment: String::new(),
                     identity: 0,
+                    legacy_array: false,
                 }
             })
             .collect();
@@ -1493,6 +1495,7 @@ impl Ctx<'_> {
                 mysql_type: String::new(),
                 comment: String::new(),
                 identity: 0,
+                legacy_array: false,
             });
         }
         let index = IndexDef {

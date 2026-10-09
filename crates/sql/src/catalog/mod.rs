@@ -111,8 +111,9 @@ pub struct ColumnType {
 }
 
 impl ColumnType {
-    /// serialized returns the column type as a Dolt schema stores it: `extended_` and the hex of the serialized type.
-    pub fn serialized(&self) -> Result<String> {
+    /// serialized returns the column type as a Dolt schema stores it: `extended_` and the hex of the serialized type,
+    /// whose version is the one older versions wrote for a legacy array type.
+    pub fn serialized(&self, legacy_array: bool) -> Result<String> {
         let mut definition = match builtin_type(self.oid) {
             Some(t) => t.definition.clone(),
             None => crate::usertypes::get(self.oid)
@@ -120,6 +121,9 @@ impl ColumnType {
                 .ok_or_else(|| PgError::internal(format!("unknown type OID {}", self.oid)))?,
         };
         definition.att_typ_mod = self.modifier;
+        if legacy_array {
+            definition.version = 0;
+        }
         let hex: String = definition.serialize().iter().map(|b| format!("{b:02x}")).collect();
         Ok(format!("extended_{hex}"))
     }
@@ -286,7 +290,7 @@ mod tests {
     #[test]
     fn column_types_serialize_as_go_does() {
         let int8 = ColumnType { oid: 20, modifier: -1 };
-        assert!(int8.serialized().unwrap().ends_with("3823020a0470675f636174616c6f67696e7438000006626967696e74"));
+        assert!(int8.serialized(false).unwrap().ends_with("3823020a0470675f636174616c6f67696e7438000006626967696e74"));
         assert_eq!(int8.encoding(), encoding::INT64);
         let varchar = resolve_type(&["pg_catalog".into(), "varchar".into()], &["10".into()], false, None).unwrap();
         assert_eq!((varchar.modifier, varchar.encoding()), (14, encoding::STRING));

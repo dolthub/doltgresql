@@ -2848,6 +2848,7 @@ pub(crate) fn assignable(from: u32, to: u32) -> bool {
         || (is_oid_type(from) && matches!(to, oid::INT4 | oid::INT8))
         || (to == oid::CHAR && matches!(from, oid::TEXT | oid::VARCHAR | oid::BPCHAR))
         || (from == oid::CHAR && is_string(to))
+        || matches!((from, to), (oid::JSON, oid::JSONB) | (oid::JSONB, oid::JSON))
         || crate::casts::context(from, to).is_some_and(|c| c >= crate::casts::ASSIGNMENT)
 }
 

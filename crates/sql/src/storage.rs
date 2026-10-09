@@ -29,6 +29,7 @@ use crate::types::Value;
 
 /// encode_field returns a value of the type as a tuple field of the encoding, or None for NULL.
 pub fn encode_field(value: &Value, field_encoding: u8, ty: ColumnType) -> Result<Option<Vec<u8>>> {
+    let field_encoding = addressed(field_encoding).unwrap_or(field_encoding);
     Ok(Some(match (value, field_encoding) {
         (Value::Null, _) => return Ok(None),
         (Value::Int2(i), encoding::INT16) => i.to_le_bytes().to_vec(),
@@ -60,11 +61,15 @@ pub fn encode_field(value: &Value, field_encoding: u8, ty: ColumnType) -> Result
 pub fn decode_field(db: &Database, field: Option<&[u8]>, field_encoding: u8, ty: ColumnType) -> Result<Value> {
     let Some(field) = field else { return Ok(Value::Null) };
     let resolved;
-    let field = if is_adaptive(field_encoding) {
+    let (field, field_encoding) = if let Some(adaptive) = addressed(field_encoding) {
+        let address = serial::hash(field)?;
+        resolved = if address.is_empty() { Vec::new() } else { prolly::read_blob(db, &address)? };
+        (resolved.as_slice(), adaptive)
+    } else if is_adaptive(field_encoding) {
         resolved = adaptive_bytes(db, field)?;
-        resolved.as_slice()
+        (resolved.as_slice(), field_encoding)
     } else {
-        field
+        (field, field_encoding)
     };
     let corrupt = || PgError::internal(format!("a field of encoding {field_encoding} has {} bytes", field.len()));
     Ok(match field_encoding {
@@ -548,6 +553,17 @@ pub fn is_adaptive(field_encoding: u8) -> bool {
     )
 }
 
+/// addressed returns the adaptive encoding of the same values for an encoding that always stores its values out of
+/// band, which older Doltgres versions wrote.
+fn addressed(field_encoding: u8) -> Option<u8> {
+    match field_encoding {
+        encoding::STRING_ADDR => Some(encoding::STRING_ADAPTIVE),
+        encoding::BYTES_ADDR => Some(encoding::BYTES_ADAPTIVE),
+        encoding::JSON_ADDR => Some(encoding::JSON_ADAPTIVE),
+        _ => None,
+    }
+}
+
 /// marks_adaptive reports whether a column of an encoding has the schema's adaptive encoding flags, which Dolt leaves
 /// off extended types since they serialize themselves.
 pub fn marks_adaptive(field_encoding: u8) -> bool {
@@ -594,14 +610,20 @@ fn varint(x: u64) -> Vec<u8> {
 /// out_of_band writes an adaptive value's bytes as a blob and returns its out-of-band form: the length, then the
 /// blob's address.
 fn out_of_band(db: &mut Database, bytes: &[u8]) -> Result<Vec<u8>> {
+    let mut field = varint(bytes.len() as u64);
+    field.extend_from_slice(&blob_address(db, bytes)?);
+    Ok(field)
+}
+
+/// blob_address writes bytes as a blob and returns its address, which is all zeros for no bytes, as Dolt's
+/// BlobBuilder makes it.
+fn blob_address(db: &mut Database, bytes: &[u8]) -> Result<Vec<u8>> {
     let mut sink = |_: Hash, node: &[u8]| -> store::Result<()> {
         db.write_value(node.to_vec()).map_err(|err| store::Error::Corrupt(err.to_string()))?;
         Ok(())
     };
-    let (address, _) = prolly::write_blob(bytes, &mut sink)?.ok_or_else(|| PgError::internal("an empty blob"))?;
-    let mut field = varint(bytes.len() as u64);
-    field.extend_from_slice(&address.0);
-    Ok(field)
+    let address = prolly::write_blob(bytes, &mut sink)?.map_or(Hash::default(), |(address, _)| address);
+    Ok(address.0.to_vec())
 }
 
 /// place_adaptive moves adaptive values out of band, largest first, until the tuple fits the target size, as Dolt's
@@ -614,6 +636,10 @@ pub fn place_adaptive(
 ) -> Result<()> {
     for (field, &field_encoding) in fields.iter_mut().zip(encodings) {
         if let Some(bytes) = field
+            && addressed(field_encoding).is_some()
+        {
+            *bytes = blob_address(db, &bytes[1..])?;
+        } else if let Some(bytes) = field
             && is_adaptive(field_encoding)
             && bytes.len() > target
         {

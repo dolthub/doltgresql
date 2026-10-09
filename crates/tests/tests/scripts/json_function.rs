@@ -4307,3 +4307,58 @@ fn test_jsonpath() {
         },
     ]);
 }
+
+#[test]
+fn test_json_assignment_casts() {
+    run_scripts(&[
+        ScriptTest {
+            name: "JSON and JSONB convert to each other on assignment",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE json_assign (pk INT PRIMARY KEY, a JSONB, b JSON);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO json_assign VALUES (1, json_build_object('pk', 1), '{"x": 1}'::jsonb);"#,
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"INSERT INTO json_assign VALUES (2, '{"y": [1, 2]}'::json, jsonb_build_object('pk', 2));"#,
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE json_assign SET a = json_build_object('pk', pk, 'k', 'v'), b = jsonb_build_array(pk);",
+                    expected: Expected::Tag("UPDATE 2"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk, a, b FROM json_assign ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("a", JSONB), Column("b", JSON)],
+                        rows: &[
+                            &[T("1"), T(r#"{"k": "v", "pk": 1}"#), T("[1]")],
+                            &[T("2"), T(r#"{"k": "v", "pk": 2}"#), T("[2]")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(a), pg_typeof(b) FROM json_assign WHERE pk = 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE), Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("jsonb"), T("json")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

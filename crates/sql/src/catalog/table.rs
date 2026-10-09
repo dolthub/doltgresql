@@ -25,7 +25,7 @@ use serial::{Message, TableSchema};
 use store::Hash;
 
 use super::{ColumnType, builtin_type_by_id};
-use crate::error::{PgError, Result};
+use crate::error::{PgError, Result, code};
 use crate::storage::{compare_key_field, decode_field, encode_field, place_adaptive};
 use crate::types::Value;
 
@@ -53,6 +53,9 @@ pub struct ColumnDef {
     /// Whether the column is an identity column, `a` for GENERATED ALWAYS and `d` for BY DEFAULT, or 0, as
     /// pg_attribute's attidentity says.
     pub identity: u8,
+    /// Whether the column's array type has the version that older versions wrote, which cannot hold multidimensional
+    /// values until ALTER COLUMN TYPE upgrades it.
+    pub legacy_array: bool,
 }
 
 /// Check is a check constraint: its name and its expression's SQL text.
@@ -143,18 +146,19 @@ pub struct Primary {
 }
 
 /// column_type reads a column type from its form in a Dolt schema: a Doltgres type, or one of the MySQL types of
-/// Dolt's own tables, such as dolt_schemas.
-fn column_type(sql_type: &[u8], user_types: &mut Vec<objects::SerializedType>) -> Result<ColumnType> {
+/// Dolt's own tables, such as dolt_schemas, with whether it is an array type of the version older versions wrote.
+fn column_type(sql_type: &[u8], user_types: &mut Vec<objects::SerializedType>) -> Result<(ColumnType, bool)> {
     let unsupported = || PgError::unsupported(format!("the column type {}", String::from_utf8_lossy(sql_type)));
     let Some(hex) = sql_type.strip_prefix(b"extended_") else {
         let text = String::from_utf8_lossy(sql_type);
         let base = text.split_whitespace().next().unwrap_or_default();
-        return Ok(match base {
-            "text" | "tinytext" | "mediumtext" | "longtext" => ColumnType { oid: crate::oid::TEXT, modifier: -1 },
-            "json" => ColumnType { oid: crate::oid::JSON, modifier: -1 },
-            _ if base.starts_with("varchar(") => ColumnType { oid: crate::oid::TEXT, modifier: -1 },
+        let oid = match base {
+            "text" | "tinytext" | "mediumtext" | "longtext" => crate::oid::TEXT,
+            "json" => crate::oid::JSON,
+            _ if base.starts_with("varchar(") => crate::oid::TEXT,
             _ => return Err(unsupported()),
-        });
+        };
+        return Ok((ColumnType { oid, modifier: -1 }, false));
     };
     let bytes: Vec<u8> = hex
         .chunks(2)
@@ -162,7 +166,10 @@ fn column_type(sql_type: &[u8], user_types: &mut Vec<objects::SerializedType>) -
         .collect::<Option<_>>()
         .ok_or_else(unsupported)?;
     let definition = objects::SerializedType::deserialize(&bytes)?;
-    let modifier = definition.att_typ_mod;
+    let (modifier, legacy_array) = (
+        definition.att_typ_mod,
+        definition.version == 0 && definition.typ_category == b"A" && definition.typ_type == b"b",
+    );
     let oid = match builtin_type_by_id(&definition.id) {
         Some(builtin) => builtin.oid,
         None => {
@@ -170,7 +177,7 @@ fn column_type(sql_type: &[u8], user_types: &mut Vec<objects::SerializedType>) -
             crate::usertypes::register(definition)
         }
     };
-    Ok(ColumnType { oid, modifier })
+    Ok((ColumnType { oid, modifier }, legacy_array))
 }
 
 /// CACHE_LIMIT is how many tables and schemas a thread keeps decoded before it starts over.
@@ -265,9 +272,10 @@ impl TableDef {
                 positions.push(None);
                 continue;
             }
+            let (ty, legacy_array) = column_type(c.sql_type, user_types)?;
             let column = ColumnDef {
                 name: String::from_utf8_lossy(c.name).into_owned(),
-                ty: column_type(c.sql_type, user_types)?,
+                ty,
                 tag: c.tag,
                 encoding: c.encoding,
                 nullable: c.nullable,
@@ -280,6 +288,7 @@ impl TableDef {
                 },
                 comment: String::from_utf8_lossy(c.comment).into_owned(),
                 identity: c.identity,
+                legacy_array,
             };
             if c.hidden_system && c.is_virtual {
                 positions.push(Some(HIDDEN_BASE + hidden.len()));
@@ -566,7 +575,18 @@ impl TableDef {
     /// encode_row returns a row's key and value tuples. A keyless row's value starts with its cardinality, and its key
     /// is a hash of the rest of the value, as Dolt's keyless tables store them.
     pub fn encode_row(&self, db: &mut Database, row: &[Value]) -> Result<(Vec<u8>, Vec<u8>)> {
-        let field = |i: usize| encode_field(&row[i], self.columns[i].encoding, self.columns[i].ty);
+        let field = |i: usize| {
+            if let (true, Value::Array(array)) = (self.columns[i].legacy_array, &row[i])
+                && array.dims.len() > 1
+            {
+                return Err(PgError::new(
+                    code::FEATURE_NOT_SUPPORTED,
+                    "multidimensional arrays are not supported by the column's type version, alter the column's type \
+                     to upgrade it",
+                ));
+            }
+            encode_field(&row[i], self.columns[i].encoding, self.columns[i].ty)
+        };
         let mut values: Vec<Option<Vec<u8>>> = Vec::with_capacity(self.value_columns.len() + 1);
         if self.keyless() {
             values.push(Some(1u64.to_le_bytes().to_vec()));
@@ -657,7 +677,7 @@ pub fn schema_message(
     let types: Vec<Vec<u8>> = all
         .iter()
         .map(|(c, _)| match c.mysql_type.is_empty() {
-            true => c.ty.serialized().map(String::into_bytes),
+            true => c.ty.serialized(c.legacy_array).map(String::into_bytes),
             false => Ok(c.mysql_type.clone().into_bytes()),
         })
         .collect::<Result<_>>()?;
@@ -692,6 +712,7 @@ pub fn schema_message(
         .map(|index| {
             let mut keys: Vec<u16> = index.columns.iter().map(|&i| stored(i)).collect();
             keys.extend(key_columns.iter().filter(|c| !index.columns.contains(c)).map(|&i| i as u16));
+            let ordered = !index.system && index.descending.iter().chain(&index.nulls_last).any(|&o| o);
             serial::write::IndexFields {
                 name: index.name.as_bytes(),
                 comment: index.comment.as_bytes(),
@@ -699,8 +720,8 @@ pub fn schema_message(
                 index_columns: index.columns.iter().map(|&i| stored(i)).collect(),
                 key_columns: keys,
                 prefix_lengths: Vec::new(),
-                descending: if index.system { Vec::new() } else { index.descending.clone() },
-                nulls_last: if index.system { Vec::new() } else { index.nulls_last.clone() },
+                descending: if ordered { index.descending.clone() } else { Vec::new() },
+                nulls_last: if ordered { index.nulls_last.clone() } else { Vec::new() },
                 op_classes: if index.op_classes.iter().all(String::is_empty) {
                     Vec::new()
                 } else {

@@ -613,9 +613,13 @@ impl<'r> Frame<'r> {
         self.scopes.iter().rev().find_map(|s| s.names.get(name).copied())
     }
 
-    /// variable returns the variable a name refers to, failing when there is none.
+    /// variable returns the variable a name refers to, failing when there is none, retrying a trigger's records and
+    /// special variables in lower case, as Go does for bodies that older versions compiled before folding names.
     fn variable(&self, name: &str) -> Result<usize> {
-        self.find(name).ok_or_else(|| PgError::internal(format!("variable `{name}` could not be found")))
+        let folded = name.to_lowercase();
+        let special = ["new", "old"].contains(&folded.as_str()) || TRIGGER_VARIABLES.iter().any(|(n, _)| *n == folded);
+        let found = self.find(name).or_else(|| special.then(|| self.find(&folded)).flatten());
+        found.ok_or_else(|| PgError::internal(format!("variable `{name}` could not be found")))
     }
 
     /// binding returns the value and type of a name a statement binds: a variable, a field of a record, or a whole

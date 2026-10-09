@@ -110,6 +110,7 @@ fn table_def(table: &CatalogTable, indexes: &[&CatalogIndex]) -> TableDef {
             mysql_type: String::new(),
             comment: String::new(),
             identity: 0,
+            legacy_array: false,
         })
         .collect();
     let indexes = indexes

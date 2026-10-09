@@ -104,7 +104,7 @@ impl Root {
     /// objects returns the ID and address of every object in a root object collection, by the collection's position
     /// in the root value, in ID order.
     pub fn objects(&self, db: &mut Database, collection: usize) -> Result<Vec<(Vec<u8>, Hash)>> {
-        let Some(address) = self.root_objects[collection] else { return Ok(Vec::new()) };
+        let Some(address) = self.root_objects[collection].filter(|a| !a.is_empty()) else { return Ok(Vec::new()) };
         let node = db.read(&address)?;
         let mut objects = Vec::new();
         walk_leaves(db, &node, &mut |key, value| {
@@ -116,7 +116,7 @@ impl Root {
 
     /// put_object sets an object's address in a root object collection, or removes the object without one.
     pub fn put_object(&mut self, db: &mut Database, collection: usize, id: &[u8], address: Option<Hash>) -> Result<()> {
-        let node = match self.root_objects[collection] {
+        let node = match self.root_objects[collection].filter(|a| !a.is_empty()) {
             Some(root) => db.read(&root)?,
             None => {
                 let empty = prolly::serialize_address_map(&[], &[], &[], 0);
