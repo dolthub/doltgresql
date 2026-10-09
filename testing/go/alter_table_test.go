@@ -2020,3 +2020,436 @@ ORDER BY schema_name, table_name;`,
 		},
 	})
 }
+
+// TestDropConstraintWithExpressionIndex covers https://github.com/dolthub/doltgresql/issues/3524
+// and constraint types affected by the same table wrapper.
+func TestDropConstraintWithExpressionIndex(t *testing.T) {
+	var scripts []ScriptTest
+	for _, drop := range []struct {
+		name  string
+		query string
+	}{
+		{"unique constraint", "ALTER TABLE users DROP CONSTRAINT users_email_key;"},
+		{"unique constraint if exists", "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key;"},
+		{
+			"unique constraint in Auth migration DO block",
+			`DO $$
+BEGIN
+  ALTER TABLE ONLY public.users DROP CONSTRAINT IF EXISTS users_email_key;
+EXCEPTION
+  WHEN SQLSTATE '2BP01' THEN
+    RAISE NOTICE 'Unable to drop users_email_key constraint due to dependent objects';
+END $$;`,
+		},
+	} {
+		scripts = append(scripts, ScriptTest{
+			Name: drop.name,
+			SetUpScript: []string{
+				"CREATE TABLE users (email text UNIQUE);",
+				"CREATE INDEX users_lower_email_idx ON users (lower(email));",
+				"INSERT INTO users VALUES ('Alice@example.com');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    drop.query,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'users'::regclass AND conname = 'users_email_key';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'users' ORDER BY indexname;",
+					Expected: []sql.Row{{"users_lower_email_idx"}},
+				},
+				{
+					// Success must remove uniqueness enforcement, not just return an ALTER TABLE tag.
+					Query:    "INSERT INTO users VALUES ('Alice@example.com'), ('alice@example.com');",
+					Expected: []sql.Row{},
+				},
+				{
+					// Exercise the retained expression index after writing duplicate email values.
+					Query:    "SELECT email FROM users WHERE lower(email) = 'alice@example.com' ORDER BY email;",
+					Expected: []sql.Row{{"Alice@example.com"}, {"Alice@example.com"}, {"alice@example.com"}},
+				},
+			},
+		})
+	}
+	scripts = append(scripts,
+		ScriptTest{
+			Name: "missing constraint preserves existing constraints and indexes",
+			SetUpScript: []string{
+				"CREATE TABLE users (email text UNIQUE);",
+				"CREATE INDEX users_lower_email_idx ON users (lower(email));",
+				"INSERT INTO users VALUES ('alice@example.com');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "ALTER TABLE users DROP CONSTRAINT missing_constraint;",
+					ExpectedErr:     "does not exist",
+					ExpectedErrCode: "42704",
+				},
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT IF EXISTS missing_constraint;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'users' ORDER BY indexname;",
+					Expected: []sql.Row{{"users_email_key"}, {"users_lower_email_idx"}},
+				},
+				{
+					Query:           "INSERT INTO users VALUES ('alice@example.com');",
+					ExpectedErr:     "duplicate unique key",
+					ExpectedErrCode: "23505",
+				},
+			},
+		},
+		ScriptTest{
+			Name: "check constraint",
+			SetUpScript: []string{
+				"CREATE TABLE users (email text, CONSTRAINT users_email_check CHECK (email <> 'blocked'));",
+				"CREATE INDEX users_lower_email_idx ON users (lower(email));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT users_email_check;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'users'::regclass AND conname = 'users_email_check';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'users' ORDER BY indexname;",
+					Expected: []sql.Row{{"users_lower_email_idx"}},
+				},
+				{
+					Query:    "INSERT INTO users VALUES ('blocked');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT email FROM users WHERE lower(email) = 'blocked';",
+					Expected: []sql.Row{{"blocked"}},
+				},
+			},
+		},
+		ScriptTest{
+			Name: "primary key constraint",
+			SetUpScript: []string{
+				"CREATE TABLE users (id int PRIMARY KEY, email text);",
+				"CREATE INDEX users_lower_email_idx ON users (lower(email));",
+				"INSERT INTO users VALUES (1, 'alice@example.com');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT users_pkey;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'users'::regclass AND conname = 'users_pkey';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'users' ORDER BY indexname;",
+					Expected: []sql.Row{{"users_lower_email_idx"}},
+				},
+				{
+					Query:    "INSERT INTO users VALUES (1, 'bob@example.com');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, email FROM users WHERE lower(email) IN ('alice@example.com', 'bob@example.com') ORDER BY email;",
+					Expected: []sql.Row{{1, "alice@example.com"}, {1, "bob@example.com"}},
+				},
+			},
+		},
+	)
+	RunScripts(t, scripts)
+}
+
+// TestDropForeignKeyConstraintSchemaQualified covers the schema loss reported by Ito on PR #3569.
+func TestDropForeignKeyConstraintSchemaQualified(t *testing.T) {
+	var scripts []ScriptTest
+	for _, drop := range []string{
+		"ALTER TABLE ONLY billing.child DROP CONSTRAINT child_parent_id_fkey;",
+		"ALTER TABLE billing.child DROP CONSTRAINT child_parent_id_fkey;",
+		"ALTER TABLE ONLY billing.child DROP CONSTRAINT IF EXISTS child_parent_id_fkey;",
+		"ALTER TABLE billing.child DROP CONSTRAINT IF EXISTS child_parent_id_fkey;",
+	} {
+		for _, scenario := range []struct {
+			name            string
+			expressionIndex bool
+			publicChild     bool
+		}{
+			{name: "without expression index"},
+			{name: "with expression index", expressionIndex: true},
+			{name: "with expression index and public table", expressionIndex: true, publicChild: true},
+		} {
+			setup := []string{
+				"SET search_path TO public;",
+				"CREATE SCHEMA billing;",
+				"CREATE SCHEMA archive;",
+				"CREATE TABLE billing.parent (id int PRIMARY KEY);",
+				"CREATE TABLE archive.parent (id int PRIMARY KEY);",
+				"CREATE TABLE billing.child (id int PRIMARY KEY, parent_id int, email text, CONSTRAINT child_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES billing.parent(id));",
+				"CREATE TABLE archive.child (id int PRIMARY KEY, parent_id int, email text, CONSTRAINT child_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES archive.parent(id));",
+				"INSERT INTO billing.parent VALUES (1);",
+				"INSERT INTO archive.parent VALUES (1);",
+				"INSERT INTO billing.child VALUES (1, 1, 'Alice@example.com');",
+				"INSERT INTO archive.child VALUES (1, 1, 'archive@example.com');",
+			}
+			if scenario.publicChild {
+				setup = append(setup,
+					"CREATE TABLE public.parent (id int PRIMARY KEY);",
+					"CREATE TABLE public.child (id int PRIMARY KEY, parent_id int, email text, CONSTRAINT child_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.parent(id));",
+					"INSERT INTO public.parent VALUES (1);",
+					"INSERT INTO public.child VALUES (1, 1, 'public@example.com');",
+				)
+			}
+			var indexRows []sql.Row
+			if scenario.expressionIndex {
+				setup = append(setup, "CREATE INDEX child_lower_email_idx ON billing.child (lower(email));")
+				indexRows = []sql.Row{{"child_lower_email_idx"}}
+			}
+			script := ScriptTest{
+				Name:        drop + " " + scenario.name,
+				SetUpScript: setup,
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:       "INSERT INTO billing.child VALUES (2, 999, 'Bob@example.com');",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    drop,
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'billing.child'::regclass AND conname = 'child_parent_id_fkey';",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'archive.child'::regclass AND conname = 'child_parent_id_fkey';",
+						Expected: []sql.Row{{"child_parent_id_fkey"}},
+					},
+					{
+						Query:    "INSERT INTO billing.child VALUES (2, 999, 'Bob@example.com');",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:       "INSERT INTO archive.child VALUES (2, 999, 'Bob@example.com');",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'billing' AND tablename = 'child' AND indexname = 'child_lower_email_idx';",
+						Expected: indexRows,
+					},
+					{
+						Query:    "SELECT id, parent_id, email FROM billing.child WHERE lower(email) = 'bob@example.com';",
+						Expected: []sql.Row{{2, 999, "Bob@example.com"}},
+					},
+				},
+			}
+			if scenario.publicChild {
+				script.Assertions = append(script.Assertions,
+					ScriptTestAssertion{
+						Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'public.child'::regclass AND conname = 'child_parent_id_fkey';",
+						Expected: []sql.Row{{"child_parent_id_fkey"}},
+					},
+					ScriptTestAssertion{
+						Query:       "INSERT INTO public.child VALUES (2, 999, 'Bob@example.com');",
+						ExpectedErr: "Foreign key violation",
+					},
+				)
+			}
+			scripts = append(scripts, script)
+		}
+	}
+	RunScripts(t, scripts)
+}
+
+func TestDropUniqueConstraintIfExists(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "missing constraint with a regular index is a no-op",
+			SetUpScript: []string{
+				"CREATE TABLE users (email text CONSTRAINT boundary_email_key UNIQUE, note text);",
+				"CREATE INDEX boundary_note_idx ON users (note);",
+				"INSERT INTO users VALUES ('dup@example.com', 'original');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT IF EXISTS missing_boundary;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'users' ORDER BY indexname;",
+					Expected: []sql.Row{{"boundary_email_key"}, {"boundary_note_idx"}},
+				},
+				{
+					Query:           "ALTER TABLE users DROP CONSTRAINT missing_boundary;",
+					ExpectedErr:     "does not exist",
+					ExpectedErrCode: "42704",
+				},
+				{
+					Query:           "INSERT INTO users (email) VALUES ('dup@example.com');",
+					ExpectedErr:     "duplicate unique key",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT boundary_email_key;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT IF EXISTS boundary_email_key;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "existing unique constraint is removed without an expression index",
+			SetUpScript: []string{
+				"CREATE TABLE users (email text UNIQUE);",
+				"CREATE INDEX users_email_idx ON users (email);",
+				"INSERT INTO users VALUES ('alice@example.com');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'users'::regclass AND conname = 'users_email_key';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'users' ORDER BY indexname;",
+					Expected: []sql.Row{{"users_email_idx"}},
+				},
+				{
+					Query:    "INSERT INTO users VALUES ('alice@example.com');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT email FROM users ORDER BY email;",
+					Expected: []sql.Row{{"alice@example.com"}, {"alice@example.com"}},
+				},
+			},
+		},
+	})
+}
+
+func TestDropUniqueConstraintSchemaQualified(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Auth migration retains expression index outside search path",
+			SetUpScript: []string{
+				"SET search_path TO public;",
+				"CREATE SCHEMA auth;",
+				"CREATE TABLE auth.users (email text UNIQUE);",
+				"CREATE INDEX users_lower_email_idx ON auth.users (lower(email));",
+				"INSERT INTO auth.users VALUES ('alice@example.com');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `DO $$
+BEGIN
+  ALTER TABLE ONLY auth.users DROP CONSTRAINT IF EXISTS users_email_key;
+EXCEPTION
+  WHEN SQLSTATE '2BP01' THEN
+    RAISE NOTICE 'Unable to drop users_email_key constraint due to dependent objects';
+END $$;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'auth' AND tablename = 'users' ORDER BY indexname;",
+					Expected: []sql.Row{{"users_lower_email_idx"}},
+				},
+				{
+					Query:    "INSERT INTO auth.users VALUES ('alice@example.com');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT email FROM auth.users WHERE lower(email) = 'alice@example.com' ORDER BY email;",
+					Expected: []sql.Row{{"alice@example.com"}, {"alice@example.com"}},
+				},
+			},
+		},
+		{
+			Name: "target schema is outside search path",
+			SetUpScript: []string{
+				"SET search_path TO public;",
+				"CREATE SCHEMA auth;",
+				"CREATE TABLE auth.users (email text UNIQUE);",
+				"INSERT INTO auth.users VALUES ('alice@example.com');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE ONLY auth.users DROP CONSTRAINT users_email_key;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'auth.users'::regclass AND conname = 'users_email_key';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE schemaname = 'auth' AND tablename = 'users';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO auth.users VALUES ('alice@example.com');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT email FROM auth.users ORDER BY email;",
+					Expected: []sql.Row{{"alice@example.com"}, {"alice@example.com"}},
+				},
+			},
+		},
+		{
+			Name: "same table and constraint names in another schema",
+			SetUpScript: []string{
+				"SET search_path TO public;",
+				"CREATE SCHEMA auth;",
+				"CREATE TABLE public.users (email text UNIQUE);",
+				"CREATE TABLE auth.users (email text UNIQUE);",
+				"INSERT INTO public.users VALUES ('public@example.com');",
+				"INSERT INTO auth.users VALUES ('auth@example.com');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE ONLY auth.users DROP CONSTRAINT users_email_key;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'auth.users'::regclass AND conname = 'users_email_key';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 'public.users'::regclass AND conname = 'users_email_key';",
+					Expected: []sql.Row{{"users_email_key"}},
+				},
+				{
+					Query:    "SELECT schemaname, indexname FROM pg_indexes WHERE schemaname IN ('auth', 'public') AND tablename = 'users' ORDER BY schemaname, indexname;",
+					Expected: []sql.Row{{"public", "users_email_key"}},
+				},
+				{
+					Query:    "INSERT INTO auth.users VALUES ('auth@example.com');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           "INSERT INTO public.users VALUES ('public@example.com');",
+					ExpectedErr:     "duplicate unique key",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:    "SELECT email FROM auth.users ORDER BY email;",
+					Expected: []sql.Row{{"auth@example.com"}, {"auth@example.com"}},
+				},
+				{
+					Query:    "SELECT email FROM public.users ORDER BY email;",
+					Expected: []sql.Row{{"public@example.com"}},
+				},
+			},
+		},
+	})
+}
