@@ -1172,7 +1172,8 @@ func TestJsonArrayLength(t *testing.T) {
 	})
 }
 
-// TestJsonArrayElements covers the SELECT-list and FROM-clause forms requested in issue #3498.
+// TestJsonArrayElements covers the SELECT-list and FROM-clause forms requested in
+// https://github.com/dolthub/doltgresql/issues/3498.
 func TestJsonArrayElements(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -1227,6 +1228,24 @@ func TestJsonArrayElements(t *testing.T) {
 					Query:            `SELECT e.elem FROM json_array_elements('[1]'::json) AS e(elem);`,
 					Expected:         []sql.Row{{"1"}},
 					ExpectedColNames: []string{"elem"},
+					ExpectedColTypes: []id.Type{pgtypes.Json.ID},
+				},
+				{
+					Query:            `SELECT e FROM json_array_elements('[1]'::json) AS e(elem);`,
+					Expected:         []sql.Row{{"1"}},
+					ExpectedColNames: []string{"e"},
+					ExpectedColTypes: []id.Type{pgtypes.Json.ID},
+				},
+				{
+					Query:            `SELECT elem FROM json_array_elements('[1]'::json) AS e(elem);`,
+					Expected:         []sql.Row{{"1"}},
+					ExpectedColNames: []string{"elem"},
+					ExpectedColTypes: []id.Type{pgtypes.Json.ID},
+				},
+				{
+					Query:            `SELECT value FROM json_array_elements('[1]'::json) AS e;`,
+					Expected:         []sql.Row{{"1"}},
+					ExpectedColNames: []string{"value"},
 					ExpectedColTypes: []id.Type{pgtypes.Json.ID},
 				},
 				{
@@ -1387,7 +1406,8 @@ func TestJsonArrayElementsStoredValues(t *testing.T) {
 	})
 }
 
-// TestJsonArrayElementsPostgREST exercises the target_entries CTE from issue #3498.
+// TestJsonArrayElementsPostgREST exercises the target_entries CTE from
+// https://github.com/dolthub/doltgresql/issues/3498.
 func TestJsonArrayElementsPostgREST(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

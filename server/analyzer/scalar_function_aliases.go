@@ -37,11 +37,19 @@ import (
 func rewriteScalarFunctionAliasReferences(ctx *sql.Context, node sql.Node) (sql.Node, transform.TreeIdentity, error) {
 	return pgtransform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		rewrite := func(ctx *sql.Context, _ sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+			// SELECT e FROM json_array_elements('[1]'::json) AS e:
+			// The reference to e is a TableToComposite containing a GetField for "value".
+			// Replace the wrapper with that GetField, named "e", to give it the json type.
 			if row, ok := expr.(*pgexpression.TableToComposite); ok && len(row.Children()) == 1 {
 				if field, ok := row.Children()[0].(*expression.GetField); ok && isScalarTableFunction(ctx, n, field.TableId()) {
 					return field.WithName(field.Table()), transform.NewTree, nil
 				}
 			}
+			// SELECT elem->>'name' FROM
+			//   (SELECT e AS elem FROM json_array_elements('[{"name":"first"}]'::json) AS e) AS expanded:
+			// The inner projection has been rewritten, but the outer GetField for "elem"
+			// can still have its original composite type. Read its json type from the
+			// updated SubqueryAlias schema before resolving the ->> operator.
 			if field, ok := expr.(*expression.GetField); ok {
 				if typ, ok := field.Type(ctx).(*pgtypes.DoltgresType); ok && typ.IsCompositeType() {
 					if scalar := scalarSubqueryColumnType(ctx, n, field); scalar != nil {
@@ -56,7 +64,9 @@ func rewriteScalarFunctionAliasReferences(ctx *sql.Context, node sql.Node) (sql.
 		if err != nil {
 			return nil, transform.SameTree, err
 		}
-		// GMS keeps a second copy of subquery projections for predicate pushdown.
+		// ScopeMapping maps SubqueryAlias output column IDs to expressions in its child.
+		// Predicate pushdown substitutes these expressions for references to the alias's
+		// columns, so apply the same rewrites to the mapped expressions.
 		if alias, ok := rewritten.(*plan.SubqueryAlias); ok && alias.ScopeMapping != nil {
 			mappings := make(map[sql.ColumnId]sql.Expression, len(alias.ScopeMapping))
 			for id, expr := range alias.ScopeMapping {
