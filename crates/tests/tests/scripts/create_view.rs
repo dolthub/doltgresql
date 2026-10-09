@@ -1407,3 +1407,333 @@ fn test_view_and_routine_rules() {
         },
     ]);
 }
+
+#[test]
+fn test_updatable_views() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Automatically updatable views",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE uv_base (a INT PRIMARY KEY, b TEXT DEFAULT 'Unspecified');",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO uv_base SELECT i, 'Row ' || i FROM generate_series(-2, 2) g(i);",
+                    expected: Expected::Tag("INSERT 0 5"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW uv_rw1 AS SELECT * FROM uv_base WHERE a > 0;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW uv_rw2 AS SELECT b AS bb, a AS aa, a + 1 AS ac FROM uv_base t WHERE t.a < 2;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW uv_ro1 AS SELECT DISTINCT a, b FROM uv_base;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW uv_ro2 AS SELECT count(*) FROM uv_base;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO uv_rw1 VALUES (3, 'Row 3');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO uv_rw1 (a) VALUES (4);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE uv_rw1 SET a = 5 WHERE a = 4;",
+                    expected: Expected::Tag("UPDATE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM uv_rw1 WHERE b = 'Row 2';",
+                    expected: Expected::Tag("DELETE 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM uv_base ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("-2"), T("Row -2")],
+                            &[T("-1"), T("Row -1")],
+                            &[T("0"), T("Row 0")],
+                            &[T("1"), T("Row 1")],
+                            &[T("3"), T("Row 3")],
+                            &[T("5"), T("Unspecified")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE uv_rw2 SET bb = 'x' || bb WHERE aa < 1 RETURNING *;",
+                    expected: Expected::Rows {
+                        columns: &[Column("bb", TEXT), Column("aa", INT4), Column("ac", INT4)],
+                        rows: &[
+                            &[T("xRow -2"), T("-2"), T("-1")],
+                            &[T("xRow -1"), T("-1"), T("0")],
+                            &[T("xRow 0"), T("0"), T("1")],
+                        ],
+                        tag: "UPDATE 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE uv_rw2 SET ac = 1;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"cannot update column "ac" of view "uv_rw2""#, detail: "View columns that are not columns of their base relation are not updatable.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO uv_rw2 (aa, bb) VALUES (10, 'ten') RETURNING aa, ac;",
+                    expected: Expected::Rows {
+                        columns: &[Column("aa", INT4), Column("ac", INT4)],
+                        rows: &[
+                            &[T("10"), T("11")],
+                        ],
+                        tag: "INSERT 0 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO uv_rw2 VALUES ('q', 11, 12);",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"cannot insert into column "ac" of view "uv_rw2""#, detail: "View columns that are not columns of their base relation are not updatable.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM uv_rw2 v WHERE v.aa = -2 RETURNING v.*;",
+                    expected: Expected::Rows {
+                        columns: &[Column("bb", TEXT), Column("aa", INT4), Column("ac", INT4)],
+                        rows: &[
+                            &[T("xRow -2"), T("-2"), T("-1")],
+                        ],
+                        tag: "DELETE 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO uv_ro1 VALUES (1, 'x');",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: r#"cannot insert into view "uv_ro1""#, detail: "Views containing DISTINCT are not automatically updatable.", hint: "To enable inserting into the view, provide an INSTEAD OF INSERT trigger or an unconditional ON INSERT DO INSTEAD rule.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE uv_ro2 SET count = 1;",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: r#"cannot update view "uv_ro2""#, detail: "Views that return aggregate functions are not automatically updatable.", hint: "To enable updating the view, provide an INSTEAD OF UPDATE trigger or an unconditional ON UPDATE DO INSTEAD rule.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DELETE FROM uv_ro1;",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: r#"cannot delete from view "uv_ro1""#, detail: "Views containing DISTINCT are not automatically updatable.", hint: "To enable deleting from the view, provide an INSTEAD OF DELETE trigger or an unconditional ON DELETE DO INSTEAD rule.", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM uv_base ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("-1"), T("xRow -1")],
+                            &[T("0"), T("xRow 0")],
+                            &[T("1"), T("Row 1")],
+                            &[T("3"), T("Row 3")],
+                            &[T("5"), T("Unspecified")],
+                            &[T("10"), T("ten")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Updatable view check options and information_schema",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE uvc_base (a INT PRIMARY KEY, b TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW uvc_rw1 AS SELECT * FROM uvc_base WHERE a > 0;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW uvc_rw3 AS SELECT * FROM uvc_rw1 WHERE a < 10 WITH CHECK OPTION;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO uvc_rw3 VALUES (6, 'six');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO uvc_rw3 VALUES (20, 'twenty');",
+                    expected: Expected::Error(Diagnostic { code: "44000", message: r#"new row violates check option for view "uvc_rw3""#, detail: "Failing row contains (20, twenty).", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO uvc_rw3 VALUES (-5, 'neg');",
+                    expected: Expected::Error(Diagnostic { code: "44000", message: r#"new row violates check option for view "uvc_rw1""#, detail: "Failing row contains (-5, neg).", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE uvc_rw3 SET a = a + 100 WHERE a = 6;",
+                    expected: Expected::Error(Diagnostic { code: "44000", message: r#"new row violates check option for view "uvc_rw3""#, detail: "Failing row contains (106, six).", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW uvc_rw4 AS SELECT * FROM uvc_rw1 WHERE a < 10 WITH LOCAL CHECK OPTION;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO uvc_rw4 VALUES (-6, 'neg');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM uvc_base ORDER BY a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT)],
+                        rows: &[
+                            &[T("-6"), T("neg")],
+                            &[T("6"), T("six")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW uvc_ro3 AS SELECT 1 AS one, a + 1 AS c FROM uvc_base;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT table_name, is_insertable_into FROM information_schema.tables WHERE table_name LIKE 'uvc_%' ORDER BY table_name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("table_name", NAME), Column("is_insertable_into", VARCHAR)],
+                        rows: &[
+                            &[T("uvc_base"), T("YES")],
+                            &[T("uvc_ro3"), T("NO")],
+                            &[T("uvc_rw1"), T("YES")],
+                            &[T("uvc_rw3"), T("YES")],
+                            &[T("uvc_rw4"), T("YES")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT table_name, is_updatable, is_insertable_into, check_option FROM information_schema.views WHERE table_name LIKE 'uvc_%' ORDER BY table_name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("table_name", NAME), Column("is_updatable", VARCHAR), Column("is_insertable_into", VARCHAR), Column("check_option", VARCHAR)],
+                        rows: &[
+                            &[T("uvc_ro3"), T("NO"), T("NO"), T("NONE")],
+                            &[T("uvc_rw1"), T("YES"), T("YES"), T("NONE")],
+                            &[T("uvc_rw3"), T("YES"), T("YES"), T("CASCADED")],
+                            &[T("uvc_rw4"), T("YES"), T("YES"), T("LOCAL")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT table_name, column_name, is_updatable FROM information_schema.columns WHERE table_name LIKE 'uvc_r%' ORDER BY table_name, ordinal_position;",
+                    expected: Expected::Rows {
+                        columns: &[Column("table_name", NAME), Column("column_name", NAME), Column("is_updatable", VARCHAR)],
+                        rows: &[
+                            &[T("uvc_ro3"), T("one"), T("NO")],
+                            &[T("uvc_ro3"), T("c"), T("NO")],
+                            &[T("uvc_rw1"), T("a"), T("YES")],
+                            &[T("uvc_rw1"), T("b"), T("YES")],
+                            &[T("uvc_rw3"), T("a"), T("YES")],
+                            &[T("uvc_rw3"), T("b"), T("YES")],
+                            &[T("uvc_rw4"), T("a"), T("YES")],
+                            &[T("uvc_rw4"), T("b"), T("YES")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_view_privileges() {
+    run_scripts(&[
+        ScriptTest {
+            name: "CREATE VIEW checks table privileges only when the view is read",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE USER regress_cv_user;",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SCHEMA cv_schema;",
+                    expected: Expected::Tag("CREATE SCHEMA"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT ALL ON SCHEMA cv_schema TO regress_cv_user;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE cv_schema.cv_base (a INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET SESSION AUTHORIZATION regress_cv_user;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE VIEW cv_schema.cv_view AS SELECT * FROM cv_schema.cv_base;",
+                    expected: Expected::Tag("CREATE VIEW"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM cv_schema.cv_view;",
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied for table cv_base", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET SESSION AUTHORIZATION;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

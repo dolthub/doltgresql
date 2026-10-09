@@ -681,6 +681,10 @@ impl Ctx<'_> {
                 ..insufficient(format!("permission denied for schema {schema}"))
             });
         }
+        if self.session.defining_view && privilege == "r" && matches!(object, Object::Table(..) | Object::Sequence(..))
+        {
+            return Ok(());
+        }
         let held = match object {
             Object::Schema(schema) => self.holds_schema(&auth, role, schema, privilege),
             Object::Database(_) => auth.holds(role, object, privilege) || matches!(privilege, "c" | "T"),

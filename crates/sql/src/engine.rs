@@ -718,6 +718,7 @@ impl Engine {
                 call_depth: 0,
                 trigger_depth: 0,
                 cursors: Vec::new(),
+                defining_view: false,
                 id: NEXT_SESSION.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                 advisory: self.shared.advisory.clone(),
                 pending_copy: None,
@@ -833,6 +834,9 @@ pub struct SessionState {
     pub trigger_depth: i32,
     /// The open SQL cursors, in the order they were declared.
     pub cursors: Vec<crate::cursors::Cursor>,
+    /// Whether CREATE VIEW is planning its query, which reads no rows, so that the tables it reads need no privileges
+    /// yet, as Postgres checks them only when the view is used.
+    pub defining_view: bool,
     /// The session's number among the engine's sessions, which advisory locks record their holders by.
     pub id: u64,
     /// The engine's advisory locks.
@@ -2439,6 +2443,12 @@ impl Ctx<'_> {
             {
                 None
             }
+            NodeEnum::InsertStmt(_) | NodeEnum::UpdateStmt(_) | NodeEnum::DeleteStmt(_)
+                if let Some(rewritten) = self.rewrite_view_change(node)? =>
+            {
+                let columns = self.describe(&rewritten.statement)?.unwrap_or_default();
+                rewritten.returns.then(|| columns.into_iter().take(rewritten.returning).collect())
+            }
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.returning.map(|r| r.columns),
             NodeEnum::UpdateStmt(update) if self.is_conflicts_table(update.relation.as_ref())? => None,
             NodeEnum::DeleteStmt(delete) if self.is_conflicts_table(delete.relation.as_ref())? => None,
@@ -2606,6 +2616,11 @@ impl Ctx<'_> {
                 if let Some(outcome) = self.branch_control_dml(node)? =>
             {
                 Ok(outcome)
+            }
+            NodeEnum::InsertStmt(_) | NodeEnum::UpdateStmt(_) | NodeEnum::DeleteStmt(_)
+                if let Some(rewritten) = self.rewrite_view_change(node)? =>
+            {
+                self.run_view_change(rewritten)
             }
             NodeEnum::InsertStmt(insert) => self.plan_insert(insert)?.run(self),
             NodeEnum::UpdateStmt(update) => match self.update_object_conflicts(update)? {

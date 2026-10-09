@@ -201,7 +201,10 @@ impl Ctx<'_> {
         let Some(NodeEnum::SelectStmt(select)) = stmt.query.as_deref().and_then(|q| q.node.as_ref()) else {
             return Err(PgError::unsupported("this view query"));
         };
-        let query = Planner { ctx: self, outer: Vec::new() }.plan_query(select)?;
+        self.session.defining_view = true;
+        let query = Planner { ctx: self, outer: Vec::new() }.plan_query(select);
+        self.session.defining_view = false;
+        let query = query?;
         let aliases: Vec<String> = stmt.aliases.iter().filter_map(node_name).map(str::to_string).collect();
         if aliases.len() > query.columns.len() {
             return Err(PgError::new(code::SYNTAX_ERROR, "CREATE VIEW specifies more column names than columns"));

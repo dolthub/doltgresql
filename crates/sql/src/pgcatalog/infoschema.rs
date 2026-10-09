@@ -133,7 +133,7 @@ impl Ctx<'_> {
     /// information_schema_tables lists the user tables and views.
     fn information_schema_tables(&mut self, rows: &mut Rows<'_>) -> Result<()> {
         let database = self.session.display.clone();
-        let mut push = |schema: &str, name: &str, view: bool| {
+        let mut push = |schema: &str, name: &str, view: bool, insertable: bool| {
             rows.push(vec![
                 ("table_catalog", text(database.clone())),
                 ("table_schema", text(schema)),
@@ -146,16 +146,17 @@ impl Ctx<'_> {
                         false => "BASE TABLE",
                     }),
                 ),
-                ("is_insertable_into", yes_no(!view || schema != "pg_catalog")),
+                ("is_insertable_into", yes_no(insertable)),
                 ("is_typed", yes_no(false)),
             ]);
         };
         let snapshot = self.snapshot()?;
         for (table, _) in snapshot.listed() {
-            push(&table.schema, &table.name, false);
+            push(&table.schema, &table.name, false, true);
         }
         for view in &snapshot.views {
-            push(&view.schema, &view.name, true);
+            let insertable = self.view_updatability(&view.schema, &view.name, &view.statement).insertable;
+            push(&view.schema, &view.name, true, insertable);
         }
         Ok(())
     }
@@ -165,6 +166,7 @@ impl Ctx<'_> {
         let database = self.session.display.clone();
         let snapshot = self.snapshot()?;
         let mut relations: Vec<(String, String, Vec<InfoColumn>)> = Vec::new();
+        let mut updatable: std::collections::HashMap<(String, String), Vec<bool>> = std::collections::HashMap::new();
         for (table, _) in snapshot.listed() {
             let columns = table
                 .columns
@@ -175,6 +177,8 @@ impl Ctx<'_> {
         }
         for view in &snapshot.views {
             let columns = self.view_columns(&view.schema, &view.name).unwrap_or_default();
+            let updatability = self.view_updatability(&view.schema, &view.name, &view.statement);
+            updatable.insert((view.schema.clone(), view.name.clone()), updatability.columns);
             relations.push((
                 view.schema.clone(),
                 view.name.clone(),
@@ -226,7 +230,14 @@ impl Ctx<'_> {
                     ("identity_cycle", yes_no(false)),
                     ("is_generated", text(if generated { "ALWAYS" } else { "NEVER" })),
                     ("generation_expression", generation),
-                    ("is_updatable", yes_no(true)),
+                    (
+                        "is_updatable",
+                        yes_no(
+                            updatable
+                                .get(&(schema.clone(), table.clone()))
+                                .is_none_or(|c| c.get(i).copied().unwrap_or(false)),
+                        ),
+                    ),
                 ]);
             }
         }
@@ -238,14 +249,16 @@ impl Ctx<'_> {
         let database = self.session.display.clone();
         for view in self.snapshot()?.views.clone() {
             let definition = self.view_definition(&view.statement, false, 0).unwrap_or_default();
+            let updatability = self.view_updatability(&view.schema, &view.name, &view.statement);
+            let check = self.view_check_option(&view.schema, &view.name, &view.statement);
             rows.push(vec![
                 ("table_catalog", text(database.clone())),
                 ("table_schema", text(view.schema)),
                 ("table_name", text(view.name)),
                 ("view_definition", text(definition)),
-                ("check_option", text("NONE")),
-                ("is_updatable", yes_no(true)),
-                ("is_insertable_into", yes_no(true)),
+                ("check_option", text(check)),
+                ("is_updatable", yes_no(updatability.updatable && updatability.deletable)),
+                ("is_insertable_into", yes_no(updatability.insertable)),
                 ("is_trigger_updatable", yes_no(false)),
                 ("is_trigger_deletable", yes_no(false)),
                 ("is_trigger_insertable_into", yes_no(false)),
