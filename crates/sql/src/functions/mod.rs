@@ -24,6 +24,7 @@ mod binary;
 pub(crate) mod catalog;
 pub mod datetime;
 pub(crate) mod geometry;
+mod hash;
 pub mod json;
 mod jsonpath;
 mod math;
@@ -97,6 +98,7 @@ fn registry() -> &'static Registry {
             populate::FUNCTIONS,
             textsearch::FUNCTIONS,
             geometry::FUNCTIONS,
+            hash::FUNCTIONS,
             catalog::FUNCTIONS,
             advisory::FUNCTIONS,
             crate::dolt::procedures::FUNCTIONS,
@@ -225,6 +227,9 @@ pub fn implicitly_castable(from: u32, to: u32) -> bool {
         || (to == ANYNONARRAY && !is_array(from))
         || (to == crate::rangetypes::ANYRANGE && crate::rangetypes::is_range(from))
         || (to == crate::rangetypes::ANYMULTIRANGE && crate::rangetypes::is_multirange(from))
+        || (to == oid::RECORD && crate::expr::is_composite(from))
+        || (to == oid::ANYENUM
+            && crate::usertypes::get(from).is_some_and(|t| matches!(t.kind, crate::usertypes::Kind::Enum(_))))
         || (matches!(from, oid::BIT | oid::VARBIT) && matches!(to, oid::BIT | oid::VARBIT))
         || crate::casts::context(from, to) == Some(crate::casts::IMPLICIT)
         || crate::expr::implicit_datetime(from, to)
@@ -346,6 +351,7 @@ pub fn resolve(name: &str, types: &[u32], location: i32) -> Result<Resolved> {
             crate::rangetypes::ANYRANGE => range.map_or(t, |r| r.range),
             crate::rangetypes::ANYMULTIRANGE => range.map_or(t, |r| r.multirange),
             ANY => t,
+            oid::RECORD | oid::ANYENUM if t != oid::UNKNOWN => t,
             _ => p,
         })
         .collect();

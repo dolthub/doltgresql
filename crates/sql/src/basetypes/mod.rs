@@ -15,7 +15,7 @@
 //! The built-in base types that Go lacks, held as `Value::Base` values whose stored bytes are Postgres' binary
 //! format: the geometric types, the network address types, money, pg_lsn, and the text search types.
 
-mod geometric;
+pub(crate) mod geometric;
 mod money;
 mod network;
 pub(crate) mod textsearch;

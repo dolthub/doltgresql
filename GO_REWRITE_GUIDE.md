@@ -300,7 +300,12 @@ cast, with its 1e-6 comparison tolerance and float overflow checks), `formatting
 `to_number`), the text search parser's state tables, and the Snowball stemmer each passed hundreds of statements at
 once, because the regression files test their corner cases exhaustively. Keep C's quirks, such as output that ends
 at the first NUL byte. Kept tests should avoid results whose last digits come from the platform's math library (sin,
-cos, and similar), since those differ between Linux, macOS, and Windows.
+cos, and similar), since those differ between Linux, macOS, and Windows. Input parsers are worth the same treatment:
+an ad hoc interval parser kept failing edge cases until `datetime.c`'s ParseDateTime, DecodeInterval, and
+DecodeISO8601Interval were ported as they are (fields read right to left, overflow-checked accumulation, the
+256-byte work buffer and 25-field limits), which passed 51 more statements of `interval` alone. The hash support
+functions (`hashint4`, `hash_numeric`, `jsonb_hash`, `hash_array`, and the rest, with their seeded forms) are small
+once lookup3 is ported, and they let the regression's consistency checks pass with Postgres' exact values.
 
 ## 4. Habits and tooling worth copying
 
@@ -334,3 +339,7 @@ cos, and similar), since those differ between Linux, macOS, and Windows.
   push.
 - Writing an in-memory default back out (full-length index order vectors) broke old readers. Write optional fields
   only when they differ from what an old writer would have produced.
+- Automatic garbage collection queued for the database's exclusive lock while a statement ran. Rust's (and Go's)
+  read-write locks hold new readers behind a waiting writer, so one long-running query (here a regression query the
+  client had already given up on) stopped every other statement until it ended. Background work that needs a
+  database alone should poll for a moment without readers (`try_lock`) instead of queueing.

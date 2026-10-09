@@ -156,6 +156,17 @@ fn wait_for_quiet() {
     }
 }
 
+/// idle_exclusive returns a database alone at a moment when no statement runs on it. It polls rather than queueing
+/// for the database, since a queued request would hold off every new statement until a long one ended.
+fn idle_exclusive(handle: &DbHandle) -> doltdb::handle::Guard<'_> {
+    loop {
+        if let Some(guard) = handle.try_exclusive() {
+            return guard;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+}
+
 /// Activity is what a session is doing, as pg_stat_activity shows it.
 #[derive(Clone, Debug, Default)]
 pub struct Activity {
@@ -523,9 +534,9 @@ impl Engine {
             wait_for_quiet();
             let start = std::time::Instant::now();
             let config = *lock(&self.shared.auto_gc_config)?;
-            let mut run = handle.exclusive().gc_begin(config)?;
+            let mut run = idle_exclusive(&handle).gc_begin(config)?;
             run.copy()?;
-            let mut db = handle.exclusive();
+            let mut db = idle_exclusive(&handle);
             let (keep, roots) = self.gc_roots(&name);
             db.gc_finish(run, keep, &roots)?;
             drop(db);

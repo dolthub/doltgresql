@@ -11136,3 +11136,475 @@ fn test_geometric_functions() {
         },
     ]);
 }
+
+#[test]
+fn test_interval_input() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Interval input",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '1 month - 1 second', INTERVAL '2 days - 12:34:56', INTERVAL '-1 days +02:03';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("1 mon -00:00:01"), T("2 days -12:34:56"), T("-1 days +02:03:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '4 millenniums 5 centuries 4 decades 1 year 4 months 4 days 17 minutes 31 seconds'::INTERVAL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("4541 years 4 mons 4 days 00:17:31")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '1.5 weeks', INTERVAL '0.7 years', INTERVAL '1.25 months', INTERVAL '10.5 microseconds 1 ms';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("10 days 12:00:00"), T("8 mons"), T("1 mon 7 days 12:00:00"), T("00:00:00.00101")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '-2147483648 months -2147483648 days -9223372036854775808 us';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("-178956970 years -8 mons -2147483648 days -2562047788:00:54.775808")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '2147483647 days 2147483647 months';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("178956970 years 7 mons 2147483647 days")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '2147483648 days';",
+                    expected: Expected::Error(Diagnostic { code: "22015", message: r#"interval field value out of range: "2147483648 days""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '-2147483648 years';",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: "interval out of range", position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '9223372036854775807 microseconds', INTERVAL '-9223372036854.775808 seconds';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("2562047788:00:54.775807"), T("-2562047788:00:54.775808")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '9223372036854775808 microseconds';",
+                    expected: Expected::Error(Diagnostic { code: "22015", message: r#"interval field value out of range: "9223372036854775808 microseconds""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '2562047788.01521550194 hours';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("2562047788:00:54.775807")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '5 ago';",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: "5 ago""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '1 2';",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: "1 2""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '1 day 1 day';",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: "1 day 1 day""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '01:02:03 1 second';",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: "01:02:03 1 second""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '1-13';",
+                    expected: Expected::Error(Diagnostic { code: "22015", message: r#"interval field value out of range: "1-13""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '1:61';",
+                    expected: Expected::Error(Diagnostic { code: "22015", message: r#"interval field value out of range: "1:61""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'infinity';",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: "infinity""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '1 quarter';",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: "1 quarter""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '1 2' MINUTE TO SECOND;",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: "1 2""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '1:2' MINUTE TO SECOND, INTERVAL '1:2.5' HOUR TO SECOND, INTERVAL '5' YEAR, INTERVAL '5' HOUR;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("00:01:02"), T("00:01:02.5"), T("5 years"), T("05:00:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '{ 0 second, @ 1 hour @ 42 minutes @ 20 seconds }'::INTERVAL[];",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL_ARRAY)],
+                        rows: &[
+                            &[T("{00:00:00,01:42:20}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "ISO 8601 interval input",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'P1Y2M3DT4H5M6S', INTERVAL 'P0.5Y', INTERVAL 'P1.5W', INTERVAL 'PT1.5H';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("1 year 2 mons 3 days 04:05:06"), T("6 mons"), T("10 days 12:00:00"), T("01:30:00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'P00021015T103020', INTERVAL 'P0002-10-15T10:30:20';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("2 years 10 mons 15 days 10:30:20"), T("2 years 10 mons 15 days 10:30:20")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'P0002', INTERVAL 'P0002-10', INTERVAL 'P0002-10-15', INTERVAL 'P0002T1S', INTERVAL 'P0002-10T1S';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("2 years"), T("2 years 10 mons"), T("2 years 10 mons 15 days"), T("2 years 00:00:01"), T("2 years 10 mons 00:00:01")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'P10.5e4Y';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("105000 years")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'PT2562047788H54.775807S', INTERVAL 'PT2562047788:00:54.775807';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("2562047788:00:54.775807"), T("2562047788:00:54.775807")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'PT2562047789';",
+                    expected: Expected::Error(Diagnostic { code: "22015", message: r#"interval field value out of range: "PT2562047789""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'P2147483648';",
+                    expected: Expected::Error(Diagnostic { code: "22015", message: r#"interval field value out of range: "P2147483648""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'P1-2147483647-2147483647';",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: "interval out of range", position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'P0.1Y2147483647M';",
+                    expected: Expected::Error(Diagnostic { code: "22015", message: r#"interval field value out of range: "P0.1Y2147483647M""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'p1d';",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: "p1d""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL ' P1D';",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: " P1D""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'P1X';",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: "P1X""#, position: 17, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "SQL standard interval input",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET intervalstyle = sql_standard;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '-1 2:03:04', INTERVAL '-1 +2:03:04', INTERVAL '-1-2';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("-1 days -02:03:04"), T("-1 days +02:03:04"), T("-1 years -2 mons")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "RESET intervalstyle;",
+                    expected: Expected::Tag("RESET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '-1 2:03:04';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("-1 days +02:03:04")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Verbose interval output",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SET intervalstyle = postgres_verbose;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT '100000000y 10mon -1000000000d -100000h -10min -10.000001s ago'::INTERVAL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("-100000000 years -10 mons +1000000000 days 100000:10:10.000001")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL '-10 mons -3 days +03:55:06.70', INTERVAL '-1 sec', INTERVAL '1 day -0.5 sec', INTERVAL '0', INTERVAL '-1 day';",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("-10 mons -3 days +03:55:06.7"), T("-00:00:01"), T("1 day -00:00:00.5"), T("00:00:00"), T("-1 days")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Extreme stored intervals",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE interval_extremes (f1 INTERVAL);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO interval_extremes VALUES ('2147483647 days -2147483648 months'), ('-2147483648 days -2147483648 months'), ('1 year'), ('-178000000 years');",
+                    expected: Expected::Tag("INSERT 0 4"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM interval_extremes ORDER BY f1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("f1", INTERVAL)],
+                        rows: &[
+                            &[T("-178956970 years -8 mons -2147483648 days")],
+                            &[T("-178000000 years")],
+                            &[T("-178956970 years -8 mons +2147483647 days")],
+                            &[T("1 year")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT r1.f1, r2.f1 FROM interval_extremes r1, interval_extremes r2 WHERE r1.f1 > r2.f1 ORDER BY r1.f1, r2.f1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("f1", INTERVAL), Column("f1", INTERVAL)],
+                        rows: &[
+                            &[T("-178000000 years"), T("-178956970 years -8 mons -2147483648 days")],
+                            &[T("-178956970 years -8 mons +2147483647 days"), T("-178956970 years -8 mons -2147483648 days")],
+                            &[T("-178956970 years -8 mons +2147483647 days"), T("-178000000 years")],
+                            &[T("1 year"), T("-178956970 years -8 mons -2147483648 days")],
+                            &[T("1 year"), T("-178000000 years")],
+                            &[T("1 year"), T("-178956970 years -8 mons +2147483647 days")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Justified interval overflow",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT justify_interval(INTERVAL '2147483647 days 24 hrs'), justify_interval(INTERVAL '-2147483648 days -24 hrs');",
+                    expected: Expected::Rows {
+                        columns: &[Column("justify_interval", INTERVAL), Column("justify_interval", INTERVAL)],
+                        rows: &[
+                            &[T("5965232 years 4 mons 8 days"), T("-5965232 years -4 mons -9 days")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT justify_hours(INTERVAL '2147483647 days 24 hrs');",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: "interval out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT justify_days(INTERVAL '2147483647 months 30 days');",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: "interval out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT justify_interval(INTERVAL '2147483647 months 30 days');",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: "interval out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Interval sum and avg",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT sum(x), avg(x) FROM (VALUES (INTERVAL '1 day'), (INTERVAL '2 hours'), (INTERVAL '1 mon 3 sec'), (NULL)) v(x);",
+                    expected: Expected::Rows {
+                        columns: &[Column("sum", INTERVAL), Column("avg", INTERVAL)],
+                        rows: &[
+                            &[T("1 mon 1 day 02:00:03"), T("10 days 08:40:01")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(x), avg(x) FROM (VALUES (INTERVAL '1 day')) v(x) WHERE false;",
+                    expected: Expected::Rows {
+                        columns: &[Column("sum", INTERVAL), Column("avg", INTERVAL)],
+                        rows: &[
+                            &[Null, Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(x) FROM (VALUES (INTERVAL '2147483647 days'), (INTERVAL '1 day')) v(x);",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: "interval out of range", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

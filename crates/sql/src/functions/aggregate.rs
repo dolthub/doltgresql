@@ -20,7 +20,7 @@ use crate::cast::type_display;
 use crate::error::{PgError, Result, code};
 use crate::expr::{Expr, compare_values, position};
 use crate::numeric::Numeric;
-use crate::oid::{BOOL, FLOAT4, FLOAT8, INT2, INT4, INT8, NUMERIC, TEXT};
+use crate::oid::{BOOL, FLOAT4, FLOAT8, INT2, INT4, INT8, INTERVAL, NUMERIC, TEXT};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -77,12 +77,14 @@ pub const AGGREGATES: &[Aggregate] = &[
     a("sum", &[NUMERIC], NUMERIC, Kind::Sum),
     a("sum", &[FLOAT4], FLOAT4, Kind::Sum),
     a("sum", &[FLOAT8], FLOAT8, Kind::Sum),
+    a("sum", &[INTERVAL], INTERVAL, Kind::Sum),
     a("avg", &[INT2], NUMERIC, Kind::Avg),
     a("avg", &[INT4], NUMERIC, Kind::Avg),
     a("avg", &[INT8], NUMERIC, Kind::Avg),
     a("avg", &[NUMERIC], NUMERIC, Kind::Avg),
     a("avg", &[FLOAT4], FLOAT8, Kind::Avg),
     a("avg", &[FLOAT8], FLOAT8, Kind::Avg),
+    a("avg", &[INTERVAL], INTERVAL, Kind::Avg),
     a("min", &[ANYELEMENT], ANYELEMENT, Kind::Min),
     a("max", &[ANYELEMENT], ANYELEMENT, Kind::Max),
     a("bool_and", &[BOOL], BOOL, Kind::BoolAnd),
@@ -283,6 +285,7 @@ impl Accumulator {
             (Kind::Sum, INT8) => State::SumInt(None),
             (Kind::Sum, FLOAT4) => State::SumFloat4(None),
             (Kind::Sum | Kind::Avg, FLOAT8) => State::SumFloat(None),
+            (Kind::Sum | Kind::Avg, INTERVAL) => rows(),
             (Kind::Sum | Kind::Avg, _) => State::SumNumeric(None),
             (Kind::Min | Kind::Max, _) => State::Extreme(None),
             (Kind::BoolAnd | Kind::BoolOr, _) => State::Bool(None),
@@ -731,12 +734,32 @@ fn sum(values: &[Value], ret: u32) -> Result<Value> {
         }
         FLOAT4 => Value::Float4(values.iter().map(|v| float_of(v) as f32).sum()),
         FLOAT8 => Value::Float8(values.iter().map(float_of).sum()),
+        INTERVAL => Value::Interval(interval_sum(values)?),
         _ => Value::Numeric(values.iter().fold(Numeric::zero(0), |total, v| total.add(&numeric_of(v)))),
     })
 }
 
-/// avg returns the mean, as numeric for integers and numerics and as float8 for floats.
+/// interval_sum adds intervals field by field, failing as Postgres' interval_pl does when a field overflows.
+fn interval_sum(values: &[Value]) -> Result<crate::datetime::Interval> {
+    let overflow = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range");
+    let mut total = crate::datetime::Interval::default();
+    for value in values {
+        if let Value::Interval(iv) = value {
+            total.months = total.months.checked_add(iv.months).ok_or_else(overflow)?;
+            total.days = total.days.checked_add(iv.days).ok_or_else(overflow)?;
+            total.micros = total.micros.checked_add(iv.micros).ok_or_else(overflow)?;
+        }
+    }
+    Ok(total)
+}
+
+/// avg returns the mean, as numeric for integers and numerics, as float8 for floats, and as an interval for
+/// intervals.
 fn avg(values: &[Value], ret: u32) -> Result<Value> {
+    if ret == INTERVAL {
+        let total = interval_sum(values)?;
+        return Ok(Value::Interval(super::datetime::interval_multiply(total, values.len() as f64, true)?));
+    }
     if ret == FLOAT8 {
         let total: f64 = values.iter().map(float_of).sum();
         return Ok(Value::Float8(total / values.len() as f64));

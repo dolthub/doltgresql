@@ -67,7 +67,6 @@ pub const FUNCTIONS: &[Function] = &[
     f("shobj_description", &[OID, NAME], TEXT, obj_description),
     f("pg_get_serial_sequence", &[TEXT, TEXT], TEXT, pg_get_serial_sequence),
     f("pg_partition_ancestors", &[REGCLASS], REGCLASS, pg_partition_ancestors),
-    f("hashtext", &[TEXT], INT4, hashtext),
     f("min_scale", &[NUMERIC], INT4, min_scale),
     f("pg_relation_size", &[REGCLASS], INT8, relation_size),
     f("pg_relation_size", &[REGCLASS, TEXT], INT8, relation_size),
@@ -253,72 +252,6 @@ fn pg_get_serial_sequence(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         }
     }
     Ok(Value::Null)
-}
-
-/// hash_bytes hashes bytes as Postgres' hash_bytes does, with Bob Jenkins' lookup3 hash.
-fn hash_bytes(key: &[u8]) -> u32 {
-    fn mix(a: &mut u32, b: &mut u32, c: &mut u32) {
-        *a = a.wrapping_sub(*c);
-        *a ^= c.rotate_left(4);
-        *c = c.wrapping_add(*b);
-        *b = b.wrapping_sub(*a);
-        *b ^= a.rotate_left(6);
-        *a = a.wrapping_add(*c);
-        *c = c.wrapping_sub(*b);
-        *c ^= b.rotate_left(8);
-        *b = b.wrapping_add(*a);
-        *a = a.wrapping_sub(*c);
-        *a ^= c.rotate_left(16);
-        *c = c.wrapping_add(*b);
-        *b = b.wrapping_sub(*a);
-        *b ^= a.rotate_left(19);
-        *a = a.wrapping_add(*c);
-        *c = c.wrapping_sub(*b);
-        *c ^= b.rotate_left(4);
-        *b = b.wrapping_add(*a);
-    }
-    fn finish(a: &mut u32, b: &mut u32, c: &mut u32) {
-        *c ^= *b;
-        *c = c.wrapping_sub(b.rotate_left(14));
-        *a ^= *c;
-        *a = a.wrapping_sub(c.rotate_left(11));
-        *b ^= *a;
-        *b = b.wrapping_sub(a.rotate_left(25));
-        *c ^= *b;
-        *c = c.wrapping_sub(b.rotate_left(16));
-        *a ^= *c;
-        *a = a.wrapping_sub(c.rotate_left(4));
-        *b ^= *a;
-        *b = b.wrapping_sub(a.rotate_left(14));
-        *c ^= *b;
-        *c = c.wrapping_sub(b.rotate_left(24));
-    }
-    let word = |bytes: &[u8]| u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-    let start = 0x9e3779b9u32.wrapping_add(key.len() as u32).wrapping_add(3923095);
-    let (mut a, mut b, mut c) = (start, start, start);
-    let mut rest = key;
-    while rest.len() >= 12 {
-        a = a.wrapping_add(word(&rest[0..4]));
-        b = b.wrapping_add(word(&rest[4..8]));
-        c = c.wrapping_add(word(&rest[8..12]));
-        mix(&mut a, &mut b, &mut c);
-        rest = &rest[12..];
-    }
-    for (i, &byte) in rest.iter().enumerate() {
-        let byte = byte as u32;
-        match i {
-            0..=3 => a = a.wrapping_add(byte << (8 * i)),
-            4..=7 => b = b.wrapping_add(byte << (8 * (i - 4))),
-            _ => c = c.wrapping_add(byte << (8 * (i - 7))),
-        }
-    }
-    finish(&mut a, &mut b, &mut c);
-    c
-}
-
-/// hashtext hashes text as Postgres' hashtext does.
-fn hashtext(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(Value::Int4(hash_bytes(text(&args[0]).as_bytes()) as i32))
 }
 
 /// min_scale returns the fewest decimal digits that represent a numeric exactly.

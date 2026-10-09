@@ -765,11 +765,11 @@ fn interval_of(value: &Value) -> Interval {
 }
 
 /// justify_days_of turns each 30 days into a month.
-pub fn justify_days_of(iv: Interval) -> Interval {
+pub fn justify_days_of(iv: Interval) -> Result<Interval> {
     let mut result = iv;
     let whole = result.days / 30;
     result.days -= whole * 30;
-    result.months += whole;
+    result.months = result.months.checked_add(whole).ok_or_else(interval_out_of_range)?;
     if result.months > 0 && result.days < 0 {
         result.days += 30;
         result.months -= 1;
@@ -777,15 +777,15 @@ pub fn justify_days_of(iv: Interval) -> Interval {
         result.days -= 30;
         result.months += 1;
     }
-    result
+    Ok(result)
 }
 
 /// justify_hours_of turns each 24 hours into a day.
-pub fn justify_hours_of(iv: Interval) -> Interval {
+pub fn justify_hours_of(iv: Interval) -> Result<Interval> {
     let mut result = iv;
     let whole = result.micros / USECS_PER_DAY;
     result.micros -= whole * USECS_PER_DAY;
-    result.days += whole as i32;
+    result.days = result.days.checked_add(whole as i32).ok_or_else(interval_out_of_range)?;
     if result.days > 0 && result.micros < 0 {
         result.micros += USECS_PER_DAY;
         result.days -= 1;
@@ -793,29 +793,38 @@ pub fn justify_hours_of(iv: Interval) -> Interval {
         result.micros -= USECS_PER_DAY;
         result.days += 1;
     }
-    result
+    Ok(result)
+}
+
+/// interval_out_of_range is the error of a justified interval whose fields overflow.
+fn interval_out_of_range() -> PgError {
+    PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range")
 }
 
 /// justify_days turns each 30 days into a month.
 fn justify_days(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(Value::Interval(justify_days_of(interval_of(&args[0]))))
+    Ok(Value::Interval(justify_days_of(interval_of(&args[0]))?))
 }
 
 /// justify_hours turns each 24 hours into a day.
 fn justify_hours(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(Value::Interval(justify_hours_of(interval_of(&args[0]))))
+    Ok(Value::Interval(justify_hours_of(interval_of(&args[0]))?))
 }
 
 /// justify_interval justifies days and hours together.
 fn justify_interval(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    let iv = interval_of(&args[0]);
-    let mut result = iv;
+    let mut result = interval_of(&args[0]);
+    if (result.days > 0 && result.micros > 0) || (result.days < 0 && result.micros < 0) {
+        let whole_months = result.days / 30;
+        result.days -= whole_months * 30;
+        result.months = result.months.checked_add(whole_months).ok_or_else(interval_out_of_range)?;
+    }
     let whole_days = result.micros / USECS_PER_DAY;
     result.micros -= whole_days * USECS_PER_DAY;
     result.days += whole_days as i32;
     let whole_months = result.days / 30;
     result.days -= whole_months * 30;
-    result.months += whole_months;
+    result.months = result.months.checked_add(whole_months).ok_or_else(interval_out_of_range)?;
     if result.months > 0 && (result.days < 0 || (result.days == 0 && result.micros < 0)) {
         result.days += 30;
         result.months -= 1;

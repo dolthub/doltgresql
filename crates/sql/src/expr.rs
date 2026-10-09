@@ -3887,7 +3887,7 @@ pub(crate) fn date_op(op: DateOp, l: Value, r: Value) -> Result<Value> {
                 return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "cannot subtract infinite timestamps"));
             }
             let micros = a.checked_sub(b).ok_or_else(interval_range)?;
-            Value::Interval(justify_hours_of(dt::Interval { months: 0, days: 0, micros }))
+            Value::Interval(justify_hours_of(dt::Interval { months: 0, days: 0, micros })?)
         }
         (DateOp::TimePlusInterval, Value::Time(t), Value::Interval(iv))
         | (DateOp::TimePlusInterval, Value::Interval(iv), Value::Time(t)) => {

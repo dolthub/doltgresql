@@ -725,26 +725,41 @@ pub fn format_interval(iv: &Interval, style: IntervalStyle) -> String {
             out
         }
         IntervalStyle::PostgresVerbose => {
-            let mut parts = Vec::new();
-            let mut is_before = false;
+            let mut out = "@".to_string();
+            let (mut is_zero, mut is_before) = (true, false);
             for (value, unit) in [(year, "year"), (mon, "mon"), (mday, "day"), (hour, "hour"), (min, "min")] {
-                if value != 0 {
-                    is_before = value < 0;
-                    parts.push(format!("{} {unit}{}", value.abs(), if value.abs() != 1 { "s" } else { "" }));
+                if value == 0 {
+                    continue;
                 }
+                let value = if is_zero {
+                    is_before = value < 0;
+                    value.abs()
+                } else if is_before {
+                    -value
+                } else {
+                    value
+                };
+                out.push_str(&format!(" {value} {unit}{}", if value == 1 { "" } else { "s" }));
+                is_zero = false;
             }
             if sec != 0 || fsec != 0 {
-                if sec < 0 || fsec < 0 {
-                    is_before = true;
+                out.push(' ');
+                if sec < 0 || (sec == 0 && fsec < 0) {
+                    if is_zero {
+                        is_before = true;
+                    } else if !is_before {
+                        out.push('-');
+                    }
+                } else if is_before {
+                    out.push('-');
                 }
-                let text = signed_seconds(sec.abs(), fsec.abs(), false);
                 let plural = if sec.abs() != 1 || fsec != 0 { "s" } else { "" };
-                parts.push(format!("{text} sec{plural}"));
+                out.push_str(&format!("{} sec{plural}", signed_seconds(sec.abs(), fsec.abs(), false)));
+                is_zero = false;
             }
-            if parts.is_empty() {
-                return "@ 0".into();
+            if is_zero {
+                out.push_str(" 0");
             }
-            let mut out = format!("@ {}", parts.join(" "));
             if is_before {
                 out.push_str(" ago");
             }
@@ -1372,91 +1387,765 @@ pub fn parse_timetz(text: &str, format: &Format, now: Now) -> Result<(i64, i32)>
     Ok((time, -offset))
 }
 
-/// interval_unit returns the canonical name of an interval unit that Postgres reads.
-fn interval_unit(word: &str) -> Option<&'static str> {
-    Some(match word {
-        "microsecond" | "microseconds" | "us" | "usec" | "usecs" | "useconds" => "us",
-        "millisecond" | "milliseconds" | "ms" | "msec" | "msecs" | "mseconds" => "ms",
-        "second" | "seconds" | "s" | "sec" | "secs" => "s",
-        "minute" | "minutes" | "m" | "min" | "mins" => "min",
-        "hour" | "hours" | "h" | "hr" | "hrs" => "h",
-        "day" | "days" | "d" => "d",
-        "week" | "weeks" | "w" => "w",
-        "month" | "months" | "mon" | "mons" => "mon",
-        "year" | "years" | "y" | "yr" | "yrs" => "y",
-        "decade" | "decades" | "dec" | "decs" => "dec",
-        "century" | "centuries" | "c" | "cent" => "cent",
-        "millennium" | "millennia" | "mil" | "mils" => "mil",
-        _ => return None,
-    })
+/// IntervalError is why interval input failed, as Postgres' DTERR_BAD_FORMAT and DTERR_FIELD_OVERFLOW say.
+#[derive(Debug, PartialEq)]
+enum IntervalError {
+    BadFormat,
+    Overflow,
 }
 
-/// IntervalBuilder accumulates interval fields, cascading fractions of larger units into smaller ones.
+/// IntervalParts is the fields interval input adds up, as Postgres' pg_itm_in holds them, each checked for overflow.
 #[derive(Default)]
-struct IntervalBuilder {
-    years: f64,
-    months: f64,
-    days: f64,
-    micros: f64,
+struct IntervalParts {
+    micros: i64,
+    days: i32,
+    months: i32,
+    years: i32,
 }
 
-impl IntervalBuilder {
-    /// add adds an amount of a unit.
-    fn add(&mut self, amount: f64, unit: &str) {
-        match unit {
-            "us" => self.micros += amount,
-            "ms" => self.micros += amount * 1000.0,
-            "s" => self.micros += amount * USECS_PER_SEC as f64,
-            "min" => self.micros += amount * USECS_PER_MINUTE as f64,
-            "h" => self.micros += amount * USECS_PER_HOUR as f64,
-            "d" => self.add_days(amount),
-            "w" => self.add_days(amount * 7.0),
-            "mon" => self.add_months(amount),
-            "y" => self.add_years(amount),
-            "dec" => self.add_years(amount * 10.0),
-            "cent" => self.add_years(amount * 100.0),
-            _ => self.add_years(amount * 1000.0),
+/// Step is the result of adding to interval parts.
+type Step = std::result::Result<(), IntervalError>;
+
+impl IntervalParts {
+    /// fract_micros adds a fraction of a unit of some microseconds, rounding as AdjustFractMicroseconds does.
+    fn fract_micros(&mut self, frac: f64, scale: i64) -> Step {
+        if frac == 0.0 {
+            return Ok(());
         }
-    }
-
-    /// add_years adds years, cascading a fraction into months.
-    fn add_years(&mut self, amount: f64) {
-        let whole = amount.trunc();
-        self.years += whole;
-        self.add_months((amount - whole) * 12.0);
-    }
-
-    /// add_days adds days, cascading a fraction into microseconds.
-    fn add_days(&mut self, amount: f64) {
-        let whole = amount.trunc();
-        self.days += whole;
-        self.micros += (amount - whole) * USECS_PER_DAY as f64;
-    }
-
-    /// add_months adds months, cascading a fraction into days of 30.
-    fn add_months(&mut self, amount: f64) {
-        let whole = amount.trunc();
-        self.months += whole;
-        self.add_days((amount - whole) * 30.0);
-    }
-
-    /// build returns the interval of some text, rounding microseconds, failing as Postgres does when a field or the
-    /// whole interval is out of range.
-    fn build(&self, text: &str) -> Result<Interval> {
-        let (years, months, days, micros) =
-            (self.years.round(), self.months.round(), self.days.round(), self.micros.round());
-        if [years, months, days].iter().any(|f| f.abs() > i32::MAX as f64) || micros.abs() >= i64::MAX as f64 {
-            return Err(PgError::new(
-                code::INTERVAL_FIELD_OVERFLOW,
-                format!("interval field value out of range: \"{text}\""),
-            ));
+        let frac = frac * scale as f64;
+        let mut usec = frac as i64;
+        let rest = frac - usec as f64;
+        if rest > 0.5 {
+            usec += 1;
+        } else if rest < -0.5 {
+            usec -= 1;
         }
-        let total = years * 12.0 + months;
-        if total.abs() > i32::MAX as f64 {
-            return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range"));
-        }
-        Ok(Interval { months: total as i32, days: days as i32, micros: micros as i64 })
+        self.micros.checked_add(usec).map(|m| self.micros = m).ok_or(IntervalError::Overflow)
     }
+
+    /// fract_days adds a fraction of a unit of some days, as AdjustFractDays does.
+    fn fract_days(&mut self, frac: f64, scale: i32) -> Step {
+        if frac == 0.0 {
+            return Ok(());
+        }
+        let frac = frac * scale as f64;
+        let extra = frac as i32;
+        self.days = self.days.checked_add(extra).ok_or(IntervalError::Overflow)?;
+        self.fract_micros(frac - extra as f64, USECS_PER_DAY)
+    }
+
+    /// fract_years adds a fraction of a unit of some years as whole months, as AdjustFractYears does.
+    fn fract_years(&mut self, frac: f64, scale: i32) -> Step {
+        let extra = (frac * scale as f64 * 12.0).round_ties_even() as i32;
+        self.months = self.months.checked_add(extra).ok_or(IntervalError::Overflow)?;
+        Ok(())
+    }
+
+    /// add_micros adds a number and its fraction of a unit of some microseconds.
+    fn add_micros(&mut self, val: i64, fval: f64, scale: i64) -> Step {
+        self.micros = val.checked_mul(scale).and_then(|p| self.micros.checked_add(p)).ok_or(IntervalError::Overflow)?;
+        self.fract_micros(fval, scale)
+    }
+
+    /// add_days adds a number of a unit of some days.
+    fn add_days(&mut self, val: i64, scale: i32) -> Step {
+        let days = i32::try_from(val).ok().and_then(|v| v.checked_mul(scale)).and_then(|d| self.days.checked_add(d));
+        days.map(|d| self.days = d).ok_or(IntervalError::Overflow)
+    }
+
+    /// add_months adds a number of months.
+    fn add_months(&mut self, val: i64) -> Step {
+        let months = i32::try_from(val).ok().and_then(|v| self.months.checked_add(v));
+        months.map(|m| self.months = m).ok_or(IntervalError::Overflow)
+    }
+
+    /// add_years adds a number of a unit of some years.
+    fn add_years(&mut self, val: i64, scale: i32) -> Step {
+        let years = i32::try_from(val).ok().and_then(|v| v.checked_mul(scale)).and_then(|y| self.years.checked_add(y));
+        years.map(|y| self.years = y).ok_or(IntervalError::Overflow)
+    }
+}
+
+/// FieldKind is the kind of a field of date and time input, as Postgres' ParseDateTime assigns them.
+#[derive(Clone, Copy, PartialEq)]
+enum FieldKind {
+    Number,
+    Date,
+    Time,
+    Text,
+    Special,
+    Zone,
+}
+
+/// DATE_WORDS are the words of Postgres' datetktbl, which a word followed by a digit or `+` must not be to start a
+/// date field.
+const DATE_WORDS: &[&str] = &[
+    "-infinity",
+    "ad",
+    "allballs",
+    "am",
+    "apr",
+    "april",
+    "at",
+    "aug",
+    "august",
+    "bc",
+    "d",
+    "dec",
+    "december",
+    "dow",
+    "doy",
+    "dst",
+    "epoch",
+    "feb",
+    "february",
+    "fri",
+    "friday",
+    "h",
+    "infinity",
+    "isodow",
+    "isoyear",
+    "j",
+    "jan",
+    "january",
+    "jd",
+    "jul",
+    "julian",
+    "july",
+    "jun",
+    "june",
+    "m",
+    "mar",
+    "march",
+    "may",
+    "mm",
+    "mon",
+    "monday",
+    "nov",
+    "november",
+    "now",
+    "oct",
+    "october",
+    "on",
+    "pm",
+    "s",
+    "sat",
+    "saturday",
+    "sep",
+    "sept",
+    "september",
+    "sun",
+    "sunday",
+    "t",
+    "thu",
+    "thur",
+    "thurs",
+    "thursday",
+    "today",
+    "tomorrow",
+    "tue",
+    "tues",
+    "tuesday",
+    "wed",
+    "wednesday",
+    "weds",
+    "y",
+    "yesterday",
+];
+
+/// is_c_space reports whether a byte is a space to C's isspace.
+fn is_c_space(b: u8) -> bool {
+    matches!(b, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')
+}
+
+/// token_is reports whether a word matches a token of Postgres' date tables, which compare at most ten characters.
+fn token_is(word: &str, token: &str) -> bool {
+    &word.as_bytes()[..word.len().min(10)] == token.as_bytes()
+}
+
+/// WorkBuffer counts the bytes of Postgres' 256-byte work buffer that ParseDateTime fills with fields.
+struct WorkBuffer {
+    used: usize,
+}
+
+impl WorkBuffer {
+    /// push appends a byte to a field, failing when the work buffer would run out.
+    fn push(&mut self, field: &mut String, byte: u8) -> Step {
+        if self.used + 1 >= 256 {
+            return Err(IntervalError::BadFormat);
+        }
+        self.used += 1;
+        field.push(byte.to_ascii_lowercase() as char);
+        Ok(())
+    }
+}
+
+/// date_fields splits date and time input into lowercased fields with their kinds, as Postgres' ParseDateTime does.
+fn date_fields(text: &str) -> std::result::Result<Vec<(FieldKind, String)>, IntervalError> {
+    let b = text.as_bytes();
+    let at = |i: usize| b.get(i).copied().unwrap_or(0);
+    let mut work = WorkBuffer { used: 0 };
+    let mut fields = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if is_c_space(b[i]) {
+            i += 1;
+            continue;
+        }
+        if fields.len() >= 25 {
+            return Err(IntervalError::BadFormat);
+        }
+        let mut f = String::new();
+        let kind;
+        if b[i].is_ascii_digit() {
+            while at(i).is_ascii_digit() {
+                work.push(&mut f, b[i])?;
+                i += 1;
+            }
+            if at(i) == b':' {
+                kind = FieldKind::Time;
+                while at(i).is_ascii_digit() || at(i) == b':' || at(i) == b'.' {
+                    work.push(&mut f, b[i])?;
+                    i += 1;
+                }
+            } else if matches!(at(i), b'-' | b'/' | b'.') {
+                let delim = b[i];
+                work.push(&mut f, delim)?;
+                i += 1;
+                if at(i).is_ascii_digit() {
+                    let mut k = if delim == b'.' { FieldKind::Number } else { FieldKind::Date };
+                    while at(i).is_ascii_digit() {
+                        work.push(&mut f, b[i])?;
+                        i += 1;
+                    }
+                    if at(i) == delim {
+                        k = FieldKind::Date;
+                        while at(i).is_ascii_digit() || at(i) == delim {
+                            work.push(&mut f, b[i])?;
+                            i += 1;
+                        }
+                    }
+                    kind = k;
+                } else {
+                    kind = FieldKind::Date;
+                    while at(i).is_ascii_alphanumeric() || at(i) == delim {
+                        work.push(&mut f, b[i])?;
+                        i += 1;
+                    }
+                }
+            } else {
+                kind = FieldKind::Number;
+            }
+        } else if b[i] == b'.' {
+            kind = FieldKind::Number;
+            work.push(&mut f, b[i])?;
+            i += 1;
+            while at(i).is_ascii_digit() {
+                work.push(&mut f, b[i])?;
+                i += 1;
+            }
+        } else if b[i].is_ascii_alphabetic() {
+            while at(i).is_ascii_alphabetic() {
+                work.push(&mut f, b[i])?;
+                i += 1;
+            }
+            let is_date = matches!(at(i), b'-' | b'/' | b'.')
+                || ((at(i) == b'+' || at(i).is_ascii_digit()) && !DATE_WORDS.iter().any(|w| token_is(&f, w)));
+            if is_date {
+                kind = FieldKind::Date;
+                loop {
+                    work.push(&mut f, b[i])?;
+                    i += 1;
+                    if !(matches!(at(i), b'+' | b'-' | b'/' | b'_' | b'.' | b':') || at(i).is_ascii_alphanumeric()) {
+                        break;
+                    }
+                }
+            } else {
+                kind = FieldKind::Text;
+            }
+        } else if b[i] == b'+' || b[i] == b'-' {
+            work.push(&mut f, b[i])?;
+            i += 1;
+            while is_c_space(at(i)) {
+                i += 1;
+            }
+            if at(i).is_ascii_digit() {
+                kind = FieldKind::Zone;
+                while at(i).is_ascii_digit() || matches!(at(i), b':' | b'.' | b'-') {
+                    work.push(&mut f, b[i])?;
+                    i += 1;
+                }
+            } else if at(i).is_ascii_alphabetic() {
+                kind = FieldKind::Special;
+                while at(i).is_ascii_alphabetic() {
+                    work.push(&mut f, b[i])?;
+                    i += 1;
+                }
+            } else {
+                return Err(IntervalError::BadFormat);
+            }
+        } else if b[i].is_ascii_punctuation() {
+            i += 1;
+            continue;
+        } else {
+            return Err(IntervalError::BadFormat);
+        }
+        work.used += 1;
+        fields.push((kind, f));
+    }
+    Ok(fields)
+}
+
+/// strtol reads a signed integer starting at a position as C's strtol does, returning it, where it ends, and whether
+/// it overflowed; without digits it ends where it starts.
+fn strtol(s: &[u8], from: usize) -> (i64, usize, bool) {
+    let mut i = from;
+    while s.get(i).is_some_and(|&b| is_c_space(b)) {
+        i += 1;
+    }
+    let negative = s.get(i) == Some(&b'-');
+    if matches!(s.get(i), Some(b'+' | b'-')) {
+        i += 1;
+    }
+    let digits = i;
+    let (mut value, mut overflow) = (0i64, false);
+    while let Some(&b) = s.get(i).filter(|b| b.is_ascii_digit()) {
+        let digit = (b - b'0') as i64;
+        match value.checked_mul(10).and_then(|v| if negative { v.checked_sub(digit) } else { v.checked_add(digit) }) {
+            Some(v) => value = v,
+            None => overflow = true,
+        }
+        i += 1;
+    }
+    if i == digits {
+        return (0, from, false);
+    }
+    if overflow {
+        value = if negative { i64::MIN } else { i64::MAX };
+    }
+    (value, i, overflow)
+}
+
+/// strtoint reads an integer as `strtol` does, where values outside 32 bits overflow, as Postgres' strtoint does.
+fn strtoint(s: &[u8], from: usize) -> (i64, usize, bool) {
+    let (value, end, overflow) = strtol(s, from);
+    (value, end, overflow || i32::try_from(value).is_err())
+}
+
+/// parse_fraction reads a fraction that starts with its decimal point and runs to the end, as ParseFraction does.
+fn parse_fraction(s: &str) -> std::result::Result<f64, IntervalError> {
+    if s.len() == 1 {
+        return Ok(0.0);
+    }
+    if crate::basetypes::geometric::float_prefix(s) != s.len() {
+        return Err(IntervalError::BadFormat);
+    }
+    s.parse().map_err(|_| IntervalError::BadFormat)
+}
+
+/// TIME_FIELDS is the mask of Postgres' hour, minute, second, millisecond, and microsecond field bits.
+const TIME_FIELDS: i32 = (1 << 10) | (1 << 11) | (1 << 12) | (1 << 13) | (1 << 14);
+
+/// decode_time reads a time field of interval input as microseconds, as Postgres' DecodeTimeForInterval does, taking
+/// two numbers as minutes and seconds for a MINUTE TO SECOND range or when the seconds have a fraction.
+fn decode_time(s: &str, range: i32) -> std::result::Result<i64, IntervalError> {
+    let b = s.as_bytes();
+    let (mut hour, end, overflow) = strtol(b, 0);
+    if overflow {
+        return Err(IntervalError::Overflow);
+    }
+    if b.get(end) != Some(&b':') {
+        return Err(IntervalError::BadFormat);
+    }
+    let (mut minute, mut end, overflow) = strtoint(b, end + 1);
+    if overflow {
+        return Err(IntervalError::Overflow);
+    }
+    let (mut second, mut fsec) = (0, 0);
+    match b.get(end) {
+        None if range == (1 << 11) | (1 << 12) => {
+            second = minute;
+            minute = i32::try_from(hour).map_err(|_| IntervalError::Overflow)? as i64;
+            hour = 0;
+        }
+        None => {}
+        Some(b'.') => {
+            fsec = (parse_fraction(&s[end..])? * 1e6).round_ties_even() as i64;
+            second = minute;
+            minute = i32::try_from(hour).map_err(|_| IntervalError::Overflow)? as i64;
+            hour = 0;
+        }
+        Some(b':') => {
+            let (seconds, seconds_end, overflow) = strtoint(b, end + 1);
+            if overflow {
+                return Err(IntervalError::Overflow);
+            }
+            (second, end) = (seconds, seconds_end);
+            match b.get(end) {
+                Some(b'.') => fsec = (parse_fraction(&s[end..])? * 1e6).round_ties_even() as i64,
+                None => {}
+                _ => return Err(IntervalError::BadFormat),
+            }
+        }
+        _ => return Err(IntervalError::BadFormat),
+    }
+    if hour < 0 || !(0..60).contains(&minute) || !(0..=60).contains(&second) || !(0..=USECS_PER_SEC).contains(&fsec) {
+        return Err(IntervalError::Overflow);
+    }
+    hour.checked_mul(USECS_PER_HOUR)
+        .and_then(|h| h.checked_add(fsec))
+        .and_then(|m| m.checked_add(minute * USECS_PER_MINUTE))
+        .and_then(|m| m.checked_add(second * USECS_PER_SEC))
+        .ok_or(IntervalError::Overflow)
+}
+
+/// IntervalUnit is a unit that interval input counts in, where Other stands for units and words Postgres' interval
+/// input refuses numbers of.
+#[derive(Clone, Copy, PartialEq)]
+enum IntervalUnit {
+    Microsecond,
+    Millisecond,
+    Second,
+    Minute,
+    Hour,
+    Day,
+    Week,
+    Month,
+    Year,
+    Decade,
+    Century,
+    Millennium,
+    Other,
+}
+
+/// interval_word returns the unit a word of interval input names, as Postgres' deltatktbl lists them, with whether
+/// the word is `ago`.
+fn interval_word(word: &str) -> Option<(IntervalUnit, bool)> {
+    use IntervalUnit::*;
+    const WORDS: [(&str, IntervalUnit); 60] = [
+        ("c", Century),
+        ("cent", Century),
+        ("centuries", Century),
+        ("century", Century),
+        ("d", Day),
+        ("day", Day),
+        ("days", Day),
+        ("dec", Decade),
+        ("decade", Decade),
+        ("decades", Decade),
+        ("decs", Decade),
+        ("h", Hour),
+        ("hour", Hour),
+        ("hours", Hour),
+        ("hr", Hour),
+        ("hrs", Hour),
+        ("m", Minute),
+        ("microsecon", Microsecond),
+        ("mil", Millennium),
+        ("millennia", Millennium),
+        ("millennium", Millennium),
+        ("millisecon", Millisecond),
+        ("mils", Millennium),
+        ("min", Minute),
+        ("mins", Minute),
+        ("minute", Minute),
+        ("minutes", Minute),
+        ("mon", Month),
+        ("mons", Month),
+        ("month", Month),
+        ("months", Month),
+        ("ms", Millisecond),
+        ("msec", Millisecond),
+        ("msecond", Millisecond),
+        ("mseconds", Millisecond),
+        ("msecs", Millisecond),
+        ("qtr", Other),
+        ("quarter", Other),
+        ("s", Second),
+        ("sec", Second),
+        ("second", Second),
+        ("seconds", Second),
+        ("secs", Second),
+        ("timezone", Other),
+        ("timezone_h", Other),
+        ("timezone_m", Other),
+        ("us", Microsecond),
+        ("usec", Microsecond),
+        ("usecond", Microsecond),
+        ("useconds", Microsecond),
+        ("usecs", Microsecond),
+        ("w", Week),
+        ("week", Week),
+        ("weeks", Week),
+        ("y", Year),
+        ("year", Year),
+        ("years", Year),
+        ("yr", Year),
+        ("yrs", Year),
+        ("ago", Other),
+    ];
+    WORDS.iter().find(|(token, _)| token_is(word, token)).map(|&(token, unit)| (unit, token == "ago"))
+}
+
+/// decode_interval reads the fields of interval input from right to left, as Postgres' DecodeInterval does, so a
+/// number without a unit counts the last field of the range, or days before a time.
+fn decode_interval(
+    fields: &[(FieldKind, String)],
+    range: i32,
+    sql_standard: bool,
+) -> std::result::Result<IntervalParts, IntervalError> {
+    use IntervalUnit::*;
+    let mut parts = IntervalParts::default();
+    let force_negative = sql_standard
+        && fields.first().is_some_and(|(_, f)| f.starts_with('-'))
+        && !fields[1..].iter().any(|(_, f)| f.starts_with(['-', '+']));
+    let (month, year, day, hour, minute, second) = (1 << 1, 1 << 2, 1 << 3, 1 << 10, 1 << 11, 1 << 12);
+    let (mut fmask, mut unit, mut is_before) = (0, None, false);
+    for (kind, field) in fields.iter().rev() {
+        let time = match kind {
+            FieldKind::Time => Some(decode_time(field, range)?),
+            FieldKind::Zone if field.contains(':') => {
+                decode_time(&field[1..], range).ok().map(|m| if field.starts_with('-') { -m } else { m })
+            }
+            _ => None,
+        };
+        let tmask = match kind {
+            _ if let Some(micros) = time => {
+                parts.micros = if force_negative && micros > 0 { -micros } else { micros };
+                unit = Some(Day);
+                TIME_FIELDS
+            }
+            FieldKind::Text | FieldKind::Special => {
+                let (named, ago) = interval_word(field).ok_or(IntervalError::BadFormat)?;
+                is_before |= ago;
+                unit = Some(named);
+                0
+            }
+            _ => {
+                let current = *unit.get_or_insert(match range {
+                    r if r == year => Year,
+                    r if r == month || r == year | month => Month,
+                    r if r == day => Day,
+                    r if r == hour || r == day | hour => Hour,
+                    r if r == minute || r == hour | minute || r == day | hour | minute => Minute,
+                    _ => Second,
+                });
+                let b = field.as_bytes();
+                let (mut val, end, overflow) = strtol(b, 0);
+                if overflow {
+                    return Err(IntervalError::Overflow);
+                }
+                let mut fval = 0.0;
+                let current = match b.get(end) {
+                    Some(b'-') => {
+                        let (months, end, overflow) = strtoint(b, end + 1);
+                        if overflow || !(0..12).contains(&months) {
+                            return Err(IntervalError::Overflow);
+                        }
+                        if end != b.len() {
+                            return Err(IntervalError::BadFormat);
+                        }
+                        let months = if b[0] == b'-' { -months } else { months };
+                        val = val.checked_mul(12).and_then(|v| v.checked_add(months)).ok_or(IntervalError::Overflow)?;
+                        unit = Some(Month);
+                        Month
+                    }
+                    Some(b'.') => {
+                        fval = parse_fraction(&field[end..])?;
+                        if b[0] == b'-' {
+                            fval = -fval;
+                        }
+                        current
+                    }
+                    None => current,
+                    _ => return Err(IntervalError::BadFormat),
+                };
+                if force_negative {
+                    if val > 0 {
+                        val = -val;
+                    }
+                    if fval > 0.0 {
+                        fval = -fval;
+                    }
+                }
+                match current {
+                    Microsecond => parts.add_micros(val, fval, 1).map(|_| 1 << 14)?,
+                    Millisecond => parts.add_micros(val, fval, 1000).map(|_| 1 << 13)?,
+                    Second => {
+                        parts.add_micros(val, fval, USECS_PER_SEC)?;
+                        if fval == 0.0 { second } else { second | (1 << 13) | (1 << 14) }
+                    }
+                    Minute => parts.add_micros(val, fval, USECS_PER_MINUTE).map(|_| minute)?,
+                    Hour => {
+                        parts.add_micros(val, fval, USECS_PER_HOUR)?;
+                        unit = Some(Day);
+                        hour
+                    }
+                    Day => parts.add_days(val, 1).and_then(|_| parts.fract_micros(fval, USECS_PER_DAY)).map(|_| day)?,
+                    Week => parts.add_days(val, 7).and_then(|_| parts.fract_days(fval, 7)).map(|_| 1 << 24)?,
+                    Month => parts.add_months(val).and_then(|_| parts.fract_days(fval, 30)).map(|_| month)?,
+                    Year => parts.add_years(val, 1).and_then(|_| parts.fract_years(fval, 1)).map(|_| year)?,
+                    Decade => parts.add_years(val, 10).and_then(|_| parts.fract_years(fval, 10)).map(|_| 1 << 25)?,
+                    Century => parts.add_years(val, 100).and_then(|_| parts.fract_years(fval, 100)).map(|_| 1 << 26)?,
+                    Millennium => {
+                        parts.add_years(val, 1000).and_then(|_| parts.fract_years(fval, 1000)).map(|_| 1 << 27)?
+                    }
+                    Other => return Err(IntervalError::BadFormat),
+                }
+            }
+        };
+        if tmask & fmask != 0 {
+            return Err(IntervalError::BadFormat);
+        }
+        fmask |= tmask;
+    }
+    if fmask == 0 {
+        return Err(IntervalError::BadFormat);
+    }
+    if is_before {
+        if parts.micros == i64::MIN || parts.days == i32::MIN || parts.months == i32::MIN || parts.years == i32::MIN {
+            return Err(IntervalError::Overflow);
+        }
+        parts = IntervalParts { micros: -parts.micros, days: -parts.days, months: -parts.months, years: -parts.years };
+    }
+    Ok(parts)
+}
+
+/// iso_number reads a number of ISO 8601 interval input as Postgres' ParseISO8601Number does, returning its whole
+/// part, its fraction, and where it ends.
+fn iso_number(text: &str, from: usize) -> std::result::Result<(i64, f64, usize), IntervalError> {
+    if !matches!(text.as_bytes().get(from), Some(b'0'..=b'9' | b'-' | b'.')) {
+        return Err(IntervalError::BadFormat);
+    }
+    let length = crate::basetypes::geometric::float_prefix(&text[from..]);
+    let number = &text[from..from + length];
+    let val: f64 = number.parse().map_err(|_| IntervalError::BadFormat)?;
+    if val.is_infinite() && !number.to_ascii_lowercase().contains("inf") {
+        return Err(IntervalError::BadFormat);
+    }
+    if val.is_nan() || !(-1.0e15..=1.0e15).contains(&val) {
+        return Err(IntervalError::Overflow);
+    }
+    let whole = val.trunc() as i64;
+    Ok((whole, val - whole as f64, from + length))
+}
+
+/// decode_iso_interval reads ISO 8601 interval input, with designators or in the alternative format, as Postgres'
+/// DecodeISO8601Interval does.
+fn decode_iso_interval(text: &str) -> std::result::Result<IntervalParts, IntervalError> {
+    let s = text.as_bytes();
+    let at = |i: usize| s.get(i).copied().unwrap_or(0);
+    let width =
+        |start: usize| s[start + usize::from(s[start] == b'-')..].iter().take_while(|b| b.is_ascii_digit()).count();
+    let mut p = IntervalParts::default();
+    if s.len() < 2 || s[0] != b'P' {
+        return Err(IntervalError::BadFormat);
+    }
+    let (mut i, mut datepart, mut havefield) = (1, true, false);
+    while i < s.len() {
+        if s[i] == b'T' {
+            (datepart, havefield) = (false, false);
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let (val, fval, end) = iso_number(text, i)?;
+        let unit = at(end);
+        i = end + 1;
+        if datepart {
+            match unit {
+                b'Y' => p.add_years(val, 1).and_then(|_| p.fract_years(fval, 1))?,
+                b'M' => p.add_months(val).and_then(|_| p.fract_days(fval, 30))?,
+                b'W' => p.add_days(val, 7).and_then(|_| p.fract_days(fval, 7))?,
+                b'D' => p.add_days(val, 1).and_then(|_| p.fract_micros(fval, USECS_PER_DAY))?,
+                b'T' | 0 | b'-' => {
+                    if unit != b'-' && width(start) == 8 && !havefield {
+                        p.add_years(val / 10000, 1)?;
+                        p.add_months((val / 100) % 100)?;
+                        p.add_days(val % 100, 1)?;
+                        p.fract_micros(fval, USECS_PER_DAY)?;
+                        if unit == 0 {
+                            return Ok(p);
+                        }
+                        (datepart, havefield) = (false, false);
+                        continue;
+                    }
+                    if havefield {
+                        return Err(IntervalError::BadFormat);
+                    }
+                    p.add_years(val, 1).and_then(|_| p.fract_years(fval, 1))?;
+                    match unit {
+                        0 => return Ok(p),
+                        b'T' => {
+                            (datepart, havefield) = (false, false);
+                            continue;
+                        }
+                        _ => {}
+                    }
+                    let (val, fval, end) = iso_number(text, i)?;
+                    i = end;
+                    p.add_months(val).and_then(|_| p.fract_days(fval, 30))?;
+                    match at(i) {
+                        0 => return Ok(p),
+                        b'T' => {
+                            (datepart, havefield) = (false, false);
+                            continue;
+                        }
+                        b'-' => i += 1,
+                        _ => return Err(IntervalError::BadFormat),
+                    }
+                    let (val, fval, end) = iso_number(text, i)?;
+                    i = end;
+                    p.add_days(val, 1).and_then(|_| p.fract_micros(fval, USECS_PER_DAY))?;
+                    match at(i) {
+                        0 => return Ok(p),
+                        b'T' => {
+                            (datepart, havefield) = (false, false);
+                            continue;
+                        }
+                        _ => return Err(IntervalError::BadFormat),
+                    }
+                }
+                _ => return Err(IntervalError::BadFormat),
+            }
+        } else {
+            match unit {
+                b'H' => p.add_micros(val, fval, USECS_PER_HOUR)?,
+                b'M' => p.add_micros(val, fval, USECS_PER_MINUTE)?,
+                b'S' => p.add_micros(val, fval, USECS_PER_SEC)?,
+                0 | b':' => {
+                    if unit == 0 && width(start) == 6 && !havefield {
+                        p.add_micros(val / 10000, 0.0, USECS_PER_HOUR)?;
+                        p.add_micros((val / 100) % 100, 0.0, USECS_PER_MINUTE)?;
+                        p.add_micros(val % 100, 0.0, USECS_PER_SEC)?;
+                        p.fract_micros(fval, 1)?;
+                        return Ok(p);
+                    }
+                    if havefield {
+                        return Err(IntervalError::BadFormat);
+                    }
+                    p.add_micros(val, fval, USECS_PER_HOUR)?;
+                    if unit == 0 {
+                        return Ok(p);
+                    }
+                    let (val, fval, end) = iso_number(text, i)?;
+                    i = end;
+                    p.add_micros(val, fval, USECS_PER_MINUTE)?;
+                    match at(i) {
+                        0 => return Ok(p),
+                        b':' => i += 1,
+                        _ => return Err(IntervalError::BadFormat),
+                    }
+                    let (val, fval, end) = iso_number(text, i)?;
+                    p.add_micros(val, fval, USECS_PER_SEC)?;
+                    return if end == s.len() { Ok(p) } else { Err(IntervalError::BadFormat) };
+                }
+                _ => return Err(IntervalError::BadFormat),
+            }
+        }
+        havefield = true;
+    }
+    Ok(p)
 }
 
 /// INTERVAL_FULL_RANGE and INTERVAL_FULL_PRECISION are the parts of an interval modifier that leave the interval as is.
@@ -1511,149 +2200,23 @@ pub fn parse_interval(text: &str) -> Result<Interval> {
 /// parse_interval_with_modifier reads an interval as `parse_interval` does, where a number without a unit counts the
 /// last field of the modifier's range, or seconds without one.
 pub fn parse_interval_with_modifier(text: &str, modifier: i32) -> Result<Interval> {
-    let (year, month, day, hour, minute) = (1 << 2, 1 << 1, 1 << 3, 1 << 10, 1 << 11);
-    let bare_unit = match modifier >> 16 & 0x7fff {
-        _ if modifier < 0 => "s",
-        r if r == year => "y",
-        r if r == month || r == year | month => "mon",
-        r if r == day => "d",
-        r if r == hour || r == day | hour => "h",
-        r if r == minute || r == hour | minute || r == day | hour | minute => "min",
-        _ => "s",
-    };
-    let invalid =
-        || PgError::new(code::INVALID_DATETIME_FORMAT, format!("invalid input syntax for type interval: \"{text}\""));
-    let trimmed = text.trim();
-    if let Some(iso) = trimmed.strip_prefix('P').or_else(|| trimmed.strip_prefix('p')) {
-        return parse_iso_interval(iso).ok_or_else(invalid);
+    let range = if modifier >= 0 { modifier >> 16 & 0x7fff } else { INTERVAL_FULL_RANGE };
+    let sql_standard = with_format(|f| f.interval_style == IntervalStyle::SqlStandard);
+    let mut parts = date_fields(text).and_then(|fields| decode_interval(&fields, range, sql_standard));
+    if matches!(parts, Err(IntervalError::BadFormat)) {
+        parts = decode_iso_interval(text);
     }
-    let mut b = IntervalBuilder::default();
-    let mut words: Vec<String> = trimmed.split_whitespace().map(str::to_ascii_lowercase).collect();
-    let mut ago = false;
-    if words.first().map(String::as_str) == Some("@") {
-        words.remove(0);
-    } else if let Some(first) = words.first_mut()
-        && first.starts_with('@')
-    {
-        first.remove(0);
-    }
-    if words.last().map(String::as_str) == Some("ago") {
-        words.pop();
-        ago = true;
-    }
-    if words.is_empty() {
-        return Err(invalid());
-    }
-    let mut i = 0;
-    let mut seen_any = false;
-    while i < words.len() {
-        let word = &words[i];
-        if word.contains(':') {
-            let (sign, rest) = match word.as_bytes()[0] {
-                b'-' => (-1.0, &word[1..]),
-                b'+' => (1.0, &word[1..]),
-                _ => (1.0, &word[..]),
-            };
-            let parts: Vec<&str> = rest.split(':').collect();
-            let num = |s: &str| s.parse::<f64>().map_err(|_| invalid());
-            match parts.len() {
-                2 => {
-                    b.add(sign * num(parts[0])?, "h");
-                    b.add(sign * num(parts[1])?, "min");
-                }
-                3 => {
-                    b.add(sign * num(parts[0])?, "h");
-                    b.add(sign * num(parts[1])?, "min");
-                    b.add(sign * num(parts[2])?, "s");
-                }
-                _ => return Err(invalid()),
-            }
-            seen_any = true;
-            i += 1;
-            continue;
+    let parts = parts.map_err(|e| match e {
+        IntervalError::BadFormat => {
+            PgError::new(code::INVALID_DATETIME_FORMAT, format!("invalid input syntax for type interval: \"{text}\""))
         }
-        // SQL standard year-month, like 1-2, whose sign applies to both fields.
-        let (sign, unsigned) = match word.as_bytes()[0] {
-            b'-' => (-1.0, &word[1..]),
-            b'+' => (1.0, &word[1..]),
-            _ => (1.0, &word[..]),
-        };
-        if let Some((y, m)) = unsigned.split_once('-').filter(|(y, m)| {
-            !y.is_empty()
-                && !m.is_empty()
-                && y.bytes().all(|c| c.is_ascii_digit())
-                && m.bytes().all(|c| c.is_ascii_digit())
-        }) {
-            b.add(sign * y.parse::<f64>().map_err(|_| invalid())?, "y");
-            b.add(sign * m.parse::<f64>().map_err(|_| invalid())?, "mon");
-            seen_any = true;
-            i += 1;
-            continue;
+        IntervalError::Overflow => {
+            PgError::new(code::INTERVAL_FIELD_OVERFLOW, format!("interval field value out of range: \"{text}\""))
         }
-        let (number_text, unit_text) = match word.find(|c: char| c.is_ascii_alphabetic()) {
-            Some(p) if p > 0 => (&word[..p], Some(&word[p..])),
-            _ => (&word[..], None),
-        };
-        let amount: f64 = number_text.parse().map_err(|_| invalid())?;
-        let unit = match unit_text {
-            Some(u) => Some(interval_unit(u).ok_or_else(invalid)?),
-            None => match words.get(i + 1).and_then(|w| interval_unit(w)) {
-                Some(u) => {
-                    i += 1;
-                    Some(u)
-                }
-                None => None,
-            },
-        };
-        match unit {
-            Some(u) => b.add(amount, u),
-            // A bare number is days when a time follows, and seconds otherwise.
-            None if words.get(i + 1).is_some_and(|w| w.contains(':')) => b.add(amount, "d"),
-            None => b.add(amount, bare_unit),
-        }
-        seen_any = true;
-        i += 1;
-    }
-    if !seen_any {
-        return Err(invalid());
-    }
-    let mut iv = b.build(text)?;
-    if ago {
-        iv = Interval { months: -iv.months, days: -iv.days, micros: -iv.micros };
-    }
-    Ok(iv)
-}
-
-/// parse_iso_interval reads an ISO 8601 interval after its `P`.
-fn parse_iso_interval(text: &str) -> Option<Interval> {
-    let mut b = IntervalBuilder::default();
-    let mut in_time = false;
-    let mut number = String::new();
-    for c in text.chars() {
-        match c {
-            'T' | 't' => in_time = true,
-            '0'..='9' | '.' | '-' | '+' => number.push(c),
-            _ => {
-                let amount: f64 = number.parse().ok()?;
-                number.clear();
-                let unit = match (c.to_ascii_uppercase(), in_time) {
-                    ('Y', false) => "y",
-                    ('M', false) => "mon",
-                    ('W', false) => "w",
-                    ('D', false) => "d",
-                    ('H', true) => "h",
-                    ('M', true) => "min",
-                    ('S', true) => "s",
-                    _ => return None,
-                };
-                b.add(amount, unit);
-            }
-        }
-    }
-    if !number.is_empty() {
-        return None;
-    }
-    b.build("").ok()
+    })?;
+    let months = i32::try_from(parts.years as i64 * 12 + parts.months as i64)
+        .map_err(|_| PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range"))?;
+    Ok(Interval { months, days: parts.days, micros: parts.micros })
 }
 
 /// Go stores dates and timestamps as Go times, with its own times standing for the infinities.

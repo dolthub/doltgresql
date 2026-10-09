@@ -163,9 +163,13 @@ pub fn serialize_value(value: &Value, ty: ColumnType) -> Result<Vec<u8>> {
         Value::Time(t) => offset_i64(*t).to_vec(),
         Value::TimeTz(t, z) => [offset_i64(*t).as_slice(), &offset_i32(*z)].concat(),
         Value::Interval(iv) => {
-            let sort_nanos = (iv.months as i64 * 30 * USECS_PER_DAY + iv.days as i64 * USECS_PER_DAY + iv.micros)
-                .saturating_mul(1000);
-            [offset_i64(sort_nanos).as_slice(), &offset_i32(iv.months), &offset_i32(iv.days)].concat()
+            let nanos = iv.cmp_key() * 1000;
+            let sort_nanos = nanos.clamp(i64::MIN as i128, i64::MAX as i128) as i64;
+            let mut out = [offset_i64(sort_nanos).as_slice(), &offset_i32(iv.months), &offset_i32(iv.days)].concat();
+            if sort_nanos as i128 != nanos {
+                out.extend_from_slice(&offset_i64(iv.micros));
+            }
+            out
         }
         Value::Array(a) => {
             let element = ColumnType { oid: a.element, modifier: ty.modifier };
@@ -311,12 +315,18 @@ pub fn deserialize_value(field: &[u8], ty: ColumnType) -> Result<Value> {
             read_offset_i64(&field[..8]).ok_or_else(corrupt)?,
             read_offset_i32(&field[8..]).ok_or_else(corrupt)?,
         ),
-        oid::INTERVAL if field.len() == 16 => {
+        oid::INTERVAL if field.len() == 16 || field.len() == 24 => {
             let sort_nanos = read_offset_i64(&field[..8]).ok_or_else(corrupt)?;
             let months = read_offset_i32(&field[8..12]).ok_or_else(corrupt)?;
-            let days = read_offset_i32(&field[12..]).ok_or_else(corrupt)?;
-            let nanos = sort_nanos - (months as i64 * 30 + days as i64) * USECS_PER_DAY * 1000;
-            Value::Interval(dt::Interval { months, days, micros: nanos / 1000 })
+            let days = read_offset_i32(&field[12..16]).ok_or_else(corrupt)?;
+            let micros = match field.get(16..) {
+                Some(exact) if !exact.is_empty() => read_offset_i64(exact).ok_or_else(corrupt)?,
+                _ => {
+                    let days_nanos = (months as i128 * 30 + days as i128) * USECS_PER_DAY as i128 * 1000;
+                    ((sort_nanos as i128 - days_nanos) / 1000) as i64
+                }
+            };
+            Value::Interval(dt::Interval { months, days, micros })
         }
         other => return Err(PgError::unsupported(format!("reading stored values of type {other}"))),
     })

@@ -200,7 +200,7 @@ impl<'a> Scanner<'a> {
 }
 
 /// float_prefix returns the length of the float that starts the text, as strtod reads it, or 0 without one.
-fn float_prefix(text: &str) -> usize {
+pub(crate) fn float_prefix(text: &str) -> usize {
     let bytes = text.as_bytes();
     let mut i = usize::from(matches!(bytes.first(), Some(b'+' | b'-')));
     let lower = text[i..].to_ascii_lowercase();

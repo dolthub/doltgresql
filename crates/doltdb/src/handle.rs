@@ -15,7 +15,7 @@
 //! An open database that sessions and servers share, with the locks that order their work on it.
 
 use std::ops::{Deref, DerefMut};
-use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard, TryLockError};
 
 use crate::database::Database;
 
@@ -49,10 +49,15 @@ impl Handle {
         Guard { database: self.database.clone(), _shared: Some(shared), _exclusive: None, _writer: Some(writer) }
     }
 
-    /// exclusive returns the database once no other work is running on it, holding off new work until it is dropped.
-    pub fn exclusive(&self) -> Guard<'_> {
-        let exclusive = self.gate.write().unwrap_or_else(|poisoned| poisoned.into_inner());
-        Guard { database: self.database.clone(), _shared: None, _exclusive: Some(exclusive), _writer: None }
+    /// try_exclusive returns the database alone, holding off new work until it is dropped, when no other work is
+    /// running on it. It never waits, so new work keeps starting while a caller polls for a moment without any.
+    pub fn try_exclusive(&self) -> Option<Guard<'_>> {
+        let exclusive = match self.gate.try_write() {
+            Ok(exclusive) => exclusive,
+            Err(TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(TryLockError::WouldBlock) => return None,
+        };
+        Some(Guard { database: self.database.clone(), _shared: None, _exclusive: Some(exclusive), _writer: None })
     }
 }
 

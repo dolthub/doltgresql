@@ -16538,3 +16538,306 @@ fn test_numeric_formatting_and_math_operators() {
         },
     ]);
 }
+
+#[test]
+fn test_hash_functions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Hash functions of scalar types",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: r#"SELECT hashint2(42::int2), hashint4(42), hashint8(42), hashint8(-5000000000), hashoid(42::oid), hashchar('x'::"char"), hashchar('é'::"char");"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("hashint2", INT4), Column("hashint4", INT4), Column("hashint8", INT4), Column("hashint8", INT4), Column("hashoid", INT4), Column("hashchar", INT4), Column("hashchar", INT4)],
+                        rows: &[
+                            &[T("1509752520"), T("1509752520"), T("1509752520"), T("954517114"), T("1509752520"), T("-1072653310"), T("372385741")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hashfloat4(1.5::float4), hashfloat8(1.5), hashfloat8(-0.0), hashfloat8('NaN'), hashfloat4('NaN'::float4) = hashfloat8('NaN');",
+                    expected: Expected::Rows {
+                        columns: &[Column("hashfloat4", INT4), Column("hashfloat8", INT4), Column("hashfloat8", INT4), Column("hashfloat8", INT4), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("630860146"), T("630860146"), T("0"), T("-1275764840"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hashtext('PostgreSQL'), hashname('PostgreSQL'), hashbpchar('ab   '::bpchar), hashbpchar('ab'::bpchar), hashtext('');",
+                    expected: Expected::Rows {
+                        columns: &[Column("hashtext", INT4), Column("hashname", INT4), Column("hashbpchar", INT4), Column("hashbpchar", INT4), Column("hashtext", INT4)],
+                        rows: &[
+                            &[T("-1696465276"), T("-1696465276"), T("1718550461"), T("1718550461"), T("-1477818771")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hash_numeric(1.5), hash_numeric(1.50), hash_numeric(0), hash_numeric(-123456789.000001), hash_numeric('NaN'), hash_numeric(10000);",
+                    expected: Expected::Rows {
+                        columns: &[Column("hash_numeric", INT4), Column("hash_numeric", INT4), Column("hash_numeric", INT4), Column("hash_numeric", INT4), Column("hash_numeric", INT4), Column("hash_numeric", INT4)],
+                        rows: &[
+                            &[T("692967894"), T("692967894"), T("-1"), T("301156260"), T("0"), T("1324868425")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT time_hash('11:09:59'), timetz_hash('00:11:52.518762-07'), interval_hash('1 mon 2 days 3 hours'), interval_hash('30 days') = interval_hash('1 month');",
+                    expected: Expected::Rows {
+                        columns: &[Column("time_hash", INT4), Column("timetz_hash", INT4), Column("interval_hash", INT4), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("1740227977"), T("-360566912"), T("-2088581774"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timestamp_hash('2017-08-22 00:09:59.518762'), uuid_hash('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'), pg_lsn_hash('16/B374D84');",
+                    expected: Expected::Rows {
+                        columns: &[Column("timestamp_hash", INT4), Column("uuid_hash", INT4), Column("pg_lsn_hash", INT4)],
+                        rows: &[
+                            &[T("-1951806412"), T("1154666245"), T("783723155")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hashmacaddr('08:00:2b:01:02:04'), hashinet('192.168.100.128/25'), hashinet('2001:4f8:3:ba::/64'), hashoidvector('0 1 2 3 4');",
+                    expected: Expected::Rows {
+                        columns: &[Column("hashmacaddr", INT4), Column("hashinet", INT4), Column("hashinet", INT4), Column("hashoidvector", INT4)],
+                        rows: &[
+                            &[T("1310037952"), T("1612896565"), T("-27406734"), T("-370450493")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Extended hash functions",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT hashint4extended(42, 0), hashint4extended(42, 1), hashint8extended(-5000000000, 7), hashtextextended('PostgreSQL', 0), hashtextextended('PostgreSQL', 42);",
+                    expected: Expected::Rows {
+                        columns: &[Column("hashint4extended", INT8), Column("hashint4extended", INT8), Column("hashint8extended", INT8), Column("hashtextextended", INT8), Column("hashtextextended", INT8)],
+                        rows: &[
+                            &[T("8010225493015854792"), T("3812564155960986560"), T("-4714785727553898199"), T("-5770657681951818108"), T("-1892722290649063160")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hashfloat8extended(0, 99), hashfloat8extended(1.5, 2), hash_numeric_extended(0, 5), hash_numeric_extended(1.5, 0), hash_numeric_extended('NaN', 9);",
+                    expected: Expected::Rows {
+                        columns: &[Column("hashfloat8extended", INT8), Column("hashfloat8extended", INT8), Column("hash_numeric_extended", INT8), Column("hash_numeric_extended", INT8), Column("hash_numeric_extended", INT8)],
+                        rows: &[
+                            &[T("99"), T("8070826715738731308"), T("4"), T("-8828336294488843818"), T("9")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT timetz_hash_extended('00:11:52.518762-07', 3), interval_hash_extended('1 day', 3), uuid_hash_extended('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("timetz_hash_extended", INT8), Column("interval_hash_extended", INT8), Column("uuid_hash_extended", INT8)],
+                        rows: &[
+                            &[T("-686679692673565880"), T("6065420184059323750"), T("-2645530205222611019")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hashcharextended('x', 0), hashbpcharextended('ab  ', 1), hashinetextended('192.168.100.128/25', 1), hashmacaddrextended('08:00:2b:01:02:04', 1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("hashcharextended", INT8), Column("hashbpcharextended", INT8), Column("hashinetextended", INT8), Column("hashmacaddrextended", INT8)],
+                        rows: &[
+                            &[T("-300249585504183294"), T("6831083245906393158"), T("-6606405735658164122"), T("-511774240489416582")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Hash functions of containers",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT hash_array('{1,2,3}'::int4[]), hash_array('{1,NULL}'::int4[]), hash_array('{}'::int4[]), hash_array('{{1,2},{3,4}}'::int8[]), hash_array('{a,b}'::text[]);",
+                    expected: Expected::Rows {
+                        columns: &[Column("hash_array", INT4), Column("hash_array", INT4), Column("hash_array", INT4), Column("hash_array", INT4), Column("hash_array", INT4)],
+                        rows: &[
+                            &[T("-325393530"), T("1072682299"), T("1"), T("1786625125"), T("-1103066928")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hash_array_extended('{1,2,3}'::int4[], 0), hash_array_extended('{1,2,3}'::int4[], 1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("hash_array_extended", INT8), Column("hash_array_extended", INT8)],
+                        rows: &[
+                            &[T("-8286617039739886714"), T("-2630836081351614999")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hash_range(int4range(10, 20)), hash_range('empty'::int4range), hash_range(int4range(NULL, 5)), hash_range(numrange(1.5, 2.5, '[]'));",
+                    expected: Expected::Rows {
+                        columns: &[Column("hash_range", INT4), Column("hash_range", INT4), Column("hash_range", INT4), Column("hash_range", INT4)],
+                        rows: &[
+                            &[T("1202375768"), T("484847245"), T("-1151471243"), T("-732823239")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hash_range_extended(int4range(10, 20), 0), hash_range_extended(int4range(10, 20), 1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("hash_range_extended", INT8), Column("hash_range_extended", INT8)],
+                        rows: &[
+                            &[T("-4361814294641587112"), T("3293498896570264852")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hash_multirange('{[10,20)}'::int4multirange), hash_multirange('{[1,2), [5,9)}'::int4multirange), hash_multirange_extended('{[1,2), [5,9)}'::int4multirange, 1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("hash_multirange", INT4), Column("hash_multirange", INT4), Column("hash_multirange_extended", INT8)],
+                        rows: &[
+                            &[T("1202375799"), T("-1235456043"), T("-2313208110355248394")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_hash('{"b": [1, "x", null, true], "a": {"c": 1.50}}'), jsonb_hash('[]'), jsonb_hash('{}'), jsonb_hash('5'), jsonb_hash('"str"');"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb_hash", INT4), Column("jsonb_hash", INT4), Column("jsonb_hash", INT4), Column("jsonb_hash", INT4), Column("jsonb_hash", INT4)],
+                        rows: &[
+                            &[T("-1266897243"), T("0"), T("0"), T("592623376"), T("53198457")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: r#"SELECT jsonb_hash_extended('{"b": [1, "x", null, true], "a": {"c": 1.50}}', 0), jsonb_hash_extended('{"b": [1, "x", null, true], "a": {"c": 1.50}}', 1), jsonb_hash_extended('[]', 4), jsonb_hash_extended('false', 2);"#,
+                    expected: Expected::Rows {
+                        columns: &[Column("jsonb_hash_extended", INT8), Column("jsonb_hash_extended", INT8), Column("jsonb_hash_extended", INT8), Column("jsonb_hash_extended", INT8)],
+                        rows: &[
+                            &[T("-3161672423108202843"), T("5333088915912985850"), T("4"), T("-5013413727985452518")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE hash_kept_t AS (a int, b text);",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hash_record(row(1, 'aaa')::hash_kept_t), hash_record(row(NULL, 'b')::hash_kept_t), hash_record_extended(row(1, 'aaa')::hash_kept_t, 1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("hash_record", INT4), Column("hash_record", INT4), Column("hash_record_extended", INT8)],
+                        rows: &[
+                            &[T("-688863489"), T("-68821088"), T("-6119598221482956446")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Hash functions of types without them",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT hash_array('{0}'::money[]);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "could not identify a hash function for type money", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hash_array_extended('{0}'::money[], 0);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "could not identify an extended hash function for type money", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TYPE hash_kept_m AS (a money, b text);",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hash_record(row('1', 'aaa')::hash_kept_m);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "could not identify a hash function for type money", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hash_record_extended(row('1', 'aaa')::hash_kept_m, 0);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "could not identify an extended hash function for type money", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT hash_array('{}'::money[]);",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: "could not identify a hash function for type money", ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "Enum hashes",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TYPE hash_kept_mood AS ENUM ('sad', 'ok', 'happy');",
+                    expected: Expected::Tag("CREATE TYPE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v, hashenum(v)::bit(32) = hashenumextended(v, 0)::bit(32), hashenum(v)::bit(32) = hashenumextended(v, 1)::bit(32) FROM (VALUES ('sad'::hash_kept_mood), ('ok'), ('happy')) x(v);",
+                    expected: Expected::Rows {
+                        columns: &[Column("v", USER_DEFINED), Column("?column?", BOOL), Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("sad"), T("t"), T("f")],
+                            &[T("ok"), T("t"), T("f")],
+                            &[T("happy"), T("t"), T("f")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
