@@ -128,10 +128,15 @@ fn try_nestloop_path(
     extra: &JoinPathExtraData,
 ) {
     let joinrelids = root.rels[joinrel].relids.clone();
-    let has_indexed_join_quals = has_indexed_join_quals(root, &joinrelids, &inner, &extra.restrictlist);
-    let cost = cost_nestloop(root, jointype, &outer, &inner, extra, has_indexed_join_quals);
+    let mut restrict_clauses = extra.restrictlist.clone();
+    if inner.param.overlap(&outer.relids) {
+        let enforced_serials = super::relnode::get_param_path_clause_serials(root, &inner);
+        restrict_clauses.retain(|&r| !enforced_serials.is_member(root.rinfos[r].rinfo_serial));
+    }
+    let has_indexed_join_quals = has_indexed_join_quals(root, &joinrelids, &inner, &restrict_clauses);
+    let cost = cost_nestloop(root, jointype, &outer, &inner, extra, &restrict_clauses, has_indexed_join_quals);
     let pathkeys = build_join_pathkeys(root, joinrel, jointype, &outer.pathkeys);
-    let join = JoinPath { jointype, outer, inner, joinrestrictinfo: extra.restrictlist.clone() };
+    let join = JoinPath { jointype, outer, inner, joinrestrictinfo: restrict_clauses };
     let path = create_join_path(joinrel, &root.rels[joinrel], PathKind::NestLoop, join, cost, pathkeys);
     add_path(&mut root.rels[joinrel], path);
 }

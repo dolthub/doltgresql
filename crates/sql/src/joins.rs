@@ -276,6 +276,7 @@ pub(crate) fn lookup(ctx: &mut Ctx<'_>, right: &Plan, condition: &Expr, left_wid
         nearest: None,
         needed: None,
         lookup_heavy: None,
+        parameterized: None,
     };
     Some(Lookup { method: JoinMethod::Lookup { scan: Box::new(scan), keys }, matches })
 }

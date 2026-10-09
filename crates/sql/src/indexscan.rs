@@ -46,6 +46,9 @@ pub struct IndexScan {
     /// index, which the plan does in its place unless the index holds every column the plan reads. It holds whether
     /// the scan's ranges alone answer the filter above it, which goes when the scan stays.
     pub lookup_heavy: Option<bool>,
+    /// The index conditions of a scan that reads its enclosing row, which build its ranges each time it runs, as
+    /// Postgres' index scans compute their runtime keys.
+    pub parameterized: Option<Expr>,
 }
 
 /// Item is a key of an index and its value.
@@ -787,6 +790,7 @@ pub fn choose_with_cover(ctx: &mut Ctx<'_>, table: &TableDef, predicate: &Expr) 
         nearest: None,
         needed: None,
         lookup_heavy: None,
+        parameterized: None,
     };
     Some((scan, covered))
 }
@@ -817,6 +821,7 @@ pub(crate) fn scan_of_index(
         nearest: None,
         needed: None,
         lookup_heavy: None,
+        parameterized: None,
     };
     let Some(predicate) = predicate else { return Some((scan(IndexBuilder::new(&columns).ranges()), true)) };
     let rules = ctx.index_rules(table).ok()?;
@@ -1112,6 +1117,9 @@ impl IndexScan {
     /// open starts reading the rows whose keys lie in the scan's ranges, a range at a time and seeking each range's
     /// first key, or reads them all at once when the ranges overlap or interleave or a vector search finds them.
     pub fn open<'p>(&'p self, ctx: &mut Ctx<'_>) -> Result<Box<dyn crate::exec::Rows + 'p>> {
+        if self.parameterized.is_some() {
+            return Ok(crate::exec::collected(self.run(ctx)?));
+        }
         let streamed = self.nearest.is_none() && self.ranges.windows(2).all(|pair| self.separated(&pair[0], &pair[1]));
         if !streamed {
             return Ok(crate::exec::collected(self.run(ctx)?));
@@ -1232,6 +1240,20 @@ impl IndexScan {
     /// run reads the rows whose keys lie in the scan's ranges, in index order or its reverse, or the rows a vector
     /// search finds, closest first.
     pub fn run(&self, ctx: &mut Ctx<'_>) -> Result<Vec<Vec<Value>>> {
+        if let Some(cond) = &self.parameterized {
+            let (built, cond, covered) = self.bound(ctx, cond)?;
+            let mut rows = built.run(ctx)?;
+            if !covered {
+                let mut kept = Vec::with_capacity(rows.len());
+                for row in rows {
+                    if cond.is_true(ctx, &row)? {
+                        kept.push(row);
+                    }
+                }
+                rows = kept;
+            }
+            return Ok(rows);
+        }
         let root = match self.index {
             Some(i) => ctx.db.read(&self.table.indexes[i].root)?,
             None => Arc::new(prolly::Node::decode(self.table.table.primary_index.clone())?),
@@ -1283,6 +1305,17 @@ impl IndexScan {
             }
         }
         Ok(rows)
+    }
+
+    /// bound returns the scan that a parameterized scan makes for its enclosing row, with its index conditions over that
+    /// row's values and whether the scan's ranges hold exactly the rows that they keep.
+    fn bound(&self, ctx: &mut Ctx<'_>, cond: &Expr) -> Result<(IndexScan, Expr, bool)> {
+        let cond = bind_outer(ctx, cond.clone())?;
+        let (built, covered) = match scan_of_index(ctx, &self.table, self.index, Some(&cond), self.reverse) {
+            Some(found) => found,
+            None => (IndexScan { parameterized: None, ..self.clone() }, false),
+        };
+        Ok((IndexScan { needed: self.needed.clone(), ..built }, cond, covered))
     }
 
     /// index_values decodes the index columns of an entry of the scan's index.
@@ -1369,9 +1402,8 @@ pub struct BitmapHeapScan {
 /// BitmapAnd, and BitmapOr make bitmaps.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Bitmap {
-    /// The keys that a scan of one index finds. A parameterized scan holds its index conditions, which read the
-    /// enclosing row and build the scan's ranges each time it runs.
-    Index(Box<IndexScan>, Option<Expr>),
+    /// The keys that a scan of one index finds.
+    Index(Box<IndexScan>),
     And(Vec<Bitmap>),
     Or(Vec<Bitmap>),
 }
@@ -1380,7 +1412,7 @@ impl Bitmap {
     /// conditions returns the index conditions of the tree's parameterized scans.
     pub(crate) fn conditions(&self) -> Vec<&Expr> {
         match self {
-            Bitmap::Index(_, cond) => cond.iter().collect(),
+            Bitmap::Index(scan) => scan.parameterized.iter().collect(),
             Bitmap::And(children) | Bitmap::Or(children) => children.iter().flat_map(Bitmap::conditions).collect(),
         }
     }
@@ -1388,7 +1420,7 @@ impl Bitmap {
     /// conditions_mut returns the index conditions of the tree's parameterized scans to change.
     pub(crate) fn conditions_mut(&mut self) -> Vec<&mut Expr> {
         match self {
-            Bitmap::Index(_, cond) => cond.iter_mut().collect(),
+            Bitmap::Index(scan) => scan.parameterized.iter_mut().collect(),
             Bitmap::And(children) | Bitmap::Or(children) => {
                 children.iter_mut().flat_map(Bitmap::conditions_mut).collect()
             }
@@ -1400,16 +1432,14 @@ impl Bitmap {
     fn keys(&self, ctx: &mut Ctx<'_>, table: &TableDef, lossy: &mut bool) -> Result<Vec<Vec<u8>>> {
         let order = |a: &Vec<u8>, b: &Vec<u8>| table.compare_keys(a, b);
         match self {
-            Bitmap::Index(scan, None) => scan.primary_keys(ctx),
-            Bitmap::Index(scan, Some(cond)) => {
-                let cond = bind_outer(ctx, cond.clone())?;
-                let (built, covered) = match scan_of_index(ctx, table, scan.index, Some(&cond), false) {
-                    Some(found) => found,
-                    None => ((**scan).clone(), false),
-                };
-                *lossy |= !covered;
-                built.primary_keys(ctx)
-            }
+            Bitmap::Index(scan) => match &scan.parameterized {
+                Some(cond) => {
+                    let (built, _, covered) = scan.bound(ctx, cond)?;
+                    *lossy |= !covered;
+                    built.primary_keys(ctx)
+                }
+                None => scan.primary_keys(ctx),
+            },
             Bitmap::And(children) => {
                 let mut keys = children[0].keys(ctx, table, lossy)?;
                 for child in &children[1..] {
@@ -2013,6 +2043,7 @@ pub(crate) fn ordered(plan: &Plan, keys: &[crate::plan::SortKey]) -> Option<Plan
                     nearest: None,
                     needed: None,
                     lookup_heavy: None,
+                    parameterized: None,
                 })));
             }
             None
@@ -2115,6 +2146,7 @@ fn nearest_scan(sort: &Plan, limit: &Option<Expr>, offset: &Option<Expr>) -> Opt
         nearest: Some(nearest),
         needed: None,
         lookup_heavy: None,
+        parameterized: None,
     };
     Some(Plan::Project { input: Box::new(Plan::IndexScan(Box::new(scan))), exprs: exprs.clone() })
 }
@@ -2130,7 +2162,10 @@ pub fn prune(plan: &mut Plan) {
 fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
     let union = |a: Option<BTreeSet<usize>>, b: Option<BTreeSet<usize>>| Some(a?.union(&b?).copied().collect());
     match plan {
-        Plan::IndexScan(scan) => scan.needed = needed.map(|n| n.into_iter().collect()),
+        Plan::IndexScan(scan) => {
+            let tested = columns_read(scan.parameterized.iter());
+            scan.needed = union(needed, tested).map(|n: BTreeSet<usize>| n.into_iter().collect());
+        }
         Plan::BitmapHeapScan(scan) => scan.needed = needed.map(|n| n.into_iter().collect()),
         Plan::Scan(_, columns) => *columns = needed.map(|n| n.into_iter().collect()),
         Plan::Join { left, right, condition, lateral, method, .. } => {
@@ -2267,6 +2302,7 @@ fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) -> bool {
             if let Some(n) = &scan.nearest {
                 read(&mut [&n.order, &n.query].into_iter().chain(&n.limit).chain(&n.offset));
             }
+            read(&mut scan.parameterized.iter());
             Vec::new()
         }
         Plan::BitmapHeapScan(scan) => {

@@ -308,8 +308,7 @@ fn eclass_already_used(
 
 /// get_index_paths adds the index paths that build_index_paths makes of an index and its clauses, and collects those
 /// that a bitmap scan may use, the ones that do not read the whole index for its order, as Postgres' function of the
-/// same name does. A parameterized index scan is added only when its join clauses give equalities of the index's
-/// leading columns that Doltgres' lookups can search by.
+/// same name does.
 fn get_index_paths(
     root: &mut PlannerInfo<'_, '_>,
     rel: usize,
@@ -320,9 +319,7 @@ fn get_index_paths(
     let useful_predicate = root.rels[rel].indexlist[index].pred_ok;
     for path in build_index_paths(root, rel, index, clauses, useful_predicate, ScanTypeControl::AnyScan) {
         let PathKind::IndexScan(ipath) = &path.kind else { unreachable!("build_index_paths makes index scans") };
-        if path.param.is_empty() || lookup_keys(root, rel, index, &ipath.indexclauses).is_some() {
-            add_path(&mut root.rels[rel], path.clone());
-        }
+        add_path(&mut root.rels[rel], path.clone());
         if path.pathkeys.is_empty() || ipath.indexselectivity < 1.0 {
             bitindexpaths.push(path);
         }

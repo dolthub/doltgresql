@@ -2887,6 +2887,7 @@ impl Plan {
                         map(e, depth);
                     }
                 }
+                scan.parameterized.iter_mut().for_each(|e| map(e, depth));
             }
             Plan::BitmapHeapScan(scan) => {
                 scan.recheck.iter_mut().for_each(|e| map(e, depth));

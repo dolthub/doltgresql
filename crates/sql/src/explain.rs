@@ -266,7 +266,7 @@ impl Printer {
                     Some(nearest) => {
                         properties.push(format!("Order By: {}", expr_text(&nearest.order, &own_columns(plan))))
                     }
-                    None => properties.push(format!("Index Ranges: {}", crate::ranges::ranges_text(&scan.ranges))),
+                    None => properties.push(index_ranges(scan)),
                 }
                 (
                     format!(
@@ -470,16 +470,9 @@ impl Printer {
     /// its bitmap index scans, BitmapAnds, and BitmapOrs.
     fn bitmap(&mut self, bitmap: &crate::indexscan::Bitmap, depth: usize) {
         let (name, properties, children) = match bitmap {
-            crate::indexscan::Bitmap::Index(scan, cond) => {
-                let ranges = match cond {
-                    Some(cond) => {
-                        let names: Vec<String> = scan.table.columns.iter().map(|c| c.name.clone()).collect();
-                        format!("Index Cond: {}", expr_text(cond, &names))
-                    }
-                    None => format!("Index Ranges: {}", crate::ranges::ranges_text(&scan.ranges)),
-                };
+            crate::indexscan::Bitmap::Index(scan) => {
                 let name = format!("Bitmap Index Scan on {}", crate::engine::quote_identifier(&scan.index_name()));
-                (name, vec![index_columns(scan), ranges], &[][..])
+                (name, vec![index_columns(scan), index_ranges(scan)], &[][..])
             }
             crate::indexscan::Bitmap::And(children) => ("BitmapAnd".to_string(), Vec::new(), &children[..]),
             crate::indexscan::Bitmap::Or(children) => ("BitmapOr".to_string(), Vec::new(), &children[..]),
@@ -519,6 +512,18 @@ impl Printer {
         if let Plan::Filter { input, predicate } = right {
             self.lines.push(format!("{pad}Filter: {}", expr_text(predicate, &own_columns(input))));
         }
+    }
+}
+
+/// index_ranges returns the `Index Ranges` line of a scan of an index, or the `Index Cond` line of the conditions
+/// over its enclosing row that build its ranges each time it runs.
+fn index_ranges(scan: &crate::indexscan::IndexScan) -> String {
+    match &scan.parameterized {
+        Some(cond) => {
+            let names: Vec<String> = scan.table.columns.iter().map(|c| c.name.clone()).collect();
+            format!("Index Cond: {}", expr_text(cond, &names))
+        }
+        None => format!("Index Ranges: {}", crate::ranges::ranges_text(&scan.ranges)),
     }
 }
 

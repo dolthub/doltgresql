@@ -18,7 +18,7 @@
 use super::PlannerInfo;
 use super::costsize::{estimate_rel_size, get_typavgwidth, set_joinrel_size_estimates};
 use super::equivclass::{generate_join_implied_equalities, has_relevant_eclass_joinclause};
-use super::nodes::{RelOptInfo, RelOptKind, Relids, RinfoId, RteKind, SpecialJoinInfo, VarNode};
+use super::nodes::{Path, PathKind, RelOptInfo, RelOptKind, Relids, RinfoId, RteKind, SpecialJoinInfo, VarNode};
 use super::placeholder::{add_placeholders_to_joinrel, find_placeholder_info};
 
 /// AUTOVACUUM_ANALYZE_THRESHOLD is how many rows a table must hold for Postgres' autovacuum to have analyzed it, at
@@ -256,6 +256,34 @@ fn subbuild_joinrel_restrictlist(
         }
     }
     new_restrictlist
+}
+
+/// get_param_path_clause_serials returns the serial numbers of the join clauses that a parameterized path tests, as
+/// Postgres' function of the same name does: those of a base relation's parameterization, and for a join, those of its
+/// inputs and its own clauses.
+pub fn get_param_path_clause_serials(root: &mut PlannerInfo<'_, '_>, path: &Path) -> Relids {
+    if path.param.is_empty() {
+        return Relids::new();
+    }
+    match &path.kind {
+        PathKind::NestLoop(join) | PathKind::HashJoin(join) => {
+            let mut pserials = get_param_path_clause_serials(root, &join.outer);
+            pserials.add_members(&get_param_path_clause_serials(root, &join.inner));
+            for &r in &join.joinrestrictinfo {
+                pserials.add_member(root.rinfos[r].rinfo_serial);
+            }
+            pserials
+        }
+        PathKind::Append(subpaths) => {
+            let mut serials = subpaths.iter().map(|subpath| get_param_path_clause_serials(root, subpath));
+            let first = serials.next().unwrap_or_default();
+            serials.fold(first, |pserials, subserials| pserials.intersect(&subserials))
+        }
+        _ => {
+            let ppi = get_baserel_parampathinfo(root, path.parent, &path.param);
+            ppi.map_or_else(Relids::new, |ppi| ppi.ppi_clauses.iter().map(|&r| root.rinfos[r].rinfo_serial).collect())
+        }
+    }
 }
 
 /// get_baserel_parampathinfo returns what a parameterization by outer relations gives a base relation's paths, building

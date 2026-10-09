@@ -2222,3 +2222,103 @@ fn test_bitmap_scans() {
         },
     ]);
 }
+
+#[test]
+fn test_parameterized_index_scans() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Index scans by range join clauses, run again for each outer row",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE pj (id INT PRIMARY KEY, k INT, c INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX pj_k ON pj (k);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE INDEX pj_c ON pj (c);",
+                    expected: Expected::Tag("CREATE INDEX"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO pj SELECT g, g % 1000, g % 97 FROM generate_series(1, 20000) g;",
+                    expected: Expected::Tag("INSERT 0 20000"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ANALYZE pj;",
+                    expected: Expected::Tag("ANALYZE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE po (id INT PRIMARY KEY, x INT, y INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO po VALUES (1, 5, 7), (2, 900, 13), (3, NULL, 96);",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SET enable_hashjoin = off;",
+                    expected: Expected::Tag("SET"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT po.id, count(*) FROM po JOIN pj ON pj.k BETWEEN po.x AND po.x + 1 GROUP BY po.id ORDER BY po.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("count", INT8)],
+                        rows: &[
+                            &[T("1"), T("40")],
+                            &[T("2"), T("40")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT po.id, count(pj.id) FROM po LEFT JOIN pj ON pj.k < po.x - 895 AND pj.id < 3000 GROUP BY po.id ORDER BY po.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("count", INT8)],
+                        rows: &[
+                            &[T("1"), T("0")],
+                            &[T("2"), T("14")],
+                            &[T("3"), T("0")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT po.id FROM po WHERE EXISTS (SELECT 1 FROM pj WHERE pj.c > po.y + 80) ORDER BY po.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT po.id FROM po WHERE NOT EXISTS (SELECT 1 FROM pj WHERE pj.c > po.y + 80) ORDER BY po.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4)],
+                        rows: &[
+                            &[T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

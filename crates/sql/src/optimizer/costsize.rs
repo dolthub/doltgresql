@@ -616,14 +616,15 @@ pub struct JoinPathExtraData {
 }
 
 /// cost_nestloop returns the costs of a nested loop of an inner path over an outer one, as
-/// Postgres' initial_cost_nestloop and final_cost_nestloop do, given whether the inner path looks its rows up by
-/// the join's clauses.
+/// Postgres' initial_cost_nestloop and final_cost_nestloop do, given the clauses that the join tests and whether the
+/// inner path looks its rows up by the join's clauses.
 pub fn cost_nestloop(
     root: &PlannerInfo<'_, '_>,
     jointype: JoinType,
     outer: &Path,
     inner: &Path,
     extra: &JoinPathExtraData,
+    joinrestrictinfo: &[RinfoId],
     has_indexed_join_quals: bool,
 ) -> Costs {
     let (inner_rescan_start_cost, inner_rescan_total_cost) = cost_rescan(inner);
@@ -670,30 +671,35 @@ pub fn cost_nestloop(
         }
         outer.rows.max(1.0) * inner_rows
     };
-    let restrict_qual_cost = cost_qual_eval(root, &extra.restrictlist);
+    let restrict_qual_cost = cost_qual_eval(root, joinrestrictinfo);
     startup_cost += restrict_qual_cost.startup;
     run_cost += (CPU_TUPLE_COST + restrict_qual_cost.per_tuple) * ntuples;
     (disabled_nodes, startup_cost, startup_cost + run_cost)
 }
 
-/// has_indexed_join_quals reports whether a nested loop's inner index path searches by each join clause that it is
-/// parameterized by, so the join tests nothing else, as Postgres' function of the same name does. Doltgres' joins test
-/// again the clauses that Postgres moves into the inner path, which do not count as clauses the join still tests.
+/// has_indexed_join_quals reports whether a nested loop tests no clauses of its own and its inner index path, or bitmap
+/// scan of one index, searches by each join clause that it is parameterized by, as Postgres' function of the same name
+/// does.
 pub fn has_indexed_join_quals(
     root: &mut PlannerInfo<'_, '_>,
     joinrelids: &Relids,
     inner: &Path,
     joinrestrictinfo: &[RinfoId],
 ) -> bool {
-    let inner_and_outer = inner.relids.union(&inner.param);
-    if joinrestrictinfo.iter().any(|&r| !join_clause_is_movable_into(&root.rinfos[r], &inner.relids, &inner_and_outer))
-    {
+    if !joinrestrictinfo.is_empty() {
         return false;
     }
     let Some(param_info) = super::relnode::get_baserel_parampathinfo(root, inner.parent, &inner.param) else {
         return false;
     };
-    let PathKind::IndexScan(index_path) = &inner.kind else { return false };
+    let index_path = match &inner.kind {
+        PathKind::IndexScan(index_path) => index_path,
+        PathKind::BitmapHeapScan(bitmapqual) => match &bitmapqual.kind {
+            PathKind::IndexScan(index_path) => index_path,
+            _ => return false,
+        },
+        _ => return false,
+    };
     let mut found_one = false;
     for rinfo in param_info.ppi_clauses {
         if join_clause_is_movable_into(&root.rinfos[rinfo], &inner.relids, joinrelids) {

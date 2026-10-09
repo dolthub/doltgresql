@@ -74,10 +74,20 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
         PathKind::Material(subpath) | PathKind::Sort(subpath) => return create_plan_recurse(root, subpath),
         PathKind::NestLoop(join) | PathKind::HashJoin(join) => {
             let (outer_plan, outer_layout) = create_plan_recurse(root, &join.outer);
-            let lateral = matches!(join.inner.kind, PathKind::BitmapHeapScan(_)) && !join.inner.param.is_empty();
+            let lateral = !join.inner.param.is_empty()
+                && match &join.inner.kind {
+                    PathKind::BitmapHeapScan(_) => true,
+                    PathKind::IndexScan(ipath) => {
+                        lookup_keys(root, join.inner.parent, ipath.index, &ipath.indexclauses).is_none()
+                    }
+                    _ => false,
+                };
             let (inner_plan, inner_layout) = match lateral {
                 true => {
-                    let (plan, layout) = create_bitmap_scan_plan(root, &join.inner, &outer_layout);
+                    let (plan, layout) = match &join.inner.kind {
+                        PathKind::BitmapHeapScan(_) => create_bitmap_scan_plan(root, &join.inner, &outer_layout),
+                        _ => create_param_indexscan_plan(root, &join.inner, &outer_layout),
+                    };
                     let (mut plan, layout) = add_placeholders(root, join.inner.parent, plan, layout);
                     plan.map_exprs(0, &mut |e, depth| read_lateral_row(e, depth));
                     (plan, layout)
@@ -85,7 +95,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 false => create_plan_recurse(root, &join.inner),
             };
             let layout = [outer_layout.as_slice(), inner_layout.as_slice()].concat();
-            let (joinquals, otherquals): (Vec<RinfoId>, Vec<RinfoId>) = match join.jointype.is_outer() {
+            let (mut joinquals, otherquals): (Vec<RinfoId>, Vec<RinfoId>) = match join.jointype.is_outer() {
                 true => join
                     .joinrestrictinfo
                     .iter()
@@ -93,6 +103,11 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                     .partition(|&r| !rinfo_is_pushed_down(&root.rinfos[r], &path.relids)),
                 false => (join.joinrestrictinfo.clone(), Vec::new()),
             };
+            if !lateral
+                && let Some(ppi) = super::relnode::get_baserel_parampathinfo(root, join.inner.parent, &join.inner.param)
+            {
+                joinquals.extend(ppi.ppi_clauses.into_iter().filter(|r| !join.joinrestrictinfo.contains(r)));
+            }
             let joinquals: Vec<Expr> = match &path.kind {
                 PathKind::HashJoin(_) => {
                     let (hashclauses, rest): (Vec<RinfoId>, Vec<RinfoId>) = joinquals.into_iter().partition(|&r| {
@@ -108,7 +123,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
             let otherquals = order_qual_clauses(root, otherquals);
             let method = match (&path.kind, &join.inner.kind) {
                 (PathKind::HashJoin(_), _) => JoinMethod::Hash,
-                (_, PathKind::IndexScan(best_path)) if !join.inner.param.is_empty() => {
+                (_, PathKind::IndexScan(best_path)) if !join.inner.param.is_empty() && !lateral => {
                     let rel = join.inner.parent;
                     let keys = lookup_keys(root, rel, best_path.index, &best_path.indexclauses)
                         .expect("a parameterized index path has lookup keys");
@@ -121,6 +136,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                         nearest: None,
                         needed: None,
                         lookup_heavy: None,
+                        parameterized: None,
                     };
                     let keys = keys.into_iter().map(|k| positional(root, k, &outer_layout)).collect();
                     JoinMethod::Lookup { scan: Box::new(scan), keys }
@@ -234,6 +250,54 @@ fn create_indexscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, best_path: 
     let qpqual = order_qual_clauses(root, qpqual);
     let layout = base_slots(rel, table.columns.len());
     (filtered(root, Plan::IndexScan(Box::new(scan)), &qpqual, &layout), layout)
+}
+
+/// create_param_indexscan_plan makes the plan of a scan of an index parameterized by outer relations whose join
+/// clauses Doltgres' lookups cannot search by, the inner side of a lateral nested loop, as create_indexscan_plan does
+/// for such a path: an index scan that builds its ranges from its index conditions over each outer row, under the
+/// restrictions and parameterizing join clauses that those conditions do not give. It reads the columns of the outer
+/// rows of the given layout as `Expr::Outer(0, _)`, which `read_lateral_row` turns into reads of the enclosing row.
+fn create_param_indexscan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, outer: &[Slot]) -> (Plan, Vec<Slot>) {
+    let PathKind::IndexScan(best_path) = &path.kind else { unreachable!("an index scan path") };
+    let rel = path.parent;
+    let table = root.parse.rte(rel).table().expect("an index path scans a table").clone();
+    let index = root.rels[rel].indexlist[best_path.index].index;
+    let layout = base_slots(rel, table.columns.len());
+    let indexquals: Vec<Expr> = best_path
+        .indexclauses
+        .iter()
+        .flat_map(|iclause| &iclause.indexquals)
+        .map(|&r| root.rinfos[r].clause.clone())
+        .collect();
+    let to_row = |root: &PlannerInfo<'_, '_>, e: Expr| param_positional(root, e, &layout, outer);
+    let cond = indexquals.iter().map(|e| to_row(root, e.clone())).reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+    let every = crate::indexscan::scan_of_index(root.ctx, &table, index, None, best_path.backward)
+        .expect("a scan of every entry")
+        .0;
+    let scan = crate::indexscan::IndexScan { parameterized: cond, ..every };
+    let mut scan_clauses = root.rels[rel].baserestrictinfo.clone();
+    if let Some(ppi) = super::relnode::get_baserel_parampathinfo(root, rel, &path.param) {
+        scan_clauses.extend(ppi.ppi_clauses);
+    }
+    let qpqual: Vec<RinfoId> = scan_clauses
+        .into_iter()
+        .filter(|&r| {
+            let rinfo = &root.rinfos[r];
+            !rinfo.pseudoconstant
+                && !super::equivclass::is_redundant_with_indexclauses(root, r, &best_path.indexclauses)
+                && !indexquals.iter().any(|q| same_clause(q, &rinfo.clause))
+        })
+        .collect();
+    let qpqual = order_qual_clauses(root, qpqual);
+    let predicate = qpqual
+        .iter()
+        .map(|&r| to_row(root, root.rinfos[r].clause.clone()))
+        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+    let plan = Plan::IndexScan(Box::new(scan));
+    match predicate {
+        Some(predicate) => (Plan::Filter { input: Box::new(plan), predicate }, layout),
+        None => (plan, layout),
+    }
 }
 
 /// create_bitmap_scan_plan makes the plan of a scan of a base relation's rows whose keys a tree of index scans finds,
@@ -364,7 +428,8 @@ fn create_bitmap_subplan(
             if !bitmapqual.param.is_empty() {
                 let layout = base_slots(rel, table.columns.len());
                 let cond = and(indexquals.iter().map(|e| param_positional(root, e.clone(), &layout, outer)).collect());
-                return (Bitmap::Index(Box::new(every(root)), cond), quals, indexquals, index_ecs);
+                let scan = crate::indexscan::IndexScan { parameterized: cond, ..every(root) };
+                return (Bitmap::Index(Box::new(scan)), quals, indexquals, index_ecs);
             }
             let predicate = and(indexquals.iter().map(|e| to_attnos(root, e.clone(), rel)).collect());
             let scan = match crate::indexscan::scan_of_index(root.ctx, table, index, predicate.as_ref(), false) {
@@ -377,7 +442,7 @@ fn create_bitmap_subplan(
                     every(root)
                 }
             };
-            (Bitmap::Index(Box::new(scan), None), quals, indexquals, index_ecs)
+            (Bitmap::Index(Box::new(scan)), quals, indexquals, index_ecs)
         }
         _ => unreachable!("a bitmap tree holds index scans, BitmapAnds, and BitmapOrs"),
     }
