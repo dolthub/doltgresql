@@ -451,6 +451,13 @@ impl Ctx<'_> {
         }
     }
 
+    /// relation_of_oid returns the schema and name of the relation with an OID, or None when no relation has it.
+    pub(crate) fn relation_of_oid(&mut self, oid: u32) -> Result<Option<(String, String)>> {
+        let user = self.relations()?;
+        let found = builtin_relations().iter().chain(user.iter()).find(|r| r.oid == oid);
+        Ok(found.map(|r| (r.schema.clone(), r.name.clone())))
+    }
+
     /// relations returns the user relations that regclass can name, reading them once for each root value that a
     /// statement sees.
     fn relations(&mut self) -> Result<std::sync::Arc<Vec<Relation>>> {

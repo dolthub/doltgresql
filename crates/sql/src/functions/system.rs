@@ -17,7 +17,7 @@
 use super::{Function, text};
 use crate::auth::Object;
 use crate::error::{PgError, Result, code};
-use crate::oid::{BOOL, FLOAT8, INT4, INT8, INTERVAL, NAME, NUMERIC, OID, TEXT, TIMESTAMPTZ};
+use crate::oid::{BOOL, FLOAT8, INT2, INT4, INT8, INTERVAL, NAME, NUMERIC, OID, TEXT, TIMESTAMPTZ};
 use crate::query::Ctx;
 use crate::types::Value;
 
@@ -25,11 +25,6 @@ use crate::types::Value;
 const fn f(name: &'static str, args: &'static [u32], ret: u32, implementation: super::Implementation) -> Function {
     Function { name, args, ret, strict: true, variadic: false, implementation }
 }
-
-/// SCHEMA_PRIVILEGES and DATABASE_PRIVILEGES map the privilege names that has_schema_privilege and
-/// has_database_privilege accept to their letters.
-const SCHEMA_PRIVILEGES: &[(&str, &str)] = &[("CREATE", "C"), ("USAGE", "U")];
-const DATABASE_PRIVILEGES: &[(&str, &str)] = &[("CREATE", "C"), ("TEMPORARY", "T"), ("TEMP", "T"), ("CONNECT", "c")];
 
 /// FUNCTIONS are the session and server functions.
 pub const FUNCTIONS: &[Function] = &[
@@ -177,6 +172,81 @@ pub const FUNCTIONS: &[Function] = &[
     f("pg_trigger_depth", &[], INT4, pg_trigger_depth),
     f("pg_database_size", &[NAME], INT8, pg_database_size),
     f("pg_database_size", &[OID], INT8, pg_database_size),
+    f("has_table_privilege", &[NAME, TEXT, TEXT], BOOL, has_table_privilege),
+    f("has_table_privilege", &[NAME, OID, TEXT], BOOL, has_table_privilege),
+    f("has_table_privilege", &[OID, TEXT, TEXT], BOOL, has_table_privilege),
+    f("has_table_privilege", &[OID, OID, TEXT], BOOL, has_table_privilege),
+    f("has_table_privilege", &[TEXT, TEXT], BOOL, has_table_privilege),
+    f("has_table_privilege", &[OID, TEXT], BOOL, has_table_privilege),
+    f("has_any_column_privilege", &[NAME, TEXT, TEXT], BOOL, has_any_column_privilege),
+    f("has_any_column_privilege", &[NAME, OID, TEXT], BOOL, has_any_column_privilege),
+    f("has_any_column_privilege", &[OID, TEXT, TEXT], BOOL, has_any_column_privilege),
+    f("has_any_column_privilege", &[OID, OID, TEXT], BOOL, has_any_column_privilege),
+    f("has_any_column_privilege", &[TEXT, TEXT], BOOL, has_any_column_privilege),
+    f("has_any_column_privilege", &[OID, TEXT], BOOL, has_any_column_privilege),
+    f("has_sequence_privilege", &[NAME, TEXT, TEXT], BOOL, has_sequence_privilege),
+    f("has_sequence_privilege", &[NAME, OID, TEXT], BOOL, has_sequence_privilege),
+    f("has_sequence_privilege", &[OID, TEXT, TEXT], BOOL, has_sequence_privilege),
+    f("has_sequence_privilege", &[OID, OID, TEXT], BOOL, has_sequence_privilege),
+    f("has_sequence_privilege", &[TEXT, TEXT], BOOL, has_sequence_privilege),
+    f("has_sequence_privilege", &[OID, TEXT], BOOL, has_sequence_privilege),
+    f("has_function_privilege", &[NAME, TEXT, TEXT], BOOL, has_function_privilege),
+    f("has_function_privilege", &[NAME, OID, TEXT], BOOL, has_function_privilege),
+    f("has_function_privilege", &[OID, TEXT, TEXT], BOOL, has_function_privilege),
+    f("has_function_privilege", &[OID, OID, TEXT], BOOL, has_function_privilege),
+    f("has_function_privilege", &[TEXT, TEXT], BOOL, has_function_privilege),
+    f("has_function_privilege", &[OID, TEXT], BOOL, has_function_privilege),
+    f("has_type_privilege", &[NAME, TEXT, TEXT], BOOL, has_type_privilege),
+    f("has_type_privilege", &[NAME, OID, TEXT], BOOL, has_type_privilege),
+    f("has_type_privilege", &[OID, TEXT, TEXT], BOOL, has_type_privilege),
+    f("has_type_privilege", &[OID, OID, TEXT], BOOL, has_type_privilege),
+    f("has_type_privilege", &[TEXT, TEXT], BOOL, has_type_privilege),
+    f("has_type_privilege", &[OID, TEXT], BOOL, has_type_privilege),
+    f("has_language_privilege", &[NAME, TEXT, TEXT], BOOL, has_language_privilege),
+    f("has_language_privilege", &[NAME, OID, TEXT], BOOL, has_language_privilege),
+    f("has_language_privilege", &[OID, TEXT, TEXT], BOOL, has_language_privilege),
+    f("has_language_privilege", &[OID, OID, TEXT], BOOL, has_language_privilege),
+    f("has_language_privilege", &[TEXT, TEXT], BOOL, has_language_privilege),
+    f("has_language_privilege", &[OID, TEXT], BOOL, has_language_privilege),
+    f("has_tablespace_privilege", &[NAME, TEXT, TEXT], BOOL, has_tablespace_privilege),
+    f("has_tablespace_privilege", &[NAME, OID, TEXT], BOOL, has_tablespace_privilege),
+    f("has_tablespace_privilege", &[OID, TEXT, TEXT], BOOL, has_tablespace_privilege),
+    f("has_tablespace_privilege", &[OID, OID, TEXT], BOOL, has_tablespace_privilege),
+    f("has_tablespace_privilege", &[TEXT, TEXT], BOOL, has_tablespace_privilege),
+    f("has_tablespace_privilege", &[OID, TEXT], BOOL, has_tablespace_privilege),
+    f("has_server_privilege", &[NAME, TEXT, TEXT], BOOL, has_server_privilege),
+    f("has_server_privilege", &[NAME, OID, TEXT], BOOL, has_server_privilege),
+    f("has_server_privilege", &[OID, TEXT, TEXT], BOOL, has_server_privilege),
+    f("has_server_privilege", &[OID, OID, TEXT], BOOL, has_server_privilege),
+    f("has_server_privilege", &[TEXT, TEXT], BOOL, has_server_privilege),
+    f("has_server_privilege", &[OID, TEXT], BOOL, has_server_privilege),
+    f("has_foreign_data_wrapper_privilege", &[NAME, TEXT, TEXT], BOOL, has_foreign_data_wrapper_privilege),
+    f("has_foreign_data_wrapper_privilege", &[NAME, OID, TEXT], BOOL, has_foreign_data_wrapper_privilege),
+    f("has_foreign_data_wrapper_privilege", &[OID, TEXT, TEXT], BOOL, has_foreign_data_wrapper_privilege),
+    f("has_foreign_data_wrapper_privilege", &[OID, OID, TEXT], BOOL, has_foreign_data_wrapper_privilege),
+    f("has_foreign_data_wrapper_privilege", &[TEXT, TEXT], BOOL, has_foreign_data_wrapper_privilege),
+    f("has_foreign_data_wrapper_privilege", &[OID, TEXT], BOOL, has_foreign_data_wrapper_privilege),
+    f("has_column_privilege", &[NAME, TEXT, TEXT, TEXT], BOOL, has_column_privilege),
+    f("has_column_privilege", &[NAME, TEXT, INT2, TEXT], BOOL, has_column_privilege),
+    f("has_column_privilege", &[NAME, OID, TEXT, TEXT], BOOL, has_column_privilege),
+    f("has_column_privilege", &[NAME, OID, INT2, TEXT], BOOL, has_column_privilege),
+    f("has_column_privilege", &[OID, TEXT, TEXT, TEXT], BOOL, has_column_privilege),
+    f("has_column_privilege", &[OID, TEXT, INT2, TEXT], BOOL, has_column_privilege),
+    f("has_column_privilege", &[OID, OID, TEXT, TEXT], BOOL, has_column_privilege),
+    f("has_column_privilege", &[OID, OID, INT2, TEXT], BOOL, has_column_privilege),
+    f("has_column_privilege", &[TEXT, TEXT, TEXT], BOOL, has_column_privilege),
+    f("has_column_privilege", &[TEXT, INT2, TEXT], BOOL, has_column_privilege),
+    f("has_column_privilege", &[OID, TEXT, TEXT], BOOL, has_column_privilege),
+    f("has_column_privilege", &[OID, INT2, TEXT], BOOL, has_column_privilege),
+    f("has_parameter_privilege", &[NAME, TEXT, TEXT], BOOL, has_parameter_privilege),
+    f("has_parameter_privilege", &[OID, TEXT, TEXT], BOOL, has_parameter_privilege),
+    f("has_parameter_privilege", &[TEXT, TEXT], BOOL, has_parameter_privilege),
+    f("pg_has_role", &[NAME, NAME, TEXT], BOOL, pg_has_role),
+    f("pg_has_role", &[NAME, OID, TEXT], BOOL, pg_has_role),
+    f("pg_has_role", &[OID, NAME, TEXT], BOOL, pg_has_role),
+    f("pg_has_role", &[OID, OID, TEXT], BOOL, pg_has_role),
+    f("pg_has_role", &[NAME, TEXT], BOOL, pg_has_role),
+    f("pg_has_role", &[OID, TEXT], BOOL, pg_has_role),
     f("has_schema_privilege", &[NAME, TEXT, TEXT], BOOL, has_schema_privilege),
     f("has_schema_privilege", &[NAME, OID, TEXT], BOOL, has_schema_privilege),
     f("has_schema_privilege", &[OID, TEXT, TEXT], BOOL, has_schema_privilege),
@@ -427,66 +497,267 @@ fn pg_is_wal_replay_paused(_: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
     })
 }
 
+/// Kind is the kind of object that one of the has_*_privilege functions asks about.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Database,
+    Schema,
+    Table,
+    Column,
+    AnyColumn,
+    Sequence,
+    Function,
+    Type,
+    Language,
+    Tablespace,
+    Server,
+    Wrapper,
+    Parameter,
+}
+
+impl Kind {
+    /// privileges returns the privilege names that the kind's function accepts, each with its letter.
+    fn privileges(self) -> &'static [(&'static str, &'static str)] {
+        match self {
+            Kind::Database => &[("CREATE", "C"), ("TEMPORARY", "T"), ("TEMP", "T"), ("CONNECT", "c")],
+            Kind::Schema => &[("CREATE", "C"), ("USAGE", "U")],
+            Kind::Table => &[
+                ("SELECT", "r"),
+                ("INSERT", "a"),
+                ("UPDATE", "w"),
+                ("DELETE", "d"),
+                ("TRUNCATE", "D"),
+                ("REFERENCES", "x"),
+                ("TRIGGER", "t"),
+            ],
+            Kind::Column | Kind::AnyColumn => &[("SELECT", "r"), ("INSERT", "a"), ("UPDATE", "w"), ("REFERENCES", "x")],
+            Kind::Sequence => &[("USAGE", "U"), ("SELECT", "r"), ("UPDATE", "w")],
+            Kind::Function => &[("EXECUTE", "X")],
+            Kind::Type | Kind::Language | Kind::Server | Kind::Wrapper => &[("USAGE", "U")],
+            Kind::Tablespace => &[("CREATE", "C")],
+            Kind::Parameter => &[("SET", "s"), ("ALTER SYSTEM", "A")],
+        }
+    }
+}
+
+/// Target is what a has_*_privilege function's object name or OID resolves to: an object with privileges, a
+/// privilege that everyone or only superusers hold, or nothing, for an OID that no object has.
+enum Target {
+    Object(Object),
+    Everyone,
+    Superusers,
+    Missing,
+}
+
 /// has_schema_privilege reports whether a role, the current one by default, holds any of the comma-separated
 /// privileges on a schema, or returns NULL for an OID that no schema has.
 fn has_schema_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    has_privilege(ctx, args, SCHEMA_PRIVILEGES)
+    has_privilege(ctx, args, Kind::Schema)
 }
 
 /// has_database_privilege reports whether a role, the current one by default, holds any of the comma-separated
 /// privileges on a database, or returns NULL for an OID that no database has.
 fn has_database_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    has_privilege(ctx, args, DATABASE_PRIVILEGES)
+    has_privilege(ctx, args, Kind::Database)
 }
 
-/// has_privilege runs has_schema_privilege or has_database_privilege, checking the role, then the object's name,
-/// then the privileges, as Postgres does.
-fn has_privilege(ctx: &mut Ctx<'_>, args: &[Value], names: &[(&str, &str)]) -> Result<Value> {
-    let (role, object, privileges) = match args {
-        [role, object, privileges] => (Some(role), object, privileges),
-        [object, privileges] => (None, object, privileges),
-        _ => return Ok(Value::Null),
+/// has_table_privilege reports whether a role holds any of the privileges on a table or view.
+fn has_table_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    has_privilege(ctx, args, Kind::Table)
+}
+
+/// has_column_privilege reports whether a role holds any of the privileges on a column, which a table's privileges
+/// grant.
+fn has_column_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    has_privilege(ctx, args, Kind::Column)
+}
+
+/// has_any_column_privilege reports whether a role holds any of the privileges on some column of a table.
+fn has_any_column_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    has_privilege(ctx, args, Kind::AnyColumn)
+}
+
+/// has_sequence_privilege reports whether a role holds any of the privileges on a sequence.
+fn has_sequence_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    has_privilege(ctx, args, Kind::Sequence)
+}
+
+/// has_function_privilege reports whether a role may execute a function, which everyone may.
+fn has_function_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    has_privilege(ctx, args, Kind::Function)
+}
+
+/// has_type_privilege reports whether a role may use a type, which everyone may.
+fn has_type_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    has_privilege(ctx, args, Kind::Type)
+}
+
+/// has_language_privilege reports whether a role may use a language, which everyone may.
+fn has_language_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    has_privilege(ctx, args, Kind::Language)
+}
+
+/// has_tablespace_privilege reports whether a role may create objects in a tablespace, which only superusers may.
+fn has_tablespace_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    has_privilege(ctx, args, Kind::Tablespace)
+}
+
+/// has_server_privilege fails for any foreign server, since Doltgres has none.
+fn has_server_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    has_privilege(ctx, args, Kind::Server)
+}
+
+/// has_foreign_data_wrapper_privilege fails for any foreign-data wrapper, since Doltgres has none.
+fn has_foreign_data_wrapper_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    has_privilege(ctx, args, Kind::Wrapper)
+}
+
+/// has_parameter_privilege reports whether a role holds a privilege on a configuration parameter, which only
+/// superusers do, since Doltgres has no grants on parameters.
+fn has_parameter_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    has_privilege(ctx, args, Kind::Parameter)
+}
+
+/// role_id returns the ID of the role that a has_*_privilege function names, the current one when it names none.
+fn role_id(ctx: &mut Ctx<'_>, role: Option<&Value>) -> Result<u64> {
+    let auth = ctx.auth()?;
+    Ok(match role {
+        None => auth.role(&ctx.session.role).map_or(0, |r| r.id),
+        Some(Value::Text(name)) if name == "public" => auth.public_id(),
+        Some(Value::Text(name)) => match auth.role(name) {
+            Some(role) => role.id,
+            None => return Err(PgError::new(code::UNDEFINED_OBJECT, format!("role \"{name}\" does not exist"))),
+        },
+        Some(other) => ctx.role_of_oid(oid_arg(other)).and_then(|name| auth.role(&name).map(|r| r.id)).unwrap_or(0),
+    })
+}
+
+/// relation resolves a relation's name or OID to its schema and name, failing as Postgres does for a name that no
+/// relation has.
+fn relation(ctx: &mut Ctx<'_>, value: &Value) -> Result<Option<(String, String)>> {
+    let oid = match value {
+        Value::Text(name) => oid_arg(&ctx.reg_value(Value::Text(name.clone()), crate::oid::REGCLASS)?),
+        other => oid_arg(other),
     };
-    let role = {
-        let auth = ctx.auth()?;
-        match role {
-            None => auth.role(&ctx.session.role).map_or(0, |r| r.id),
-            Some(Value::Text(name)) if name == "public" => auth.public_id(),
-            Some(Value::Text(name)) => match auth.role(name) {
-                Some(role) => role.id,
-                None => {
-                    return Err(PgError::new(code::UNDEFINED_OBJECT, format!("role \"{name}\" does not exist")));
-                }
-            },
-            Some(other) => ctx.role_of_oid(oid_arg(other)).and_then(|name| auth.role(&name).map(|r| r.id)).unwrap_or(0),
-        }
-    };
-    let schema = names == SCHEMA_PRIVILEGES;
-    let object = match object {
-        Value::Text(name) if schema => match ctx.namespaces().iter().any(|(n, _)| n == name) {
-            true => Some(Object::Schema(name.clone())),
+    ctx.relation_of_oid(oid)
+}
+
+/// target resolves the object that a has_*_privilege function names, given its arguments after the role.
+fn target(ctx: &mut Ctx<'_>, kind: Kind, args: &[Value]) -> Result<Target> {
+    let missing =
+        |what: &str, name: &str| PgError::new(code::UNDEFINED_OBJECT, format!("{what} \"{name}\" does not exist"));
+    Ok(match (kind, &args[0]) {
+        (Kind::Schema, Value::Text(name)) => match ctx.namespaces().iter().any(|(n, _)| n == name) {
+            true => Target::Object(Object::Schema(name.clone())),
             false => {
                 return Err(PgError::new(code::INVALID_SCHEMA_NAME, format!("schema \"{name}\" does not exist")));
             }
         },
-        Value::Text(name) => match ctx.catalog_database_names().contains(name) {
-            true => Some(Object::Database(name.clone())),
+        (Kind::Schema, other) => {
+            let oid = oid_arg(other);
+            ctx.namespaces()
+                .into_iter()
+                .find(|(_, o)| *o == oid)
+                .map_or(Target::Missing, |(n, _)| Target::Object(Object::Schema(n)))
+        }
+        (Kind::Database, Value::Text(name)) => match ctx.catalog_database_names().contains(name) {
+            true => Target::Object(Object::Database(name.clone())),
             false => {
                 return Err(PgError::new(code::INVALID_CATALOG_NAME, format!("database \"{name}\" does not exist")));
             }
         },
-        other if schema => {
-            let oid = oid_arg(other);
-            ctx.namespaces().into_iter().find(|(_, o)| *o == oid).map(|(n, _)| Object::Schema(n))
-        }
-        other => {
+        (Kind::Database, other) => {
             let oid = oid_arg(other);
             ctx.catalog_database_names()
                 .into_iter()
                 .find(|n| crate::pgcatalog::snapshot::database_oid(n) == oid)
-                .map(Object::Database)
+                .map_or(Target::Missing, |n| Target::Object(Object::Database(n)))
         }
+        (Kind::Table | Kind::Column | Kind::AnyColumn | Kind::Sequence, value) => {
+            let Some((schema, name)) = relation(ctx, value)? else { return Ok(Target::Missing) };
+            if kind == Kind::Sequence {
+                let sequences = crate::sequences::all(ctx.db, &ctx.txn.root)?;
+                if !sequences.iter().any(|s| crate::sequences::schema_and_name(s) == (schema.clone(), name.clone())) {
+                    return Err(PgError::new(code::WRONG_OBJECT_TYPE, format!("\"{name}\" is not a sequence")));
+                }
+                return Ok(Target::Object(Object::Sequence(schema, name)));
+            }
+            if kind == Kind::Column {
+                let columns: Vec<String> = match crate::pgcatalog::lookup(&schema, &name) {
+                    Some(catalog) => catalog.columns.iter().map(|c| c.name.to_string()).collect(),
+                    None => match ctx.txn.table(ctx.db, &schema, &name)? {
+                        Some(table) => table.columns.iter().map(|c| c.name.clone()).collect(),
+                        None => {
+                            ctx.view_columns(&schema, &name).unwrap_or_default().into_iter().map(|(n, _)| n).collect()
+                        }
+                    },
+                };
+                match &args[1] {
+                    Value::Text(column) if !columns.contains(column) => {
+                        return Err(PgError::new(
+                            code::UNDEFINED_COLUMN,
+                            format!("column \"{column}\" of relation \"{name}\" does not exist"),
+                        ));
+                    }
+                    Value::Int2(number) if *number < 1 || *number as usize > columns.len() => {
+                        return Ok(Target::Missing);
+                    }
+                    _ => {}
+                }
+            }
+            Target::Object(Object::Table(schema, name))
+        }
+        (Kind::Function, Value::Text(name)) => {
+            ctx.reg_value(Value::Text(name.clone()), crate::oid::REGPROCEDURE)?;
+            Target::Everyone
+        }
+        (Kind::Type, Value::Text(name)) => {
+            ctx.reg_value(Value::Text(name.clone()), crate::oid::REGTYPE)?;
+            Target::Everyone
+        }
+        (Kind::Function | Kind::Type, other) => {
+            let type_oid = if kind == Kind::Function { crate::oid::REGPROCEDURE } else { crate::oid::REGTYPE };
+            match ctx.reg_value(Value::Oid(oid_arg(other)), type_oid)? {
+                Value::Reg(reg) if reg.name != reg.oid.to_string() => Target::Everyone,
+                _ => Target::Missing,
+            }
+        }
+        (Kind::Language, value) => {
+            let languages = crate::pgcatalog::reg::builtin_column("pg_language", "lanname");
+            let found = match value {
+                Value::Text(name) => languages.iter().any(|(_, n)| n.output().as_deref() == Some(name.as_str())),
+                other => languages.iter().any(|(o, _)| *o == oid_arg(other)),
+            };
+            match (found, value) {
+                (true, _) => Target::Everyone,
+                (false, Value::Text(name)) => return Err(missing("language", name)),
+                (false, _) => Target::Missing,
+            }
+        }
+        (Kind::Tablespace, value) => match value {
+            Value::Text(name) if matches!(name.as_str(), "pg_default" | "pg_global") => Target::Superusers,
+            Value::Text(name) => return Err(missing("tablespace", name)),
+            other if matches!(oid_arg(other), 1663 | 1664) => Target::Superusers,
+            _ => Target::Missing,
+        },
+        (Kind::Server, Value::Text(name)) => return Err(missing("server", name)),
+        (Kind::Wrapper, Value::Text(name)) => return Err(missing("foreign-data wrapper", name)),
+        (Kind::Server | Kind::Wrapper, _) => Target::Missing,
+        (Kind::Parameter, _) => Target::Superusers,
+    })
+}
+
+/// has_privilege runs one of the has_*_privilege functions, checking the role, then the object's name, then the
+/// privileges, as Postgres does.
+fn has_privilege(ctx: &mut Ctx<'_>, args: &[Value], kind: Kind) -> Result<Value> {
+    let named = if kind == Kind::Column { 3 } else { 2 };
+    let (role, rest) = match args.len() > named {
+        true => (Some(&args[0]), &args[1..]),
+        false => (None, args),
     };
+    let role = role_id(ctx, role)?;
+    let target = target(ctx, kind, rest)?;
+    let privileges = &rest[rest.len() - 1];
     let mut wanted = Vec::new();
     for chunk in text(privileges).split(',') {
         let chunk = chunk.trim_matches(|c: char| c.is_ascii_whitespace());
@@ -495,7 +766,7 @@ fn has_privilege(ctx: &mut Ctx<'_>, args: &[Value], names: &[(&str, &str)]) -> R
             Some(name) => (name, true),
             None => (upper.as_str(), false),
         };
-        let Some((_, letter)) = names.iter().find(|(n, _)| *n == name) else {
+        let Some((_, letter)) = kind.privileges().iter().find(|(n, _)| *n == name) else {
             return Err(PgError::new(
                 code::INVALID_PARAMETER_VALUE,
                 format!("unrecognized privilege type: \"{chunk}\""),
@@ -503,10 +774,62 @@ fn has_privilege(ctx: &mut Ctx<'_>, args: &[Value], names: &[(&str, &str)]) -> R
         };
         wanted.push((*letter, option));
     }
-    match object {
-        Some(object) => Ok(Value::Bool(ctx.has_privilege(role, &object, &wanted)?)),
-        None => Ok(Value::Null),
+    let superuser = ctx.auth()?.roles.get(&role).is_some_and(|r| r.superuser);
+    Ok(match target {
+        Target::Missing => Value::Null,
+        Target::Everyone => Value::Bool(true),
+        Target::Superusers => Value::Bool(superuser),
+        Target::Object(Object::Table(schema, _))
+            if matches!(schema.as_str(), "pg_catalog" | "information_schema")
+                && wanted.iter().any(|(letter, option)| *letter == "r" && !option) =>
+        {
+            Value::Bool(true)
+        }
+        Target::Object(object) => Value::Bool(ctx.has_privilege(role, &object, &wanted)?),
+    })
+}
+
+/// pg_has_role reports whether a role is a member of another, directly or through others, for MEMBER, or holds its
+/// privileges through inheritance, for USAGE, as Postgres' pg_has_role does.
+fn pg_has_role(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let (role, rest) = match args.len() > 2 {
+        true => (Some(&args[0]), &args[1..]),
+        false => (None, args),
+    };
+    let role = role_id(ctx, role)?;
+    let auth = ctx.auth()?;
+    let target = match &rest[0] {
+        Value::Text(name) => match auth.role(name) {
+            Some(target) => target.id,
+            None => return Err(PgError::new(code::UNDEFINED_OBJECT, format!("role \"{name}\" does not exist"))),
+        },
+        other => match ctx.role_of_oid(oid_arg(other)).and_then(|name| auth.role(&name).map(|r| r.id)) {
+            Some(target) => target,
+            None => return Ok(Value::Null),
+        },
+    };
+    let superuser = auth.roles.get(&role).is_some_and(|r| r.superuser);
+    let mut held = false;
+    for chunk in text(&rest[1]).split(',') {
+        let chunk = chunk.trim_matches(|c: char| c.is_ascii_whitespace());
+        held |= match chunk.to_ascii_uppercase().as_str() {
+            "MEMBER" => superuser || role == target || auth.groups(role, false).contains(&target),
+            "USAGE" => superuser || role == target || auth.groups(role, true).contains(&target),
+            "MEMBER WITH ADMIN OPTION"
+            | "USAGE WITH ADMIN OPTION"
+            | "MEMBER WITH GRANT OPTION"
+            | "USAGE WITH GRANT OPTION" => {
+                superuser || auth.memberships.get(&role).and_then(|m| m.get(&target)).is_some_and(|m| m.admin)
+            }
+            _ => {
+                return Err(PgError::new(
+                    code::INVALID_PARAMETER_VALUE,
+                    format!("unrecognized privilege type: \"{chunk}\""),
+                ));
+            }
+        };
     }
+    Ok(Value::Bool(held))
 }
 
 /// pg_get_functiondef prints the CREATE OR REPLACE statement of a function or procedure, or returns NULL for an OID

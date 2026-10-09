@@ -5599,3 +5599,264 @@ fn test_grants_on_quoted_sequences() {
         },
     ]);
 }
+
+#[test]
+fn test_privilege_functions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "has_*_privilege functions and pg_has_role",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE ROLE priv_reader;",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE ROLE priv_group;",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE ROLE priv_member IN ROLE priv_group;",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE ROLE priv_noinherit NOINHERIT IN ROLE priv_group;",
+                    expected: Expected::Tag("CREATE ROLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE priv_t (id INT PRIMARY KEY, secret TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE SEQUENCE priv_seq;",
+                    expected: Expected::Tag("CREATE SEQUENCE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT SELECT ON priv_t TO priv_reader;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT INSERT ON priv_t TO priv_group;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "GRANT USAGE ON SEQUENCE priv_seq TO priv_reader;",
+                    expected: Expected::Tag("GRANT"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_table_privilege('priv_reader', 'priv_t', 'SELECT'), has_table_privilege('priv_reader', 'priv_t', 'INSERT'), has_table_privilege('priv_reader', 'priv_t', 'select, insert');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_table_privilege", BOOL), Column("has_table_privilege", BOOL), Column("has_table_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_table_privilege('priv_member', 'priv_t', 'INSERT'), has_table_privilege('priv_noinherit', 'priv_t', 'INSERT'), has_table_privilege('priv_t', 'DELETE');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_table_privilege", BOOL), Column("has_table_privilege", BOOL), Column("has_table_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_table_privilege('priv_reader', 'pg_class', 'SELECT'), has_table_privilege('priv_reader', 'pg_class', 'UPDATE');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_table_privilege", BOOL), Column("has_table_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_table_privilege('priv_reader', 'priv_t'::regclass, 'SELECT'), has_table_privilege('priv_reader', 0::oid, 'SELECT');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_table_privilege", BOOL), Column("has_table_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_table_privilege('priv_reader', 'nosuch_table', 'SELECT');",
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"relation "nosuch_table" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_table_privilege('priv_reader', 'priv_t', 'FLY');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"unrecognized privilege type: "FLY""#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_table_privilege('nosuch_role', 'priv_t', 'SELECT');",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "nosuch_role" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_column_privilege('priv_reader', 'priv_t', 'secret', 'SELECT'), has_column_privilege('priv_reader', 'priv_t', 2::int2, 'UPDATE'), has_column_privilege('priv_reader', 'priv_t', 9::int2, 'SELECT');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_column_privilege", BOOL), Column("has_column_privilege", BOOL), Column("has_column_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_column_privilege('priv_reader', 'priv_t', 'nosuch', 'SELECT');",
+                    expected: Expected::Error(Diagnostic { code: "42703", message: r#"column "nosuch" of relation "priv_t" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_any_column_privilege('priv_reader', 'priv_t', 'SELECT'), has_any_column_privilege('priv_reader', 'priv_t', 'UPDATE');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_any_column_privilege", BOOL), Column("has_any_column_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_sequence_privilege('priv_reader', 'priv_seq', 'USAGE'), has_sequence_privilege('priv_reader', 'priv_seq', 'UPDATE');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_sequence_privilege", BOOL), Column("has_sequence_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_sequence_privilege('priv_t', 'USAGE');",
+                    expected: Expected::Error(Diagnostic { code: "42809", message: r#""priv_t" is not a sequence"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_function_privilege('priv_reader', 'now()', 'EXECUTE'), has_type_privilege('priv_reader', 'int4', 'USAGE'), has_language_privilege('priv_reader', 'plpgsql', 'USAGE'), has_language_privilege('priv_reader', 'c', 'USAGE');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_function_privilege", BOOL), Column("has_type_privilege", BOOL), Column("has_language_privilege", BOOL), Column("has_language_privilege", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_function_privilege('nosuch_function()', 'EXECUTE');",
+                    expected: Expected::Error(Diagnostic { code: "42883", message: r#"function "nosuch_function()" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_type_privilege('nosuch_type', 'USAGE');",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "nosuch_type" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_language_privilege('nosuch_language', 'USAGE');",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"language "nosuch_language" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_tablespace_privilege('priv_reader', 'pg_default', 'CREATE'), has_tablespace_privilege('pg_default', 'CREATE');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_tablespace_privilege", BOOL), Column("has_tablespace_privilege", BOOL)],
+                        rows: &[
+                            &[T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_tablespace_privilege('nosuch_tablespace', 'CREATE');",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"tablespace "nosuch_tablespace" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_server_privilege('nosuch_server', 'USAGE');",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"server "nosuch_server" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_foreign_data_wrapper_privilege('nosuch_wrapper', 'USAGE');",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"foreign-data wrapper "nosuch_wrapper" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT has_parameter_privilege('priv_reader', 'work_mem', 'SET'), has_parameter_privilege('work_mem', 'ALTER SYSTEM');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_parameter_privilege", BOOL), Column("has_parameter_privilege", BOOL)],
+                        rows: &[
+                            &[T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_has_role('priv_member', 'priv_group', 'MEMBER'), pg_has_role('priv_member', 'priv_group', 'USAGE'), pg_has_role('priv_noinherit', 'priv_group', 'USAGE'), pg_has_role('priv_noinherit', 'priv_group', 'MEMBER');",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_has_role", BOOL), Column("pg_has_role", BOOL), Column("pg_has_role", BOOL), Column("pg_has_role", BOOL)],
+                        rows: &[
+                            &[T("t"), T("t"), T("f"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_has_role('priv_reader', 'priv_group', 'MEMBER'), pg_has_role('priv_reader', 'priv_reader', 'USAGE'), pg_has_role('priv_group', 'MEMBER');",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_has_role", BOOL), Column("pg_has_role", BOOL), Column("pg_has_role", BOOL)],
+                        rows: &[
+                            &[T("f"), T("t"), T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_has_role('priv_reader', 'nosuch_role', 'MEMBER');",
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"role "nosuch_role" does not exist"#, ..E }),
+                    flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
