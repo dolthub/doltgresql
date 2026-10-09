@@ -49,6 +49,10 @@ const RANGE_SELECTIVITY: f64 = 1.0 / 3.0;
 /// OTHER_SELECTIVITY is the share of rows that any other condition keeps.
 const OTHER_SELECTIVITY: f64 = 0.5;
 
+/// JOIN_COLLAPSE_LIMIT is the most inputs of a tree of inner joins whose order the planner searches, as Postgres'
+/// join_collapse_limit is.
+const JOIN_COLLAPSE_LIMIT: usize = 8;
+
 /// DEFAULT_DISTINCT is how many distinct values a join key takes without statistics, as Postgres'
 /// DEFAULT_NUM_DISTINCT assumes.
 const DEFAULT_DISTINCT: f64 = 200.0;
@@ -338,6 +342,11 @@ pub(crate) fn plan_joins(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
 
 /// plan_limited is `plan_joins` for a plan of which a LIMIT above reads at most this many rows, when it is known.
 fn plan_limited(ctx: &mut Ctx<'_>, plan: Plan, limit: Option<f64>) -> Plan {
+    if limit.is_none()
+        && let Some(reordered) = reorder(ctx, &plan)
+    {
+        return reordered;
+    }
     match plan {
         Plan::Join { left, right, kind, condition, lateral, method } => {
             let ordered = match method {
@@ -383,6 +392,171 @@ fn plan_limited(ctx: &mut Ctx<'_>, plan: Plan, limit: Option<f64>) -> Plan {
         }
         Plan::Once(input) => Plan::Once(whole(ctx, *input)),
         other => other,
+    }
+}
+
+/// reorder plans a tree of three or more inner joins in the order that costs least, as Postgres' join search does by
+/// dynamic programming over the sets of its inputs: the cheapest join of each set comes from the cheapest joins of two
+/// smaller sets that a condition connects, or of any two when none does. A projection puts the columns back in the
+/// tree's order. It returns None when it cannot reorder the tree.
+fn reorder(ctx: &mut Ctx<'_>, plan: &Plan) -> Option<Plan> {
+    let mut inputs = Vec::new();
+    let mut conditions = Vec::new();
+    if !flatten(plan, 0, &mut inputs, &mut conditions)
+        || !(3..=JOIN_COLLAPSE_LIMIT).contains(&inputs.len())
+        || conditions.iter().any(crate::plan::has_subquery)
+    {
+        return None;
+    }
+    let starts: Vec<usize> = inputs.iter().map(|(_, start)| *start).collect();
+    let widths: Vec<usize> = inputs.iter().map(|(input, _)| input.width()).collect();
+    let owner = |column: usize| (0..starts.len()).rev().find(|&i| starts[i] <= column).unwrap_or(0);
+    let masks: Vec<u32> = conditions
+        .iter()
+        .map(|c| {
+            let mut mask = 0;
+            c.visit(&mut |e| {
+                if let Expr::Column(i) = e {
+                    mask |= 1 << owner(*i);
+                }
+            });
+            mask
+        })
+        .collect();
+    let full = (1u32 << inputs.len()) - 1;
+    let and = |conditions: Vec<Expr>| conditions.into_iter().reduce(|x, y| Expr::And(Box::new(x), Box::new(y)));
+    let mut own: Vec<Vec<Expr>> = vec![Vec::new(); inputs.len()];
+    let mut constant = Vec::new();
+    let (mut joining, mut joining_masks) = (Vec::new(), Vec::new());
+    for (c, m) in conditions.into_iter().zip(masks) {
+        match m.count_ones() {
+            0 => constant.push(c),
+            1 => {
+                let input = m.trailing_zeros() as usize;
+                let local: Vec<usize> =
+                    (0..starts[input] + widths[input]).map(|i| i.saturating_sub(starts[input])).collect();
+                own[input].push(renumber(c, &local));
+            }
+            _ => {
+                joining.push(c);
+                joining_masks.push(m);
+            }
+        }
+    }
+    let (conditions, masks) = (joining, joining_masks);
+    let mut best: std::collections::HashMap<u32, (f64, Plan, Vec<usize>)> = std::collections::HashMap::new();
+    for (i, ((input, _), own)) in inputs.into_iter().zip(own).enumerate() {
+        let input = match and(own) {
+            Some(predicate) => crate::plan::push_down(input, predicate),
+            None => input,
+        };
+        let planned = *whole(ctx, input);
+        best.insert(1 << i, (cost(ctx, &planned), planned, vec![i]));
+    }
+    for size in 2..=widths.len() as u32 {
+        for set in (1..=full).filter(|s: &u32| s.count_ones() == size) {
+            let splits: Vec<(u32, u32)> = (1..set)
+                .filter(|&part| part & set == part && part < set ^ part)
+                .map(|part| (part, set ^ part))
+                .filter(|(a, b)| best.contains_key(a) && best.contains_key(b))
+                .collect();
+            let connected = |a: u32, b: u32| masks.iter().any(|&m| m & a != 0 && m & b != 0 && m & !(a | b) == 0);
+            let any_connected = splits.iter().any(|&(a, b)| connected(a, b));
+            for (a, b) in splits {
+                if any_connected && !connected(a, b) {
+                    continue;
+                }
+                let layout: Vec<usize> = best[&a].2.iter().chain(&best[&b].2).copied().collect();
+                let position = positions(&layout, &starts, &widths);
+                let joined = and(conditions
+                    .iter()
+                    .zip(&masks)
+                    .filter(|&(_, &m)| m & set == m && m & a != m && m & b != m)
+                    .map(|(c, _)| renumber(c.clone(), &position))
+                    .collect());
+                let (left, right) = (best[&a].1.clone(), best[&b].1.clone());
+                let planned = choose(ctx, left, right, JoinKind::Inner, joined, false, None);
+                let spent = cost(ctx, &planned);
+                if best.get(&set).is_none_or(|(c, ..)| spent < *c) {
+                    best.insert(set, (spent, planned, layout));
+                }
+            }
+        }
+    }
+    let (_, planned, layout) = best.remove(&full)?;
+    let position = positions(&layout, &starts, &widths);
+    let exprs = (0..position.len()).map(|column| Expr::Column(position[column])).collect();
+    let planned = match and(constant) {
+        Some(predicate) => Plan::Filter { input: Box::new(planned), predicate },
+        None => planned,
+    };
+    Some(Plan::Project { input: Box::new(planned), exprs })
+}
+
+/// flatten gathers the inputs of a tree of inner joins that `reorder` can reorder, with the column of the tree's row
+/// that each one's columns start at, and the conjuncts of the joins' conditions over the tree's row. It reports
+/// whether the plan is such a join at all.
+fn flatten(plan: &Plan, start: usize, inputs: &mut Vec<(Plan, usize)>, conditions: &mut Vec<Expr>) -> bool {
+    match plan {
+        Plan::Join { left, right, kind: JoinKind::Inner, condition, lateral: false, method: JoinMethod::Unplanned } => {
+            let width = left.width();
+            if !flatten(left, start, inputs, conditions) {
+                inputs.push(((**left).clone(), start));
+            }
+            if !flatten(right, start + width, inputs, conditions) {
+                inputs.push(((**right).clone(), start + width));
+            }
+            for c in condition.iter().flat_map(crate::indexscan::conjuncts) {
+                conditions.push(renumber(c.clone(), &(0..start + plan.width()).map(|i| i + start).collect::<Vec<_>>()));
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+/// positions returns where each column of a tree's row lies in the row of its inputs joined in a layout's order.
+fn positions(layout: &[usize], starts: &[usize], widths: &[usize]) -> Vec<usize> {
+    let mut position = vec![0; starts.iter().zip(widths).map(|(s, w)| s + w).max().unwrap_or(0)];
+    let mut next = 0;
+    for &input in layout {
+        for column in 0..widths[input] {
+            position[starts[input] + column] = next;
+            next += 1;
+        }
+    }
+    position
+}
+
+/// renumber rewrites the columns that an expression reads by a mapping from old column to new.
+fn renumber(e: Expr, position: &[usize]) -> Expr {
+    match e {
+        Expr::Column(i) => Expr::Column(position.get(i).copied().unwrap_or(i)),
+        other => other.map_children(&mut |c| renumber(c, position)),
+    }
+}
+
+/// cost returns about how much work a planned plan takes, in the units of the join costs: one for each row read in
+/// order.
+fn cost(ctx: &mut Ctx<'_>, plan: &Plan) -> f64 {
+    match plan {
+        Plan::Join { left, right, method, .. } => {
+            let (l, rows) = (estimate(ctx, left), estimate(ctx, plan));
+            let rest = match method {
+                JoinMethod::Lookup { .. } | JoinMethod::CatalogLookup { .. } => l * SEEK + rows,
+                JoinMethod::Hash => {
+                    let r = estimate(ctx, right);
+                    cost(ctx, right) + l + r * HASH_ROW + HASH_SETUP
+                }
+                _ => {
+                    let r = estimate(ctx, right);
+                    cost(ctx, right) + l * r * COMPARE
+                }
+            };
+            cost(ctx, left) + rest
+        }
+        Plan::Project { input, .. } | Plan::Filter { input, .. } => cost(ctx, input),
+        other => estimate(ctx, other),
     }
 }
 

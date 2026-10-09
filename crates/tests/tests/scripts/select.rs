@@ -1709,3 +1709,151 @@ fn test_outer_join_reduction() {
         },
     ]);
 }
+
+#[test]
+fn test_join_order_search() {
+    run_scripts(&[
+        ScriptTest {
+            name: "Joins of several tables in any order",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "CREATE TABLE jo_a (id INT PRIMARY KEY, b_id INT, t TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE jo_b (id INT PRIMARY KEY, c_id INT, v INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE jo_c (id INT PRIMARY KEY, d_id INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE jo_d (id INT PRIMARY KEY, name TEXT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO jo_a SELECT g, g % 30, 't' || g FROM generate_series(1, 300) g;",
+                    expected: Expected::Tag("INSERT 0 300"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO jo_b SELECT g, g % 10, g * 2 FROM generate_series(0, 29) g;",
+                    expected: Expected::Tag("INSERT 0 30"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO jo_c SELECT g, g % 3 FROM generate_series(0, 9) g;",
+                    expected: Expected::Tag("INSERT 0 10"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO jo_d VALUES (0, 'zero'), (1, 'one'), (2, 'two');",
+                    expected: Expected::Tag("INSERT 0 3"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT d.name, count(*) FROM jo_a a JOIN jo_b b ON a.b_id = b.id JOIN jo_c c ON b.c_id = c.id JOIN jo_d d ON c.d_id = d.id GROUP BY d.name ORDER BY d.name;",
+                    expected: Expected::Rows {
+                        columns: &[Column("name", TEXT), Column("count", INT8)],
+                        rows: &[
+                            &[T("one"), T("90")],
+                            &[T("two"), T("90")],
+                            &[T("zero"), T("120")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a.id, d.name FROM jo_d d JOIN jo_c c ON c.d_id = d.id AND d.name = 'two' JOIN jo_b b ON b.c_id = c.id JOIN jo_a a ON a.b_id = b.id AND a.id < 40 ORDER BY a.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("name", TEXT)],
+                        rows: &[
+                            &[T("2"), T("two")],
+                            &[T("5"), T("two")],
+                            &[T("8"), T("two")],
+                            &[T("12"), T("two")],
+                            &[T("15"), T("two")],
+                            &[T("18"), T("two")],
+                            &[T("22"), T("two")],
+                            &[T("25"), T("two")],
+                            &[T("28"), T("two")],
+                            &[T("32"), T("two")],
+                            &[T("35"), T("two")],
+                            &[T("38"), T("two")],
+                        ],
+                        tag: "SELECT 12",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM jo_a a, jo_b b, jo_c c WHERE a.b_id = b.id AND b.c_id = c.id AND c.d_id = 1 AND a.t LIKE 't1%';",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("34")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM jo_a a JOIN jo_b b ON a.b_id = b.id JOIN jo_c c ON true JOIN jo_d d ON 1 = 1 WHERE c.id < 2 AND d.id = 0;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("600")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM jo_a a JOIN jo_b b ON a.b_id = b.id JOIN jo_c c ON false;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a.id, b.id, c.id FROM jo_a a JOIN jo_b b ON a.b_id = b.id JOIN jo_c c ON b.c_id = c.id AND a.id = c.id ORDER BY a.id LIMIT 5;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4), Column("id", INT4)],
+                        rows: &[
+                            &[T("1"), T("1"), T("1")],
+                            &[T("2"), T("2"), T("2")],
+                            &[T("3"), T("3"), T("3")],
+                            &[T("4"), T("4"), T("4")],
+                            &[T("5"), T("5"), T("5")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT x.*, y.* FROM (SELECT 1 AS p) x JOIN jo_d y ON y.id = x.p JOIN jo_c z ON z.d_id = y.id ORDER BY z.id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("p", INT4), Column("id", INT4), Column("name", TEXT)],
+                        rows: &[
+                            &[T("1"), T("1"), T("one")],
+                            &[T("1"), T("1"), T("one")],
+                            &[T("1"), T("1"), T("one")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
