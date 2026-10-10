@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The system catalogs: the relations of pg_catalog and information_schema, with Postgres 15's columns, and rows
+//! The system catalogs: the relations of pg_catalog and information_schema, with Postgres 18's columns, and rows
 //! that describe the working root value.
 
 mod builtin;
@@ -37,7 +37,7 @@ use crate::pgcatalog::indexes::CatalogIndexScan;
 use crate::query::Ctx;
 use crate::types::Value;
 
-/// COLUMNS lists the columns of every system catalog relation as Postgres 15 defines them, one per line: schema,
+/// COLUMNS lists the columns of every system catalog relation as Postgres 18 defines them, one per line: schema,
 /// relation, relation kind, relation OID, column, type OID (the base type of a domain), and whether it is NOT NULL.
 const COLUMNS: &str = include_str!("columns.tsv");
 

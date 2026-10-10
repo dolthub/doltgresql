@@ -651,6 +651,7 @@ fn test_application_settings_wire() {
                 ]),
                 Step::Receive(&[
                     Receive::CommandComplete("SET"),
+                    Receive::ParameterStatus("search_path", "public"),
                     Receive::ReadyForQuery(b'I'),
                 ]),
                 Step::Send(&[
@@ -702,6 +703,7 @@ fn test_application_settings_wire() {
                     Receive::BindComplete,
                     Receive::DataRow(&[Datum::Text("other")]),
                     Receive::CommandComplete("SELECT 1"),
+                    Receive::ParameterStatus("search_path", "other"),
                     Receive::ReadyForQuery(b'T'),
                 ]),
                 Step::Send(&[
@@ -796,6 +798,7 @@ fn test_application_settings_wire() {
                 ]),
                 Step::Receive(&[
                     Receive::CommandComplete("COMMIT"),
+                    Receive::ParameterStatus("search_path", "public"),
                     Receive::ReadyForQuery(b'I'),
                 ]),
                 Step::Send(&[
@@ -840,6 +843,7 @@ fn test_application_settings_wire() {
                     Receive::BindComplete,
                     Receive::DataRow(&[Datum::Text(r#""$user", public"#)]),
                     Receive::CommandComplete("SELECT 1"),
+                    Receive::ParameterStatus("search_path", r#""$user", public"#),
                     Receive::ReadyForQuery(b'I'),
                 ]),
                 Step::Send(&[
@@ -847,6 +851,7 @@ fn test_application_settings_wire() {
                 ]),
                 Step::Receive(&[
                     Receive::CommandComplete("SET"),
+                    Receive::ParameterStatus("search_path", "public"),
                     Receive::ReadyForQuery(b'I'),
                 ]),
                 Step::Send(&[
@@ -854,6 +859,7 @@ fn test_application_settings_wire() {
                 ]),
                 Step::Receive(&[
                     Receive::CommandComplete("RESET"),
+                    Receive::ParameterStatus("search_path", r#""$user", public"#),
                     Receive::ReadyForQuery(b'I'),
                 ]),
                 Step::Send(&[

@@ -856,7 +856,7 @@ fn test_smoke_tests() {
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT '{"abc""","def"}'::text[];"#,
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed array literal: "{"abc""","def"}""#, detail: "Unexpected array element.", position: 8, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed array literal: "{"abc""","def"}""#, detail: "Incorrectly quoted array element.", position: 8, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -876,7 +876,7 @@ fn test_smoke_tests() {
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT '{a",b,c}'::text[];"#,
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed array literal: "{a",b,c}""#, detail: "Unexpected array element.", position: 8, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed array literal: "{a",b,c}""#, detail: "Incorrectly quoted array element.", position: 8, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -886,7 +886,7 @@ fn test_smoke_tests() {
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT '{a,b,c"}'::text[];"#,
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed array literal: "{a,b,c"}""#, detail: "Unexpected array element.", position: 8, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed array literal: "{a,b,c"}""#, detail: "Incorrectly quoted array element.", position: 8, ..E }),
                     ..A
                 },
             ],
@@ -1203,7 +1203,7 @@ fn test_smoke_tests() {
                 },
                 ScriptTestAssertion {
                     query: "insert into pg_attribute values (1);",
-                    expected: Expected::Error(Diagnostic { code: "23502", message: r#"null value in column "attname" of relation "pg_attribute" violates not-null constraint"#, detail: "Failing row contains (1, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null).", schema: "pg_catalog", table: "pg_attribute", column: "attname", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23502", message: r#"null value in column "attname" of relation "pg_attribute" violates not-null constraint"#, detail: "Failing row contains (1, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null).", schema: "pg_catalog", table: "pg_attribute", column: "attname", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {

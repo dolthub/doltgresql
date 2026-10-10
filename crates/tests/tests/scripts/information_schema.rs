@@ -4535,7 +4535,7 @@ UNION ALL
                     expected: Expected::Rows {
                         columns: &[Column("table_catalog", NAME), Column("table_schema", NAME), Column("table_name", NAME), Column("view_definition", VARCHAR)],
                         rows: &[
-                            &[T("postgres"), T("test_schema"), T("test_view2"), T(r#" SELECT test_table2.id
+                            &[T("postgres"), T("test_schema"), T("test_view2"), T(r#" SELECT id
    FROM test_table2;"#)],
                         ],
                         tag: "SELECT 1",
@@ -4564,9 +4564,9 @@ fn test_check_constraint_view_rules() {
                     expected: Expected::Rows {
                         columns: &[Column("constraint_schema", NAME), Column("constraint_name", NAME), Column("check_clause", VARCHAR)],
                         rows: &[
-                            &[T("public"), T("t3333_w_check"), T("(((w > 0) AND (w < 10)))")],
-                            &[T("public"), T("t3333_z_check"), T("((z ~ '^[0-9]+$'::text))")],
-                            &[T("public"), T("y_chk"), T("(regexp_like(y, '^[a-z]+$'::text))")],
+                            &[T("public"), T("t3333_w_check"), T("((w > 0) AND (w < 10))")],
+                            &[T("public"), T("t3333_z_check"), T("(z ~ '^[0-9]+$'::text)")],
+                            &[T("public"), T("y_chk"), T("regexp_like(y, '^[a-z]+$'::text)")],
                         ],
                         tag: "SELECT 3",
                     },

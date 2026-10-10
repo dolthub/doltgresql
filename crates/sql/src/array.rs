@@ -91,293 +91,295 @@ fn is_array_space(c: u8) -> bool {
     matches!(c, b' ' | b'\t' | b'\n' | b'\r' | b'\x0b' | b'\x0c')
 }
 
-/// State is a state of Postgres' array literal parser.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum State {
-    NoLevel,
-    LevelStarted,
-    ElemStarted,
-    QuotedElemStarted,
-    QuotedElemCompleted,
-    ElemDelimited,
-    LevelCompleted,
-    LevelDelimited,
+/// Token is a token of array text, as Postgres' ReadArrayToken reads it.
+enum Token {
+    LevelStart,
+    LevelEnd,
+    Delimiter,
+    /// An element's text, with its quotes and escapes removed.
+    Element(String),
+    /// An unquoted NULL.
+    Null,
 }
 
-/// count_dimensions checks the structure of array text and returns the length of each dimension, empty for an empty
-/// array, as Postgres 15's ArrayCount does.
-fn count_dimensions(original: &str, text: &[u8], delimiter: u8) -> Result<Vec<i32>> {
-    let mut nest_level = 0usize;
-    let mut ndim = 1usize;
-    let mut temp = [0i32; MAX_DIMENSIONS];
-    let mut nelems = [1i32; MAX_DIMENSIONS];
-    let mut nelems_last = [0i32; MAX_DIMENSIONS];
-    let mut in_quotes = false;
-    let mut empty = true;
-    let mut state = State::NoLevel;
-    let mut i = 0;
-    let unexpected = |c: char| malformed(original, &format!("Unexpected \"{c}\" character."));
+/// read_token reads the next token of array text, as Postgres' ReadArrayToken does.
+fn read_token(original: &str, text: &[u8], at: &mut usize, delimiter: u8) -> Result<Token> {
+    let end = || malformed(original, "Unexpected end of input.");
+    let quoted = loop {
+        match text.get(*at) {
+            None => return Err(end()),
+            Some(b'{') => {
+                *at += 1;
+                return Ok(Token::LevelStart);
+            }
+            Some(b'}') => {
+                *at += 1;
+                return Ok(Token::LevelEnd);
+            }
+            Some(b'"') => {
+                *at += 1;
+                break true;
+            }
+            Some(&c) if c == delimiter => {
+                *at += 1;
+                return Ok(Token::Delimiter);
+            }
+            Some(&c) if is_array_space(c) => *at += 1,
+            Some(_) => break false,
+        }
+    };
+    let mut element = Vec::new();
+    let text_of =
+        |bytes: Vec<u8>| String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into());
+    if quoted {
+        loop {
+            match text.get(*at) {
+                None => return Err(end()),
+                Some(b'\\') => {
+                    element.push(*text.get(*at + 1).ok_or_else(end)?);
+                    *at += 2;
+                }
+                Some(b'"') => loop {
+                    *at += 1;
+                    match text.get(*at) {
+                        None => return Err(end()),
+                        Some(&c) if c == delimiter || c == b'}' || c == b'{' => {
+                            return Ok(Token::Element(text_of(element)));
+                        }
+                        Some(&c) if !is_array_space(c) => {
+                            return Err(malformed(original, "Incorrectly quoted array element."));
+                        }
+                        Some(_) => {}
+                    }
+                },
+                Some(&c) => {
+                    element.push(c);
+                    *at += 1;
+                }
+            }
+        }
+    }
+    let (mut kept, mut escaped) = (0, false);
     loop {
-        let mut item_done = false;
-        let mut end_of_array = false;
-        while !item_done {
-            if matches!(state, State::ElemStarted | State::QuotedElemStarted) {
-                empty = false;
+        match text.get(*at) {
+            None => return Err(end()),
+            Some(b'{') => return Err(malformed(original, "Unexpected \"{\" character.")),
+            Some(b'"') => return Err(malformed(original, "Incorrectly quoted array element.")),
+            Some(b'\\') => {
+                element.push(*text.get(*at + 1).ok_or_else(end)?);
+                *at += 2;
+                kept = element.len();
+                escaped = true;
             }
-            let Some(&c) = text.get(i) else { return Err(malformed(original, "Unexpected end of input.")) };
-            match c {
-                b'\\' => {
-                    if !matches!(
-                        state,
-                        State::LevelStarted | State::ElemStarted | State::QuotedElemStarted | State::ElemDelimited
-                    ) {
-                        return Err(unexpected('\\'));
-                    }
-                    if state != State::QuotedElemStarted {
-                        state = State::ElemStarted;
-                    }
-                    if i + 1 < text.len() {
-                        i += 1;
-                    } else {
-                        return Err(malformed(original, "Unexpected end of input."));
-                    }
-                }
-                b'"' => {
-                    if !matches!(state, State::LevelStarted | State::QuotedElemStarted | State::ElemDelimited) {
-                        return Err(malformed(original, "Unexpected array element."));
-                    }
-                    in_quotes = !in_quotes;
-                    state = if in_quotes { State::QuotedElemStarted } else { State::QuotedElemCompleted };
-                }
-                b'{' if !in_quotes => {
-                    if !matches!(state, State::NoLevel | State::LevelStarted | State::LevelDelimited) {
-                        return Err(unexpected('{'));
-                    }
-                    state = State::LevelStarted;
-                    if nest_level >= MAX_DIMENSIONS {
-                        return Err(PgError::new(
-                            code::PROGRAM_LIMIT_EXCEEDED,
-                            format!(
-                                "number of array dimensions ({}) exceeds the maximum allowed ({MAX_DIMENSIONS})",
-                                nest_level + 1
-                            ),
-                        ));
-                    }
-                    temp[nest_level] = 0;
-                    nest_level += 1;
-                    ndim = ndim.max(nest_level);
-                }
-                b'}' if !in_quotes => {
-                    let allowed =
-                        matches!(state, State::ElemStarted | State::QuotedElemCompleted | State::LevelCompleted)
-                            || (nest_level == 1 && state == State::LevelStarted);
-                    if !allowed {
-                        return Err(unexpected('}'));
-                    }
-                    state = State::LevelCompleted;
-                    if nest_level == 0 {
-                        return Err(malformed(original, "Unmatched \"}\" character."));
-                    }
-                    nest_level -= 1;
-                    if nelems_last[nest_level] != 0 && nelems[nest_level] != nelems_last[nest_level] {
-                        return Err(malformed(
-                            original,
-                            "Multidimensional arrays must have sub-arrays with matching dimensions.",
-                        ));
-                    }
-                    nelems_last[nest_level] = nelems[nest_level];
-                    nelems[nest_level] = 1;
-                    if nest_level == 0 {
-                        end_of_array = true;
-                        item_done = true;
-                    } else {
-                        temp[nest_level - 1] += 1;
-                    }
-                }
-                c if !in_quotes && c == delimiter => {
-                    if !matches!(state, State::ElemStarted | State::QuotedElemCompleted | State::LevelCompleted) {
-                        return Err(unexpected(delimiter as char));
-                    }
-                    state = if state == State::LevelCompleted { State::LevelDelimited } else { State::ElemDelimited };
-                    item_done = true;
-                    nelems[nest_level.saturating_sub(1)] += 1;
-                }
-                c if !in_quotes && !is_array_space(c) => {
-                    if !matches!(state, State::LevelStarted | State::ElemStarted | State::ElemDelimited) {
-                        return Err(malformed(original, "Unexpected array element."));
-                    }
-                    state = State::ElemStarted;
-                }
-                _ => {}
+            Some(&c) if c == delimiter || c == b'}' => {
+                element.truncate(kept);
+                let element = text_of(element);
+                return Ok(if !escaped && element.eq_ignore_ascii_case("NULL") {
+                    Token::Null
+                } else {
+                    Token::Element(element)
+                });
             }
-            if !item_done {
-                i += 1;
+            Some(&c) => {
+                element.push(c);
+                if !is_array_space(c) {
+                    kept = element.len();
+                }
+                *at += 1;
             }
         }
-        temp[ndim - 1] += 1;
-        i += 1;
-        if end_of_array {
-            break;
-        }
     }
-    if text[i..].iter().any(|&c| !is_array_space(c)) {
-        return Err(malformed(original, "Junk after closing right brace."));
-    }
-    if empty {
-        return Ok(Vec::new());
-    }
-    Ok(temp[..ndim].to_vec())
 }
 
-/// read_elements extracts the element texts of validated array text, with None for NULL, as Postgres' ReadArrayStr
-/// does.
-fn read_elements(text: &[u8], delimiter: u8, count: usize) -> Vec<Option<String>> {
-    let mut out = Vec::with_capacity(count);
-    let mut i = 0;
-    let mut nest_level = 0;
-    let mut end_of_array = false;
-    while !end_of_array {
-        let mut item = Vec::new();
-        let mut item_end = 0;
-        let mut in_quotes = false;
-        let mut leading_space = true;
-        let mut has_quoting = false;
-        let mut item_done = false;
-        let mut started = false;
-        while !item_done {
-            let Some(&c) = text.get(i) else { break };
-            match c {
-                b'\\' => {
-                    i += 1;
-                    if let Some(&escaped) = text.get(i) {
-                        item.push(escaped);
-                    }
-                    item_end = item.len();
-                    leading_space = false;
-                    has_quoting = true;
-                    started = true;
-                    i += 1;
-                }
-                b'"' => {
-                    in_quotes = !in_quotes;
-                    if in_quotes {
-                        leading_space = false;
-                    } else {
-                        item_end = item.len();
-                    }
-                    has_quoting = true;
-                    started = true;
-                    i += 1;
-                }
-                b'{' if !in_quotes => {
-                    nest_level += 1;
-                    i += 1;
-                }
-                b'}' if !in_quotes => {
-                    nest_level -= 1;
-                    if nest_level == 0 {
-                        end_of_array = true;
-                        item_done = true;
-                    }
-                    i += 1;
-                }
-                c if !in_quotes && c == delimiter => {
-                    item_done = true;
-                    i += 1;
-                }
-                c if !in_quotes && is_array_space(c) => {
-                    if !leading_space {
-                        item.push(c);
-                    }
-                    i += 1;
-                }
-                c => {
-                    item.push(c);
-                    if !in_quotes {
-                        leading_space = false;
-                    }
-                    item_end = item.len();
-                    started = true;
-                    i += 1;
-                }
-            }
-        }
-        if !started {
-            continue;
-        }
-        item.truncate(item_end);
-        let text = String::from_utf8_lossy(&item).into_owned();
-        out.push(if !has_quoting && text.eq_ignore_ascii_case("NULL") { None } else { Some(text) });
+/// read_dimension_int reads an optionally signed integer of an array dimension, leaving the position alone when no
+/// digits follow it, as Postgres' ReadDimensionInt does.
+fn read_dimension_int(text: &[u8], at: &mut usize) -> Result<i32> {
+    let sign = usize::from(matches!(text.get(*at), Some(b'+' | b'-')));
+    let digits = text[(*at + sign).min(text.len())..].iter().take_while(|c| c.is_ascii_digit()).count();
+    if digits == 0 {
+        return Ok(0);
     }
-    out
+    let number = std::str::from_utf8(&text[*at..*at + sign + digits]).unwrap_or_default();
+    *at += sign + digits;
+    number.parse::<i32>().map_err(|_| PgError::new(code::PROGRAM_LIMIT_EXCEEDED, "array bound is out of integer range"))
 }
 
-/// parse reads array text in Postgres' format: optional dimension bounds, then nested braces of elements, which each
-/// read as the element type.
-pub fn parse(text: &str, element: u32, read: &dyn Fn(&str) -> Result<Value>) -> Result<Array> {
-    let delimiter = b',';
-    let bytes = text.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() && is_array_space(bytes[i]) {
-        i += 1;
-    }
-    let mut lower_bounds: Vec<(i32, i32)> = Vec::new();
-    while bytes.get(i) == Some(&b'[') {
-        let end = text[i..]
-            .find(']')
-            .map(|e| e + i)
-            .ok_or_else(|| malformed(text, "Missing \"]\" after array dimensions."))?;
-        let spec = &text[i + 1..end];
-        let (lower, upper) = match spec.split_once(':') {
-            Some((l, u)) => (l.trim().parse::<i32>(), u.trim().parse::<i32>()),
-            None => (Ok(1), spec.trim().parse::<i32>()),
+/// too_many_dimensions returns Postgres' error for array text nested more deeply than an array may be.
+fn too_many_dimensions() -> PgError {
+    PgError::new(
+        code::PROGRAM_LIMIT_EXCEEDED,
+        format!("number of array dimensions exceeds the maximum allowed ({MAX_DIMENSIONS})"),
+    )
+}
+
+/// read_dimensions reads the explicit dimensions that array text may start with, as `[1:3]` or `[2]`, returning the
+/// length and lower bound of each, as Postgres' ReadArrayDimensions does.
+fn read_dimensions(original: &str, text: &[u8], at: &mut usize) -> Result<Vec<(i32, i32)>> {
+    let mut dims = Vec::new();
+    loop {
+        while text.get(*at).is_some_and(|&c| is_array_space(c)) {
+            *at += 1;
+        }
+        if text.get(*at) != Some(&b'[') {
+            return Ok(dims);
+        }
+        *at += 1;
+        if dims.len() >= MAX_DIMENSIONS {
+            return Err(too_many_dimensions());
+        }
+        let start = *at;
+        let first = read_dimension_int(text, at)?;
+        if *at == start {
+            return Err(malformed(original, "\"[\" must introduce explicitly-specified array dimensions."));
+        }
+        let (lower, upper) = if text.get(*at) == Some(&b':') {
+            *at += 1;
+            let start = *at;
+            let upper = read_dimension_int(text, at)?;
+            if *at == start {
+                return Err(malformed(original, "Missing array dimension value."));
+            }
+            (first, upper)
+        } else {
+            (1, first)
         };
-        let (Ok(lower), Ok(upper)) = (lower, upper) else {
-            return Err(malformed(text, "\"[\" must introduce explicitly-specified array dimensions."));
-        };
+        if text.get(*at) != Some(&b']') {
+            return Err(malformed(original, "Missing \"]\" after array dimensions."));
+        }
+        *at += 1;
         if upper < lower {
             return Err(PgError::new(code::ARRAY_SUBSCRIPT_ERROR, "upper bound cannot be less than lower bound"));
         }
-        lower_bounds.push((upper - lower + 1, lower));
-        i = end + 1;
-    }
-    if !lower_bounds.is_empty() {
-        while i < bytes.len() && is_array_space(bytes[i]) {
-            i += 1;
+        if upper == i32::MAX {
+            return Err(PgError::new(code::PROGRAM_LIMIT_EXCEEDED, format!("array upper bound is too large: {upper}")));
         }
-        if bytes.get(i) != Some(&b'=') {
+        let length = i32::try_from(i64::from(upper) - i64::from(lower) + 1).map_err(|_| {
+            PgError::new(code::PROGRAM_LIMIT_EXCEEDED, "array size exceeds the maximum allowed (134217727)")
+        })?;
+        dims.push((length, lower));
+    }
+}
+
+/// read_elements reads the elements of array text between its outer braces, checking its structure against the
+/// lengths of its dimensions, which are known when the text gave them and found as it goes when it did not, as
+/// Postgres' ReadArrayStr does. It returns the number of dimensions and the elements in row order.
+fn read_elements(
+    original: &str,
+    text: &[u8],
+    at: &mut usize,
+    lengths: &mut [i32; MAX_DIMENSIONS],
+    specified: usize,
+    read: &dyn Fn(&str) -> Result<Value>,
+) -> Result<(usize, Vec<Value>)> {
+    let delimiter = b',';
+    let mismatch = || match specified {
+        0 => malformed(original, "Multidimensional arrays must have sub-arrays with matching dimensions."),
+        _ => malformed(original, "Specified array dimensions do not match array contents."),
+    };
+    let (mut ndim, mut frozen, mut expect_delimiter) = (specified, specified > 0, false);
+    let mut counts = [0i32; MAX_DIMENSIONS];
+    let mut level = 0;
+    let mut values = Vec::new();
+    loop {
+        match read_token(original, text, at, delimiter)? {
+            Token::LevelStart => {
+                if expect_delimiter {
+                    return Err(malformed(original, "Unexpected \"{\" character."));
+                }
+                if level >= MAX_DIMENSIONS {
+                    return Err(too_many_dimensions());
+                }
+                counts[level] = 0;
+                level += 1;
+                if level > ndim {
+                    if frozen {
+                        return Err(mismatch());
+                    }
+                    ndim = level;
+                }
+            }
+            Token::LevelEnd => {
+                if counts[level - 1] > 0 && !expect_delimiter {
+                    return Err(malformed(original, "Unexpected \"}\" character."));
+                }
+                level -= 1;
+                if level > 0 {
+                    counts[level - 1] += 1;
+                }
+                if lengths[level] < 0 {
+                    lengths[level] = counts[level];
+                } else if counts[level] != lengths[level] {
+                    return Err(mismatch());
+                }
+                expect_delimiter = true;
+            }
+            Token::Delimiter => {
+                if !expect_delimiter {
+                    return Err(malformed(original, &format!("Unexpected \"{}\" character.", delimiter as char)));
+                }
+                expect_delimiter = false;
+            }
+            token @ (Token::Element(_) | Token::Null) => {
+                if expect_delimiter {
+                    return Err(malformed(original, "Unexpected array element."));
+                }
+                if values.len() >= 134217727 {
+                    return Err(PgError::new(
+                        code::PROGRAM_LIMIT_EXCEEDED,
+                        "array size exceeds the maximum allowed (134217727)",
+                    ));
+                }
+                values.push(match token {
+                    Token::Element(element) => read(&element)?,
+                    _ => Value::Null,
+                });
+                frozen = true;
+                if level != ndim {
+                    return Err(mismatch());
+                }
+                counts[level - 1] += 1;
+                expect_delimiter = true;
+            }
+        }
+        if level == 0 {
+            return Ok((ndim, values));
+        }
+    }
+}
+
+/// parse reads array text, as Postgres' array_in does.
+pub fn parse(text: &str, element: u32, read: &dyn Fn(&str) -> Result<Value>) -> Result<Array> {
+    let bytes = text.as_bytes();
+    let mut at = 0;
+    let specified = read_dimensions(text, bytes, &mut at)?;
+    if specified.is_empty() {
+        if bytes.get(at) != Some(&b'{') {
+            return Err(malformed(text, "Array value must start with \"{\" or dimension information."));
+        }
+    } else {
+        if bytes.get(at) != Some(&b'=') {
             return Err(malformed(text, "Missing \"=\" after array dimensions."));
         }
-        i += 1;
-        while i < bytes.len() && is_array_space(bytes[i]) {
-            i += 1;
+        at += 1;
+        while bytes.get(at).is_some_and(|&c| is_array_space(c)) {
+            at += 1;
+        }
+        if bytes.get(at) != Some(&b'{') {
+            return Err(malformed(text, "Array contents must start with \"{\"."));
         }
     }
-    if bytes.get(i) != Some(&b'{') {
-        return Err(malformed(text, "Array value must start with \"{\" or dimension information."));
+    let mut lengths = [-1; MAX_DIMENSIONS];
+    for (length, (n, _)) in lengths.iter_mut().zip(&specified) {
+        *length = *n;
     }
-    let body = &bytes[i..];
-    let lengths = count_dimensions(text, body, delimiter)?;
-    if lengths.is_empty() {
-        return Ok(Array { element, dims: Vec::new(), values: Vec::new() });
+    let (ndim, values) = read_elements(text, bytes, &mut at, &mut lengths, specified.len(), read)?;
+    if bytes[at..].iter().any(|&c| !is_array_space(c)) {
+        return Err(malformed(text, "Junk after closing right brace."));
     }
-    let dims: Vec<(i32, i32)> = if lower_bounds.is_empty() {
-        lengths.iter().map(|&n| (n, 1)).collect()
-    } else {
-        if lower_bounds.len() != lengths.len() || lower_bounds.iter().zip(&lengths).any(|((n, _), l)| n != l) {
-            return Err(malformed(text, "Specified array dimensions do not match array contents."));
-        }
-        lower_bounds
-    };
-    let count: usize = dims.iter().map(|(n, _)| *n as usize).product();
-    let elements = read_elements(body, delimiter, count);
-    let values = elements
-        .into_iter()
-        .map(|e| match e {
-            None => Ok(Value::Null),
-            Some(text) => read(&text),
-        })
-        .collect::<Result<Vec<_>>>()?;
+    if values.is_empty() {
+        return Ok(Array { element, dims: Vec::new(), values });
+    }
+    let dims = (0..ndim).map(|k| (lengths[k], specified.get(k).map_or(1, |&(_, lower)| lower))).collect();
     Ok(Array { element, dims, values })
 }
 

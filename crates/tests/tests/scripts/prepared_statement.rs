@@ -2090,7 +2090,7 @@ fn test_prepared_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("pg_get_viewdef", TEXT)],
                         rows: &[
-                            &[T(r#" SELECT test.name
+                            &[T(r#" SELECT name
    FROM test;"#)],
                         ],
                         tag: "SELECT 1",

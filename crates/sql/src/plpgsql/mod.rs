@@ -1166,10 +1166,10 @@ impl<'r> Frame<'r> {
 
     /// check_structure fails as Postgres does when RETURN QUERY's columns do not match the routine's result.
     fn check_structure(&self, columns: &[(String, ColumnType)]) -> Result<()> {
-        let expected: Vec<ColumnType> = match self.composite_column() {
-            Some((_, attributes)) => attributes.iter().map(|(_, ty)| *ty).collect(),
-            None if self.routine.columns.is_empty() => vec![self.routine.ret],
-            None => self.routine.columns.iter().map(|(_, ty)| *ty).collect(),
+        let expected: Vec<(String, ColumnType)> = match self.composite_column() {
+            Some((_, attributes)) => attributes,
+            None if self.routine.columns.is_empty() => vec![(self.routine.name.clone(), self.routine.ret)],
+            None => self.routine.columns.clone(),
         };
         let mismatch = |detail: String| PgError {
             detail: Some(detail),
@@ -1186,10 +1186,10 @@ impl<'r> Frame<'r> {
             )));
         }
         let text_like = |t: u32| matches!(t, oid::TEXT | oid::VARCHAR);
-        for (i, ((_, actual), wanted)) in columns.iter().zip(&expected).enumerate() {
+        for (i, ((_, actual), (name, wanted))) in columns.iter().zip(&expected).enumerate() {
             if actual.oid != wanted.oid && !(text_like(actual.oid) && text_like(wanted.oid)) {
                 return Err(mismatch(format!(
-                    "Returned type {} does not match expected type {} in column {}.",
+                    "Returned type {} does not match expected type {} in column \"{name}\" (position {}).",
                     crate::cast::type_display(actual.oid),
                     crate::cast::type_display(wanted.oid),
                     i + 1

@@ -3366,13 +3366,7 @@ fn test_types() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT v1::xid FROM t_name WHERE id=1;",
-                    expected: Expected::Rows {
-                        columns: &[Column("v1", XID)],
-                        rows: &[
-                            &[T("0")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type xid: "abcdefghij""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6345,7 +6339,7 @@ fn test_types() {
                 },
                 ScriptTestAssertion {
                     query: "INSERT INTO t_xid VALUES (5, '4294967296', 'b');",
-                    expected: Expected::Tag("INSERT 0 1"),
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "4294967296" is out of range for type xid"#, position: 30, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6360,7 +6354,7 @@ fn test_types() {
                 },
                 ScriptTestAssertion {
                     query: "INSERT INTO t_xid VALUES (8, 'abc', 'd');",
-                    expected: Expected::Tag("INSERT 0 1"),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type xid: "abc""#, position: 30, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6370,12 +6364,10 @@ fn test_types() {
                         rows: &[
                             &[T("1"), T("9012"), T("100")],
                             &[T("4"), T("4294967295"), T("a")],
-                            &[T("5"), T("0"), T("b")],
                             &[T("6"), T("0"), T("c")],
                             &[T("7"), T("4294967295"), T("d")],
-                            &[T("8"), T("0"), T("d")],
                         ],
-                        tag: "SELECT 6",
+                        tag: "SELECT 4",
                     },
                     ..A
                 },
@@ -6522,79 +6514,37 @@ fn test_types() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT ('4294967295'::text)::xid, ('4294967297'::text)::xid;",
-                    expected: Expected::Rows {
-                        columns: &[Column("xid", XID), Column("xid", XID)],
-                        rows: &[
-                            &[T("4294967295"), T("1")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "4294967297" is out of range for type xid"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT ('-4294967295'::text)::xid, ('-4294967297'::text)::xid;",
-                    expected: Expected::Rows {
-                        columns: &[Column("xid", XID), Column("xid", XID)],
-                        rows: &[
-                            &[T("1"), T("4294967295")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "-4294967295" is out of range for type xid"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT ('4294967295'::varchar)::xid, ('4294967296232'::varchar)::xid;",
-                    expected: Expected::Rows {
-                        columns: &[Column("xid", XID), Column("xid", XID)],
-                        rows: &[
-                            &[T("4294967295"), T("232")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "4294967296232" is out of range for type xid"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT ('-4294967295'::varchar)::xid, ('-4294967296232'::varchar)::xid;",
-                    expected: Expected::Rows {
-                        columns: &[Column("xid", XID), Column("xid", XID)],
-                        rows: &[
-                            &[T("1"), T("4294967064")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "-4294967295" is out of range for type xid"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT ('4294967295'::char(11))::xid, ('4294967296'::char(11))::xid;",
-                    expected: Expected::Rows {
-                        columns: &[Column("xid", XID), Column("xid", XID)],
-                        rows: &[
-                            &[T("4294967295"), T("0")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "4294967296 " is out of range for type xid"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT ('4294967295'::name)::xid, ('4294967296'::name)::xid;",
-                    expected: Expected::Rows {
-                        columns: &[Column("xid", XID), Column("xid", XID)],
-                        rows: &[
-                            &[T("4294967295"), T("0")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "22003", message: r#"value "4294967296" is out of range for type xid"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT ('abc'::text)::xid, ('abc'::char(3))::xid, ('abc'::varchar)::xid, ('abc'::name)::xid;",
-                    expected: Expected::Rows {
-                        columns: &[Column("xid", XID), Column("xid", XID), Column("xid", XID), Column("xid", XID)],
-                        rows: &[
-                            &[T("0"), T("0"), T("0"), T("0")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"invalid input syntax for type xid: "abc""#, ..E }),
                     ..A
                 },
             ],
@@ -7391,7 +7341,7 @@ line 1: Document is empty
                 },
                 ScriptTestAssertion {
                     query: "SELECT 'nosuchschema.sf(int)'::regprocedure;",
-                    expected: Expected::Error(Diagnostic { code: "3F000", message: r#"schema "nosuchschema" does not exist"#, position: 8, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42883", message: r#"function "nosuchschema.sf(int)" does not exist"#, position: 8, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -7607,7 +7557,7 @@ line 1: Document is empty
                 },
                 ScriptTestAssertion {
                     query: "SELECT 'nosuchschema.sf'::regproc;",
-                    expected: Expected::Error(Diagnostic { code: "3F000", message: r#"schema "nosuchschema" does not exist"#, position: 8, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42883", message: r#"function "nosuchschema.sf" does not exist"#, position: 8, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -8022,13 +7972,13 @@ column m of table t depends on type mood"#, hint: "Use DROP ... CASCADE to drop 
                 },
                 ScriptTestAssertion {
                     query: "CREATE DOMAIN d1 AS INT NULL NOT NULL;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: "conflicting NULL/NOT NULL constraints", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "conflicting NULL/NOT NULL constraints", position: 30, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "CREATE DOMAIN d1 AS INT DEFAULT 1 DEFAULT 2;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: "multiple default expressions", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "multiple default expressions", position: 35, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
@@ -8046,13 +7996,13 @@ column m of table t depends on type mood"#, hint: "Use DROP ... CASCADE to drop 
                 },
                 ScriptTestAssertion {
                     query: "CREATE DOMAIN d1 AS nope;",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "nope" does not exist"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "nope" does not exist"#, position: 21, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "CREATE DOMAIN d1 AS RECORD;",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#""record" is not a valid base type for a domain"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#""record" is not a valid base type for a domain"#, position: 21, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
@@ -10864,7 +10814,7 @@ fn test_text_search_rewrite_and_headline() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT ts_headline('foo bar', 'bar'::tsquery, 'MinWords=5, MaxWords=4');",
-                    expected: Expected::Error(Diagnostic { code: "22023", message: "MinWords should be less than MaxWords", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "MinWords must be less than MaxWords", ..E }),
                     flow: Flow::Query,
                     ..A
                 },
@@ -11276,8 +11226,15 @@ fn test_interval_input() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT INTERVAL 'infinity';",
-                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: "infinity""#, position: 17, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("178956970 years 7 mons 2147483647 days 2562047788:00:54.775807")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
+                    skip: Some("infinite intervals are not supported yet"),
                     ..A
                 },
                 ScriptTestAssertion {

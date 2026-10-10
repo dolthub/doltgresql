@@ -796,9 +796,12 @@ impl Ctx<'_> {
         let schema = self.new_type_schema(&schema, &name)?;
         let type_name = stmt.type_name.as_ref().ok_or_else(|| PgError::internal("CREATE DOMAIN without a type"))?;
         self.prepare_type(type_name)?;
-        let base = crate::expr::resolve_type_name(type_name).map_err(|err| PgError { position: None, ..err })?;
+        let base = crate::expr::resolve_type_name(type_name)?;
         if base.oid == crate::oid::RECORD {
-            return Err(PgError::new(code::DATATYPE_MISMATCH, "\"record\" is not a valid base type for a domain"));
+            return Err(PgError {
+                position: crate::expr::position(type_name.location),
+                ..PgError::new(code::DATATYPE_MISMATCH, "\"record\" is not a valid base type for a domain")
+            });
         }
         let mut domain = Domain { base, not_null: false, checks: Vec::new(), default: None };
         let mut nullability = None;
@@ -808,14 +811,20 @@ impl Ctx<'_> {
                 kind @ (ConstrType::ConstrNotnull | ConstrType::ConstrNull) => {
                     let not_null = kind == ConstrType::ConstrNotnull;
                     if nullability.is_some_and(|n| n != not_null) {
-                        return Err(PgError::new(code::SYNTAX_ERROR, "conflicting NULL/NOT NULL constraints"));
+                        return Err(PgError {
+                            position: crate::expr::position(constraint.location),
+                            ..PgError::new(code::SYNTAX_ERROR, "conflicting NULL/NOT NULL constraints")
+                        });
                     }
                     nullability = Some(not_null);
                     domain.not_null = not_null;
                 }
                 ConstrType::ConstrDefault => {
                     if domain.default.is_some() {
-                        return Err(PgError::new(code::SYNTAX_ERROR, "multiple default expressions"));
+                        return Err(PgError {
+                            position: crate::expr::position(constraint.location),
+                            ..PgError::new(code::SYNTAX_ERROR, "multiple default expressions")
+                        });
                     }
                     let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("a default"))?;
                     let mut binder = crate::expr::Binder::new(self, crate::expr::Scope::default());

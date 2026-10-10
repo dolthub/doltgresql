@@ -455,7 +455,7 @@ fn test_auth_quick() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "CREATE ROLE new_role;",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to create role", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to create role", detail: "Only roles with the CREATEROLE attribute may create roles.", ..E }),
                     username: "tester",
                     password: "password",
                     ..A
@@ -516,7 +516,7 @@ fn test_auth_quick() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "CREATE USER new_user;",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to create role", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to create role", detail: "Only roles with the CREATEROLE attribute may create roles.", ..E }),
                     username: "tester",
                     password: "password",
                     ..A
@@ -586,7 +586,7 @@ fn test_auth_quick() {
                 },
                 ScriptTestAssertion {
                     query: "DROP USER new_user;",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to drop role", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to drop role", detail: "Only roles with the CREATEROLE attribute and the ADMIN option on the target roles may drop roles.", ..E }),
                     username: "tester",
                     password: "password",
                     ..A
@@ -630,7 +630,7 @@ fn test_auth_quick() {
                 },
                 ScriptTestAssertion {
                     query: "DROP USER new_user;",
-                    expected: Expected::Tag("DROP ROLE"),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to drop role", detail: r#"Only roles with the CREATEROLE attribute and the ADMIN option on role "new_user" may drop this role."#, ..E }),
                     username: "tester",
                     password: "password",
                     ..A
@@ -674,7 +674,7 @@ fn test_auth_quick() {
                 },
                 ScriptTestAssertion {
                     query: "DROP USER new_user;",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "must be superuser to drop superusers", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to drop role", detail: "Only roles with the SUPERUSER attribute may drop roles with the SUPERUSER attribute.", ..E }),
                     username: "tester",
                     password: "password",
                     ..A
@@ -1338,7 +1338,7 @@ fn test_auth_quick() {
                 },
                 ScriptTestAssertion {
                     query: "DROP ROLE new_role;",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to drop role", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to drop role", detail: "Only roles with the CREATEROLE attribute and the ADMIN option on the target roles may drop roles.", ..E }),
                     username: "tester",
                     password: "password",
                     ..A
@@ -1382,7 +1382,7 @@ fn test_auth_quick() {
                 },
                 ScriptTestAssertion {
                     query: "DROP ROLE new_role;",
-                    expected: Expected::Tag("DROP ROLE"),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to drop role", detail: r#"Only roles with the CREATEROLE attribute and the ADMIN option on role "new_role" may drop this role."#, ..E }),
                     username: "tester",
                     password: "password",
                     ..A

@@ -2572,31 +2572,63 @@ fn test_array_reverse() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SELECT array_reverse(ARRAY[[2,4],[3,1],[1,9]]), array_reverse(ARRAY[1,NULL,2]);",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_reverse(integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("array_reverse", INT4_ARRAY), Column("array_reverse", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,9},{3,1},{2,4}}"), T("{2,NULL,1}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT array_reverse(ARRAY[]::int[]),array_reverse(NULL::int[]);",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_reverse(integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("array_reverse", INT4_ARRAY), Column("array_reverse", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{}"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT id, array_reverse(a) FROM array_inputs ORDER BY id;",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_reverse(integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 12, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("array_reverse", INT4_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{3,1,NULL,3}")],
+                            &[T("2"), T("{}")],
+                            &[T("3"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT array_reverse((SELECT a FROM array_inputs WHERE id=1));",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_reverse(integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("array_reverse", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{3,1,NULL,3}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT array_reverse(ARRAY[NULL]::int[]),array_reverse(ARRAY[[[1,2]],[[3,4]]]);",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_reverse(integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("array_reverse", INT4_ARRAY), Column("array_reverse", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{NULL}"), T("{{{3,4}},{{1,2}}}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -2618,43 +2650,87 @@ fn test_array_sort() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SELECT array_sort(ARRAY[[2,4],[3,1],[1,9]]), array_sort(ARRAY[3,NULL,1,2]);",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_sort(integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("array_sort", INT4_ARRAY), Column("array_sort", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,9},{2,4},{3,1}}"), T("{1,2,3,NULL}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT array_sort(ARRAY[3,NULL,1],true), array_sort(ARRAY[3,NULL,1],true,false), array_sort(ARRAY[3,NULL,1],false,true);",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_sort(integer[], boolean) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("array_sort", INT4_ARRAY), Column("array_sort", INT4_ARRAY), Column("array_sort", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{NULL,3,1}"), T("{3,1,NULL}"), T("{NULL,1,3}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT array_sort(ARRAY[[1,NULL],[1,2],[NULL,1]]), array_sort(ARRAY[]::int[]), array_sort(NULL::int[]);",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_sort(integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("array_sort", INT4_ARRAY), Column("array_sort", INT4_ARRAY), Column("array_sort", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,2},{1,NULL},{NULL,1}}"), T("{}"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT array_sort(ARRAY['z','a','m']),array_sort(ARRAY[1],NULL);",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_sort(text[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("array_sort", TEXT_ARRAY), Column("array_sort", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{a,m,z}"), Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT id, array_sort(a),array_sort(a,true),array_sort(a,true,false) FROM array_inputs ORDER BY id;",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_sort(integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 12, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("array_sort", INT4_ARRAY), Column("array_sort", INT4_ARRAY), Column("array_sort", INT4_ARRAY)],
+                        rows: &[
+                            &[T("1"), T("{1,3,3,NULL}"), T("{NULL,3,3,1}"), T("{3,3,1,NULL}")],
+                            &[T("2"), T("{}"), T("{}"), T("{}")],
+                            &[T("3"), Null, Null, Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT array_sort((SELECT a FROM array_inputs WHERE id=1)),array_sort((SELECT a FROM array_inputs WHERE id=1),false),array_sort((SELECT a FROM array_inputs WHERE id=1),false,true);",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_sort(integer[]) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("array_sort", INT4_ARRAY), Column("array_sort", INT4_ARRAY), Column("array_sort", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{1,3,3,NULL}"), T("{1,3,3,NULL}"), T("{NULL,1,3,3}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT array_sort(ARRAY[[1,NULL],[1,NULL],[1,2]],true,false),array_sort(ARRAY[1],false,NULL),array_sort(ARRAY[NULL,NULL]::int[]);",
-                    expected: Expected::Error(Diagnostic { code: "42883", message: "function array_sort(integer[], boolean, boolean) does not exist", hint: "No function matches the given name and argument types. You might need to add explicit type casts.", position: 8, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("array_sort", INT4_ARRAY), Column("array_sort", INT4_ARRAY), Column("array_sort", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{{1,NULL},{1,NULL},{1,2}}"), Null, T("{NULL,NULL}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -5047,7 +5123,13 @@ fn test_date_and_time_function() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT to_timestamp('2011-12-18 11:38 PST', 'YYYY-MM-DD HH12:MI TZ');",
-                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"formatting field "TZ" is only supported in to_char"#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("to_timestamp", TIMESTAMPTZ)],
+                        rows: &[
+                            &[T("2011-12-18 19:38:00+00")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -6460,7 +6542,7 @@ fn test_functions_math() {
                     expected: Expected::Rows {
                         columns: &[Column("power", NUMERIC)],
                         rows: &[
-                            &[T("0.0370370370370370")],
+                            &[T("0.03703703703703704")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -6796,9 +6878,10 @@ fn test_functions_oid() {
                     expected: Expected::Rows {
                         columns: &[Column("conname", NAME)],
                         rows: &[
+                            &[T("testing_pk_not_null")],
                             &[T("testing_pkey")],
                         ],
-                        tag: "SELECT 1",
+                        tag: "SELECT 2",
                     },
                     ..A
                 },
@@ -6872,7 +6955,7 @@ fn test_functions_oid() {
                     expected: Expected::Rows {
                         columns: &[Column("to_regclass", REGCLASS)],
                         rows: &[
-                            &[Null],
+                            &[T("testing")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -6949,7 +7032,7 @@ fn test_functions_oid() {
                     expected: Expected::Rows {
                         columns: &[Column("to_regproc", REGPROC)],
                         rows: &[
-                            &[Null],
+                            &[T("acos")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -7145,7 +7228,13 @@ fn test_functions_oid() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT to_regtype((('integer'::regtype)::oid)::text);",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "23""#, position: 1, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regtype", REGTYPE)],
+                        rows: &[
+                            &[T("integer")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -7377,27 +7466,57 @@ fn test_functions_oid() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT to_regprocedure('tf');",
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected a left parenthesis", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT to_regprocedure('f2(int,text');",
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected a right parenthesis", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT to_regprocedure('f2(int,)');",
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected a type name", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT to_regprocedure('f2(int))');",
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: "improper type name", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT to_regprocedure('abs(nosuchtype)');",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"type "nosuchtype" does not exist"#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {
@@ -10884,12 +11003,12 @@ fn test_string_function() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT format('%2147483647s', 'a');",
-                    expected: Expected::Error(Diagnostic { code: "54000", message: "out of memory", detail: "Cannot enlarge string buffer containing 0 bytes by 2147483646 more bytes.", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "54000", message: "string buffer exceeds maximum allowed length (1073741823 bytes)", detail: "Cannot enlarge string buffer containing 0 bytes by 2147483646 more bytes.", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT format('%*s', -2147483647, 'a');",
-                    expected: Expected::Error(Diagnostic { code: "54000", message: "out of memory", detail: "Cannot enlarge string buffer containing 1 bytes by 2147483646 more bytes.", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "54000", message: "string buffer exceeds maximum allowed length (1073741823 bytes)", detail: "Cannot enlarge string buffer containing 1 bytes by 2147483646 more bytes.", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -12735,10 +12854,11 @@ fn test_system_information_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("pg_get_constraintdef", TEXT)],
                         rows: &[
+                            &[T("NOT NULL pk")],
                             &[T("PRIMARY KEY (pk)")],
                             &[T("UNIQUE (v1)")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 3",
                     },
                     ..A
                 },
@@ -12747,10 +12867,11 @@ fn test_system_information_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("pg_get_constraintdef", TEXT)],
                         rows: &[
+                            &[T("NOT NULL pk")],
                             &[T("PRIMARY KEY (pk)")],
                             &[T("FOREIGN KEY (pktesting) REFERENCES testing(pk)")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 3",
                     },
                     ..A
                 },
@@ -12759,9 +12880,11 @@ fn test_system_information_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("pg_get_constraintdef", TEXT)],
                         rows: &[
+                            &[T("NOT NULL pk1")],
+                            &[T("NOT NULL pk2")],
                             &[T("PRIMARY KEY (pk1, pk2)")],
                         ],
-                        tag: "SELECT 1",
+                        tag: "SELECT 3",
                     },
                     ..A
                 },
@@ -12770,9 +12893,11 @@ fn test_system_information_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("pg_get_constraintdef", TEXT)],
                         rows: &[
+                            &[T("NOT NULL pk1")],
+                            &[T("NOT NULL pk2")],
                             &[T("PRIMARY KEY (pk1, pk2)")],
                         ],
-                        tag: "SELECT 1",
+                        tag: "SELECT 3",
                     },
                     ..A
                 },
@@ -12781,9 +12906,11 @@ fn test_system_information_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("pg_get_constraintdef", TEXT)],
                         rows: &[
+                            &[T("NOT NULL pk1")],
+                            &[T("NOT NULL pk2")],
                             &[T("PRIMARY KEY (pk1, pk2)")],
                         ],
-                        tag: "SELECT 1",
+                        tag: "SELECT 3",
                     },
                     ..A
                 },
@@ -13016,6 +13143,7 @@ fn test_system_information_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("name", TEXT)],
                         rows: &[
+                            &[T("allow_alter_system")],
                             &[T("allow_in_place_tablespaces")],
                             &[T("allow_system_table_mods")],
                             &[T("application_name")],
@@ -13037,9 +13165,11 @@ fn test_system_information_functions() {
                             &[T("autovacuum_vacuum_cost_limit")],
                             &[T("autovacuum_vacuum_insert_scale_factor")],
                             &[T("autovacuum_vacuum_insert_threshold")],
+                            &[T("autovacuum_vacuum_max_threshold")],
                             &[T("autovacuum_vacuum_scale_factor")],
                             &[T("autovacuum_vacuum_threshold")],
                             &[T("autovacuum_work_mem")],
+                            &[T("autovacuum_worker_slots")],
                             &[T("backend_flush_after")],
                             &[T("backslash_quote")],
                             &[T("backtrace_functions")],
@@ -13062,22 +13192,26 @@ fn test_system_information_functions() {
                             &[T("cluster_name")],
                             &[T("commit_delay")],
                             &[T("commit_siblings")],
+                            &[T("commit_timestamp_buffers")],
                             &[T("compute_query_id")],
                             &[T("config_file")],
                             &[T("constraint_exclusion")],
                             &[T("cpu_index_tuple_cost")],
                             &[T("cpu_operator_cost")],
                             &[T("cpu_tuple_cost")],
+                            &[T("createrole_self_grant")],
                             &[T("cursor_tuple_fraction")],
                             &[T("data_checksums")],
                             &[T("data_directory")],
                             &[T("data_directory_mode")],
                             &[T("data_sync_retry")],
                             &[T("DateStyle")],
-                            &[T("db_user_namespace")],
                             &[T("deadlock_timeout")],
                             &[T("debug_assertions")],
                             &[T("debug_discard_caches")],
+                            &[T("debug_io_direct")],
+                            &[T("debug_logical_replication_streaming")],
+                            &[T("debug_parallel_query")],
                             &[T("debug_pretty_print")],
                             &[T("debug_print_parse")],
                             &[T("debug_print_plan")],
@@ -13096,7 +13230,9 @@ fn test_system_information_functions() {
                             &[T("effective_io_concurrency")],
                             &[T("enable_async_append")],
                             &[T("enable_bitmapscan")],
+                            &[T("enable_distinct_reordering")],
                             &[T("enable_gathermerge")],
+                            &[T("enable_group_by_reordering")],
                             &[T("enable_hashagg")],
                             &[T("enable_hashjoin")],
                             &[T("enable_incremental_sort")],
@@ -13111,15 +13247,20 @@ fn test_system_information_functions() {
                             &[T("enable_partition_pruning")],
                             &[T("enable_partitionwise_aggregate")],
                             &[T("enable_partitionwise_join")],
+                            &[T("enable_presorted_aggregate")],
+                            &[T("enable_self_join_elimination")],
                             &[T("enable_seqscan")],
                             &[T("enable_sort")],
                             &[T("enable_tidscan")],
                             &[T("escape_string_warning")],
                             &[T("event_source")],
+                            &[T("event_triggers")],
                             &[T("exit_on_error")],
+                            &[T("extension_control_path")],
                             &[T("external_pid_file")],
                             &[T("extra_float_digits")],
-                            &[T("force_parallel_mode")],
+                            &[T("file_copy_method")],
+                            &[T("file_extend_method")],
                             &[T("from_collapse_limit")],
                             &[T("fsync")],
                             &[T("full_page_writes")],
@@ -13132,14 +13273,18 @@ fn test_system_information_functions() {
                             &[T("geqo_threshold")],
                             &[T("gin_fuzzy_search_limit")],
                             &[T("gin_pending_list_limit")],
+                            &[T("gss_accept_delegation")],
                             &[T("hash_mem_multiplier")],
                             &[T("hba_file")],
                             &[T("hot_standby")],
                             &[T("hot_standby_feedback")],
                             &[T("huge_page_size")],
                             &[T("huge_pages")],
+                            &[T("huge_pages_status")],
+                            &[T("icu_validation_level")],
                             &[T("ident_file")],
                             &[T("idle_in_transaction_session_timeout")],
+                            &[T("idle_replication_slot_timeout")],
                             &[T("idle_session_timeout")],
                             &[T("ignore_checksum_failure")],
                             &[T("ignore_invalid_pages")],
@@ -13147,6 +13292,11 @@ fn test_system_information_functions() {
                             &[T("in_hot_standby")],
                             &[T("integer_datetimes")],
                             &[T("IntervalStyle")],
+                            &[T("io_combine_limit")],
+                            &[T("io_max_combine_limit")],
+                            &[T("io_max_concurrency")],
+                            &[T("io_method")],
+                            &[T("io_workers")],
                             &[T("jit")],
                             &[T("jit_above_cost")],
                             &[T("jit_debugging_support")],
@@ -13160,8 +13310,6 @@ fn test_system_information_functions() {
                             &[T("join_collapse_limit")],
                             &[T("krb_caseins_users")],
                             &[T("krb_server_keyfile")],
-                            &[T("lc_collate")],
-                            &[T("lc_ctype")],
                             &[T("lc_messages")],
                             &[T("lc_monetary")],
                             &[T("lc_numeric")],
@@ -13183,6 +13331,7 @@ fn test_system_information_functions() {
                             &[T("log_filename")],
                             &[T("log_hostname")],
                             &[T("log_line_prefix")],
+                            &[T("log_lock_failures")],
                             &[T("log_lock_waits")],
                             &[T("log_min_duration_sample")],
                             &[T("log_min_duration_statement")],
@@ -13208,6 +13357,7 @@ fn test_system_information_functions() {
                             &[T("logical_decoding_work_mem")],
                             &[T("maintenance_io_concurrency")],
                             &[T("maintenance_work_mem")],
+                            &[T("max_active_replication_origins")],
                             &[T("max_connections")],
                             &[T("max_files_per_process")],
                             &[T("max_function_args")],
@@ -13215,6 +13365,8 @@ fn test_system_information_functions() {
                             &[T("max_index_keys")],
                             &[T("max_locks_per_transaction")],
                             &[T("max_logical_replication_workers")],
+                            &[T("max_notify_queue_pages")],
+                            &[T("max_parallel_apply_workers_per_subscription")],
                             &[T("max_parallel_maintenance_workers")],
                             &[T("max_parallel_workers")],
                             &[T("max_parallel_workers_per_gather")],
@@ -13231,11 +13383,16 @@ fn test_system_information_functions() {
                             &[T("max_wal_senders")],
                             &[T("max_wal_size")],
                             &[T("max_worker_processes")],
+                            &[T("md5_password_warnings")],
                             &[T("min_dynamic_shared_memory")],
                             &[T("min_parallel_index_scan_size")],
                             &[T("min_parallel_table_scan_size")],
                             &[T("min_wal_size")],
-                            &[T("old_snapshot_threshold")],
+                            &[T("multixact_member_buffers")],
+                            &[T("multixact_offset_buffers")],
+                            &[T("notify_buffers")],
+                            &[T("num_os_semaphores")],
+                            &[T("oauth_validator_libraries")],
                             &[T("output_plugin_libraries")],
                             &[T("parallel_leader_participation")],
                             &[T("parallel_setup_cost")],
@@ -13247,7 +13404,6 @@ fn test_system_information_functions() {
                             &[T("pre_auth_delay")],
                             &[T("primary_conninfo")],
                             &[T("primary_slot_name")],
-                            &[T("promote_trigger_file")],
                             &[T("quote_all_identifiers")],
                             &[T("random_page_cost")],
                             &[T("recovery_end_command")],
@@ -13264,13 +13420,18 @@ fn test_system_information_functions() {
                             &[T("recovery_target_xid")],
                             &[T("recursive_worktable_factor")],
                             &[T("remove_temp_files_after_crash")],
+                            &[T("reserved_connections")],
                             &[T("restart_after_crash")],
                             &[T("restore_command")],
                             &[T("restrict_nonsystem_relation_kind")],
                             &[T("row_security")],
+                            &[T("scram_iterations")],
                             &[T("search_path")],
                             &[T("segment_size")],
+                            &[T("send_abort_for_crash")],
+                            &[T("send_abort_for_kill")],
                             &[T("seq_page_cost")],
+                            &[T("serializable_buffers")],
                             &[T("server_encoding")],
                             &[T("server_version")],
                             &[T("server_version_num")],
@@ -13288,7 +13449,7 @@ fn test_system_information_functions() {
                             &[T("ssl_crl_dir")],
                             &[T("ssl_crl_file")],
                             &[T("ssl_dh_params_file")],
-                            &[T("ssl_ecdh_curve")],
+                            &[T("ssl_groups")],
                             &[T("ssl_key_file")],
                             &[T("ssl_library")],
                             &[T("ssl_max_protocol_version")],
@@ -13296,11 +13457,16 @@ fn test_system_information_functions() {
                             &[T("ssl_passphrase_command")],
                             &[T("ssl_passphrase_command_supports_reload")],
                             &[T("ssl_prefer_server_ciphers")],
+                            &[T("ssl_tls13_ciphers")],
                             &[T("standard_conforming_strings")],
                             &[T("statement_timeout")],
                             &[T("stats_fetch_consistency")],
+                            &[T("subtransaction_buffers")],
+                            &[T("summarize_wal")],
                             &[T("superuser_reserved_connections")],
+                            &[T("sync_replication_slots")],
                             &[T("synchronize_seqscans")],
+                            &[T("synchronized_standby_slots")],
                             &[T("synchronous_commit")],
                             &[T("synchronous_standby_names")],
                             &[T("syslog_facility")],
@@ -13316,36 +13482,41 @@ fn test_system_information_functions() {
                             &[T("temp_tablespaces")],
                             &[T("TimeZone")],
                             &[T("timezone_abbreviations")],
+                            &[T("trace_connection_negotiation")],
                             &[T("trace_notify")],
-                            &[T("trace_recovery_messages")],
                             &[T("trace_sort")],
                             &[T("track_activities")],
                             &[T("track_activity_query_size")],
                             &[T("track_commit_timestamp")],
+                            &[T("track_cost_delay_timing")],
                             &[T("track_counts")],
                             &[T("track_functions")],
                             &[T("track_io_timing")],
                             &[T("track_wal_io_timing")],
+                            &[T("transaction_buffers")],
                             &[T("transaction_deferrable")],
                             &[T("transaction_isolation")],
                             &[T("transaction_read_only")],
+                            &[T("transaction_timeout")],
                             &[T("transform_null_equals")],
                             &[T("unix_socket_directories")],
                             &[T("unix_socket_group")],
                             &[T("unix_socket_permissions")],
                             &[T("update_process_title")],
+                            &[T("vacuum_buffer_usage_limit")],
                             &[T("vacuum_cost_delay")],
                             &[T("vacuum_cost_limit")],
                             &[T("vacuum_cost_page_dirty")],
                             &[T("vacuum_cost_page_hit")],
                             &[T("vacuum_cost_page_miss")],
-                            &[T("vacuum_defer_cleanup_age")],
                             &[T("vacuum_failsafe_age")],
                             &[T("vacuum_freeze_min_age")],
                             &[T("vacuum_freeze_table_age")],
+                            &[T("vacuum_max_eager_freeze_failure_rate")],
                             &[T("vacuum_multixact_failsafe_age")],
                             &[T("vacuum_multixact_freeze_min_age")],
                             &[T("vacuum_multixact_freeze_table_age")],
+                            &[T("vacuum_truncate")],
                             &[T("wal_block_size")],
                             &[T("wal_buffers")],
                             &[T("wal_compression")],
@@ -13363,6 +13534,7 @@ fn test_system_information_functions() {
                             &[T("wal_segment_size")],
                             &[T("wal_sender_timeout")],
                             &[T("wal_skip_threshold")],
+                            &[T("wal_summary_keep_time")],
                             &[T("wal_sync_method")],
                             &[T("wal_writer_delay")],
                             &[T("wal_writer_flush_after")],
@@ -13371,7 +13543,7 @@ fn test_system_information_functions() {
                             &[T("xmloption")],
                             &[T("zero_damaged_pages")],
                         ],
-                        tag: "SELECT 354",
+                        tag: "SELECT 399",
                     },
                     ..A
                 },
@@ -14238,7 +14410,7 @@ fn test_formatting_rules() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT to_timestamp('12 TZ', 'HH24 TZ');",
-                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"formatting field "TZ" is only supported in to_char"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid value "TZ" for "TZ""#, detail: "Time zone abbreviation is not recognized.", ..E }),
                     flow: Flow::Query,
                     ..A
                 },
@@ -14600,7 +14772,7 @@ fn test_builtin_functions() {
                     expected: Expected::Rows {
                         columns: &[Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL), Column("has_schema_privilege", BOOL)],
                         rows: &[
-                            &[T("t"), T("t"), T("t"), T("t"), Null, T("t")],
+                            &[T("t"), T("t"), T("t"), T("t"), T("t"), T("t")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -15056,7 +15228,7 @@ fn test_numeric_math() {
                     expected: Expected::Rows {
                         columns: &[Column("power", NUMERIC), Column("power", NUMERIC), Column("power", NUMERIC), Column("power", NUMERIC)],
                         rows: &[
-                            &[T("1.4142135623730950"), T("0.0370370370370370"), T("-8.0000000000000000"), T("1031336219503664876006972321373516886.8670741364033477")],
+                            &[T("1.4142135623730950"), T("0.03703703703703704"), T("-8.0000000000000000"), T("1031336219503664876006972321373516886.87")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -15067,7 +15239,7 @@ fn test_numeric_math() {
                     expected: Expected::Rows {
                         columns: &[Column("power", NUMERIC), Column("power", NUMERIC), Column("power", NUMERIC)],
                         rows: &[
-                            &[T("9.9770006382255332"), T("406561177535215237.3972797075670417"), T("0.0000000000000000")],
+                            &[T("9.9770006382255332"), T("406561177535215237.4"), T("0.0000000000000000")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -15784,13 +15956,7 @@ fn test_quick_functions() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT pg_database_size(current_database()) > 0, pg_database_size(0::oid);",
-                    expected: Expected::Rows {
-                        columns: &[Column("?column?", BOOL), Column("pg_database_size", INT8)],
-                        rows: &[
-                            &[T("t"), Null],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42704", message: "database with OID 0 does not exist", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -16473,7 +16639,7 @@ fn test_numeric_formatting_and_math_operators() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT to_number('$1234.56', 'L9999.99'), to_number('CXLVIII', 'RN'), to_number('1.2e3', '9.9EEEE'), to_number('12th', '99th');",
-                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#""RN" not supported for input"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#""EEEE" not supported for input"#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
@@ -16488,7 +16654,7 @@ fn test_numeric_formatting_and_math_operators() {
                     expected: Expected::Rows {
                         columns: &[Column("?column?", FLOAT8), Column("?column?", NUMERIC), Column("rounds_to_zero", NUMERIC), Column("?column?", FLOAT8), Column("?column?", FLOAT8), Column("?column?", FLOAT8), Column("?column?", INT4), Column("?column?", NUMERIC), Column("?column?", FLOAT8), Column("?column?", FLOAT8)],
                         rows: &[
-                            &[T("1024"), T("8.0000000000000000"), T("0.0000000000000000"), T("2"), T("8"), T("3"), T("5"), T("2.5"), T("64"), T("4")],
+                            &[T("1024"), T("8.0000000000000000"), T("0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"), T("2"), T("8"), T("3"), T("5"), T("2.5"), T("64"), T("4")],
                         ],
                         tag: "SELECT 1",
                     },

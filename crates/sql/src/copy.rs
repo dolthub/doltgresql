@@ -192,7 +192,7 @@ fn options(stmt: &CopyStmt) -> Result<Options> {
         return Err(unsupported("cannot specify HEADER in BINARY mode"));
     }
     if !csv && quote.is_some() {
-        return Err(unsupported("COPY quote available only in CSV mode"));
+        return Err(unsupported("COPY QUOTE requires CSV mode"));
     }
     let quote = quote.unwrap_or_else(|| "\"".into());
     if quote.len() != 1 {
@@ -202,7 +202,7 @@ fn options(stmt: &CopyStmt) -> Result<Options> {
         return Err(PgError::new(code::INVALID_PARAMETER_VALUE, "COPY delimiter and quote must be different"));
     }
     if !csv && escape.is_some() {
-        return Err(unsupported("COPY escape available only in CSV mode"));
+        return Err(unsupported("COPY ESCAPE requires CSV mode"));
     }
     let escape = escape.unwrap_or_else(|| quote.clone());
     if escape.len() != 1 {
@@ -210,28 +210,34 @@ fn options(stmt: &CopyStmt) -> Result<Options> {
     }
     let forces_quotes = force_quote_all || force_quote.is_some();
     if !csv && forces_quotes {
-        return Err(unsupported("COPY force quote available only in CSV mode"));
+        return Err(unsupported("COPY FORCE_QUOTE requires CSV mode"));
     }
     if forces_quotes && stmt.is_from {
-        return Err(unsupported("COPY force quote only available using COPY TO"));
+        return Err(unsupported("COPY FORCE_QUOTE cannot be used with COPY FROM"));
     }
     if !csv && force_not_null.is_some() {
-        return Err(unsupported("COPY force not null available only in CSV mode"));
+        return Err(unsupported("COPY FORCE_NOT_NULL requires CSV mode"));
     }
     if force_not_null.is_some() && !stmt.is_from {
-        return Err(unsupported("COPY force not null only available using COPY FROM"));
+        return Err(PgError::new(code::INVALID_PARAMETER_VALUE, "COPY FORCE_NOT_NULL cannot be used with COPY TO"));
     }
     if !csv && force_null.is_some() {
-        return Err(unsupported("COPY force null available only in CSV mode"));
+        return Err(unsupported("COPY FORCE_NULL requires CSV mode"));
     }
     if force_null.is_some() && !stmt.is_from {
-        return Err(unsupported("COPY force null only available using COPY FROM"));
+        return Err(PgError::new(code::INVALID_PARAMETER_VALUE, "COPY FORCE_NULL cannot be used with COPY TO"));
     }
     if null.contains(delimiter.as_str()) {
-        return Err(unsupported("COPY delimiter must not appear in the NULL specification"));
+        return Err(PgError::new(
+            code::INVALID_PARAMETER_VALUE,
+            "COPY delimiter character must not appear in the NULL specification",
+        ));
     }
     if csv && null.contains(quote.as_str()) {
-        return Err(unsupported("CSV quote character must not appear in the NULL specification"));
+        return Err(PgError::new(
+            code::INVALID_PARAMETER_VALUE,
+            "CSV quote character must not appear in the NULL specification",
+        ));
     }
     Ok(Options {
         format,
@@ -251,7 +257,7 @@ fn options(stmt: &CopyStmt) -> Result<Options> {
 type Record<'a> = (usize, &'a [u8]);
 
 /// records splits the text or CSV copy data of a table into records, which end at newlines outside CSV quotes,
-/// stopping at the end-of-data marker.
+/// stopping at the end-of-data marker of text data, which CSV data reads as a value, as Postgres 18 does.
 fn records<'a>(data: &'a [u8], options: &Options, table: &str) -> Result<Vec<Record<'a>>> {
     let csv = options.format == Format::Csv;
     let mut records = Vec::new();
@@ -275,7 +281,7 @@ fn records<'a>(data: &'a [u8], options: &Options, table: &str) -> Result<Vec<Rec
         } else if b == b'\n' && !in_quotes {
             let record = &data[start..i];
             let record = record.strip_suffix(b"\r").unwrap_or(record);
-            if record == b"\\." {
+            if !csv && record == b"\\." {
                 return Ok(records);
             }
             records.push((line, record));
@@ -291,7 +297,7 @@ fn records<'a>(data: &'a [u8], options: &Options, table: &str) -> Result<Vec<Rec
         let err = PgError::new(code::BAD_COPY_FILE_FORMAT, "unterminated CSV quoted field");
         return Err(with_context(err, format!("{}: \"{}\"", context(table, line), display(rest))));
     }
-    if !rest.is_empty() && rest != b"\\." {
+    if !rest.is_empty() && (csv || rest != b"\\.") {
         records.push((line, rest));
     }
     Ok(records)
@@ -699,12 +705,13 @@ impl Ctx<'_> {
                 if fields.len() > names.len() {
                     return Err(with_context(bad("extra data after last expected column".into()), line_context()));
                 }
-                if fields.len() < names.len() {
-                    let message = format!("missing data for column \"{}\"", names[fields.len()]);
-                    return Err(with_context(bad(message), line_context()));
-                }
-                let mut row = Vec::with_capacity(fields.len());
-                for ((field, &column), name) in fields.into_iter().zip(&copy.columns).zip(&names) {
+                let mut fields = fields.into_iter();
+                let mut row = Vec::with_capacity(names.len());
+                for (&column, name) in copy.columns.iter().zip(&names) {
+                    let Some(field) = fields.next() else {
+                        let message = format!("missing data for column \"{name}\"");
+                        return Err(with_context(bad(message), line_context()));
+                    };
                     let Some(bytes) = field else {
                         row.push(Value::Null);
                         continue;

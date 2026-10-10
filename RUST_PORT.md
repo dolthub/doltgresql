@@ -15,7 +15,7 @@ that GitHub shows the Rust changes on their own; continuous integration moves to
    hashes may differ from Go's wherever readers cannot tell, so internals follow the fastest design rather than Go's.
 3. Performance better than Go's on every tested workload and data size: DoltHub's published sysbench tests and
    TPC-C, a benchmark of complex queries, several threads, and databases of a gigabyte and more.
-4. The ported script tests (`testing/go`, extensions) assert real Postgres 15 output, and the Rust server
+4. The ported script tests (`testing/go`, extensions) assert real Postgres 18 output, and the Rust server
    must pass all of them, including assertions the Go server fails. The other suites (regression replay,
    sqllogictest, dump imports, enginetest Dolt sets) are gated on Go parity: everything the Go version
    passes must pass, and the rest are stretch goals.

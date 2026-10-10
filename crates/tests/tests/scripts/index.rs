@@ -5544,9 +5544,10 @@ fn test_expression_and_partial_index_rules() {
                     expected: Expected::Rows {
                         columns: &[Column("conname", NAME)],
                         rows: &[
+                            &[T("t_pk_not_null")],
                             &[T("t_pkey")],
                         ],
-                        tag: "SELECT 1",
+                        tag: "SELECT 2",
                     },
                     ..A
                 },
@@ -7049,9 +7050,10 @@ fn test_plain_unique_indexes() {
                         columns: &[Column("conname", NAME), Column("contype", CHAR)],
                         rows: &[
                             &[T("pu_b_key"), T("u")],
+                            &[T("pu_id_not_null"), T("n")],
                             &[T("pu_pkey"), T("p")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 3",
                     },
                     ..A
                 },

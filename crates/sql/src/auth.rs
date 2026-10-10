@@ -460,6 +460,27 @@ impl AuthDb {
         found
     }
 
+    /// is_admin_of reports whether a role may administer another: a superuser always may, no role may administer
+    /// itself, and otherwise the role or one it is a member of must hold the other WITH ADMIN OPTION, as Postgres'
+    /// is_admin_of_role decides.
+    pub fn is_admin_of(&self, member: u64, role: u64) -> bool {
+        if self.roles.get(&member).is_some_and(|r| r.superuser) {
+            return true;
+        }
+        if member == role {
+            return false;
+        }
+        std::iter::once(member)
+            .chain(self.groups(member, false))
+            .any(|m| self.memberships.get(&m).and_then(|g| g.get(&role)).is_some_and(|m| m.admin))
+    }
+
+    /// bootstrap_id returns the ID of the superuser that the database was created with, which Postgres names as the
+    /// grantor of the memberships it grants on its own.
+    pub fn bootstrap_id(&self) -> u64 {
+        self.roles.values().filter(|r| r.superuser).map(|r| r.id).min().unwrap_or(0)
+    }
+
     /// holds reports whether a role holds a privilege on an object itself, through the schema-wide grant of a table,
     /// or through a role it inherits from, where superusers hold every privilege.
     pub fn holds(&self, role: u64, object: &Object, privilege: &str) -> bool {

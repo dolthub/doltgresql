@@ -897,7 +897,7 @@ fn test_set_statements() {
                 },
                 ScriptTestAssertion {
                     query: "SET autovacuum_max_workers TO '3'",
-                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "autovacuum_max_workers" cannot be changed without restarting the server"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "autovacuum_max_workers" cannot be changed now"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2545,37 +2545,61 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW createrole_self_grant",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "createrole_self_grant""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("createrole_self_grant", TEXT)],
+                        rows: &[
+                            &[T("")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET createrole_self_grant TO 'inherit'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "createrole_self_grant""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW createrole_self_grant",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "createrole_self_grant""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("createrole_self_grant", TEXT)],
+                        rows: &[
+                            &[T("inherit")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET createrole_self_grant TO DEFAULT",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "createrole_self_grant""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW createrole_self_grant",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "createrole_self_grant""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("createrole_self_grant", TEXT)],
+                        rows: &[
+                            &[T("")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('createrole_self_grant')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "createrole_self_grant""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -2650,7 +2674,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("data_checksums", TEXT)],
                         rows: &[
-                            &[T("off")],
+                            &[T("on")],
                         ],
                         tag: "SHOW",
                     },
@@ -2666,7 +2690,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("current_setting", TEXT)],
                         rows: &[
-                            &[T("off")],
+                            &[T("on")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -2839,29 +2863,17 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW db_user_namespace",
-                    expected: Expected::Rows {
-                        columns: &[Column("db_user_namespace", TEXT)],
-                        rows: &[
-                            &[T("off")],
-                        ],
-                        tag: "SHOW",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "db_user_namespace""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET db_user_namespace TO 'off'",
-                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "db_user_namespace" cannot be changed now"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "db_user_namespace""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('db_user_namespace')",
-                    expected: Expected::Rows {
-                        columns: &[Column("current_setting", TEXT)],
-                        rows: &[
-                            &[T("off")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "db_user_namespace""#, ..E }),
                     ..A
                 },
             ],
@@ -3009,18 +3021,30 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW debug_io_direct",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_io_direct""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("debug_io_direct", TEXT)],
+                        rows: &[
+                            &[T("")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET debug_io_direct TO ''",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_io_direct""#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "debug_io_direct" cannot be changed without restarting the server"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('debug_io_direct')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_io_direct""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -3032,37 +3056,61 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW debug_logical_replication_streaming",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_logical_replication_streaming""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("debug_logical_replication_streaming", TEXT)],
+                        rows: &[
+                            &[T("buffered")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET debug_logical_replication_streaming TO 'immediate'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_logical_replication_streaming""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW debug_logical_replication_streaming",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_logical_replication_streaming""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("debug_logical_replication_streaming", TEXT)],
+                        rows: &[
+                            &[T("immediate")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET debug_logical_replication_streaming TO DEFAULT",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_logical_replication_streaming""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW debug_logical_replication_streaming",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_logical_replication_streaming""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("debug_logical_replication_streaming", TEXT)],
+                        rows: &[
+                            &[T("buffered")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('debug_logical_replication_streaming')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_logical_replication_streaming""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("buffered")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -3074,37 +3122,61 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW debug_parallel_query",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_parallel_query""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("debug_parallel_query", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET debug_parallel_query TO 'regress'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_parallel_query""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW debug_parallel_query",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_parallel_query""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("debug_parallel_query", TEXT)],
+                        rows: &[
+                            &[T("regress")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET debug_parallel_query TO DEFAULT",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_parallel_query""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW debug_parallel_query",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_parallel_query""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("debug_parallel_query", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('debug_parallel_query')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "debug_parallel_query""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -3976,7 +4048,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("effective_io_concurrency", TEXT)],
                         rows: &[
-                            &[T("0")],
+                            &[T("16")],
                         ],
                         tag: "SHOW",
                     },
@@ -3984,7 +4056,7 @@ fn test_set_statements() {
                 },
                 ScriptTestAssertion {
                     query: "SET effective_io_concurrency TO '100'",
-                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"invalid value for parameter "effective_io_concurrency": 100"#, detail: "effective_io_concurrency must be set to 0 on platforms that lack posix_fadvise().", ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
@@ -3993,7 +4065,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("effective_io_concurrency", TEXT)],
                         rows: &[
-                            &[T("0")],
+                            &[T("100")],
                         ],
                         tag: "SHOW",
                     },
@@ -4009,7 +4081,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("effective_io_concurrency", TEXT)],
                         rows: &[
-                            &[T("0")],
+                            &[T("16")],
                         ],
                         tag: "SHOW",
                     },
@@ -4020,7 +4092,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("current_setting", TEXT)],
                         rows: &[
-                            &[T("0")],
+                            &[T("16")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -5054,37 +5126,61 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW enable_presorted_aggregate",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "enable_presorted_aggregate""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("enable_presorted_aggregate", TEXT)],
+                        rows: &[
+                            &[T("on")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET enable_presorted_aggregate TO 'off'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "enable_presorted_aggregate""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW enable_presorted_aggregate",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "enable_presorted_aggregate""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("enable_presorted_aggregate", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET enable_presorted_aggregate TO DEFAULT",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "enable_presorted_aggregate""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW enable_presorted_aggregate",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "enable_presorted_aggregate""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("enable_presorted_aggregate", TEXT)],
+                        rows: &[
+                            &[T("on")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('enable_presorted_aggregate')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "enable_presorted_aggregate""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("on")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -6199,18 +6295,30 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW gss_accept_delegation",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "gss_accept_delegation""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("gss_accept_delegation", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET gss_accept_delegation TO 'on'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "gss_accept_delegation""#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "gss_accept_delegation" cannot be changed now"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('gss_accept_delegation')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "gss_accept_delegation""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -6447,37 +6555,61 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW icu_validation_level",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "icu_validation_level""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("icu_validation_level", TEXT)],
+                        rows: &[
+                            &[T("warning")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET icu_validation_level TO 'disabled'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "icu_validation_level""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW icu_validation_level",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "icu_validation_level""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("icu_validation_level", TEXT)],
+                        rows: &[
+                            &[T("disabled")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET icu_validation_level TO DEFAULT",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "icu_validation_level""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW icu_validation_level",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "icu_validation_level""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("icu_validation_level", TEXT)],
+                        rows: &[
+                            &[T("warning")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('icu_validation_level')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "icu_validation_level""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("warning")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -8061,7 +8193,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("log_connections", TEXT)],
                         rows: &[
-                            &[T("off")],
+                            &[T("")],
                         ],
                         tag: "SHOW",
                     },
@@ -8077,7 +8209,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("current_setting", TEXT)],
                         rows: &[
-                            &[T("off")],
+                            &[T("")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -9707,7 +9839,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("maintenance_io_concurrency", TEXT)],
                         rows: &[
-                            &[T("0")],
+                            &[T("16")],
                         ],
                         tag: "SHOW",
                     },
@@ -9715,7 +9847,7 @@ fn test_set_statements() {
                 },
                 ScriptTestAssertion {
                     query: "SET maintenance_io_concurrency TO '1'",
-                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"invalid value for parameter "maintenance_io_concurrency": 1"#, detail: "maintenance_io_concurrency must be set to 0 on platforms that lack posix_fadvise().", ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
@@ -9724,7 +9856,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("maintenance_io_concurrency", TEXT)],
                         rows: &[
-                            &[T("0")],
+                            &[T("1")],
                         ],
                         tag: "SHOW",
                     },
@@ -9740,7 +9872,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("maintenance_io_concurrency", TEXT)],
                         rows: &[
-                            &[T("0")],
+                            &[T("16")],
                         ],
                         tag: "SHOW",
                     },
@@ -9751,7 +9883,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("current_setting", TEXT)],
                         rows: &[
-                            &[T("0")],
+                            &[T("16")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -10056,18 +10188,30 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW max_parallel_apply_workers_per_subscription",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "max_parallel_apply_workers_per_subscription""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("max_parallel_apply_workers_per_subscription", TEXT)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET max_parallel_apply_workers_per_subscription TO '2'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "max_parallel_apply_workers_per_subscription""#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "max_parallel_apply_workers_per_subscription" cannot be changed now"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('max_parallel_apply_workers_per_subscription')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "max_parallel_apply_workers_per_subscription""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -10901,29 +11045,17 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW old_snapshot_threshold",
-                    expected: Expected::Rows {
-                        columns: &[Column("old_snapshot_threshold", TEXT)],
-                        rows: &[
-                            &[T("-1")],
-                        ],
-                        tag: "SHOW",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "old_snapshot_threshold""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET old_snapshot_threshold TO '-1'",
-                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "old_snapshot_threshold" cannot be changed without restarting the server"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "old_snapshot_threshold""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('old_snapshot_threshold')",
-                    expected: Expected::Rows {
-                        columns: &[Column("current_setting", TEXT)],
-                        rows: &[
-                            &[T("-1")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "old_snapshot_threshold""#, ..E }),
                     ..A
                 },
             ],
@@ -11975,18 +12107,30 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW reserved_connections",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "reserved_connections""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("reserved_connections", TEXT)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET reserved_connections TO '0'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "reserved_connections""#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "reserved_connections" cannot be changed without restarting the server"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('reserved_connections')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "reserved_connections""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -12124,37 +12268,61 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW scram_iterations",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "scram_iterations""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("scram_iterations", TEXT)],
+                        rows: &[
+                            &[T("4096")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET scram_iterations TO '4000'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "scram_iterations""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW scram_iterations",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "scram_iterations""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("scram_iterations", TEXT)],
+                        rows: &[
+                            &[T("4000")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET scram_iterations TO DEFAULT",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "scram_iterations""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW scram_iterations",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "scram_iterations""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("scram_iterations", TEXT)],
+                        rows: &[
+                            &[T("4096")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('scram_iterations')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "scram_iterations""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("4096")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -12756,18 +12924,30 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW send_abort_for_crash",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "send_abort_for_crash""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("send_abort_for_crash", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET send_abort_for_crash TO 'off'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "send_abort_for_crash""#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "send_abort_for_crash" cannot be changed now"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('send_abort_for_crash')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "send_abort_for_crash""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -12779,18 +12959,30 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW send_abort_for_kill",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "send_abort_for_kill""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("send_abort_for_kill", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET send_abort_for_kill TO 'off'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "send_abort_for_kill""#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "send_abort_for_kill" cannot be changed now"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('send_abort_for_kill')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "send_abort_for_kill""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("off")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -12867,13 +13059,13 @@ fn test_set_statements() {
         ScriptTest {
             name: "set 'server_version' configuration variable",
             assertions: &[
-                // Doltgres-specific: Doltgres reports Postgres 15.17 as its server version.
+                // Doltgres-specific: Doltgres reports Postgres 18.6 as its server version.
                 ScriptTestAssertion {
                     query: "SHOW server_version",
                     expected: Expected::Rows {
                         columns: &[Column("server_version", TEXT)],
                         rows: &[
-                            &[T("15.17")],
+                            &[T("18.6")],
                         ],
                         tag: "SHOW",
                     },
@@ -12889,7 +13081,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("current_setting", TEXT)],
                         rows: &[
-                            &[T("15.19 (Homebrew)")],
+                            &[T("18.6 (Homebrew)")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -12906,7 +13098,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("server_version_num", TEXT)],
                         rows: &[
-                            &[T("150019")],
+                            &[T("180006")],
                         ],
                         tag: "SHOW",
                     },
@@ -12922,7 +13114,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("current_setting", TEXT)],
                         rows: &[
-                            &[T("150019")],
+                            &[T("180006")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -13092,7 +13284,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("shared_memory_size", TEXT)],
                         rows: &[
-                            &[T("143MB")],
+                            &[T("150MB")],
                         ],
                         tag: "SHOW",
                     },
@@ -13108,7 +13300,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("current_setting", TEXT)],
                         rows: &[
-                            &[T("143MB")],
+                            &[T("150MB")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -13453,9 +13645,9 @@ fn test_set_statements() {
                 ScriptTestAssertion {
                     query: "SHOW ssl_ecdh_curve",
                     expected: Expected::Rows {
-                        columns: &[Column("ssl_ecdh_curve", TEXT)],
+                        columns: &[Column("ssl_groups", TEXT)],
                         rows: &[
-                            &[T("prime256v1")],
+                            &[T("X25519:prime256v1")],
                         ],
                         tag: "SHOW",
                     },
@@ -13463,7 +13655,7 @@ fn test_set_statements() {
                 },
                 ScriptTestAssertion {
                     query: "SET ssl_ecdh_curve TO 'prime256v1'",
-                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "ssl_ecdh_curve" cannot be changed now"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "ssl_groups" cannot be changed now"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -13471,7 +13663,7 @@ fn test_set_statements() {
                     expected: Expected::Rows {
                         columns: &[Column("current_setting", TEXT)],
                         rows: &[
-                            &[T("prime256v1")],
+                            &[T("X25519:prime256v1")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -14799,29 +14991,17 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW trace_recovery_messages",
-                    expected: Expected::Rows {
-                        columns: &[Column("trace_recovery_messages", TEXT)],
-                        rows: &[
-                            &[T("log")],
-                        ],
-                        tag: "SHOW",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "trace_recovery_messages""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET trace_recovery_messages TO 'log'",
-                    expected: Expected::Error(Diagnostic { code: "55P02", message: r#"parameter "trace_recovery_messages" cannot be changed now"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "trace_recovery_messages""#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('trace_recovery_messages')",
-                    expected: Expected::Rows {
-                        columns: &[Column("current_setting", TEXT)],
-                        rows: &[
-                            &[T("log")],
-                        ],
-                        tag: "SELECT 1",
-                    },
+                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "trace_recovery_messages""#, ..E }),
                     ..A
                 },
             ],
@@ -15285,7 +15465,7 @@ fn test_set_statements() {
                 },
                 ScriptTestAssertion {
                     query: "SET transaction_deferrable TO DEFAULT",
-                    expected: Expected::Tag("SET"),
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"parameter "transaction_deferrable" cannot be reset"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -15345,8 +15525,7 @@ fn test_set_statements() {
                 },
                 ScriptTestAssertion {
                     query: "SET transaction_isolation TO DEFAULT",
-                    expected: Expected::Tag("SET"),
-                    notices: &[Diagnostic { severity: "WARNING", code: "25P01", message: "RESET TRANSACTION can only be used in transaction blocks", ..E }],
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"parameter "transaction_isolation" cannot be reset"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -15406,7 +15585,7 @@ fn test_set_statements() {
                 },
                 ScriptTestAssertion {
                     query: "SET transaction_read_only TO DEFAULT",
-                    expected: Expected::Tag("SET"),
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: r#"parameter "transaction_read_only" cannot be reset"#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -15658,37 +15837,61 @@ fn test_set_statements() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "SHOW vacuum_buffer_usage_limit",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "vacuum_buffer_usage_limit""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("vacuum_buffer_usage_limit", TEXT)],
+                        rows: &[
+                            &[T("2MB")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET vacuum_buffer_usage_limit TO '512'",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "vacuum_buffer_usage_limit""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW vacuum_buffer_usage_limit",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "vacuum_buffer_usage_limit""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("vacuum_buffer_usage_limit", TEXT)],
+                        rows: &[
+                            &[T("512kB")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET vacuum_buffer_usage_limit TO DEFAULT",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "vacuum_buffer_usage_limit""#, ..E }),
+                    expected: Expected::Tag("SET"),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SHOW vacuum_buffer_usage_limit",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "vacuum_buffer_usage_limit""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("vacuum_buffer_usage_limit", TEXT)],
+                        rows: &[
+                            &[T("2MB")],
+                        ],
+                        tag: "SHOW",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_setting('vacuum_buffer_usage_limit')",
-                    expected: Expected::Error(Diagnostic { code: "42704", message: r#"unrecognized configuration parameter "vacuum_buffer_usage_limit""#, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("2MB")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },

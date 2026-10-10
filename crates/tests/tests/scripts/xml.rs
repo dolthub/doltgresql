@@ -220,12 +220,12 @@ fn test_xml_functions() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT xpath('', '<a>x</a>'::xml);",
-                    expected: Expected::Error(Diagnostic { code: "22000", message: "empty XPath expression", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "10608", message: "empty XPath expression", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT xpath('/a[', '<a>x</a>'::xml);",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "invalid XPath expression", detail: "Invalid expression", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "10608", message: "invalid XPath expression", detail: "Invalid expression", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -356,7 +356,7 @@ plain
                 },
                 ScriptTestAssertion {
                     query: "SELECT xpath_exists('/a[', '<a/>'::xml);",
-                    expected: Expected::Error(Diagnostic { code: "XX000", message: "invalid XPath expression", detail: "Invalid expression", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "10608", message: "invalid XPath expression", detail: "Invalid expression", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -944,12 +944,12 @@ d</a>"#)],
                 },
                 ScriptTestAssertion {
                     query: "SELECT xmlpi(NAME xml, 'x');",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: "invalid XML processing instruction", detail: r#"XML processing instruction target name cannot be "xml"."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2200T", message: "invalid XML processing instruction", detail: r#"XML processing instruction target name cannot be "xml"."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT xmlpi(NAME "xMl");"#,
-                    expected: Expected::Error(Diagnostic { code: "42601", message: "invalid XML processing instruction", detail: r#"XML processing instruction target name cannot be "xMl"."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2200T", message: "invalid XML processing instruction", detail: r#"XML processing instruction target name cannot be "xMl"."#, ..E }),
                     ..A
                 },
             ],
@@ -1063,7 +1063,7 @@ d</a>"#)],
                 },
                 ScriptTestAssertion {
                     query: "SELECT xmlexists('' PASSING '<a/>');",
-                    expected: Expected::Error(Diagnostic { code: "22000", message: "empty XPath expression", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "10608", message: "empty XPath expression", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -1763,12 +1763,12 @@ x
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM XMLTABLE('/r/[' PASSING '<r/>' COLUMNS id int PATH '@id');",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: "invalid XPath expression", detail: "Invalid expression", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "10608", message: "invalid XPath expression", detail: "Invalid expression", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM XMLTABLE('/r' PASSING '<r/>' COLUMNS id int PATH '@[');",
-                    expected: Expected::Error(Diagnostic { code: "22000", message: "invalid XPath expression", detail: "Invalid expression", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "10608", message: "invalid XPath expression", detail: "Invalid expression", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -1783,7 +1783,7 @@ x
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM XMLTABLE('' PASSING '<r/>' COLUMNS n xml PATH '.');",
-                    expected: Expected::Error(Diagnostic { code: "22000", message: "row path filter must not be empty string", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "10608", message: "row path filter must not be empty string", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -1838,7 +1838,7 @@ x
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM XMLTABLE('/r' PASSING '<r/>' COLUMNS n text PATH '');",
-                    expected: Expected::Error(Diagnostic { code: "22000", message: "column path filter must not be empty string", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "10608", message: "column path filter must not be empty string", ..E }),
                     ..A
                 },
             ],

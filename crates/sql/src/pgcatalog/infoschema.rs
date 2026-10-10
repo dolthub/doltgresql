@@ -307,15 +307,10 @@ impl Ctx<'_> {
             for check in &table.checks {
                 let columns = table.columns.iter().map(|c| (c.name.clone(), c.ty)).collect();
                 let clause = crate::ruleutils::Analyzer::new(self, columns).deparse(&check.expression, None, false)?;
-                checks.push((check.name.clone(), format!("({clause})")));
+                checks.push((check.name.clone(), clause));
             }
-            let relation = crate::pgcatalog::snapshot::table_oid(&table.schema, &table.name);
-            let namespace = crate::pgcatalog::snapshot::namespace_oid(&table.schema);
-            for (i, column) in table.columns.iter().enumerate().filter(|(_, c)| !c.nullable) {
-                checks.push((
-                    format!("{namespace}_{relation}_{}_not_null", i + 1),
-                    format!("{} IS NOT NULL", column.name),
-                ));
+            for (name, number) in crate::pgcatalog::snapshot::not_null_constraints(table) {
+                checks.push((name, format!("{} IS NOT NULL", table.columns[number as usize - 1].name)));
             }
             for (name, clause) in checks {
                 rows.push(vec![
@@ -347,10 +342,8 @@ impl Ctx<'_> {
             for check in &table.checks {
                 constraints.push((check.name.clone(), "CHECK", (false, false)));
             }
-            let relation = crate::pgcatalog::snapshot::table_oid(&table.schema, &table.name);
-            let namespace = crate::pgcatalog::snapshot::namespace_oid(&table.schema);
-            for (i, _) in table.columns.iter().enumerate().filter(|(_, c)| !c.nullable) {
-                constraints.push((format!("{namespace}_{relation}_{}_not_null", i + 1), "CHECK", (false, false)));
+            for (name, _) in crate::pgcatalog::snapshot::not_null_constraints(table) {
+                constraints.push((name, "CHECK", (false, false)));
             }
             for (name, kind, (deferrable, deferred)) in constraints {
                 rows.push(vec![

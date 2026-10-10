@@ -33,20 +33,24 @@ use crate::types::{Reg, Value};
 /// SUPERUSER is the OID of the bootstrap superuser.
 pub const SUPERUSER: u32 = 10;
 
-/// PREDEFINED_ROLES are Postgres 15's predefined roles.
-pub(crate) const PREDEFINED_ROLES: [(u32, &str); 12] = [
+/// PREDEFINED_ROLES are Postgres 18's predefined roles.
+pub(crate) const PREDEFINED_ROLES: [(u32, &str); 16] = [
     (3373, "pg_monitor"),
     (3374, "pg_read_all_settings"),
     (3375, "pg_read_all_stats"),
     (3377, "pg_stat_scan_tables"),
     (4200, "pg_signal_backend"),
     (4544, "pg_checkpoint"),
+    (4550, "pg_use_reserved_connections"),
     (4569, "pg_read_server_files"),
     (4570, "pg_write_server_files"),
     (4571, "pg_execute_server_program"),
     (6171, "pg_database_owner"),
     (6181, "pg_read_all_data"),
     (6182, "pg_write_all_data"),
+    (6304, "pg_create_subscription"),
+    (6337, "pg_maintain"),
+    (6392, "pg_signal_autovacuum_worker"),
 ];
 
 /// is_builtin_schema reports whether a schema is one that every Postgres database has.
@@ -876,11 +880,9 @@ impl Ctx<'_> {
                 ("attrelid", oid(a.relation)),
                 ("attname", text(a.name)),
                 ("atttypid", oid(a.ty.oid)),
-                ("attstattarget", int4(-1)),
                 ("attlen", int2(info.len)),
                 ("attnum", int2(a.number)),
-                ("attndims", int4(crate::array::is_array_type(a.ty.oid) as i32)),
-                ("attcacheoff", int4(-1)),
+                ("attndims", int2(crate::array::is_array_type(a.ty.oid) as i16)),
                 ("atttypmod", int4(a.ty.modifier)),
                 ("attbyval", boolean(info.by_value)),
                 ("attalign", text(info.align)),
@@ -893,7 +895,7 @@ impl Ctx<'_> {
                 ("attgenerated", text(if a.generated { "s" } else { "" })),
                 ("attisdropped", boolean(false)),
                 ("attislocal", boolean(true)),
-                ("attinhcount", int4(0)),
+                ("attinhcount", int2(0)),
                 ("attcollation", oid(info.collation)),
             ]);
         }
@@ -1141,6 +1143,12 @@ impl Ctx<'_> {
                     return Ok(Some(format!("CHECK ({text})")));
                 }
             }
+            for (name, number) in crate::pgcatalog::snapshot::not_null_constraints(table) {
+                if constraint_oid(3, &table.schema, &table.name, &name) == constraint {
+                    let column = crate::engine::quote_identifier(&table.columns[number as usize - 1].name);
+                    return Ok(Some(format!("NOT NULL {column}")));
+                }
+            }
             for fk in
                 snapshot.foreign_keys.iter().filter(|f| f.child_schema == table.schema && f.child_table == table.name)
             {
@@ -1214,8 +1222,10 @@ impl Ctx<'_> {
                     ("confdeltype", text(" ")),
                     ("confmatchtype", text(" ")),
                     ("conislocal", boolean(true)),
-                    ("coninhcount", int4(0)),
-                    ("connoinherit", boolean(kind != "c")),
+                    ("coninhcount", int2(0)),
+                    ("connoinherit", boolean(!matches!(kind, "c" | "n"))),
+                    ("conenforced", boolean(true)),
+                    ("conperiod", boolean(false)),
                 ]
             };
             for index in indexes.clone().into_iter().filter(TableIndex::constraint) {
@@ -1237,6 +1247,11 @@ impl Ctx<'_> {
                     .map(|(i, _)| i as i16 + 1)
                     .collect();
                 row.extend([("conindid", oid(0)), ("conkey", int2_array(columns))]);
+                rows.push(row);
+            }
+            for (name, number) in crate::pgcatalog::snapshot::not_null_constraints(table) {
+                let mut row = base(&name, "n", 3, (false, false));
+                row.extend([("conindid", oid(0)), ("conkey", int2_array([number]))]);
                 rows.push(row);
             }
             for fk in
@@ -1280,8 +1295,10 @@ impl Ctx<'_> {
                     ("confdeltype", text(" ")),
                     ("confmatchtype", text(" ")),
                     ("conislocal", boolean(true)),
-                    ("coninhcount", int4(0)),
+                    ("coninhcount", int2(0)),
                     ("connoinherit", boolean(false)),
+                    ("conenforced", boolean(true)),
+                    ("conperiod", boolean(false)),
                 ]);
             }
         }
@@ -1414,6 +1431,7 @@ fn class_row(
         ("relpages", int4(0)),
         ("reltuples", Value::Float4(-1.0)),
         ("relallvisible", int4(0)),
+        ("relallfrozen", int4(0)),
         ("reltoastrelid", oid(0)),
         ("relhasindex", boolean(false)),
         ("relisshared", boolean(false)),
@@ -1480,8 +1498,16 @@ const XACT_TABLE_COUNTERS: &[&str] =
     &["seq_scan", "seq_tup_read", "idx_scan", "idx_tup_fetch", "n_tup_ins", "n_tup_upd", "n_tup_del", "n_tup_hot_upd"];
 
 /// SLRU_NAMES are the simple LRU caches that pg_stat_slru lists.
-const SLRU_NAMES: &[&str] =
-    &["CommitTs", "MultiXactMember", "MultiXactOffset", "Notify", "Serial", "Subtrans", "Xact", "other"];
+const SLRU_NAMES: &[&str] = &[
+    "commit_timestamp",
+    "multixact_member",
+    "multixact_offset",
+    "notify",
+    "serializable",
+    "subtransaction",
+    "transaction",
+    "other",
+];
 
 /// StatRelation is a relation that the statistics views list: its OID, schema, name, and kind, with the OID and name
 /// of the table of an index.
@@ -1614,24 +1640,18 @@ impl Ctx<'_> {
             }
             "pg_stat_ssl" | "pg_stat_gssapi" => {
                 for (pid, _) in self.session.engine.activity() {
-                    let flags: &[&str] =
-                        if name == "pg_stat_ssl" { &["ssl"] } else { &["gss_authenticated", "encrypted"] };
+                    let flags: &[&str] = if name == "pg_stat_ssl" {
+                        &["ssl"]
+                    } else {
+                        &["gss_authenticated", "encrypted", "credentials_delegated"]
+                    };
                     let mut fields = vec![("pid", int4(pid as i32))];
                     fields.extend(flags.iter().map(|&flag| (flag, boolean(false))));
                     rows.push(fields);
                 }
             }
             "pg_stat_wal" => {
-                let fields = rows.zeros(&[
-                    "wal_records",
-                    "wal_fpi",
-                    "wal_bytes",
-                    "wal_buffers_full",
-                    "wal_write",
-                    "wal_sync",
-                    "wal_write_time",
-                    "wal_sync_time",
-                ]);
+                let fields = rows.zeros(&["wal_records", "wal_fpi", "wal_bytes", "wal_buffers_full"]);
                 rows.push(fields);
             }
             "pg_stat_archiver" => {
@@ -1639,17 +1659,21 @@ impl Ctx<'_> {
                 rows.push(fields);
             }
             "pg_stat_bgwriter" => {
+                let fields = rows.zeros(&["buffers_clean", "maxwritten_clean", "buffers_alloc"]);
+                rows.push(fields);
+            }
+            "pg_stat_checkpointer" => {
                 let fields = rows.zeros(&[
-                    "checkpoints_timed",
-                    "checkpoints_req",
-                    "checkpoint_write_time",
-                    "checkpoint_sync_time",
-                    "buffers_checkpoint",
-                    "buffers_clean",
-                    "maxwritten_clean",
-                    "buffers_backend",
-                    "buffers_backend_fsync",
-                    "buffers_alloc",
+                    "num_timed",
+                    "num_requested",
+                    "num_done",
+                    "restartpoints_timed",
+                    "restartpoints_req",
+                    "restartpoints_done",
+                    "write_time",
+                    "sync_time",
+                    "buffers_written",
+                    "slru_written",
                 ]);
                 rows.push(fields);
             }

@@ -253,12 +253,6 @@ impl Ctx<'_> {
                 let mut names = crate::sequences::parse_qualified_name(names)?;
                 let name = names.pop().unwrap_or_default();
                 let schemas = match names.pop() {
-                    Some(schema) if !self.namespaces().iter().any(|(n, _)| *n == schema) => {
-                        return Err(PgError::new(
-                            code::INVALID_SCHEMA_NAME,
-                            format!("schema \"{schema}\" does not exist"),
-                        ));
-                    }
                     Some(schema) => vec![schema],
                     None => self.effective_search_path(),
                 };
@@ -305,22 +299,13 @@ impl Ctx<'_> {
         }
     }
 
-    /// to_reg returns the reg value of the object that text names, or NULL when there is none, as the to_regclass
-    /// family of functions does.
+    /// to_reg returns the reg value of the object that text names, or NULL when there is none or the text cannot
+    /// name one, as the to_regclass family of functions does by reading it as the type's input does. Syntax errors in
+    /// a type name still fail, as Postgres' type parser raises them.
     pub fn to_reg(&mut self, text: &str, type_oid: u32) -> Result<Value> {
-        let missing = [
-            code::UNDEFINED_TABLE,
-            code::UNDEFINED_OBJECT,
-            code::INVALID_SCHEMA_NAME,
-            code::UNDEFINED_FUNCTION,
-            code::AMBIGUOUS_FUNCTION,
-        ];
-        let procedure = matches!(type_oid, types::REGPROC | types::REGPROCEDURE);
-        match self.reg_named(text.trim(), type_oid) {
-            Ok(reg) => Ok(Value::Reg(Box::new(reg))),
-            Err(err) if procedure && err.code == code::UNDEFINED_OBJECT => Err(err),
-            Err(err) if missing.contains(&err.code) => Ok(Value::Null),
-            Err(err) => Err(err),
+        match self.reg_value(Value::Text(text.to_string()), type_oid) {
+            Err(err) if err.code == code::SYNTAX_ERROR => Err(err),
+            result => Ok(result.unwrap_or(Value::Null)),
         }
     }
 

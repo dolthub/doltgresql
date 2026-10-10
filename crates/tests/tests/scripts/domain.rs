@@ -27,12 +27,12 @@ fn test_domain() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "CREATE DOMAIN year AS integer CONSTRAINT not_null_c NOT NULL CONSTRAINT null_c  NULL;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: "conflicting NULL/NOT NULL constraints", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "conflicting NULL/NOT NULL constraints", position: 62, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "CREATE DOMAIN year AS integer NULL NOT NULL;",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: "conflicting NULL/NOT NULL constraints", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42601", message: "conflicting NULL/NOT NULL constraints", position: 36, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -66,9 +66,9 @@ fn test_domain() {
                         columns: &[Column("conname", NAME), Column("contype", CHAR), Column("conrelid", OID), Column("contypid", OID)],
                         rows: &[
                             &[T("year_check"), T("c"), T("0"), Oid(16385)],
-                            &[T("year_check"), T("c"), T("0"), Oid(16388)],
-                            &[T("year_check_max"), T("c"), T("0"), Oid(16391)],
-                            &[T("year_check_min"), T("c"), T("0"), Oid(16391)],
+                            &[T("year_check"), T("c"), T("0"), Oid(16389)],
+                            &[T("year_check_max"), T("c"), T("0"), Oid(16392)],
+                            &[T("year_check_min"), T("c"), T("0"), Oid(16392)],
                         ],
                         tag: "SELECT 4",
                     },

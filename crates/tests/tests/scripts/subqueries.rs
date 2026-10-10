@@ -727,7 +727,13 @@ fn test_subquery_evaluation_rules() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT to_regtype('23');",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: r#"syntax error at or near "23""#, position: 1, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regtype", REGTYPE)],
+                        rows: &[
+                            &[T("integer")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -742,7 +748,7 @@ fn test_subquery_evaluation_rules() {
                     expected: Expected::Rows {
                         columns: &[Column("to_regclass", REGCLASS), Column("to_regproc", REGPROC), Column("to_regrole", REGROLE), Column("to_regnamespace", REGNAMESPACE)],
                         rows: &[
-                            &[Null, Null, Null, Null],
+                            &[T("23"), T("23"), T("23"), T("23")],
                         ],
                         tag: "SELECT 1",
                     },
@@ -750,7 +756,13 @@ fn test_subquery_evaluation_rules() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT to_regprocedure('23');",
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: "expected a left parenthesis", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("to_regprocedure", REGPROCEDURE)],
+                        rows: &[
+                            &[T("23")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },

@@ -322,13 +322,13 @@ fn test_show_databases_and_schemas() {
                 ScriptTestAssertion {
                     query: "SHOW databases",
                     expected: Expected::Rows {
-                        columns: &[Column("Name", NAME), Column("Owner", NAME), Column("Encoding", NAME), Column("Collate", TEXT), Column("Ctype", TEXT), Column("ICU Locale", TEXT), Column("Locale Provider", TEXT), Column("Access privileges", TEXT)],
+                        columns: &[Column("Name", NAME), Column("Owner", NAME), Column("Encoding", NAME), Column("Locale Provider", TEXT), Column("Collate", TEXT), Column("Ctype", TEXT), Column("Locale", TEXT), Column("ICU Rules", TEXT), Column("Access privileges", TEXT)],
                         rows: &[
-                            &[T("db1"), T("postgres"), T("UTF8"), T("C"), T("C"), Null, T("libc"), Null],
-                            &[T("db2"), T("postgres"), T("UTF8"), T("C"), T("C"), Null, T("libc"), Null],
-                            &[T("postgres"), T("postgres"), T("UTF8"), T("C"), T("C"), Null, T("libc"), Null],
-                            &[T("template0"), T("postgres"), T("UTF8"), T("C"), T("C"), Null, T("libc"), Null],
-                            &[T("template1"), T("postgres"), T("UTF8"), T("C"), T("C"), Null, T("libc"), Null],
+                            &[T("db1"), T("postgres"), T("UTF8"), T("libc"), T("C"), T("C"), Null, Null, Null],
+                            &[T("db2"), T("postgres"), T("UTF8"), T("libc"), T("C"), T("C"), Null, Null, Null],
+                            &[T("postgres"), T("postgres"), T("UTF8"), T("libc"), T("C"), T("C"), Null, Null, Null],
+                            &[T("template0"), T("postgres"), T("UTF8"), T("libc"), T("C"), T("C"), Null, Null, Null],
+                            &[T("template1"), T("postgres"), T("UTF8"), T("libc"), T("C"), T("C"), Null, Null, Null],
                         ],
                         tag: "SELECT 5",
                     },

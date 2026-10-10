@@ -1753,7 +1753,7 @@ pub(crate) fn clip(name: &str, len: usize) -> &str {
 
 /// make_object_name joins two names and a label with underscores, shortening the longer name until the result fits,
 /// as Postgres' makeObjectName does.
-fn make_object_name(name1: &str, name2: &str, label: &str) -> String {
+pub(crate) fn make_object_name(name1: &str, name2: &str, label: &str) -> String {
     let overhead = label.len() + 1 + if name2.is_empty() { 0 } else { 1 };
     let available = NAMEDATALEN_MAX - overhead;
     let (mut len1, mut len2) = (name1.len(), name2.len());

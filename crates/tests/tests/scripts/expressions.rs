@@ -847,9 +847,10 @@ WHERE "t"."relkind" IN ('r', 'p') AND (("ns"."nspname" = 'public' AND "t"."relna
                     expected: Expected::Rows {
                         columns: &[Column("table_schema", NAME), Column("table_name", NAME), Column("constraint_name", NAME), Column("expression", TEXT), Column("constraint_type", TEXT), Column("column_name", NAME)],
                         rows: &[
+                            &[T("public"), T("test2"), T("test2_id_not_null"), T("NOT NULL id"), Null, T("id")],
                             &[T("public"), T("test2"), T("test2_pkey"), T("PRIMARY KEY (id)"), T("PRIMARY"), T("id")],
                         ],
-                        tag: "SELECT 1",
+                        tag: "SELECT 2",
                     },
                     ..A
                 },
@@ -1086,9 +1087,10 @@ WHERE "t"."relkind" IN ('r', 'p') AND (("ns"."nspname" = 'public' AND "t"."relna
                     expected: Expected::Rows {
                         columns: &[Column("table_schema", NAME), Column("table_name", NAME), Column("constraint_name", NAME), Column("expression", TEXT), Column("constraint_type", TEXT), Column("column_name", NAME)],
                         rows: &[
+                            &[T("public"), T("test2"), T("test2_id_not_null"), T("NOT NULL id"), Null, T("id")],
                             &[T("public"), T("test2"), T("test2_pkey"), T("PRIMARY KEY (id)"), T("PRIMARY"), T("id")],
                         ],
-                        tag: "SELECT 1",
+                        tag: "SELECT 2",
                     },
                     ..A
                 },
@@ -1959,13 +1961,13 @@ fn test_literal_error_position_rules() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT '2020-13-01'::date = current_date;",
-                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"date/time field value out of range: "2020-13-01""#, hint: r#"Perhaps you need a different "datestyle" setting."#, position: 8, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"date/time field value out of range: "2020-13-01""#, hint: r#"Perhaps you need a different "DateStyle" setting."#, position: 8, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT current_date = '2020-13-01';",
-                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"date/time field value out of range: "2020-13-01""#, hint: r#"Perhaps you need a different "datestyle" setting."#, position: 23, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"date/time field value out of range: "2020-13-01""#, hint: r#"Perhaps you need a different "DateStyle" setting."#, position: 23, ..E }),
                     flow: Flow::Query,
                     ..A
                 },

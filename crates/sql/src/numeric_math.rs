@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The square roots, logarithms, exponentials, and powers of numerics, with the result scales that Postgres 15's
+//! The square roots, logarithms, exponentials, and powers of numerics, with the result scales that Postgres 18's
 //! numeric.c chooses, computed with extra digits and rounded half away from zero.
 
 use std::cmp::Ordering;
@@ -440,8 +440,7 @@ fn power_var(base: &Numeric, exponent: &Numeric) -> Result<Numeric> {
         && let Some(n) = exponent.to_i64()
         && let Ok(n) = i32::try_from(n)
     {
-        let rscale = clamp_scale(MIN_SIG_DIGITS.max(b.dscale));
-        return power_var_int(base, &b, n, rscale);
+        return power_var_int(base, &b, n, e.dscale);
     }
     if base.is_zero() {
         return Ok(Numeric::zero(MIN_SIG_DIGITS as u32));
@@ -477,9 +476,32 @@ fn power_var(base: &Numeric, exponent: &Numeric) -> Result<Numeric> {
     Ok(if negative { result.negate() } else { result })
 }
 
-/// power_var_int raises a finite numeric to an integer power at a result scale, as Postgres 15's power_var_int does.
-fn power_var_int(base: &Numeric, b: &Var, n: i32, rscale: i64) -> Result<Numeric> {
+/// power_var_int raises a finite numeric to an integer power whose display scale is `exp_dscale`, choosing the result
+/// scale from the result's estimated weight, as Postgres 18's power_var_int does.
+fn power_var_int(base: &Numeric, b: &Var, n: i32, exp_dscale: i64) -> Result<Numeric> {
     let (negative, coefficient, scale) = parts(base);
+    let f = match b.digits.first() {
+        Some(&first) => {
+            let mut f = first as f64;
+            let mut p = b.weight * DEC_DIGITS;
+            for (i, &digit) in b.digits.iter().enumerate().skip(1) {
+                if i as i64 * DEC_DIGITS >= 16 {
+                    break;
+                }
+                f = f * 10000.0 + digit as f64;
+                p -= DEC_DIGITS;
+            }
+            n as f64 * (f.log10() + p as f64)
+        }
+        None => 0.0,
+    };
+    if f > ((i16::MAX as i64 + 1) * DEC_DIGITS) as f64 {
+        return Err(overflow());
+    }
+    if f + 1.0 < -(MAX_DISPLAY_SCALE as f64) {
+        return Ok(Numeric::zero(MAX_DISPLAY_SCALE as u32));
+    }
+    let rscale = clamp_scale((MIN_SIG_DIGITS - f as i64).max(b.dscale).max(exp_dscale));
     match n {
         0 => return Ok(Numeric::finite(false, pow10(rscale), rscale as u32)),
         1 => return Ok(rounded(&signed(negative, coefficient), scale, rscale)),
@@ -492,22 +514,6 @@ fn power_var_int(base: &Numeric, b: &Var, n: i32, rscale: i64) -> Result<Numeric
         if n < 0 {
             return Err(PgError::new(code::DIVISION_BY_ZERO, "division by zero"));
         }
-        return Ok(Numeric::zero(rscale as u32));
-    }
-    let mut f = b.digits[0] as f64;
-    let mut p = b.weight * DEC_DIGITS;
-    for (i, &digit) in b.digits.iter().enumerate().skip(1) {
-        if i as i64 * DEC_DIGITS >= 16 {
-            break;
-        }
-        f = f * 10000.0 + digit as f64;
-        p -= DEC_DIGITS;
-    }
-    let f = n as f64 * (f.log10() + p as f64);
-    if f > (3 * i16::MAX as i64 * DEC_DIGITS) as f64 {
-        return Err(overflow());
-    }
-    if f + 1.0 < -(rscale as f64) || f + 1.0 < -(MAX_DISPLAY_SCALE as f64) {
         return Ok(Numeric::zero(rscale as u32));
     }
     let digits = 1 + rscale + f as i64 + (n.unsigned_abs() as f64).ln() as i64 + 8 + GUARD;

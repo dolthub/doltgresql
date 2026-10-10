@@ -251,19 +251,19 @@ fn test_owner_to_relations() {
                 },
                 ScriptTestAssertion {
                     query: "SET statement_timeout = -1;",
-                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"-1 ms is outside the valid range for parameter "statement_timeout" (0 .. 2147483647)"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"-1 ms is outside the valid range for parameter "statement_timeout" (0 ms .. 2147483647 ms)"#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET lock_timeout = '-5s';",
-                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"-5000 ms is outside the valid range for parameter "lock_timeout" (0 .. 2147483647)"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"-5000 ms is outside the valid range for parameter "lock_timeout" (0 ms .. 2147483647 ms)"#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SET work_mem = 10;",
-                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"10 kB is outside the valid range for parameter "work_mem" (64 .. 2147483647)"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"10 kB is outside the valid range for parameter "work_mem" (64 kB .. 2147483647 kB)"#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },

@@ -5028,7 +5028,7 @@ fn test_role_and_privilege_rules() {
                 },
                 ScriptTestAssertion {
                     query: "CREATE ROLE z;",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to create role", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to create role", detail: "Only roles with the CREATEROLE attribute may create roles.", ..E }),
                     flow: Flow::Query,
                     ..A
                 },
@@ -5127,7 +5127,7 @@ fn test_role_and_privilege_rules() {
                 },
                 ScriptTestAssertion {
                     query: "ALTER ROLE tester SUPERUSER;",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "must be superuser to alter superuser roles or change superuser attribute", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to alter role", detail: "Only roles with the SUPERUSER attribute may change the SUPERUSER attribute.", ..E }),
                     flow: Flow::Query,
                     ..A
                 },

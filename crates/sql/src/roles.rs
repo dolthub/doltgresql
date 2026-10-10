@@ -240,17 +240,34 @@ impl Ctx<'_> {
             }
             return Err(PgError::new(code::DUPLICATE_OBJECT, message));
         }
+        let denied =
+            |detail: String| PgError { detail: Some(detail), ..insufficient("permission denied to create role") };
         if !actor.superuser && !actor.create_role {
-            return Err(insufficient("permission denied to create role"));
+            return Err(denied("Only roles with the CREATEROLE attribute may create roles.".into()));
         }
         let mut role = Role::new(auth.next_id(), &stmt.role);
         role.login = RoleStmtType::try_from(stmt.stmt_type) == Ok(RoleStmtType::RolestmtUser);
         self.apply_role_options(&mut role, &stmt.options)?;
-        if role.superuser && !actor.superuser {
-            return Err(insufficient("must be superuser to create superusers"));
+        if !actor.superuser {
+            for (wanted, held, attribute) in [
+                (role.superuser, false, "SUPERUSER"),
+                (role.create_db, actor.create_db, "CREATEDB"),
+                (role.replication, actor.replication, "REPLICATION"),
+                (role.bypass_rls, actor.bypass_rls, "BYPASSRLS"),
+            ] {
+                if wanted && !held {
+                    return Err(denied(format!(
+                        "Only roles with the {attribute} attribute may create roles with the {attribute} attribute."
+                    )));
+                }
+            }
         }
         let id = role.id;
         auth.roles.insert(id, role);
+        if !actor.superuser {
+            let granted_by = auth.bootstrap_id();
+            auth.memberships.entry(actor.id).or_default().insert(id, Membership { admin: true, granted_by });
+        }
         for option in &stmt.options {
             let Some(NodeEnum::DefElem(def)) = option.node.as_ref() else { continue };
             let names: Vec<String> = match def.arg.as_deref().and_then(|a| a.node.as_ref()) {
@@ -286,13 +303,58 @@ impl Ctx<'_> {
         let mut role = auth.role(&name).cloned().ok_or_else(|| role_does_not_exist(&name))?;
         let before = role.clone();
         self.apply_role_options(&mut role, &stmt.options)?;
-        let only_password = role.clone() == Role { password: role.password.clone(), ..before.clone() };
-        if !actor.superuser {
-            if role.superuser != before.superuser || before.superuser {
-                return Err(insufficient("must be superuser to alter superuser roles or change superuser attribute"));
+        let given: Vec<&str> = stmt
+            .options
+            .iter()
+            .filter_map(|o| match o.node.as_ref() {
+                Some(NodeEnum::DefElem(def)) => Some(def.defname.as_str()),
+                _ => None,
+            })
+            .collect();
+        let denied =
+            |detail: String| PgError { detail: Some(detail), ..insufficient("permission denied to alter role") };
+        if !actor.superuser && before.superuser {
+            return Err(denied(
+                "Only roles with the SUPERUSER attribute may alter roles with the SUPERUSER attribute.".into(),
+            ));
+        }
+        if !actor.superuser && given.contains(&"superuser") {
+            return Err(denied("Only roles with the SUPERUSER attribute may change the SUPERUSER attribute.".into()));
+        }
+        let attributes = [
+            "inherit",
+            "createrole",
+            "createdb",
+            "canlogin",
+            "connectionlimit",
+            "validUntil",
+            "isreplication",
+            "bypassrls",
+        ];
+        if !(actor.superuser || actor.create_role) || !auth.is_admin_of(actor.id, role.id) {
+            if given.iter().any(|g| attributes.contains(g)) {
+                return Err(denied(format!(
+                    "Only roles with the CREATEROLE attribute and the ADMIN option on role \"{name}\" may alter this role."
+                )));
             }
-            if !actor.create_role && !(only_password && actor.id == role.id) {
-                return Err(insufficient("permission denied"));
+            if given.contains(&"password") && role.id != actor.id {
+                return Err(denied(
+                    "To change another role's password, the current user must have the CREATEROLE attribute and the \
+                     ADMIN option on the role."
+                        .into(),
+                ));
+            }
+        } else if !actor.superuser {
+            for (option, held, attribute) in [
+                ("createdb", actor.create_db, "CREATEDB"),
+                ("isreplication", actor.replication, "REPLICATION"),
+                ("bypassrls", actor.bypass_rls, "BYPASSRLS"),
+            ] {
+                if given.contains(&option) && !held {
+                    return Err(denied(format!(
+                        "Only roles with the {attribute} attribute may change the {attribute} attribute."
+                    )));
+                }
             }
         }
         auth.roles.insert(role.id, role);
@@ -303,16 +365,25 @@ impl Ctx<'_> {
     /// rename_role runs ALTER ROLE ... RENAME TO.
     pub fn rename_role(&mut self, old: &str, new: &str) -> Result<Outcome> {
         let actor = self.current_role()?;
-        if !actor.superuser && !actor.create_role {
-            return Err(insufficient("permission denied to rename role"));
-        }
         let mut auth = self.auth()?;
-        if auth.role(new).is_some() {
-            return Err(PgError::new(code::DUPLICATE_OBJECT, format!("role \"{new}\" already exists")));
-        }
         let mut role = auth.role(old).cloned().ok_or_else(|| role_does_not_exist(old))?;
         if role.name == self.session.user {
             return Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "session user cannot be renamed"));
+        }
+        if auth.role(new).is_some() {
+            return Err(PgError::new(code::DUPLICATE_OBJECT, format!("role \"{new}\" already exists")));
+        }
+        let denied =
+            |detail: String| PgError { detail: Some(detail), ..insufficient("permission denied to rename role") };
+        if role.superuser && !actor.superuser {
+            return Err(denied(
+                "Only roles with the SUPERUSER attribute may rename roles with the SUPERUSER attribute.".into(),
+            ));
+        }
+        if !role.superuser && (!(actor.superuser || actor.create_role) || !auth.is_admin_of(actor.id, role.id)) {
+            return Err(denied(format!(
+                "Only roles with the CREATEROLE attribute and the ADMIN option on role \"{old}\" may rename this role."
+            )));
         }
         role.name = new.to_string();
         auth.roles.insert(role.id, role);
@@ -331,6 +402,14 @@ impl Ctx<'_> {
                 _ => None,
             })
             .collect();
+        let denied =
+            |detail: String| PgError { detail: Some(detail), ..insufficient("permission denied to drop role") };
+        if !actor.superuser && !actor.create_role {
+            return Err(denied(
+                "Only roles with the CREATEROLE attribute and the ADMIN option on the target roles may drop roles."
+                    .into(),
+            ));
+        }
         let path = self.session.search_path();
         let auth_db = self.session.auth.clone();
         let mut auth = auth_db.lock().map_err(|_| PgError::internal("the auth lock was poisoned"))?;
@@ -352,6 +431,16 @@ impl Ctx<'_> {
             if name == self.session.user {
                 return Err(PgError::new(code::OBJECT_IN_USE, "session user cannot be dropped"));
             }
+            if role.superuser && !actor.superuser {
+                return Err(denied(
+                    "Only roles with the SUPERUSER attribute may drop roles with the SUPERUSER attribute.".into(),
+                ));
+            }
+            if !auth.is_admin_of(actor.id, role.id) {
+                return Err(denied(format!(
+                    "Only roles with the CREATEROLE attribute and the ADMIN option on role \"{name}\" may drop this role."
+                )));
+            }
             let dependents = Self::role_dependents(&auth, role.id, &path);
             if !dependents.is_empty() {
                 return Err(PgError {
@@ -361,13 +450,6 @@ impl Ctx<'_> {
                         format!("role \"{name}\" cannot be dropped because some objects depend on it"),
                     )
                 });
-            }
-            if !actor.superuser && (role.superuser || !actor.create_role) {
-                return Err(insufficient(if role.superuser {
-                    "must be superuser to drop superusers"
-                } else {
-                    "permission denied to drop role"
-                }));
             }
             dropped.push(role.id);
         }
@@ -402,10 +484,16 @@ impl Ctx<'_> {
         let mut auth = self.auth()?;
         for group in &groups {
             let group_role = auth.role(group).cloned().ok_or_else(|| role_does_not_exist(group))?;
-            let can_admin = actor.superuser
-                || (actor.create_role && !group_role.superuser)
-                || auth.memberships.get(&actor.id).and_then(|g| g.get(&group_role.id)).is_some_and(|m| m.admin);
-            if !can_admin {
+            let verb = if stmt.is_grant { "grant" } else { "revoke" };
+            if group_role.superuser && !actor.superuser {
+                return Err(PgError {
+                    detail: Some(format!(
+                        "Only roles with the SUPERUSER attribute may {verb} roles with the SUPERUSER attribute."
+                    )),
+                    ..insufficient(format!("permission denied to {verb} role \"{group}\""))
+                });
+            }
+            if !auth.is_admin_of(actor.id, group_role.id) {
                 return Err(PgError {
                     detail: Some(format!(
                         "Only roles with the ADMIN option on role \"{group}\" may {} this role.",

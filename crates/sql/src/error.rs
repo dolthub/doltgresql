@@ -100,6 +100,7 @@ pub mod code {
     pub const INVALID_CURSOR_NAME: &str = "34000";
     pub const DUPLICATE_PREPARED_STATEMENT: &str = "42P05";
     pub const FOREIGN_KEY_VIOLATION: &str = "23503";
+    pub const RESTRICT_VIOLATION: &str = "23001";
     pub const INVALID_FOREIGN_KEY: &str = "42830";
     pub const DUPLICATE_FUNCTION: &str = "42723";
     pub const INVALID_FUNCTION_DEFINITION: &str = "42P13";
@@ -113,6 +114,7 @@ pub mod code {
     pub const QUERY_CANCELED: &str = "57014";
     pub const INTERVAL_FIELD_OVERFLOW: &str = "22015";
     pub const INVALID_XML_DOCUMENT: &str = "2200M";
+    pub const INVALID_ARGUMENT_FOR_XQUERY: &str = "10608";
     pub const INVALID_XML_CONTENT: &str = "2200N";
     pub const NOT_AN_XML_DOCUMENT: &str = "2200L";
     pub const INVALID_XML_COMMENT: &str = "2200S";

@@ -174,14 +174,16 @@ impl<'c, 'a> Analyzer<'c, 'a> {
         if let Some(target) = target {
             analyzed = self.coerce(analyzed, target);
         }
-        Ok(Printer { pretty, indents: true, level: 0, wrap: 0 }.print(&analyzed, None, false))
+        Ok(Printer { pretty, indents: true, level: 0, wrap: 0, varprefix: true, nested: false }
+            .print(&analyzed, None, false))
     }
 
     /// index_column prints an index expression as pg_get_indexdef does, in parentheses unless it looks like a function
     /// call.
     pub fn index_column(&mut self, text: &str, pretty: bool) -> Result<String> {
         let analyzed = self.analyze(&crate::dml::parse_expression(text)?)?;
-        let printed = Printer { pretty, indents: true, level: 0, wrap: 0 }.print(&analyzed, None, false);
+        let printed = Printer { pretty, indents: true, level: 0, wrap: 0, varprefix: true, nested: false }
+            .print(&analyzed, None, false);
         Ok(match analyzed {
             TExpr::Func(..) | TExpr::Coalesce(..) | TExpr::MinMax(..) | TExpr::Keyword(..) => printed,
             _ => format!("({printed})"),
@@ -569,6 +571,10 @@ struct Printer {
     level: i32,
     /// The column that target lists and FROM lists wrap after, or a negative number for no wrapping.
     wrap: i32,
+    /// Whether column references print the names of their relations, as Postgres' varprefix decides.
+    varprefix: bool,
+    /// Whether the query being printed is inside another one.
+    nested: bool,
 }
 
 /// The indentation steps of Postgres' ruleutils.c.
@@ -712,7 +718,10 @@ impl Printer {
         match e {
             TExpr::Var(qualifier, name, ty) => {
                 let name = if ty.oid == oid::RECORD { name.clone() } else { crate::engine::quote_identifier(name) };
-                qualifier.as_ref().map_or(name.clone(), |q| format!("{}.{name}", crate::engine::quote_identifier(q)))
+                match qualifier {
+                    Some(q) if self.varprefix => format!("{}.{name}", crate::engine::quote_identifier(q)),
+                    _ => name.clone(),
+                }
             }
             TExpr::Const(text, ty) => Self::constant(text.as_deref(), *ty, true),
             TExpr::Param(n) => format!("${n}"),

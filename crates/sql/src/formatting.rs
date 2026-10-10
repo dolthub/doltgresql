@@ -717,6 +717,8 @@ struct FromChar {
     tzsign: i64,
     tzh: i64,
     tzm: i64,
+    /// The offset east of UTC of a time zone abbreviation that TZ read.
+    gmtoffset: Option<i64>,
     ff: i64,
 }
 
@@ -910,6 +912,29 @@ fn next_is_separator(nodes: &[Node], index: usize) -> bool {
     }
 }
 
+/// read_offset_hours reads the sign and hours of a zone offset, which TZH reads and OF starts with, taking a minus sign
+/// that the text's spacing skipped as the sign, as Postgres does.
+fn read_offset_hours(
+    r: &mut Reader<'_>,
+    out: &mut FromChar,
+    extra_skip: i64,
+    nodes: &[Node],
+    index: usize,
+    keyword: &Keyword,
+) -> Result<()> {
+    match r.peek() {
+        b @ (b'+' | b'-' | b' ') => {
+            out.tzsign = if b == b'-' { -1 } else { 1 };
+            r.at += 1;
+        }
+        _ => {
+            out.tzsign = if extra_skip > 0 && r.at > 0 && r.text[r.at - 1] == b'-' { -1 } else { 1 };
+        }
+    }
+    let (value, _) = r.parse_int(2, nodes, index)?;
+    set_field(&mut out.tzh, value, keyword)
+}
+
 /// read_template reads text with a parsed template, as Postgres' DCH_from_char does outside standard mode.
 fn read_template(nodes: &[Node], text: &str) -> Result<FromChar> {
     let mut out = FromChar::default();
@@ -1030,24 +1055,27 @@ fn read_template(nodes: &[Node], text: &str) -> Result<FromChar> {
                 r.skip_ordinal(suffix);
             }
             Id::Tz | Id::Of => {
-                return Err(PgError::new(
-                    code::FEATURE_NOT_SUPPORTED,
-                    format!("formatting field \"{}\" is only supported in to_char", keyword.name),
-                ));
-            }
-            Id::Tzh => {
-                match r.peek() {
-                    b @ (b'+' | b'-' | b' ') => {
-                        out.tzsign = if b == b'-' { -1 } else { 1 };
+                let rest = String::from_utf8_lossy(&r.text[r.at..]).into_owned();
+                let abbreviation = if keyword.id == Id::Tz { dt::abbreviation_prefix(&rest) } else { None };
+                if let Some((len, offset)) = abbreviation {
+                    out.gmtoffset = Some(offset as i64);
+                    out.tzsign = 0;
+                    r.at += len;
+                } else if keyword.id == Id::Tz && rest.starts_with(|c: char| c.is_ascii_alphabetic()) {
+                    return Err(PgError {
+                        detail: Some("Time zone abbreviation is not recognized.".into()),
+                        ..invalid_format(format!("invalid value \"{rest}\" for \"{}\"", keyword.name))
+                    });
+                } else {
+                    read_offset_hours(&mut r, &mut out, extra_skip, nodes, index, keyword)?;
+                    if r.peek() == b':' {
                         r.at += 1;
-                    }
-                    _ => {
-                        out.tzsign = if extra_skip > 0 && r.at > 0 && r.text[r.at - 1] == b'-' { -1 } else { 1 };
+                        let (value, _) = r.parse_int(2, nodes, index)?;
+                        set_field(&mut out.tzm, value, keyword)?;
                     }
                 }
-                let (value, _) = r.parse_int(2, nodes, index)?;
-                set_field(&mut out.tzh, value, keyword)?;
             }
+            Id::Tzh => read_offset_hours(&mut r, &mut out, extra_skip, nodes, index, keyword)?,
             Id::Tzm => {
                 if out.tzsign == 0 {
                     out.tzsign = 1;
@@ -1299,7 +1327,7 @@ fn read_datetime(text: &str, template: &str) -> Result<Parsed> {
         }
         Some(tmfc.tzsign * (tmfc.tzh * 3600 + tmfc.tzm * 60))
     } else {
-        None
+        tmfc.gmtoffset
     };
     Ok(Parsed { fields: tm, precision: tmfc.ff, offset })
 }

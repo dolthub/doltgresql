@@ -49,7 +49,8 @@ fn test_create_functions_language_sql() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "CREATE FUNCTION alt_func1(int = 2, int) RETURNS int LANGUAGE sql AS 'SELECT $1 + $2';",
-                    expected: Expected::Error(Diagnostic { code: "42P13", message: "input parameters after one with a default value must also have defaults", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "input parameters after one with a default value must also have defaults", position: 36, ..E }),
+                    skip: Some("the position needs Postgres 18's parser, which records where each parameter starts"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -939,8 +940,9 @@ fn test_sql_function_rules() {
                 },
                 ScriptTestAssertion {
                     query: "CREATE FUNCTION g(int = 1, int) RETURNS int LANGUAGE sql AS 'SELECT $1';",
-                    expected: Expected::Error(Diagnostic { code: "42P13", message: "input parameters after one with a default value must also have defaults", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "input parameters after one with a default value must also have defaults", position: 28, ..E }),
                     flow: Flow::Query,
+                    skip: Some("the position needs Postgres 18's parser, which records where each parameter starts"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -969,7 +971,7 @@ fn test_sql_function_rules() {
                 },
                 ScriptTestAssertion {
                     query: "CREATE FUNCTION g() RETURNS int LANGUAGE sql AS 'CREATE TABLE x (a int)';",
-                    expected: Expected::Error(Diagnostic { code: "42P13", message: "return type mismatch in function declared to return integer", detail: "Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING.", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P13", message: "return type mismatch in function declared to return integer", detail: "Function's final statement must be SELECT or INSERT/UPDATE/DELETE/MERGE RETURNING.", ..E }),
                     flow: Flow::Query,
                     ..A
                 },

@@ -880,12 +880,12 @@ fn test_alter_table() {
                 },
                 ScriptTestAssertion {
                     query: "ALTER TABLE fkchild ALTER COLUMN p TYPE integer USING p::integer;",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fkchild_p_fkey" cannot be implemented"#, detail: r#"Key columns "p" and "id" are of incompatible types: integer and text."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fkchild_p_fkey" cannot be implemented"#, detail: r#"Key columns "p" of the referencing table and "id" of the referenced table are of incompatible types: integer and text."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "ALTER TABLE fkparent ALTER COLUMN id TYPE integer USING id::integer;",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fkchild_p_fkey" cannot be implemented"#, detail: r#"Key columns "p" and "id" are of incompatible types: text and integer."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fkchild_p_fkey" cannot be implemented"#, detail: r#"Key columns "p" of the referencing table and "id" of the referenced table are of incompatible types: text and integer."#, ..E }),
                     ..A
                 },
             ],
@@ -2567,7 +2567,8 @@ ORDER BY schema_name, table_name;"#,
                 },
                 ScriptTestAssertion {
                     query: "ALTER TABLE c ADD CONSTRAINT c_chk CHECK (x > 0) DEFERRABLE;",
-                    expected: Expected::Error(Diagnostic { code: "0A000", message: "CHECK constraints cannot be marked DEFERRABLE", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "CHECK constraints cannot be marked DEFERRABLE", position: 50, ..E }),
+                    skip: Some("the position needs Postgres 18's parser, which records where constraint attributes start"),
                     ..A
                 },
                 ScriptTestAssertion {

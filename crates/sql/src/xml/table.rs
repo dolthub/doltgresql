@@ -95,10 +95,9 @@ pub fn rows(ctx: &mut Ctx<'_>, table: &XmlTable) -> Result<Vec<Vec<Value>>> {
         PgError::new(code::NULL_VALUE_NOT_ALLOWED, "row filter expression must not be null")
     })?;
     if row_path.is_empty() {
-        return Err(PgError::new(code::DATA_EXCEPTION, "row path filter must not be empty string"));
+        return Err(PgError::new(code::INVALID_ARGUMENT_FOR_XQUERY, "row path filter must not be empty string"));
     }
-    let row_query =
-        super::Query { expr: super::compile(&row_path, code::SYNTAX_ERROR)?, namespaces: namespaces.clone() };
+    let row_query = super::Query { expr: super::compile(&row_path)?, namespaces: namespaces.clone() };
     let mut column_queries = Vec::with_capacity(table.columns.len());
     for column in &table.columns {
         let Some(path) = &column.path else {
@@ -110,9 +109,9 @@ pub fn rows(ctx: &mut Ctx<'_>, table: &XmlTable) -> Result<Vec<Vec<Value>>> {
             ..PgError::new(code::NULL_VALUE_NOT_ALLOWED, "column filter expression must not be null")
         })?;
         if path.is_empty() {
-            return Err(PgError::new(code::DATA_EXCEPTION, "column path filter must not be empty string"));
+            return Err(PgError::new(code::INVALID_ARGUMENT_FOR_XQUERY, "column path filter must not be empty string"));
         }
-        column_queries.push(Some(super::compile(&path, code::DATA_EXCEPTION)?));
+        column_queries.push(Some(super::compile(&path)?));
     }
     let row_nodes = match super::evaluate(&row_query, &document)? {
         XValue::Nodes(nodes) => nodes,
@@ -128,7 +127,7 @@ pub fn rows(ctx: &mut Ctx<'_>, table: &XmlTable) -> Result<Vec<Vec<Value>>> {
             };
             let result = xpath::evaluate(query, &document, node, &namespaces).map_err(|err| PgError {
                 detail: Some(err.0),
-                ..PgError::new(code::INTERNAL_ERROR, "could not create XPath object")
+                ..PgError::new(code::INVALID_ARGUMENT_FOR_XQUERY, "could not create XPath object")
             })?;
             let mut value = match column_text(result, &document, column.ty)? {
                 Some(text) => crate::cast::cast_value(Value::Text(text), column.ty, false)?,

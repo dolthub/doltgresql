@@ -625,7 +625,7 @@ default value for column id of table goals depends on function uuid_generate_v4(
                 },
                 ScriptTestAssertion {
                     query: "DROP EXTENSION vector;",
-                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop extension vector because other objects depend on it", detail: "type based depends on function vector_send(vector)", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "2BP01", message: "cannot drop extension vector because other objects depend on it", detail: "type based depends on type vector", hint: "Use DROP ... CASCADE to drop the dependent objects too.", ..E }),
                     ..A
                 },
                 ScriptTestAssertion {

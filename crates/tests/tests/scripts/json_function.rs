@@ -4051,7 +4051,13 @@ fn test_jsonb_numeric_casts() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT 'null'::jsonb::int4;",
-                    expected: Expected::Error(Diagnostic { code: "22023", message: "cannot cast jsonb null to type integer", ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("int4", INT4)],
+                        rows: &[
+                            &[Null],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {

@@ -855,7 +855,7 @@ impl Ctx<'_> {
             ))
         };
         let final_statement =
-            || mismatch("Function's final statement must be SELECT or INSERT/UPDATE/DELETE RETURNING.".into());
+            || mismatch("Function's final statement must be SELECT or INSERT/UPDATE/DELETE/MERGE RETURNING.".into());
         if ret.oid != VOID && statements.last().is_none_or(|s| !crate::engine::describable(s)) {
             return Err(final_statement());
         }

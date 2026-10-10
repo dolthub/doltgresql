@@ -727,10 +727,11 @@ impl<'b, 'a> Binder<'b, 'a> {
         if let Some(bound) = self.system_column(table, name) {
             return Ok(bound);
         }
-        Err(PgError {
-            position: position(column.location),
-            ..PgError::new(code::UNDEFINED_COLUMN, format!("column \"{full}\" does not exist"))
-        })
+        let message = match table {
+            Some(_) => format!("column {full} does not exist"),
+            None => format!("column \"{full}\" does not exist"),
+        };
+        Err(PgError { position: position(column.location), ..PgError::new(code::UNDEFINED_COLUMN, message) })
     }
 }
 
@@ -1695,7 +1696,7 @@ impl<'b, 'a> Binder<'b, 'a> {
                 if target.eq_ignore_ascii_case("xml") {
                     return Err(PgError {
                         detail: Some(format!("XML processing instruction target name cannot be \"{target}\".")),
-                        ..PgError::new(code::SYNTAX_ERROR, "invalid XML processing instruction")
+                        ..PgError::new(code::INVALID_XML_PROCESSING_INSTRUCTION, "invalid XML processing instruction")
                     });
                 }
                 let args = x.args.iter().map(|a| self.xml_arg(a, oid::TEXT, "XMLPI")).collect::<Result<_>>()?;

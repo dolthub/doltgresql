@@ -456,7 +456,15 @@ fn test_select() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "select * from (values(1,'峰哥',18),(2,'王哥',20),(3,'张哥',22));",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: "VALUES in FROM must have an alias", hint: "For example, FROM (VALUES ...) [AS] foo.", position: 15, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4), Column("column2", TEXT), Column("column3", INT4)],
+                        rows: &[
+                            &[T("1"), T("峰哥"), T("18")],
+                            &[T("2"), T("王哥"), T("20")],
+                            &[T("3"), T("张哥"), T("22")],
+                        ],
+                        tag: "SELECT 3",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
@@ -872,19 +880,38 @@ fn test_limit_alias_and_distinct_on_rules() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "select * from (values(1,'a',18),(2,'b',20));",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: "VALUES in FROM must have an alias", hint: "For example, FROM (VALUES ...) [AS] foo.", position: 15, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("column1", INT4), Column("column2", TEXT), Column("column3", INT4)],
+                        rows: &[
+                            &[T("1"), T("a"), T("18")],
+                            &[T("2"), T("b"), T("20")],
+                        ],
+                        tag: "SELECT 2",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "select * from (select 1);",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: "subquery in FROM must have an alias", hint: "For example, FROM (SELECT ...) [AS] foo.", position: 15, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "select * from ( SELECT 1 ), (values (1));",
-                    expected: Expected::Error(Diagnostic { code: "42601", message: "subquery in FROM must have an alias", hint: "For example, FROM (SELECT ...) [AS] foo.", position: 15, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INT4), Column("column1", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     flow: Flow::Query,
                     ..A
                 },

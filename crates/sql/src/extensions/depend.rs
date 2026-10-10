@@ -155,10 +155,7 @@ impl Ctx<'_> {
             let domain_name = format!("{}.{}", quote(&user_type.schema), quote(&user_type.name));
             let drop_domain = format!("DROP DOMAIN {domain_name}");
             if let Some(i) = extension.types.iter().position(|t| type_oid(t.name) == domain.base.oid) {
-                let send = format!("{}_send", extension.types[i].name);
-                let routine = members.iter().position(|m| matches!(m, Member::Routine(n, _) if *n == send));
-                let member = routine.unwrap_or(first_type + i);
-                add(self, format!("type {}", user_type.name), vec![(member, None)], drop_domain)?;
+                add(self, format!("type {}", user_type.name), vec![(first_type + i, None)], drop_domain)?;
                 continue;
             }
             if let Some(default) = &domain.default {

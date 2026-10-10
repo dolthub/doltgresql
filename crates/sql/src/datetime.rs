@@ -295,6 +295,17 @@ fn abbreviations() -> &'static HashMap<String, (i32, bool)> {
     })
 }
 
+/// abbreviation_prefix returns the length of the longest time zone abbreviation that text starts with, ignoring case,
+/// with its offset east of UTC, as Postgres' DecodeTimezoneAbbrevPrefix finds it.
+pub fn abbreviation_prefix(text: &str) -> Option<(usize, i32)> {
+    let lower = text.to_ascii_lowercase();
+    let longest = lower.len().min(10);
+    (1..=longest)
+        .rev()
+        .filter(|&n| lower.is_char_boundary(n))
+        .find_map(|n| abbreviations().get(&lower[..n]).map(|&(offset, _)| (n, offset)))
+}
+
 /// parse_offset reads a numeric zone offset such as `+05`, `-0800`, or `+05:30:15`, returning seconds east of UTC.
 fn parse_offset(text: &str) -> Option<i32> {
     let (sign, rest) = match text.as_bytes().first()? {
@@ -866,7 +877,7 @@ fn invalid(kind: Kind, text: &str) -> PgError {
 /// out_of_range returns Postgres' error for a field out of range, suggesting another DateStyle when asked.
 fn out_of_range(text: &str, hint: bool) -> PgError {
     PgError {
-        hint: hint.then(|| "Perhaps you need a different \"datestyle\" setting.".to_string()),
+        hint: hint.then(|| "Perhaps you need a different \"DateStyle\" setting.".to_string()),
         ..PgError::new(code::DATETIME_FIELD_OVERFLOW, format!("date/time field value out of range: \"{text}\""))
     }
 }

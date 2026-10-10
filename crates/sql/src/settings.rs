@@ -12,14 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Configuration parameters: Postgres 15's settings and Dolt's session variables, as a session sees and sets them.
+//! Configuration parameters: Postgres 18's settings and Dolt's session variables, as a session sees and sets them.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use crate::error::{PgError, Result, code};
 
-/// SETTINGS is Postgres 15's pg_settings as a fresh cluster reports it, one tab-separated row per setting: name,
+/// SETTINGS is Postgres 18's pg_settings as a fresh cluster reports it, one tab-separated row per setting: name,
 /// setting, unit, category, short description, extra description, context, type, source, minimum, maximum, enum
 /// values, boot value, and reset value.
 const SETTINGS: &str = include_str!("settings.tsv");
@@ -165,7 +165,19 @@ fn definitions() -> &'static Definitions {
 /// setting returns a setting's definition by name, ignoring case.
 pub fn setting(name: &str) -> Option<&'static Setting> {
     let d = definitions();
-    d.by_name.get(&name.to_ascii_lowercase()).map(|&i| &d.settings[i])
+    d.by_name.get(&key(name)).map(|&i| &d.settings[i])
+}
+
+/// key returns the lower-case name that a parameter is stored under, mapping the old names that Postgres still
+/// accepts to their current ones, as its map_old_guc_names does.
+fn key(name: &str) -> String {
+    let lower = name.to_ascii_lowercase();
+    match lower.as_str() {
+        "sort_mem" => "work_mem".into(),
+        "vacuum_mem" => "maintenance_work_mem".into(),
+        "ssl_ecdh_curve" => "ssl_groups".into(),
+        _ => lower,
+    }
 }
 
 /// all_settings returns every setting that pg_settings shows, in name order.
@@ -191,6 +203,12 @@ fn valid_custom_name(name: &str) -> bool {
         }
     }
     saw_separator && !name_start
+}
+
+/// unit_suffix returns a parameter's unit after a space, as Postgres' range errors print it, or nothing for a
+/// parameter without a unit.
+fn unit_suffix(definition: &Setting) -> String {
+    if definition.unit.is_empty() { String::new() } else { format!(" {}", definition.unit) }
 }
 
 /// unrecognized returns Postgres' error for an unknown parameter.
@@ -323,22 +341,13 @@ pub fn normalize(definition: &Setting, value: &str) -> Result<String> {
                 return Err(PgError::new(
                     code::INVALID_PARAMETER_VALUE,
                     format!(
-                        "{}{} is outside the valid range for parameter \"{name}\" ({} .. {})",
+                        "{}{unit} is outside the valid range for parameter \"{name}\" ({}{unit} .. {}{unit})",
                         number as i64,
-                        if definition.unit.is_empty() { String::new() } else { format!(" {}", definition.unit) },
                         definition.min,
-                        definition.max
+                        definition.max,
+                        unit = unit_suffix(definition)
                     ),
                 ));
-            }
-            if number != 0.0 && matches!(name.as_str(), "effective_io_concurrency" | "maintenance_io_concurrency") {
-                return Err(PgError {
-                    detail: Some(format!("{name} must be set to 0 on platforms that lack posix_fadvise().")),
-                    ..PgError::new(
-                        code::INVALID_PARAMETER_VALUE,
-                        format!("invalid value for parameter \"{name}\": {}", number as i64),
-                    )
-                });
             }
             Ok((number as i64).to_string())
         }
@@ -349,10 +358,11 @@ pub fn normalize(definition: &Setting, value: &str) -> Result<String> {
                 return Err(PgError::new(
                     code::INVALID_PARAMETER_VALUE,
                     format!(
-                        "{} is outside the valid range for parameter \"{name}\" ({} .. {})",
+                        "{}{unit} is outside the valid range for parameter \"{name}\" ({}{unit} .. {}{unit})",
                         value.trim(),
                         definition.min,
-                        definition.max
+                        definition.max,
+                        unit = unit_suffix(definition)
                     ),
                 ));
             }
@@ -567,8 +577,7 @@ impl Settings {
 
     /// get returns a parameter's value as stored, or None for an unknown one.
     pub fn get(&self, name: &str) -> Option<String> {
-        let key = name.to_ascii_lowercase();
-        if let Some(value) = self.values.get(&key) {
+        if let Some(value) = self.values.get(&key(name)) {
             return Some(value.clone());
         }
         setting(name).map(|s| s.default.clone())
@@ -591,7 +600,7 @@ impl Settings {
     /// set sets a parameter, or resets it to its default without a value, locally to the transaction when asked.
     /// Inside a transaction, the change is undone when the transaction rolls back.
     pub fn set(&mut self, name: &str, value: Option<&str>, local: bool, in_transaction: bool) -> Result<()> {
-        let key = name.to_ascii_lowercase();
+        let key = key(name);
         if matches!(key.as_str(), "dolt_auto_gc_enabled" | "dolt_cluster_role" | "dolt_cluster_role_epoch") {
             return Err(PgError::new(
                 code::CANT_CHANGE_RUNTIME_PARAM,
@@ -600,6 +609,7 @@ impl Settings {
         }
         let value = match setting(name) {
             Some(definition) => {
+                let name = &definition.name;
                 match definition.context.as_str() {
                     "internal" => {
                         return Err(PgError::new(
@@ -626,6 +636,17 @@ impl Settings {
                         ));
                     }
                     _ => {}
+                }
+                if value.is_none()
+                    && matches!(
+                        key.as_str(),
+                        "transaction_isolation" | "transaction_read_only" | "transaction_deferrable"
+                    )
+                {
+                    return Err(PgError::new(
+                        code::FEATURE_NOT_SUPPORTED,
+                        format!("parameter \"{name}\" cannot be reset"),
+                    ));
                 }
                 match value.map(|v| normalize(definition, v)).transpose()? {
                     Some(_) if definition.name == "DateStyle" => {

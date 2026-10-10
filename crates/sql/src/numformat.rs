@@ -234,7 +234,12 @@ impl Desc {
                 }
                 self.flag |= BRACKET;
             }
-            Key::Rn | Key::RnLower => self.flag |= ROMAN,
+            Key::Rn | Key::RnLower => {
+                if self.is(ROMAN) {
+                    return syntax("cannot use \"RN\" twice");
+                }
+                self.flag |= ROMAN;
+            }
             Key::V => {
                 if self.is(DECIMAL) {
                     return syntax("cannot use \"V\" and decimal point together");
@@ -256,6 +261,12 @@ impl Desc {
                 self.flag |= EEEE;
             }
             _ => {}
+        }
+        if self.is(ROMAN) && self.flag & !(ROMAN | FILLMODE) != 0 {
+            return Err(PgError {
+                detail: Some("\"RN\" may only be used together with \"FM\".".into()),
+                ..PgError::new(code::SYNTAX_ERROR, "\"RN\" is incompatible with other formats")
+            });
         }
         Ok(())
     }
@@ -710,6 +721,77 @@ impl Reader<'_> {
     }
 }
 
+/// roman_to_int reads the Roman numeral that text starts with, after any spaces, or returns None when it does not
+/// start with a valid one, as Postgres' function of the same name does.
+fn roman_to_int(input: &[u8]) -> Option<i32> {
+    let value = |c: u8| match c {
+        b'I' => 1,
+        b'V' => 5,
+        b'X' => 10,
+        b'L' => 50,
+        b'C' => 100,
+        b'D' => 500,
+        b'M' => 1000,
+        _ => 0,
+    };
+    let start = input.iter().take_while(|c| c.is_ascii_whitespace()).count();
+    let numerals: Vec<(u8, i32)> = input[start..]
+        .iter()
+        .map(|c| (c.to_ascii_uppercase(), value(c.to_ascii_uppercase())))
+        .take_while(|&(_, v)| v != 0)
+        .take(15)
+        .collect();
+    if numerals.is_empty() {
+        return None;
+    }
+    let (mut result, mut repeat, mut subtracted) = (0, 1, None);
+    let (mut v, mut l, mut d) = (false, false, false);
+    let mut i = 0;
+    while i < numerals.len() {
+        let (c, current) = numerals[i];
+        if subtracted.is_some_and(|last| current >= last) {
+            return None;
+        }
+        let mut seen = |c: u8, value: i32| {
+            if (v && value >= 5) || (l && value >= 50) || (d && value >= 500) {
+                return false;
+            }
+            match c {
+                b'V' => v = true,
+                b'L' => l = true,
+                b'D' => d = true,
+                _ => {}
+            }
+            true
+        };
+        if !seen(c, current) {
+            return None;
+        }
+        match numerals.get(i + 1) {
+            Some(&(next_char, next)) if current < next => {
+                let valid = matches!((c, next_char), (b'I', b'V' | b'X') | (b'X', b'L' | b'C') | (b'C', b'D' | b'M'));
+                if !valid || repeat > 1 || !seen(next_char, next) {
+                    return None;
+                }
+                i += 1;
+                repeat = 1;
+                subtracted = Some(current);
+                result += next - current;
+            }
+            Some(&(next_char, _)) => {
+                repeat = if c == next_char { repeat + 1 } else { 1 };
+                if repeat > 3 {
+                    return None;
+                }
+                result += current;
+            }
+            None => result += current,
+        }
+        i += 1;
+    }
+    Some(result)
+}
+
 /// parse_number reads the digits, decimal point, and sign of text by a template, as Postgres' NUM_processor does for
 /// to_number, returning the number's text and how many digits followed its decimal point.
 fn parse_number(nodes: &[Node], desc: &Desc, input: &[u8]) -> Result<(String, i32)> {
@@ -717,7 +799,9 @@ fn parse_number(nodes: &[Node], desc: &Desc, input: &[u8]) -> Result<(String, i3
         return Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "\"EEEE\" not supported for input"));
     }
     if desc.is(ROMAN) {
-        return Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "\"RN\" not supported for input"));
+        let value = roman_to_int(input)
+            .ok_or_else(|| PgError::new(code::INVALID_TEXT_REPRESENTATION, "invalid Roman numeral"))?;
+        return Ok((format!(" {value}"), 0));
     }
     let mut reader = Reader { input, at: 0, number: vec![b' '], read_dec: false, read_pre: 0, read_post: 0 };
     for node in nodes {
@@ -950,7 +1034,8 @@ pub fn to_number(text: &str, template: &str) -> Result<Option<Numeric>> {
     }
     let (nodes, desc) = parse_template(template)?;
     let (number, scale) = parse_number(&nodes, &desc, text.as_bytes())?;
-    let precision = desc.pre + desc.multi + scale;
+    let pre = if desc.is(ROMAN) { number.trim().len() as i32 } else { desc.pre };
+    let precision = pre + desc.multi + scale;
     let parsed = Numeric::parse(&number).map_err(|_| {
         PgError::new(code::INVALID_TEXT_REPRESENTATION, format!("invalid input syntax for type numeric: \"{number}\""))
     })?;

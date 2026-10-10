@@ -902,12 +902,15 @@ fn test_create_table() {
                     expected: Expected::Rows {
                         columns: &[Column("conname", NAME), Column("contype", CHAR)],
                         rows: &[
+                            &[T("id_nn"), T("n")],
                             &[T("t3332_pkey"), T("p")],
                             &[T("u_uni"), T("u")],
+                            &[T("w_nn"), T("n")],
                             &[T("w_uni"), T("u")],
                         ],
-                        tag: "SELECT 3",
+                        tag: "SELECT 5",
                     },
+                    skip: Some("NOT NULL constraints take generated names until their names are stored with their tables"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -1043,12 +1046,14 @@ fn test_create_table() {
                 },
                 ScriptTestAssertion {
                     query: "CREATE TABLE b6 (x INTEGER, CHECK (x > 0) DEFERRABLE);",
-                    expected: Expected::Error(Diagnostic { code: "0A000", message: "CHECK constraints cannot be marked DEFERRABLE", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "CHECK constraints cannot be marked DEFERRABLE", position: 43, ..E }),
+                    skip: Some("the position needs Postgres 18's parser, which records where constraint attributes start"),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "CREATE TABLE b7 (x INTEGER, CHECK (x > 0) INITIALLY DEFERRED);",
-                    expected: Expected::Error(Diagnostic { code: "0A000", message: "CHECK constraints cannot be marked DEFERRABLE", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "CHECK constraints cannot be marked DEFERRABLE", position: 43, ..E }),
+                    skip: Some("the position needs Postgres 18's parser, which records where constraint attributes start"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2018,11 +2023,18 @@ fn test_create_table_like_rules() {
                         rows: &[
                             &[T("l2"), T("l2_pkey"), T("p"), T("PRIMARY KEY (id)")],
                             &[T("l2"), T("l2_u_key"), T("u"), T("UNIQUE (u)")],
-                            &[T("l2"), T("src_b_check"), T("c"), T("CHECK ((b > 0))")],
+                            &[T("l1"), T("src_a_not_null"), T("n"), T("NOT NULL a")],
+                            &[T("l2"), T("src_a_not_null"), T("n"), T("NOT NULL a")],
+                            &[T("l3"), T("src_a_not_null"), T("n"), T("NOT NULL a")],
                             &[T("l3"), T("src_b_check"), T("c"), T("CHECK ((b > 0))")],
+                            &[T("l2"), T("src_b_check"), T("c"), T("CHECK ((b > 0))")],
+                            &[T("l2"), T("src_id_not_null"), T("n"), T("NOT NULL id")],
+                            &[T("l1"), T("src_id_not_null"), T("n"), T("NOT NULL id")],
+                            &[T("l3"), T("src_id_not_null"), T("n"), T("NOT NULL id")],
                         ],
-                        tag: "SELECT 4",
+                        tag: "SELECT 10",
                     },
+                    skip: Some("NOT NULL constraints take generated names until their names are stored with their tables"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2364,7 +2376,7 @@ fn test_temporary_tables() {
                 },
                 ScriptTestAssertion {
                     query: "PREPARE TRANSACTION 'p';",
-                    expected: Expected::Error(Diagnostic { code: "55000", message: "prepared transactions are disabled", hint: "Set max_prepared_transactions to a nonzero value.", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "55000", message: "prepared transactions are disabled", hint: r#"Set "max_prepared_transactions" to a nonzero value."#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },

@@ -130,12 +130,18 @@ fn test_multidimensional_arrays() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT '{1,{2}}'::int[];",
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed array literal: "{1,{2}}""#, detail: r#"Unexpected "{" character."#, position: 8, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed array literal: "{1,{2}}""#, detail: "Multidimensional arrays must have sub-arrays with matching dimensions.", position: 8, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT '{{}}'::int[];",
-                    expected: Expected::Error(Diagnostic { code: "22P02", message: r#"malformed array literal: "{{}}""#, detail: r#"Unexpected "}" character."#, position: 8, ..E }),
+                    expected: Expected::Rows {
+                        columns: &[Column("int4", INT4_ARRAY)],
+                        rows: &[
+                            &[T("{}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
                     ..A
                 },
                 ScriptTestAssertion {

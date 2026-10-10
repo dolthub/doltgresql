@@ -289,6 +289,23 @@ alternative expected file. Validate a runner like this against a real Postgres f
 one does, on all 51,577 statements. The first run found crashes and hangs that the replay never reached: a
 self-deadlock on the auth lock, a Flush that never delivered a queued error, and an unanswered FunctionCall.
 
+Moving the kept script tests to Postgres 18 expectations was done in three passes:
+- Run the whole suite against real PG15 and real PG18 and diff the failures. The failures that only PG18 has are the
+  expectations to change.
+- Re-record the Postgres-sourced assertions from PG18, leaving the ones marked Doltgres-specific alone. Then make the
+  server match.
+
+The traps:
+- Re-recording turns OID matchers (`Oid(16385)`) into literal text, so restore them, and re-record every OID-bearing
+  assertion of a touched script so that one numbering is used throughout.
+- The harness's own server settings (`fsync=off`, socket paths) leak into recorded values.
+- An installed extension's version must be the emulated one (pgvector 0.8.6, not the 0.8.7 that Homebrew ships).
+- Scripts that run as other users, bind parameters, or read test data files cannot be recorded mechanically. Compare
+  PG18's and the server's results for those by hand.
+
+The catalogs, settings, and built-in rows were regenerated from a fresh PG18 cluster, and the server now reports
+version 18.6.
+
 The loop that drives this work:
 
 1. Replay the whole regression suite, dump the trackers, and group the failures by their normalized error message

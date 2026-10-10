@@ -91,7 +91,7 @@ pub use types::Value;
 pub const DOLTGRES_VERSION: &str = "1.4.0";
 
 /// SERVER_VERSION is the Postgres version the server reports.
-pub const SERVER_VERSION: &str = "15.17";
+pub const SERVER_VERSION: &str = "18.6";
 
 /// DEFAULT_BRANCH is the branch a new database starts on.
 pub const DEFAULT_BRANCH: &str = "main";

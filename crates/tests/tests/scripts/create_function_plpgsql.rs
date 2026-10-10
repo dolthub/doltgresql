@@ -1484,19 +1484,19 @@ $$ LANGUAGE plpgsql;"#,
             assertions: &[
                 ScriptTestAssertion {
                     query: "SELECT func2(1);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: "structure of query does not match function result type", detail: "Returned type bigint does not match expected type integer in column 3.", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "structure of query does not match function result type", detail: r#"Returned type bigint does not match expected type integer in column "c_total_spent" (position 3)."#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT func2(11);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: "structure of query does not match function result type", detail: "Returned type bigint does not match expected type integer in column 3.", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "structure of query does not match function result type", detail: r#"Returned type bigint does not match expected type integer in column "c_total_spent" (position 3)."#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "SELECT func2(111);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: "structure of query does not match function result type", detail: "Returned type bigint does not match expected type integer in column 3.", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "structure of query does not match function result type", detail: r#"Returned type bigint does not match expected type integer in column "c_total_spent" (position 3)."#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
@@ -4217,7 +4217,7 @@ fn test_plpgsql_rules() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM wrong_shape();",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: "structure of query does not match function result type", detail: "Returned type text does not match expected type integer in column 2.", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: "structure of query does not match function result type", detail: r#"Returned type text does not match expected type integer in column "b" (position 2)."#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },

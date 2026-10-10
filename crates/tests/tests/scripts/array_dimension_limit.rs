@@ -43,7 +43,7 @@ fn test_array_dimension_limit() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT '{{{{{{{1}}}}}}}'::int[];",
-                    expected: Expected::Error(Diagnostic { code: "54000", message: "number of array dimensions (7) exceeds the maximum allowed (6)", position: 8, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "54000", message: "number of array dimensions exceeds the maximum allowed (6)", position: 8, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {

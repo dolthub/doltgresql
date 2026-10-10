@@ -248,11 +248,16 @@ fn child_violation(fk: &ForeignKeyDef, values: &[Value]) -> PgError {
     }
 }
 
-/// parent_violation returns Postgres' error for removing a key that rows still refer to.
-fn parent_violation(fk: &ForeignKeyDef, values: &[Value]) -> PgError {
+/// parent_violation returns Postgres' error for removing a key that rows still refer to, which names the RESTRICT
+/// setting of a foreign key that restricts.
+fn parent_violation(fk: &ForeignKeyDef, values: &[Value], restrict: bool) -> PgError {
+    let (code, setting, still) = match restrict {
+        true => (code::RESTRICT_VIOLATION, "RESTRICT setting of ", ""),
+        false => (code::FOREIGN_KEY_VIOLATION, "", "still "),
+    };
     PgError {
         detail: Some(format!(
-            "{} is still referenced from table \"{}\".",
+            "{} is {still}referenced from table \"{}\".",
             key_text(&fk.parent_columns, values),
             fk.child_table
         )),
@@ -263,9 +268,9 @@ fn parent_violation(fk: &ForeignKeyDef, values: &[Value]) -> PgError {
             ..ErrorObjects::default()
         })),
         ..PgError::new(
-            code::FOREIGN_KEY_VIOLATION,
+            code,
             format!(
-                "update or delete on table \"{}\" violates foreign key constraint \"{}\" on table \"{}\"",
+                "update or delete on table \"{}\" violates {setting}foreign key constraint \"{}\" on table \"{}\"",
                 fk.parent_table, fk.name, fk.child_table
             ),
         )
@@ -280,7 +285,7 @@ fn key_types(name: &str, (child, ct): (&str, u32), (parent, pt): (&str, u32)) ->
     }
     Err(PgError {
         detail: Some(format!(
-            "Key columns \"{child}\" and \"{parent}\" are of incompatible types: {} and {}.",
+            "Key columns \"{child}\" of the referencing table and \"{parent}\" of the referenced table are of incompatible types: {} and {}.",
             crate::cast::type_display(ct),
             crate::cast::type_display(pt)
         )),
@@ -665,7 +670,9 @@ impl Ctx<'_> {
             }
             for row in referencing {
                 match action {
-                    Rule::NoAction | Rule::Restrict => return Err(parent_violation(fk, key)),
+                    Rule::NoAction | Rule::Restrict => {
+                        return Err(parent_violation(fk, key, action == Rule::Restrict));
+                    }
                     Rule::Cascade => match new_key {
                         None => child_changes.push((Some(row.clone()), None)),
                         Some(new_key) => {
@@ -728,7 +735,7 @@ impl Ctx<'_> {
             }),
             Err(_) => false,
         };
-        if referenced { Err(parent_violation(fk, key)) } else { Ok(()) }
+        if referenced { Err(parent_violation(fk, key, false)) } else { Ok(()) }
     }
 
     /// drop_table_foreign_keys drops the views and foreign keys that depend on a table being dropped, failing as

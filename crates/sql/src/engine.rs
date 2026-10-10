@@ -1115,7 +1115,7 @@ thread_local! {
 }
 
 /// REPORTED_PARAMETERS are the parameters whose values the server reports to the client with ParameterStatus.
-const REPORTED_PARAMETERS: [&str; 13] = [
+const REPORTED_PARAMETERS: [&str; 15] = [
     "application_name",
     "client_encoding",
     "DateStyle",
@@ -1124,6 +1124,8 @@ const REPORTED_PARAMETERS: [&str; 13] = [
     "integer_datetimes",
     "IntervalStyle",
     "is_superuser",
+    "scram_iterations",
+    "search_path",
     "server_encoding",
     "server_version",
     "session_authorization",
@@ -2003,7 +2005,7 @@ impl Session {
                         "cannot PREPARE a transaction that has operated on temporary objects",
                     ),
                     false => PgError {
-                        hint: Some("Set max_prepared_transactions to a nonzero value.".into()),
+                        hint: Some("Set \"max_prepared_transactions\" to a nonzero value.".into()),
                         ..PgError::new(code::OBJECT_NOT_IN_PREREQUISITE_STATE, "prepared transactions are disabled")
                     },
                 })
@@ -2337,21 +2339,10 @@ impl Session {
     fn set(&mut self, set: &VariableSetStmt) -> Result<Outcome> {
         let kind = VariableSetKind::try_from(set.kind).unwrap_or(VariableSetKind::Undefined);
         let in_transaction = self.state.explicit;
-        let reset =
-            matches!(kind, VariableSetKind::VarReset | VariableSetKind::VarResetAll | VariableSetKind::VarSetDefault);
         let tag =
             if matches!(kind, VariableSetKind::VarReset | VariableSetKind::VarResetAll) { "RESET" } else { "SET" };
         let transactional =
             matches!(set.name.as_str(), "transaction_isolation" | "transaction_read_only" | "transaction_deferrable");
-        if reset && set.name == "transaction_isolation" && !in_transaction {
-            self.state.notices.push(PgError {
-                severity: "WARNING",
-                ..PgError::new(
-                    code::NO_ACTIVE_SQL_TRANSACTION,
-                    "RESET TRANSACTION can only be used in transaction blocks",
-                )
-            });
-        }
         self.warn_set_local(set);
         let local = set.is_local || transactional;
         match kind {

@@ -122,10 +122,12 @@ pub fn format_type(type_oid: u32, modifier: Option<i32>) -> Option<String> {
     })
 }
 
-/// jsonb_scalar converts a jsonb number or boolean to a numeric or boolean type, as Postgres' jsonb casts do.
+/// jsonb_scalar converts a jsonb number or boolean to a numeric or boolean type, and a jsonb null to NULL, as Postgres'
+/// jsonb casts do.
 fn jsonb_scalar(json: &crate::json::Json, to: ColumnType) -> Result<Value> {
     use crate::json::Json;
     match (json, to.oid) {
+        (Json::Null, _) => Ok(Value::Null),
         (Json::Bool(b), oid::BOOL) => Ok(Value::Bool(*b)),
         (Json::Number(n), target) if target != oid::BOOL => cast_value(Value::Numeric(n.clone()), to, true),
         _ => {
@@ -257,39 +259,25 @@ pub fn is_reg_type(type_oid: u32) -> bool {
 /// parse_oid reads an OID as Postgres' oidin does, where negative numbers wrap around.
 fn parse_oid(text: &str, type_oid: u32) -> Result<u32> {
     let trimmed = text.trim_matches(|c: char| c.is_ascii_whitespace());
-    let digits = trimmed.strip_prefix(['-', '+']).unwrap_or(trimmed);
-    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return Err(invalid_syntax(type_oid, text));
-    }
-    let value: i128 = trimmed.parse().map_err(|_| out_of_range(type_oid, text))?;
-    if !(i32::MIN as i128..=u32::MAX as i128).contains(&value) {
-        return Err(out_of_range(type_oid, text));
-    }
-    Ok(value as i64 as u32)
-}
-
-/// strtoul reads an unsigned integer as C's strtoul does with base 0: decimal, octal after `0`, or hexadecimal after
-/// `0x`, stopping at the first other character and negating a negative value modulo 2^64, as xidin reads it.
-fn strtoul(text: &str) -> u64 {
-    let trimmed = text.trim_start_matches(|c: char| c.is_ascii_whitespace());
-    let (negative, digits) = match trimmed.as_bytes().first() {
+    let (negative, rest) = match trimmed.as_bytes().first() {
         Some(b'-') => (true, &trimmed[1..]),
         Some(b'+') => (false, &trimmed[1..]),
         _ => (false, trimmed),
     };
-    let (radix, digits) = if let Some(hex) = digits.strip_prefix("0x").or_else(|| digits.strip_prefix("0X")) {
-        (16, hex)
-    } else if digits.starts_with('0') {
-        (8, digits)
-    } else {
-        (10, digits)
+    let (radix, digits) = match rest.strip_prefix("0x").or_else(|| rest.strip_prefix("0X")) {
+        Some(hex) => (16, hex),
+        None if rest.len() > 1 && rest.starts_with('0') => (8, &rest[1..]),
+        None => (10, rest),
     };
-    let mut value: u64 = 0;
-    for c in digits.chars() {
-        let Some(d) = c.to_digit(radix) else { break };
-        value = value.checked_mul(radix as u64).and_then(|v| v.checked_add(d as u64)).unwrap_or(u64::MAX);
+    if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
+        return Err(invalid_syntax(type_oid, text));
     }
-    if negative { value.wrapping_neg() } else { value }
+    let magnitude = u128::from_str_radix(digits, radix).map_err(|_| out_of_range(type_oid, text))?;
+    let value = if negative { -(magnitude as i128) } else { magnitude as i128 };
+    if !(i32::MIN as i128..=u32::MAX as i128).contains(&value) {
+        return Err(out_of_range(type_oid, text));
+    }
+    Ok(value as i64 as u32)
 }
 
 /// char_value returns the value of the "char" type for text: its first byte, written as an octal escape when it is not
@@ -372,8 +360,7 @@ pub fn input(text: &str, type_oid: u32) -> Result<Value> {
                 .map(Value::TimestampTz)?
         }
         oid::INTERVAL => Value::Interval(crate::datetime::parse_interval(text)?),
-        oid::XID | oid::CID => Value::Oid(strtoul(text) as u32),
-        oid::OID => Value::Oid(parse_oid(text, type_oid)?),
+        oid::OID | oid::XID | oid::CID => Value::Oid(parse_oid(text, type_oid)?),
         oid::CHAR => char_value(text),
         oid::NAME => Value::Text(crate::ddl::clip(text, crate::ddl::NAMEDATALEN_MAX).to_string()),
         oid::TEXT | oid::VARCHAR | oid::BPCHAR | oid::UNKNOWN | oid::CSTRING => Value::Text(text.to_string()),

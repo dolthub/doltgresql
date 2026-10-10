@@ -181,10 +181,10 @@ impl Ctx<'_> {
                     .to_string()
             }
             "databases" => "SELECT d.datname AS \"Name\", pg_catalog.pg_get_userbyid(d.datdba) AS \"Owner\", \
-                 pg_catalog.pg_encoding_to_char(d.encoding) AS \"Encoding\", d.datcollate AS \"Collate\", d.datctype \
-                 AS \"Ctype\", d.daticulocale AS \"ICU Locale\", CASE d.datlocprovider WHEN 'c' THEN 'libc' WHEN 'i' \
-                 THEN 'icu' END AS \"Locale Provider\", NULL::text AS \"Access privileges\" FROM \
-                 pg_catalog.pg_database d ORDER BY 1"
+                 pg_catalog.pg_encoding_to_char(d.encoding) AS \"Encoding\", CASE d.datlocprovider WHEN 'b' THEN \
+                 'builtin' WHEN 'c' THEN 'libc' WHEN 'i' THEN 'icu' END AS \"Locale Provider\", d.datcollate AS \
+                 \"Collate\", d.datctype AS \"Ctype\", d.datlocale AS \"Locale\", d.daticurules AS \"ICU Rules\", \
+                 NULL::text AS \"Access privileges\" FROM pg_catalog.pg_database d ORDER BY 1"
                 .to_string(),
             _ => {
                 if from.len() == 3 {

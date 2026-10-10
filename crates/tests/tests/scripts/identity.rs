@@ -1044,7 +1044,7 @@ fn test_set_role_wire_and_transaction_scopes() {
                 },
                 ScriptTestAssertion {
                     query: "CREATE ROLE role_forbidden",
-                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to create role", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42501", message: "permission denied to create role", detail: "Only roles with the CREATEROLE attribute may create roles.", ..E }),
                     username: "role_login",
                     password: "role_password",
                     client: "reader",

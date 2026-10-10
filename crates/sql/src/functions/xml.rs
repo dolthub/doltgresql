@@ -75,7 +75,7 @@ pub fn namespaces(value: Option<&Value>) -> Result<HashMap<String, String>> {
 
 /// query compiles the expression and namespaces of an xpath call.
 fn query(args: &[Value]) -> Result<Query> {
-    Ok(Query { expr: x::compile(text(&args[0]), code::INTERNAL_ERROR)?, namespaces: namespaces(args.get(2))? })
+    Ok(Query { expr: x::compile(text(&args[0]))?, namespaces: namespaces(args.get(2))? })
 }
 
 /// xpath evaluates an XPath expression over an xml value, returning the xml values it finds.

@@ -213,12 +213,13 @@ pub fn parse_for_xpath(text: &str) -> Result<xpath::Document> {
     }
 }
 
-/// compile compiles an XPath expression, failing with a code and message that depend on where it is used.
-pub fn compile(text: &str, error_code: &'static str) -> Result<xpath::Expr> {
+/// compile compiles an XPath expression, failing as Postgres does for one that is empty or invalid.
+pub fn compile(text: &str) -> Result<xpath::Expr> {
     if text.is_empty() {
-        return Err(PgError::new(code::DATA_EXCEPTION, "empty XPath expression"));
+        return Err(PgError::new(code::INVALID_ARGUMENT_FOR_XQUERY, "empty XPath expression"));
     }
-    xpath::compile(text).map_err(|err| with_detail(error_code, "invalid XPath expression", err.0))
+    xpath::compile(text)
+        .map_err(|err| with_detail(code::INVALID_ARGUMENT_FOR_XQUERY, "invalid XPath expression", err.0))
 }
 
 /// node_text writes a node of an XPath result as an xml value, as Postgres' xml_xmlnodetoxmltype does.
@@ -232,7 +233,7 @@ pub fn node_text(document: &xpath::Document, node: usize) -> String {
 /// evaluate evaluates a query at the root of a document, failing as Postgres does when evaluation fails.
 pub fn evaluate(query: &Query, document: &xpath::Document) -> Result<xpath::Value> {
     xpath::evaluate(&query.expr, document, 0, &query.namespaces)
-        .map_err(|err| with_detail(code::INTERNAL_ERROR, "could not create XPath object", err.0))
+        .map_err(|err| with_detail(code::INVALID_ARGUMENT_FOR_XQUERY, "could not create XPath object", err.0))
 }
 
 /// xpath evaluates an XPath expression over an xml value, returning the xml values of its result, as Postgres' xpath

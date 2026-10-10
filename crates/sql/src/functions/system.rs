@@ -779,7 +779,9 @@ fn has_privilege(ctx: &mut Ctx<'_>, args: &[Value], kind: Kind) -> Result<Value>
         wanted.push((*letter, option));
     }
     let superuser = ctx.auth()?.roles.get(&role).is_some_and(|r| r.superuser);
+    let relation = matches!(kind, Kind::Table | Kind::Column | Kind::AnyColumn | Kind::Sequence | Kind::Parameter);
     Ok(match target {
+        Target::Missing if superuser && !relation => Value::Bool(true),
         Target::Missing => Value::Null,
         Target::Everyone => Value::Bool(true),
         Target::Superusers => Value::Bool(superuser),
@@ -978,8 +980,7 @@ fn pg_trigger_depth(ctx: &mut Ctx<'_>, _: &[Value]) -> Result<Value> {
     Ok(Value::Int4(ctx.session.trigger_depth))
 }
 
-/// pg_database_size returns the bytes that a database's files take, failing for a name that no database has and
-/// returning NULL for such an OID.
+/// pg_database_size returns the bytes that a database's files take, failing for a name or OID that no database has.
 fn pg_database_size(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let names = ctx.session.database_names();
     let name = match &args[0] {
@@ -991,7 +992,12 @@ fn pg_database_size(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             let oid = oid_arg(other);
             match names.into_iter().find(|n| crate::pgcatalog::snapshot::database_oid(n) == oid) {
                 Some(name) => name,
-                None => return Ok(Value::Null),
+                None => {
+                    return Err(PgError::new(
+                        code::UNDEFINED_OBJECT,
+                        format!("database with OID {oid} does not exist"),
+                    ));
+                }
             }
         }
     };

@@ -70,6 +70,10 @@ pub const FUNCTIONS: &[Function] = &[
     f("__doltgres_foreach_slice", &[ANYARRAY, INT4], ANYARRAY, foreach_slice),
     f("generate_subscripts", &[ANYARRAY, INT4], INT4, generate_subscripts),
     f("generate_subscripts", &[ANYARRAY, INT4, BOOL], INT4, generate_subscripts),
+    f("array_reverse", &[ANYARRAY], ANYARRAY, array_reverse),
+    f("array_sort", &[ANYARRAY], ANYARRAY, array_sort),
+    f("array_sort", &[ANYARRAY, BOOL], ANYARRAY, array_sort),
+    f("array_sort", &[ANYARRAY, BOOL, BOOL], ANYARRAY, array_sort),
 ];
 
 /// arr returns an array argument.
@@ -320,6 +324,50 @@ fn array_fill(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let count = count as usize;
     let dims = lengths.into_iter().zip(lowers).collect();
     Ok(Value::Array(Box::new(Array { element, dims, values: vec![args[0].clone(); count] })))
+}
+
+/// first_dimension_items returns the items of an array's first dimension: its elements, or the subarrays of a
+/// multidimensional array, as runs of elements.
+fn first_dimension_items(a: &Array) -> Vec<Vec<Value>> {
+    let Some(&(n, _)) = a.dims.first() else { return Vec::new() };
+    let size = a.values.len() / n.max(1) as usize;
+    a.values.chunks(size.max(1)).map(<[Value]>::to_vec).collect()
+}
+
+/// array_reverse reverses the order of an array's first dimension.
+fn array_reverse(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let Some(a) = arr(&args[0]) else { return Ok(Value::Null) };
+    let values = first_dimension_items(a).into_iter().rev().flatten().collect();
+    Ok(Value::Array(Box::new(Array { values, ..a.clone() })))
+}
+
+/// array_sort sorts an array's first dimension, descending when asked, with NULL elements last unless asked
+/// otherwise, which they are by default when descending. Subarrays compare element by element, NULLs last.
+fn array_sort(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
+    let Some(a) = arr(&args[0]) else { return Ok(Value::Null) };
+    let descending = matches!(args.get(1), Some(Value::Bool(true)));
+    let nulls_first = match args.get(2) {
+        Some(Value::Bool(b)) => *b,
+        _ => descending,
+    };
+    let compare = |x: &Value, y: &Value| match (x.is_null(), y.is_null()) {
+        (true, true) => Ordering::Equal,
+        (true, false) => Ordering::Greater,
+        (false, true) => Ordering::Less,
+        (false, false) => compare_values(x, y),
+    };
+    let mut items = first_dimension_items(a);
+    items.sort_by(|x, y| match (x.as_slice(), y.as_slice()) {
+        ([x], [y]) if x.is_null() || y.is_null() => {
+            let order = compare(x, y);
+            if nulls_first { order.reverse() } else { order }
+        }
+        _ => {
+            let order = x.iter().zip(y).map(|(x, y)| compare(x, y)).find(|o| o.is_ne()).unwrap_or(Ordering::Equal);
+            if descending { order.reverse() } else { order }
+        }
+    });
+    Ok(Value::Array(Box::new(Array { values: items.into_iter().flatten().collect(), ..a.clone() })))
 }
 
 /// trim_array removes elements from the end of an array.

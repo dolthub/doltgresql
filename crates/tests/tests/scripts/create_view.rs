@@ -927,27 +927,27 @@ fn test_view_definitions() {
                     expected: Expected::Rows {
                         columns: &[Column("viewname", NAME), Column("definition", TEXT)],
                         rows: &[
-                            &[T("v1"), T(r#" SELECT a.name
+                            &[T("v1"), T(r#" SELECT name
    FROM a;"#)],
                             &[T("v10"), T(r#" SELECT 1 AS one,
     'a'::text AS text,
     now() AS now,
     CURRENT_DATE AS "current_date",
-    COALESCE(a.name, 'z'::text) AS "coalesce",
-    (a.id)::text AS id,
-    (a.n)::integer AS n
+    COALESCE(name, 'z'::text) AS "coalesce",
+    (id)::text AS id,
+    (n)::integer AS n
    FROM a;"#)],
-                            &[T("v11"), T(r#" SELECT a.id,
-    a.d
+                            &[T("v11"), T(r#" SELECT id,
+    d
    FROM a
-  WHERE ((a.d > '2020-01-01'::date) AND ((a.id >= 1) AND (a.id <= 5)) AND (a.name IS NOT NULL) AND (a.id = ANY (ARRAY[1, 2, 3])));"#)],
-                            &[T("v12"), T(r#" SELECT v.num,
-    v.word
+  WHERE ((d > '2020-01-01'::date) AND ((id >= 1) AND (id <= 5)) AND (name IS NOT NULL) AND (id = ANY (ARRAY[1, 2, 3])));"#)],
+                            &[T("v12"), T(r#" SELECT num,
+    word
    FROM ( VALUES (1,'one'::text), (2,'two'::text)) v(num, word);"#)],
-                            &[T("v13"), T(r#" SELECT EXTRACT(year FROM a.d) AS "extract",
-    SUBSTRING(a.name FROM 2 FOR 3) AS "substring",
-    TRIM(BOTH FROM a.name) AS btrim,
-    POSITION(('a'::text) IN (a.name)) AS "position"
+                            &[T("v13"), T(r#" SELECT EXTRACT(year FROM d) AS "extract",
+    SUBSTRING(name FROM 2 FOR 3) AS "substring",
+    TRIM(BOTH FROM name) AS btrim,
+    POSITION(('a'::text) IN (name)) AS "position"
    FROM a;"#)],
                             &[T("v14"), T(r#" SELECT b.id
    FROM (a
@@ -963,17 +963,17 @@ fn test_view_definitions() {
                             &[T("v16"), T(r#" SELECT a.id
    FROM (a
      JOIN b USING (id));"#)],
-                            &[T("v17"), T(r#" SELECT DISTINCT ON (b.a_id) b.a_id,
-    b.x
+                            &[T("v17"), T(r#" SELECT DISTINCT ON (a_id) a_id,
+    x
    FROM b
-  ORDER BY b.a_id, b.x DESC NULLS LAST;"#)],
-                            &[T("v2"), T(r#" SELECT a.id,
-    a.name,
-    a.d,
-    a.n
+  ORDER BY a_id, x DESC NULLS LAST;"#)],
+                            &[T("v2"), T(r#" SELECT id,
+    name,
+    d,
+    n
    FROM a
-  WHERE ((a.id > 1) AND (a.name ~~ 'x%'::text))
-  ORDER BY a.name DESC, a.id
+  WHERE ((id > 1) AND (name ~~ 'x%'::text))
+  ORDER BY name DESC, id
  OFFSET 2
  LIMIT 10;"#)],
                             &[T("v3"), T(r#" SELECT a.id,
@@ -984,11 +984,11 @@ fn test_view_definitions() {
    FROM ((a
      JOIN b ON ((a.id = b.a_id)))
      LEFT JOIN b b2 ON ((b2.id = b.id)));"#)],
-                            &[T("v4"), T(r#" SELECT b.a_id,
+                            &[T("v4"), T(r#" SELECT a_id,
     count(*) AS count,
-    sum(b.id) AS total
+    sum(id) AS total
    FROM b
-  GROUP BY b.a_id
+  GROUP BY a_id
  HAVING (count(*) > 1);"#)],
                             &[T("v5"), T(r#"(
          SELECT a.id
@@ -998,16 +998,16 @@ fn test_view_definitions() {
            FROM b
 ) UNION ALL
  SELECT 3 AS id;"#)],
-                            &[T("v6"), T(r#" SELECT a.id
+                            &[T("v6"), T(r#" SELECT id
    FROM a
   WHERE ((EXISTS ( SELECT 1
            FROM b
-          WHERE (b.a_id = a.id))) AND (a.id IN ( SELECT b.a_id
-           FROM b)) AND (a.name = ( SELECT max((b.x)::text) AS max
+          WHERE (b.a_id = a.id))) AND (id IN ( SELECT b.a_id
+           FROM b)) AND (name = ( SELECT max((b.x)::text) AS max
            FROM b)));"#)],
-                            &[T("v7"), T(r#" SELECT DISTINCT a.id AS c1,
+                            &[T("v7"), T(r#" SELECT DISTINCT id AS c1,
         CASE
-            WHEN (a.id > 1) THEN 'big'::text
+            WHEN (id > 1) THEN 'big'::text
             ELSE 'small'::text
         END AS c2
    FROM a;"#)],
@@ -1041,13 +1041,13 @@ fn test_view_definitions() {
     count(*) OVER () AS count
    FROM a
      JOIN b ON a.id = b.a_id
-     LEFT JOIN b b2 ON b2.id = b.id;"#), T(r#" SELECT a.id
+     LEFT JOIN b b2 ON b2.id = b.id;"#), T(r#" SELECT id
    FROM a
   WHERE (EXISTS ( SELECT 1
            FROM b
-          WHERE b.a_id = a.id)) AND (a.id IN ( SELECT b.a_id
-           FROM b)) AND a.name = (( SELECT max(b.x::text) AS max
-           FROM b));"#), T(r#" SELECT a.name
+          WHERE b.a_id = a.id)) AND (id IN ( SELECT b.a_id
+           FROM b)) AND name = (( SELECT max(b.x::text) AS max
+           FROM b));"#), T(r#" SELECT name
    FROM a;"#)],
                         ],
                         tag: "SELECT 1",

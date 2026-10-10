@@ -1040,9 +1040,10 @@ impl<'b, 'a> Planner<'b, 'a> {
                 match table {
                     Some(table) if err.code == code::UNDEFINED_TABLE && left.columns.iter().any(|c| c.table == table) => PgError {
                         message: format!("invalid reference to FROM-clause entry for table \"{table}\""),
-                        hint: Some(format!(
+                        detail: Some(format!(
                             "There is an entry for table \"{table}\", but it cannot be referenced from this part of the query."
                         )),
+                        hint: Some("To reference that table, you must mark this subquery with LATERAL.".into()),
                         ..err
                     },
                     _ => err,
@@ -1485,17 +1486,8 @@ impl<'b, 'a> Planner<'b, 'a> {
         let Some(NodeEnum::SelectStmt(select)) = subselect.subquery.as_deref().and_then(|n| n.node.as_ref()) else {
             return Err(PgError::unsupported("this subquery"));
         };
-        let Some(alias) = subselect.alias.as_ref() else {
-            let (what, example) = match select.values_lists.is_empty() {
-                true => ("subquery", "SELECT"),
-                false => ("VALUES", "VALUES"),
-            };
-            return Err(PgError {
-                hint: Some(format!("For example, FROM ({example} ...) [AS] foo.")),
-                position: opening_paren(&self.ctx.session.source, first_location(select)).and_then(position),
-                ..PgError::new(code::SYNTAX_ERROR, format!("{what} in FROM must have an alias"))
-            });
-        };
+        let unnamed = pg_query::protobuf::Alias::default();
+        let alias = subselect.alias.as_ref().unwrap_or(&unnamed);
         let mut planner = Planner { ctx: self.ctx, outer: self.outer.clone() };
         let query = match crate::optimizer::enabled() && can_defer(select) {
             true => planner.plan_query_body(select, true)?,
@@ -2362,33 +2354,6 @@ pub(crate) fn is_simple_subquery(select: &SelectStmt) -> bool {
         && select.limit_offset.is_none()
         && select.locking_clause.is_empty()
         && !select.target_list.iter().any(|t| has_aggregate(t) || crate::window::has_window(t))
-}
-
-/// first_location returns the location of a SELECT's first value or target, or -1 without one.
-fn first_location(select: &SelectStmt) -> i32 {
-    let first = match select.values_lists.first().and_then(|l| l.node.as_ref()) {
-        Some(NodeEnum::List(list)) => list.items.first().map(crate::expr::arg_location),
-        _ => select.target_list.first().and_then(|t| match t.node.as_ref() {
-            Some(NodeEnum::ResTarget(target)) => Some(target.location),
-            _ => None,
-        }),
-    };
-    first.unwrap_or(-1)
-}
-
-/// opening_paren returns the location of the parenthesis that opens a subquery whose first value or target is at a
-/// location, the leftmost one before it with only keywords, spaces, and parentheses between.
-fn opening_paren(source: &str, location: i32) -> Option<i32> {
-    let end = usize::try_from(location).ok().filter(|&l| l <= source.len())?;
-    let mut found = None;
-    for (i, c) in source[..end].char_indices().rev() {
-        match c {
-            '(' => found = Some(i as i32),
-            c if c.is_alphabetic() || c.is_whitespace() => {}
-            _ => break,
-        }
-    }
-    found
 }
 
 /// unmark_input turns input column references back into column references.

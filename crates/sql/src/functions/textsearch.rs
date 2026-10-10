@@ -1911,16 +1911,16 @@ fn headline_options(text: Option<&str>) -> Result<HeadlineOptions> {
     if !options.highlight_all {
         let invalid = |message: &str| Err(PgError::new(code::INVALID_PARAMETER_VALUE, message.to_string()));
         if options.min_words >= options.max_words {
-            return invalid("MinWords should be less than MaxWords");
+            return invalid("MinWords must be less than MaxWords");
         }
         if options.min_words <= 0 {
-            return invalid("MinWords should be positive");
+            return invalid("MinWords must be positive");
         }
         if options.short_word < 0 {
-            return invalid("ShortWord should be >= 0");
+            return invalid("ShortWord must be >= 0");
         }
         if options.max_fragments < 0 {
-            return invalid("MaxFragments should be >= 0");
+            return invalid("MaxFragments must be >= 0");
         }
     }
     Ok(options)

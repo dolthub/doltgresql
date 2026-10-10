@@ -712,10 +712,11 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
                     expected: Expected::Rows {
                         columns: &[Column("conname", NAME), Column("array", INT2_ARRAY)],
                         rows: &[
+                            &[T("bug16_child_id_not_null"), T("{1}")],
                             &[T("bug16_child_parent_id_fkey"), T("{2}")],
                             &[T("bug16_child_pkey"), T("{1}")],
                         ],
-                        tag: "SELECT 2",
+                        tag: "SELECT 3",
                     },
                     ..A
                 },
@@ -993,7 +994,7 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
                     expected: Expected::Rows {
                         columns: &[Column("check_clause", VARCHAR)],
                         rows: &[
-                            &[T("(regexp_like(y, '^[a-z]+$'::text))")],
+                            &[T("regexp_like(y, '^[a-z]+$'::text)")],
                         ],
                         tag: "SELECT 1",
                     },

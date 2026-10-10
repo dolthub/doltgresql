@@ -2103,7 +2103,7 @@ fn hidden_target(err: PgError, table: &TableDef, name: &str) -> PgError {
     if err.code == code::UNDEFINED_TABLE && err.message == format!("missing FROM-clause entry for table \"{name}\"") {
         return PgError {
             message: format!("invalid reference to FROM-clause entry for table \"{name}\""),
-            hint: Some(format!(
+            detail: Some(format!(
                 "There is an entry for table \"{name}\", but it cannot be referenced from this part of the query."
             )),
             ..err
@@ -2113,7 +2113,7 @@ fn hidden_target(err: PgError, table: &TableDef, name: &str) -> PgError {
     match column {
         Some(column) if err.code == code::UNDEFINED_COLUMN && table.columns.iter().any(|c| c.name == column) => {
             PgError {
-                hint: Some(format!(
+                detail: Some(format!(
                     "There is a column named \"{column}\" in table \"{name}\", but it cannot be referenced from this part \
                  of the query."
                 )),

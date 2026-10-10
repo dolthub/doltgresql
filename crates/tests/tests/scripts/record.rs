@@ -45,7 +45,7 @@ fn test_records() {
                 },
                 ScriptTestAssertion {
                     query: "CREATE DOMAIN my_domain AS record;",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#""record" is not a valid base type for a domain"#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#""record" is not a valid base type for a domain"#, position: 28, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {

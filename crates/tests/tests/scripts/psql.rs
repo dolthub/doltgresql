@@ -230,7 +230,7 @@ stxnamespace::pg_catalog.regnamespace::pg_catalog.text AS nsp,
           stxstattarget FROM pg_catalog.pg_statistic_ext 
                         WHERE stxrelid = '4131846889' ORDER BY nsp, stxname;"#,
                     expected: Expected::Rows {
-                        columns: &[Column("oid", OID), Column("stxrelid", REGCLASS), Column("nsp", TEXT), Column("stxname", NAME), Column("columns", TEXT), Column("ndist_enabled", BOOL), Column("deps_enabled", BOOL), Column("mcv_enabled", BOOL), Column("stxstattarget", INT4)],
+                        columns: &[Column("oid", OID), Column("stxrelid", REGCLASS), Column("nsp", TEXT), Column("stxname", NAME), Column("columns", TEXT), Column("ndist_enabled", BOOL), Column("deps_enabled", BOOL), Column("mcv_enabled", BOOL), Column("stxstattarget", INT2)],
                         rows: &[],
                         tag: "SELECT 0",
                     },

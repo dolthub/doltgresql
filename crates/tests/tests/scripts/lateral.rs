@@ -235,7 +235,7 @@ fn test_implicit_lateral_join() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT * FROM t1, (SELECT t1.id) s;",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"invalid reference to FROM-clause entry for table "t1""#, hint: r#"There is an entry for table "t1", but it cannot be referenced from this part of the query."#, position: 27, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"invalid reference to FROM-clause entry for table "t1""#, detail: r#"There is an entry for table "t1", but it cannot be referenced from this part of the query."#, hint: "To reference that table, you must mark this subquery with LATERAL.", position: 27, ..E }),
                     ..A
                 },
             ],
@@ -405,7 +405,7 @@ fn test_lateral_rules() {
                 },
                 ScriptTestAssertion {
                     query: "SELECT lt.id FROM lt, (SELECT lt.n) s;",
-                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"invalid reference to FROM-clause entry for table "lt""#, hint: r#"There is an entry for table "lt", but it cannot be referenced from this part of the query."#, position: 31, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42P01", message: r#"invalid reference to FROM-clause entry for table "lt""#, detail: r#"There is an entry for table "lt", but it cannot be referenced from this part of the query."#, hint: "To reference that table, you must mark this subquery with LATERAL.", position: 31, ..E }),
                     flow: Flow::Query,
                     ..A
                 },

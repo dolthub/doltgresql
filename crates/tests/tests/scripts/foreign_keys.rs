@@ -216,22 +216,22 @@ fn test_foreign_keys() {
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint fi2v foreign key (i2) references parent(v);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fi2v" cannot be implemented"#, detail: r#"Key columns "i2" and "v" are of incompatible types: smallint and character varying."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fi2v" cannot be implemented"#, detail: r#"Key columns "i2" of the referencing table and "v" of the referenced table are of incompatible types: smallint and character varying."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint fi2vl foreign key (i2) references parent(vl);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fi2vl" cannot be implemented"#, detail: r#"Key columns "i2" and "vl" are of incompatible types: smallint and character varying."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fi2vl" cannot be implemented"#, detail: r#"Key columns "i2" of the referencing table and "vl" of the referenced table are of incompatible types: smallint and character varying."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint fi2t foreign key (i2) references parent(t);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fi2t" cannot be implemented"#, detail: r#"Key columns "i2" and "t" are of incompatible types: smallint and text."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fi2t" cannot be implemented"#, detail: r#"Key columns "i2" of the referencing table and "t" of the referenced table are of incompatible types: smallint and text."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint fi2ts foreign key (i2) references parent(ts);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fi2ts" cannot be implemented"#, detail: r#"Key columns "i2" and "ts" are of incompatible types: smallint and timestamp without time zone."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fi2ts" cannot be implemented"#, detail: r#"Key columns "i2" of the referencing table and "ts" of the referenced table are of incompatible types: smallint and timestamp without time zone."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -271,22 +271,22 @@ fn test_foreign_keys() {
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint fi8t foreign key (i8) references parent(t);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fi8t" cannot be implemented"#, detail: r#"Key columns "i8" and "t" are of incompatible types: bigint and text."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fi8t" cannot be implemented"#, detail: r#"Key columns "i8" of the referencing table and "t" of the referenced table are of incompatible types: bigint and text."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint ffi2 foreign key (f) references parent(i2);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ffi2" cannot be implemented"#, detail: r#"Key columns "f" and "i2" are of incompatible types: double precision and smallint."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ffi2" cannot be implemented"#, detail: r#"Key columns "f" of the referencing table and "i2" of the referenced table are of incompatible types: double precision and smallint."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint ffi4 foreign key (f) references parent(i4);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ffi4" cannot be implemented"#, detail: r#"Key columns "f" and "i4" are of incompatible types: double precision and integer."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ffi4" cannot be implemented"#, detail: r#"Key columns "f" of the referencing table and "i4" of the referenced table are of incompatible types: double precision and integer."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint ffi8 foreign key (f) references parent(i8);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ffi8" cannot be implemented"#, detail: r#"Key columns "f" and "i8" are of incompatible types: double precision and bigint."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ffi8" cannot be implemented"#, detail: r#"Key columns "f" of the referencing table and "i8" of the referenced table are of incompatible types: double precision and bigint."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -301,12 +301,12 @@ fn test_foreign_keys() {
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint fft foreign key (f) references parent(t);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fft" cannot be implemented"#, detail: r#"Key columns "f" and "t" are of incompatible types: double precision and text."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fft" cannot be implemented"#, detail: r#"Key columns "f" of the referencing table and "t" of the referenced table are of incompatible types: double precision and text."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint ffv foreign key (f) references parent(v);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ffv" cannot be implemented"#, detail: r#"Key columns "f" and "v" are of incompatible types: double precision and character varying."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ffv" cannot be implemented"#, detail: r#"Key columns "f" of the referencing table and "v" of the referenced table are of incompatible types: double precision and character varying."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -321,17 +321,17 @@ fn test_foreign_keys() {
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint fvi8 foreign key (v) references parent(i8);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fvi8" cannot be implemented"#, detail: r#"Key columns "v" and "i8" are of incompatible types: character varying and bigint."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fvi8" cannot be implemented"#, detail: r#"Key columns "v" of the referencing table and "i8" of the referenced table are of incompatible types: character varying and bigint."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint fvf foreign key (v) references parent(f);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fvf" cannot be implemented"#, detail: r#"Key columns "v" and "f" are of incompatible types: character varying and double precision."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fvf" cannot be implemented"#, detail: r#"Key columns "v" of the referencing table and "f" of the referenced table are of incompatible types: character varying and double precision."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint fvts foreign key (v) references parent(ts);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fvts" cannot be implemented"#, detail: r#"Key columns "v" and "ts" are of incompatible types: character varying and timestamp without time zone."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fvts" cannot be implemented"#, detail: r#"Key columns "v" of the referencing table and "ts" of the referenced table are of incompatible types: character varying and timestamp without time zone."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -376,7 +376,7 @@ fn test_foreign_keys() {
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint fti8 foreign key (t) references parent(i8);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fti8" cannot be implemented"#, detail: r#"Key columns "t" and "i8" are of incompatible types: text and bigint."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "fti8" cannot be implemented"#, detail: r#"Key columns "t" of the referencing table and "i8" of the referenced table are of incompatible types: text and bigint."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -386,12 +386,12 @@ fn test_foreign_keys() {
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint ftst foreign key (ts) references parent(t);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ftst" cannot be implemented"#, detail: r#"Key columns "ts" and "t" are of incompatible types: timestamp without time zone and text."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ftst" cannot be implemented"#, detail: r#"Key columns "ts" of the referencing table and "t" of the referenced table are of incompatible types: timestamp without time zone and text."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "alter table child add constraint ftsi8 foreign key (ts) references parent(i8);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ftsi8" cannot be implemented"#, detail: r#"Key columns "ts" and "i8" are of incompatible types: timestamp without time zone and bigint."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "ftsi8" cannot be implemented"#, detail: r#"Key columns "ts" of the referencing table and "i8" of the referenced table are of incompatible types: timestamp without time zone and bigint."#, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2967,7 +2967,7 @@ fn test_foreign_key_rules() {
                 },
                 ScriptTestAssertion {
                     query: "CREATE TABLE d (x TEXT REFERENCES p);",
-                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "d_x_fkey" cannot be implemented"#, detail: r#"Key columns "x" and "id" are of incompatible types: text and integer."#, ..E }),
+                    expected: Expected::Error(Diagnostic { code: "42804", message: r#"foreign key constraint "d_x_fkey" cannot be implemented"#, detail: r#"Key columns "x" of the referencing table and "id" of the referenced table are of incompatible types: text and integer."#, ..E }),
                     flow: Flow::Query,
                     ..A
                 },
@@ -3195,7 +3195,7 @@ drop cascades to constraint e_pid_fkey on table e"#, ..N }],
                 },
                 ScriptTestAssertion {
                     query: "DELETE FROM r;",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"update or delete on table "r" violates foreign key constraint "rc_rid_fkey" on table "rc""#, detail: r#"Key (id)=(1) is still referenced from table "rc"."#, schema: "public", table: "rc", constraint: "rc_rid_fkey", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23001", message: r#"update or delete on table "r" violates RESTRICT setting of foreign key constraint "rc_rid_fkey" on table "rc""#, detail: r#"Key (id)=(1) is referenced from table "rc"."#, schema: "public", table: "rc", constraint: "rc_rid_fkey", ..E }),
                     flow: Flow::Query,
                     ..A
                 },
@@ -3211,7 +3211,7 @@ drop cascades to constraint e_pid_fkey on table e"#, ..N }],
                 },
                 ScriptTestAssertion {
                     query: "DELETE FROM r2;",
-                    expected: Expected::Error(Diagnostic { code: "23503", message: r#"update or delete on table "r2" violates foreign key constraint "rc_rid_fkey" on table "rc""#, detail: r#"Key (id)=(1) is still referenced from table "rc"."#, schema: "public", table: "rc", constraint: "rc_rid_fkey", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "23001", message: r#"update or delete on table "r2" violates RESTRICT setting of foreign key constraint "rc_rid_fkey" on table "rc""#, detail: r#"Key (id)=(1) is referenced from table "rc"."#, schema: "public", table: "rc", constraint: "rc_rid_fkey", ..E }),
                     flow: Flow::Query,
                     ..A
                 },

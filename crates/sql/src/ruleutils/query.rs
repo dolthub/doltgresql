@@ -116,6 +116,17 @@ enum From {
     Join(Box<Join>),
 }
 
+impl From {
+    /// entries returns how many range table entries Postgres makes for a FROM item: one for each relation,
+    /// subquery, or function, and one for each join besides its inputs.
+    fn entries(&self) -> usize {
+        match self {
+            From::Join(join) => 1 + join.left.entries() + join.right.entries(),
+            _ => 1,
+        }
+    }
+}
+
 /// Join is a join of two FROM items.
 #[derive(Clone, Debug)]
 struct Join {
@@ -312,7 +323,8 @@ impl Analyzer<'_, '_> {
         let query = self.query(select)?;
         let names = query.columns(names).into_iter().map(|(n, _)| n).collect::<Vec<_>>();
         let mut out = String::new();
-        Printer { pretty, indents: true, level: 0, wrap }.query(&query, &mut out, Some(&names), true);
+        let mut printer = Printer { pretty, indents: true, level: 0, wrap, varprefix: true, nested: false };
+        printer.query(&query, &mut out, Some(&names), true);
         Ok(out)
     }
 
@@ -783,7 +795,13 @@ impl Printer {
     /// query prints a query as Postgres' get_query_def does, naming its result columns `names` when they are given,
     /// and showing the name of every result column when `visible` is set.
     pub(super) fn query(&mut self, query: &TQuery, out: &mut String, names: Option<&[String]>, visible: bool) {
-        let saved = self.level;
+        let saved = (self.level, self.varprefix, self.nested);
+        let entries = match &query.body {
+            Body::Select(select) => select.from.iter().map(From::entries).sum(),
+            _ => 0,
+        };
+        self.varprefix = self.nested || entries != 1;
+        self.nested = true;
         self.with_clause(query, out);
         match &query.body {
             Body::Select(select) => self.select(select, out, names, visible),
@@ -811,7 +829,7 @@ impl Printer {
             let text = limit.as_ref().map_or_else(|| "ALL".to_string(), |l| self.print(l, None, false));
             out.push_str(&text);
         }
-        self.level = saved;
+        (self.level, self.varprefix, self.nested) = saved;
     }
 
     /// with_clause prints a query's WITH clause, as Postgres' get_with_clause does.

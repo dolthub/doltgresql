@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The rows that a fresh Postgres 15 database has in its system catalogs, which describe the built-in objects.
+//! The rows that a fresh Postgres 18 database has in its system catalogs, which describe the built-in objects.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -20,7 +20,7 @@ use std::sync::{Mutex, OnceLock};
 use crate::pgcatalog::CatalogTable;
 use crate::types::{Reg, Value};
 
-/// BUILTIN_ROWS holds every system catalog relation's rows in a fresh Postgres 15 database, compressed with zstd: a
+/// BUILTIN_ROWS holds every system catalog relation's rows in a fresh Postgres 18 database, compressed with zstd: a
 /// `== schema.name` line before each relation's rows, which are in COPY's text format, with reg values written as
 /// `<oid> <name>`.
 const BUILTIN_ROWS: &[u8] = include_bytes!("builtin_rows.zst");

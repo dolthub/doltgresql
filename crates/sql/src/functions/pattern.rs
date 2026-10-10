@@ -865,7 +865,10 @@ fn grow(out: &str, needed: usize) -> Result<()> {
                 "Cannot enlarge string buffer containing {} bytes by {needed} more bytes.",
                 out.len()
             )),
-            ..PgError::new(code::PROGRAM_LIMIT_EXCEEDED, "out of memory")
+            ..PgError::new(
+                code::PROGRAM_LIMIT_EXCEEDED,
+                "string buffer exceeds maximum allowed length (1073741823 bytes)",
+            )
         });
     }
     Ok(())

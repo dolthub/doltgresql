@@ -98,6 +98,14 @@ pub fn namespace_oid(schema: &str) -> u32 {
     oids::oid(&id::new(id::SECTION_NAMESPACE, &[schema]))
 }
 
+/// not_null_constraints returns the name and column number of the NOT NULL constraint of each column of a table that
+/// cannot be NULL, named as Postgres names them when it creates them.
+pub fn not_null_constraints(table: &TableDef) -> Vec<(String, i16)> {
+    //TODO: Postgres keeps these names when the table or column is renamed, which needs them stored with the table
+    let columns = table.columns.iter().enumerate().filter(|(_, c)| !c.nullable);
+    columns.map(|(i, c)| (crate::ddl::make_object_name(&table.name, &c.name, "not_null"), i as i16 + 1)).collect()
+}
+
 /// constraint_oid returns the OID of a constraint in its ID section.
 pub fn constraint_oid(section: u8, schema: &str, table: &str, name: &str) -> u32 {
     oids::oid(&id::new(section, &[schema, table, name]))
