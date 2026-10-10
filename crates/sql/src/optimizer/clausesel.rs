@@ -76,8 +76,8 @@ pub fn list_selectivity(
             continue;
         };
         let single = match rinfo {
-            Some(rinfo) => rinfo.clause_relids.num_members() == 1,
-            None => pull_varnos(root, clause).num_members() == 1,
+            Some(rinfo) => rinfo.clause_relids.difference(&root.outer_join_rels).num_members() == 1,
+            None => pull_varnos(root, clause).difference(&root.outer_join_rels).num_members() == 1,
         };
         let varonleft = match (is_pseudo_constant(root, r), is_pseudo_constant(root, l)) {
             (true, _) => true,
