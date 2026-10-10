@@ -1806,7 +1806,7 @@ impl Plan {
                 dropped,
                 pending: Vec::new().into_iter(),
             }),
-            Plan::Once(_) => Box::new(SharedRows { rows: self.shared_rows(ctx)?, next: 0 }),
+            Plan::Once(_) | Plan::CteScan(_) => Box::new(SharedRows { rows: self.shared_rows(ctx)?, next: 0 }),
             _ => collected(self.run_leaf(ctx)?),
         })
     }

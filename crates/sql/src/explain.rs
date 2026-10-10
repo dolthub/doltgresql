@@ -422,6 +422,7 @@ impl Printer {
                 ("Recursive Union".into(), vec![], vec![Child::Plan(anchor), Child::Plan(step)])
             }
             Plan::WorkTable(..) => ("WorkTable Scan".into(), vec![], vec![]),
+            Plan::CteScan(def) => (format!("CTE Scan on {}", def.name), vec![], vec![]),
             Plan::ProjectSet { input, .. } => ("ProjectSet".into(), vec![], vec![Child::Plan(input)]),
             Plan::Window { input, .. } => ("WindowAgg".into(), vec![], vec![Child::Plan(input)]),
         };

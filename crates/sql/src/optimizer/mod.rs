@@ -482,6 +482,7 @@ pub(super) fn build_jointree(
             JoinTreeNode::From(Box::new(FromExpr { fromlist: vec![node], quals }))
         }
         Plan::OneRow => push_relation(glob, rtable, output, RteKind::Result, Vec::new()),
+        Plan::CteScan(def) => subselect::ss_process_cte(glob, ctx, def, rtable, output),
         Plan::Scan(table, None) => {
             let coltypes = table.columns.iter().map(|c| Some(c.ty.oid)).collect();
             let shared = Rc::new((*table).clone());
@@ -496,7 +497,7 @@ pub(super) fn build_jointree(
 
 /// push_relation adds a relation to a range table, adding a Var of each of its columns to `output`, and returns its
 /// reference.
-fn push_relation(
+pub(super) fn push_relation(
     glob: &mut PlannerGlobal,
     rtable: &mut Vec<RangeTblEntry>,
     output: &mut Vec<Expr>,

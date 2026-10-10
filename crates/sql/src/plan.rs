@@ -18,8 +18,8 @@ use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashSet};
 
 use pg_query::protobuf::{
-    CoercionForm, GroupingSetKind, JoinExpr, JoinType, RangeFunction, RangeSubselect, SelectStmt, SetOperation,
-    SortByDir, SortByNulls,
+    CoercionForm, CteMaterialize, GroupingSetKind, JoinExpr, JoinType, RangeFunction, RangeSubselect, SelectStmt,
+    SetOperation, SortByDir, SortByNulls,
 };
 use pg_query::{Node, NodeEnum};
 
@@ -189,6 +189,8 @@ pub enum Plan {
     },
     /// The rows of the previous round of a recursive WITH query, by the query's ID, and their width.
     WorkTable(usize, usize),
+    /// The rows of a WITH query that every reference to it reads, computed once for the statement.
+    CteScan(std::sync::Arc<CteDef>),
     /// For each input row, the rows of its set-returning calls side by side, padded with NULLs, after its values,
     /// leaving NULL the input columns that nothing above reads.
     ProjectSet {
@@ -260,6 +262,34 @@ pub struct Cte {
     pub types: Vec<ColumnType>,
     pub plan: Option<Plan>,
     pub work_table: usize,
+    /// The definition that the ported optimizer's references to the query share, when it is on and the query reads
+    /// no enclosing row.
+    pub def: Option<std::sync::Arc<CteDef>>,
+}
+
+/// CteDef is a WITH query as the ported optimizer plans it, as Postgres' CommonTableExpr is: the planner inlines it
+/// into the query that reads it or plans it once for every reference to read, as SS_process_ctes decides.
+#[derive(Debug)]
+pub struct CteDef {
+    pub name: String,
+    /// The query's plan, which the planner plans unless `planned` says that its binding did.
+    pub plan: Plan,
+    pub planned: bool,
+    pub coltypes: Vec<Option<u32>>,
+    /// The MATERIALIZED option: `Some(true)` for MATERIALIZED and `Some(false)` for NOT MATERIALIZED.
+    pub materialized: Option<bool>,
+    pub recursive: bool,
+    /// How many references to the query its statement makes, as Postgres' cterefcount counts them.
+    pub refcount: std::sync::atomic::AtomicUsize,
+    /// The plan that the references read and its estimated rows, once the planner planned it.
+    pub shared: std::sync::OnceLock<(Plan, f64)>,
+}
+
+impl PartialEq for CteDef {
+    /// eq reports whether two definitions are the same one.
+    fn eq(&self, other: &CteDef) -> bool {
+        std::ptr::eq(self, other)
+    }
 }
 
 /// Query is a planned query: its plan and the columns of its rows.
@@ -501,6 +531,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             if cte.search_clause.is_some() || cte.cycle_clause.is_some() {
                 self.check_search_and_cycle(cte, query, recursive)?;
             }
+            let unplanned = crate::optimizer::enabled() && !recursive && is_plain_select(query);
             let planned = if recursive {
                 if cte.search_clause.is_some() || cte.cycle_clause.is_some() {
                     let rewritten = rewrite_search_and_cycle(cte, query, &mut aliases)?;
@@ -509,17 +540,40 @@ impl<'b, 'a> Planner<'b, 'a> {
                     self.plan_recursive(cte, query, &aliases)?
                 }
             } else {
-                let mut planned = self.plan_query(query)?;
+                let mut planned = match unplanned {
+                    true => self.plan_select(query, true)?,
+                    false => self.plan_query(query)?,
+                };
                 rename_columns(&cte.ctename, &mut planned.columns, &aliases, cte.location)?;
                 planned
             };
             let work_table = self.ctx.work_tables.len() + self.ctx.ctes.len();
+            let shareable = crate::optimizer::enabled()
+                && self.ctx.ctes.iter().all(|c| c.plan.is_some())
+                && crate::joins::plan_lowest_level(&planned.plan).is_some_and(|level| level >= 0);
+            let def = shareable.then(|| {
+                std::sync::Arc::new(CteDef {
+                    name: cte.ctename.clone(),
+                    plan: planned.plan.clone(),
+                    planned: !unplanned,
+                    coltypes: planned.types.iter().map(|t| Some(t.oid)).collect(),
+                    materialized: match CteMaterialize::try_from(cte.ctematerialized) {
+                        Ok(CteMaterialize::Always) => Some(true),
+                        Ok(CteMaterialize::Never) => Some(false),
+                        _ => None,
+                    },
+                    recursive,
+                    refcount: std::sync::atomic::AtomicUsize::new(0),
+                    shared: std::sync::OnceLock::new(),
+                })
+            });
             self.ctx.ctes.push(Cte {
                 name: cte.ctename.clone(),
                 columns: planned.columns,
                 types: planned.types,
                 plan: Some(planned.plan),
                 work_table,
+                def,
             });
         }
         Ok(())
@@ -640,6 +694,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             types: anchor.types.clone(),
             plan: None,
             work_table,
+            def: None,
         });
         let step = self.plan_query(right);
         self.ctx.ctes.pop();
@@ -1269,7 +1324,13 @@ impl<'b, 'a> Planner<'b, 'a> {
                 origin: c.origin,
             })
             .collect();
-        let plan = cte.plan.unwrap_or(Plan::WorkTable(cte.work_table, cte.columns.len()));
+        let plan = match (&cte.def, cte.plan) {
+            (Some(def), _) => {
+                def.refcount.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                Plan::CteScan(def.clone())
+            }
+            (None, plan) => plan.unwrap_or(Plan::WorkTable(cte.work_table, cte.columns.len())),
+        };
         (plan, Scope { columns })
     }
 
@@ -2897,7 +2958,12 @@ impl Plan {
         };
         let mut inputs: Vec<(&mut Plan, usize)> = Vec::new();
         match self {
-            Plan::OneRow | Plan::Scan(..) | Plan::Catalog(_) | Plan::CatalogIndexScan(_) | Plan::WorkTable(..) => {}
+            Plan::OneRow
+            | Plan::Scan(..)
+            | Plan::Catalog(_)
+            | Plan::CatalogIndexScan(_)
+            | Plan::WorkTable(..)
+            | Plan::CteScan(_) => {}
             Plan::System(_) | Plan::QueryDiff(..) | Plan::XmlTable(_) | Plan::JsonTable(_) => return false,
             Plan::IndexScan(scan) => {
                 if let Some(n) = &mut scan.nearest {
@@ -2994,6 +3060,7 @@ impl Plan {
             Plan::BitmapHeapScan(scan) => scan.table.columns.len(),
             Plan::Recursive { anchor, .. } => anchor.width(),
             Plan::WorkTable(_, width) => *width,
+            Plan::CteScan(def) => def.coltypes.len(),
             Plan::Window { input, calls } => input.width() + calls.len(),
             Plan::ProjectSet { input, functions, .. } => input.width() + functions.len(),
             Plan::System(system) => system.columns().len(),
@@ -3043,16 +3110,20 @@ impl Plan {
         Ok(found?.is_some())
     }
 
-    /// shared_rows runs the plan, reusing the rows of a `Once` plan that the running plan has already evaluated.
+    /// shared_rows runs the plan, reusing the rows of a `Once` plan or a WITH query's scan that the running plan has
+    /// already evaluated.
     pub(crate) fn shared_rows(&self, ctx: &mut Ctx<'_>) -> Result<std::sync::Arc<SubqueryRows>> {
-        let key = self as *const Plan as usize;
-        if let Plan::Once(_) = self
-            && let Some(rows) = ctx.once.as_ref().and_then(|once| once.get(&key))
-        {
+        let key = match self {
+            Plan::CteScan(def) => std::sync::Arc::as_ptr(def) as usize,
+            other => other as *const Plan as usize,
+        };
+        let shared = matches!(self, Plan::Once(_) | Plan::CteScan(_));
+        if shared && let Some(rows) = ctx.once.as_ref().and_then(|once| once.get(&key)) {
             return Ok(rows.clone());
         }
         let rows = match self {
             Plan::Once(input) => input.run(ctx)?,
+            Plan::CteScan(def) => def.shared.get().map_or(&def.plan, |(plan, _)| plan).run(ctx)?,
             plan => plan.run(ctx)?,
         };
         let rows = std::sync::Arc::new(SubqueryRows {
@@ -3060,9 +3131,7 @@ impl Plan {
             keys: std::sync::OnceLock::new(),
             index: std::sync::OnceLock::new(),
         });
-        if let Plan::Once(_) = self
-            && let Some(once) = ctx.once.as_mut()
-        {
+        if shared && let Some(once) = ctx.once.as_mut() {
             once.insert(key, rows.clone());
         }
         Ok(rows)

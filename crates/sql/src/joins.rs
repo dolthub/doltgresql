@@ -65,6 +65,10 @@ pub(crate) fn estimate(ctx: &mut Ctx<'_>, plan: &Plan) -> f64 {
         Plan::IndexScan(scan) => scan.estimate(ctx).unwrap_or(UNKNOWN_ROWS),
         Plan::CatalogIndexScan(scan) => catalog_scan_rows(scan, estimate(ctx, &Plan::Catalog(scan.table))),
         Plan::Values(rows) => rows.len() as f64,
+        Plan::CteScan(def) => match def.shared.get() {
+            Some((_, rows)) => *rows,
+            None => estimate(ctx, &def.plan),
+        },
         Plan::Catalog(table) => match table.name {
             "pg_namespace" | "pg_database" | "pg_tablespace" | "pg_am" | "pg_authid" | "pg_roles" => SMALL_CATALOG_ROWS,
             _ => UNKNOWN_ROWS,

@@ -23,7 +23,7 @@ use std::rc::Rc;
 use super::clauses::is_volatile_node;
 use super::costsize::{Enables, HASH_MEM, TUPLE_HEADER, cost_material, cost_subplan, maxalign};
 use super::nodes::{
-    FromExpr, JoinExpr, JoinTreeNode, JoinType, Path, PlannerGlobal, Query, RangeTblEntry, TargetEntry,
+    FromExpr, JoinExpr, JoinTreeNode, JoinType, Path, PlannerGlobal, Query, RangeTblEntry, RteKind, TargetEntry,
 };
 use crate::expr::{CmpOp, Expr, SubPlan};
 use crate::plan::Plan;
@@ -240,7 +240,7 @@ fn query_reads_enclosing(query: &Query) -> bool {
     query.jointree.fromlist.iter().for_each(|node| jointree_quals(node, &mut |q| reads |= reads_enclosing(q)));
     reads
         || query.rtable.iter().any(|rte| match &rte.kind {
-            super::nodes::RteKind::Subquery(_, plan) | super::nodes::RteKind::Plan(plan) => {
+            RteKind::Subquery(_, plan) | RteKind::Plan(plan) => {
                 let mut read = BTreeSet::new();
                 !crate::indexscan::outer_reads(plan, 1, &mut read) || !read.is_empty()
             }
@@ -395,6 +395,42 @@ pub fn ss_charge_for_initplans(root: &mut super::PlannerInfo<'_, '_>, final_rel:
     }
 }
 
+/// ss_process_cte returns the join tree entry of a reference to a WITH query, as Postgres' SS_process_ctes decides
+/// for the query: the query itself in place of the reference, as inline_cte puts it, when it is NOT MATERIALIZED, or
+/// is referenced once and not MATERIALIZED, and is not recursive and runs no volatile function; and otherwise a scan
+/// of its rows, which the planner plans once for every reference to read.
+pub fn ss_process_cte(
+    glob: &mut PlannerGlobal,
+    ctx: &mut Ctx<'_>,
+    def: std::sync::Arc<crate::plan::CteDef>,
+    rtable: &mut Vec<RangeTblEntry>,
+    output: &mut Vec<Expr>,
+) -> JoinTreeNode {
+    let refcount = def.refcount.load(std::sync::atomic::Ordering::Relaxed);
+    let mut volatile_plan = false;
+    def.plan.clone().map_exprs(0, &mut |e, _| {
+        volatile_plan |= volatile(&e);
+        e
+    });
+    if def.materialized.map_or(refcount == 1, |always| !always) && !def.recursive && !volatile_plan {
+        return match def.planned {
+            true => super::push_relation(glob, rtable, output, RteKind::Plan(def.plan.clone()), def.coltypes.clone()),
+            false => super::build_jointree(glob, ctx, def.plan.clone(), rtable, output),
+        };
+    }
+    def.shared.get_or_init(|| match def.planned {
+        true => (def.plan.clone(), crate::joins::estimate(ctx, &def.plan)),
+        false => {
+            let mut glob = PlannerGlobal::default();
+            let subquery = super::query::unbind(&mut glob, ctx, def.plan.clone());
+            let (plan, path) = super::plan_subselect(ctx, &mut glob, subquery, 0.0);
+            (plan, path.rows)
+        }
+    });
+    let coltypes = def.coltypes.clone();
+    super::push_relation(glob, rtable, output, RteKind::Plan(Plan::CteScan(def)), coltypes)
+}
+
 /// query_exprs calls a function with every expression of a query's level and each of their descendants, outside
 /// subquery plans.
 pub fn query_exprs(query: &mut Query, f: &mut dyn FnMut(&Expr)) {
@@ -414,7 +450,7 @@ pub fn preprocess_query_subplans(ctx: &mut Ctx<'_>, parse: &mut Query) {
     parse.jointree.fromlist.iter_mut().for_each(|node| jointree_quals_mut(node, &mut process));
     parse.jointree.quals.iter_mut().for_each(&mut process);
     for rte in &mut parse.rtable {
-        if let super::nodes::RteKind::Plan(plan) = &mut rte.kind {
+        if let RteKind::Plan(plan) = &mut rte.kind {
             plan.map_exprs(0, &mut |e, _| preprocess_subplans(ctx, e));
         }
     }

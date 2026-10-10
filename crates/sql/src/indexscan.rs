@@ -2303,9 +2303,12 @@ pub(crate) fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) 
         }
     };
     let inputs: Vec<(&Plan, usize)> = match plan {
-        Plan::OneRow | Plan::Scan(..) | Plan::Catalog(_) | Plan::CatalogIndexScan(_) | Plan::WorkTable(..) => {
-            Vec::new()
-        }
+        Plan::OneRow
+        | Plan::Scan(..)
+        | Plan::Catalog(_)
+        | Plan::CatalogIndexScan(_)
+        | Plan::WorkTable(..)
+        | Plan::CteScan(_) => Vec::new(),
         Plan::System(_) | Plan::QueryDiff(..) | Plan::XmlTable(_) | Plan::JsonTable(_) => return false,
         Plan::IndexScan(scan) => {
             if let Some(n) = &scan.nearest {
