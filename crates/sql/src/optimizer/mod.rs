@@ -168,9 +168,19 @@ pub(crate) fn enabled() -> bool {
     *ENABLED.get_or_init(|| std::env::var_os("DOLTGRES_PG_PLANNER").is_some())
 }
 
-/// planner plans the SELECT that the binder built a plan of, as Postgres' standard_planner does: it turns the plan
-/// back into a Query and plans it.
-pub(crate) fn planner(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
+/// planner plans the SELECT that the binder built a plan of with standard_planner, and raises the error that planning
+/// found, as Postgres' function of the same name does.
+pub(crate) fn planner(ctx: &mut Ctx<'_>, plan: Plan) -> crate::error::Result<Plan> {
+    let plan = standard_planner(ctx, plan);
+    match ctx.planner_error.take() {
+        Some(e) => Err(e),
+        None => Ok(plan),
+    }
+}
+
+/// standard_planner plans the SELECT that the binder built a plan of, as Postgres' function of the same name does: it
+/// turns the plan back into a Query and plans it.
+fn standard_planner(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
     let mut glob = PlannerGlobal::default();
     let parse = query::unbind(&mut glob, ctx, plan);
     let mut root = subquery_planner(ctx, &mut glob, parse, 0.0, None);
@@ -408,7 +418,7 @@ fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
         | Plan::XmlTable(_)
         | Plan::JsonTable(_)
         | Plan::WorkTable(..)) => leaf,
-        other => planner(ctx, other),
+        other => standard_planner(ctx, other),
     }
 }
 

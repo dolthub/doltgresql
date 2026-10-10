@@ -793,7 +793,7 @@ impl<'b, 'a> Planner<'b, 'a> {
         }
         query.plan = self.limit(query.plan, select)?;
         if crate::optimizer::enabled() && !defer && select.values_lists.is_empty() {
-            let plan = crate::optimizer::planner(self.ctx, std::mem::replace(&mut query.plan, Plan::OneRow));
+            let plan = crate::optimizer::planner(self.ctx, std::mem::replace(&mut query.plan, Plan::OneRow))?;
             query.plan = crate::joins::plan_joins(self.ctx, plan);
             crate::indexscan::prune(&mut query.plan);
         }
@@ -2246,7 +2246,7 @@ impl<'b, 'a> Planner<'b, 'a> {
         }
         if !defer {
             if crate::optimizer::enabled() {
-                plan = nearest_planned(crate::optimizer::planner(self.ctx, plan));
+                plan = nearest_planned(crate::optimizer::planner(self.ctx, plan)?);
             }
             plan = crate::joins::plan_joins(self.ctx, plan);
             crate::indexscan::prune(&mut plan);

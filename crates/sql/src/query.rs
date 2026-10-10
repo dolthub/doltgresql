@@ -71,6 +71,8 @@ pub struct Ctx<'a> {
     /// Whether the subqueries of the SELECT being bound become SubPlans that the ported optimizer plans when it plans
     /// the query around them, rather than as they are bound.
     pub defer_subplans: bool,
+    /// The error that the ported optimizer found while planning, which it raises once planning ends.
+    pub planner_error: Option<PgError>,
 }
 
 /// column returns the description of a result column of the type.

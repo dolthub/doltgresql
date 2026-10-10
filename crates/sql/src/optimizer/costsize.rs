@@ -711,7 +711,7 @@ pub fn index_pages_fetched(root: &PlannerInfo<'_, '_>, tuples_fetched: f64, page
 pub fn cost_material(enables: &Enables, input: &Path) -> Costs {
     let mut run_cost = input.total_cost - input.startup_cost + 2.0 * CPU_OPERATOR_COST * input.rows;
     let nbytes = relation_byte_size(input.rows, input.width);
-    if nbytes > HASH_MEM / 2.0 {
+    if nbytes > SORT_MEM {
         run_cost += SEQ_PAGE_COST * (nbytes / BLCKSZ).ceil();
     }
     (input.disabled_nodes + disabled(enables.material), input.startup_cost, input.startup_cost + run_cost)
@@ -720,31 +720,12 @@ pub fn cost_material(enables: &Enables, input: &Path) -> Costs {
 /// SORT_MEM is the memory that a sort may take, as Postgres' default work_mem.
 const SORT_MEM: f64 = 4.0 * 1024.0 * 1024.0;
 
-/// cost_sort returns the costs of sorting a path's rows, of which a LIMIT may read only some, as
-/// Postgres' cost_sort and cost_tuplesort estimate them for an in-memory quicksort, a bounded heap sort, or an
-/// external merge sort.
+/// cost_sort returns the costs of sorting a path's rows, of which a LIMIT may read only some, as Postgres' function of
+/// the same name does.
 pub fn cost_sort(root: &PlannerInfo<'_, '_>, input: &Path, limit_tuples: f64) -> Costs {
-    let tuples = input.rows.max(2.0);
-    let comparison_cost = 2.0 * CPU_OPERATOR_COST;
-    let input_bytes = relation_byte_size(tuples, input.width);
-    let (output_tuples, output_bytes) = match limit_tuples > 0.0 && limit_tuples < tuples {
-        true => (limit_tuples, relation_byte_size(limit_tuples, input.width)),
-        false => (tuples, input_bytes),
-    };
-    let mut startup_cost = if output_bytes > SORT_MEM {
-        let npages = (input_bytes / BLCKSZ).ceil();
-        let nruns = input_bytes / SORT_MEM;
-        let mergeorder = (SORT_MEM / (BLCKSZ * 2.0 + BLCKSZ * 32.0)).floor().clamp(6.0, 500.0);
-        let log_runs = if nruns > mergeorder { (nruns.ln() / mergeorder.ln()).ceil() } else { 1.0 };
-        let npageaccesses = 2.0 * npages * log_runs;
-        comparison_cost * tuples * tuples.log2() + npageaccesses * (SEQ_PAGE_COST * 0.75 + RANDOM_PAGE_COST * 0.25)
-    } else if tuples > 2.0 * output_tuples || input_bytes > SORT_MEM {
-        comparison_cost * tuples * (2.0 * output_tuples).log2()
-    } else {
-        comparison_cost * tuples * tuples.log2()
-    };
-    startup_cost += input.total_cost;
-    (input.disabled_nodes + disabled(root.enables.sort), startup_cost, startup_cost + CPU_OPERATOR_COST * tuples)
+    let (startup_cost, run_cost) = cost_tuplesort(input.rows, input.width, 0.0, limit_tuples);
+    let startup_cost = startup_cost + input.total_cost;
+    (input.disabled_nodes + disabled(root.enables.sort), startup_cost, startup_cost + run_cost)
 }
 
 /// cost_rescan returns the startup and total costs of reading a path's rows again, as Postgres' function of the same

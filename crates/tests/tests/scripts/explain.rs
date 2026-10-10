@@ -564,3 +564,60 @@ fn test_limited_joins() {
         },
     ]);
 }
+
+#[test]
+fn test_empty_and_full_joins() {
+    run_scripts(&[
+        ScriptTest {
+            name: "joins that find no rows and FULL JOIN conditions",
+            set_up_script: &[
+                "CREATE TABLE fj_a (x INT);",
+                "CREATE TABLE fj_b (y INT);",
+                "INSERT INTO fj_a VALUES (1), (2);",
+                "INSERT INTO fj_b VALUES (1), (3);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM fj_a JOIN fj_b ON false;",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", INT4), Column("y", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM fj_a LEFT JOIN fj_b ON fj_a.x = fj_b.y WHERE false;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("0")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM fj_a FULL JOIN fj_b ON fj_a.x = fj_b.y ORDER BY 1, 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("x", INT4), Column("y", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("2"), Null],
+                            &[Null, T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM fj_a FULL JOIN fj_b ON fj_a.x < fj_b.y;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "FULL JOIN is only supported with merge-joinable or hash-joinable join conditions", ..E }),
+                    skip: Some("the default planner runs a FULL JOIN on any condition"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

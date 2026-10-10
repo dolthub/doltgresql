@@ -473,11 +473,13 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
         PathKind::MergeAppend(_) | PathKind::SetOp(_) | PathKind::RecursiveUnion(_) | PathKind::MinMaxAgg(_) => {
             return create_upper_plan(root, path);
         }
-        PathKind::Append(_) if root.rels[path.parent].reloptkind != super::nodes::RelOptKind::BaseRel => {
+        PathKind::Append(subpaths)
+            if !subpaths.is_empty() && root.rels[path.parent].reloptkind != super::nodes::RelOptKind::BaseRel =>
+        {
             return create_upper_plan(root, path);
         }
         PathKind::Append(_) => {
-            let layout: Vec<Slot> = root.rels[path.parent].reltarget.exprs.iter().map(|e| slot(root, e)).collect();
+            let layout = target_slots(root, &super::planner::path_exprs(root, path));
             let nulls =
                 Plan::Project { input: Box::new(Plan::OneRow), exprs: vec![Expr::Const(Value::Null); layout.len()] };
             (Plan::OneTimeFilter { input: Box::new(nulls), condition: Expr::Const(Value::Bool(false)) }, layout)
@@ -1059,14 +1061,16 @@ fn read_lateral_row(e: Expr, depth: usize) -> Expr {
     e
 }
 
-/// order_qual_clauses sorts clauses by the cost of evaluating them, cheapest first and otherwise in their order, as
-/// Postgres' function of the same name does.
-fn order_qual_clauses(root: &PlannerInfo<'_, '_>, mut clauses: Vec<RinfoId>) -> Vec<RinfoId> {
-    clauses.sort_by(|&a, &b| {
-        let cost = |r: RinfoId| cost_qual_eval_node(&root.rinfos[r].clause).per_tuple;
-        cost(a).total_cmp(&cost(b))
-    });
-    clauses
+/// order_qual_clauses sorts clauses by security level and then by the cost of evaluating them, cheapest first and
+/// otherwise in their order, as Postgres' function of the same name does. Clauses are never leakproof, since nothing
+/// sets a security level above 0 to need it.
+fn order_qual_clauses(root: &PlannerInfo<'_, '_>, clauses: Vec<RinfoId>) -> Vec<RinfoId> {
+    let mut items: Vec<(RinfoId, f64, usize)> = clauses
+        .into_iter()
+        .map(|r| (r, cost_qual_eval_node(&root.rinfos[r].clause).per_tuple, root.rinfos[r].security_level))
+        .collect();
+    items.sort_by(|a, b| a.2.cmp(&b.2).then(a.1.total_cmp(&b.1)));
+    items.into_iter().map(|(r, ..)| r).collect()
 }
 
 /// get_switched_clauses returns the clauses of hash clauses with each one's outer side first, as Postgres' function

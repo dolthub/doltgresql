@@ -24,6 +24,7 @@ use super::nodes::{JoinType, Path, PathKind, Relids, RinfoId, SjId, SpecialJoinI
 use super::pathnode::{add_path, set_cheapest};
 use super::relnode::{build_join_rel, min_join_parameterization};
 use super::restrictinfo::rinfo_is_pushed_down;
+use crate::error::{PgError, code};
 use crate::expr::Expr;
 use crate::types::Value;
 
@@ -342,6 +343,13 @@ fn populate_joinrel_with_paths(
             }
             add_paths_to_joinrel(root, joinrel, rel1, rel2, JoinType::Full, sjinfo, restrictlist);
             add_paths_to_joinrel(root, joinrel, rel2, rel1, JoinType::Full, sjinfo, restrictlist);
+            if root.rels[joinrel].pathlist.is_empty() {
+                root.ctx.planner_error.get_or_insert(PgError::new(
+                    code::FEATURE_NOT_SUPPORTED,
+                    "FULL JOIN is only supported with merge-joinable or hash-joinable join conditions",
+                ));
+                mark_dummy_rel(root, joinrel);
+            }
         }
         JoinType::Semi => {
             if sjinfo.min_lefthand.is_subset(&root.rels[rel1].relids)

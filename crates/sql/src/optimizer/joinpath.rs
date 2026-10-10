@@ -95,11 +95,6 @@ pub fn add_paths_to_joinrel(
     if root.enables.hashjoin || jointype == JoinType::Full {
         hash_inner_and_outer(root, joinrel, outerrel, innerrel, jointype, &extra);
     }
-    if jointype == JoinType::Full && root.rels[joinrel].pathlist.is_empty() {
-        let outer = root.rels[outerrel].cheapest_total_path.clone().expect("every relation has a path");
-        let inner = root.rels[innerrel].cheapest_total_path.clone().expect("every relation has a path");
-        try_nestloop_path(root, joinrel, outer, inner, Vec::new(), jointype, &extra);
-    }
 }
 
 /// path_param_by_rel reports whether a path needs rows of a relation's, as Postgres' PATH_PARAM_BY_REL does.

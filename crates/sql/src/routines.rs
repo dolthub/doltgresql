@@ -935,6 +935,7 @@ impl Ctx<'_> {
             expanding: Vec::new(),
             deferred_sublinks: Vec::new(),
             defer_subplans: false,
+            planner_error: None,
         };
         f(&mut ctx)
     }
