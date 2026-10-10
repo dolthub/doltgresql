@@ -759,6 +759,25 @@ pub struct MergePath {
     pub materialize_inner: bool,
 }
 
+/// ForeignKeyOptInfo is a foreign key between two of a query's base relations, with what of the query matches its
+/// columns, as Postgres' ForeignKeyOptInfo is: the referencing and referenced relations and columns, how many column
+/// pairs an equivalence class equates (and of those, with a constant) or join clauses do, and those classes, their
+/// members of the referenced columns, and clauses.
+#[derive(Clone, Debug, Default)]
+pub struct ForeignKeyOptInfo {
+    pub con_relid: usize,
+    pub ref_relid: usize,
+    pub conkey: Vec<usize>,
+    pub confkey: Vec<usize>,
+    pub nmatched_ec: usize,
+    pub nconst_ec: usize,
+    pub nmatched_rcols: usize,
+    pub nmatched_ri: usize,
+    pub eclass: Vec<Option<EcId>>,
+    pub fk_eclass_member: Vec<Option<EmId>>,
+    pub rinfos: Vec<Vec<RinfoId>>,
+}
+
 /// UniquePath is a path made unique by the inner values of a semi join's equalities, as Postgres' UniquePath is.
 #[derive(Clone, Debug)]
 pub struct UniquePath {

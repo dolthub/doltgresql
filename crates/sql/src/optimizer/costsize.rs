@@ -1274,14 +1274,28 @@ pub fn set_joinrel_size_estimates(
     restrictlist: &[RinfoId],
 ) {
     let (outer_rows, inner_rows) = (root.rels[outer_rel].rows, root.rels[inner_rel].rows);
-    root.rels[joinrel].rows = calc_joinrel_size_estimate(root, joinrel, outer_rows, inner_rows, sjinfo, restrictlist);
+    let (outer_relids, inner_relids) = (&root.rels[outer_rel].relids, &root.rels[inner_rel].relids);
+    let rows = calc_joinrel_size_estimate(
+        root,
+        joinrel,
+        outer_relids,
+        inner_relids,
+        outer_rows,
+        inner_rows,
+        sjinfo,
+        restrictlist,
+    );
+    root.rels[joinrel].rows = rows;
 }
 
 /// calc_joinrel_size_estimate returns about how many rows a join of two relations produces, given the rows of each
 /// and the join's clauses, as Postgres' function of the same name estimates it.
+#[allow(clippy::too_many_arguments)]
 fn calc_joinrel_size_estimate(
     root: &PlannerInfo<'_, '_>,
     joinrel: usize,
+    outer_relids: &Relids,
+    inner_relids: &Relids,
     outer_rows: f64,
     inner_rows: f64,
     sjinfo: &SpecialJoinInfo,
@@ -1289,6 +1303,9 @@ fn calc_joinrel_size_estimate(
 ) -> f64 {
     let joinrelids = &root.rels[joinrel].relids;
     let jointype = sjinfo.jointype;
+    let (fkselec, restrictlist) =
+        get_foreign_key_join_selectivity(root, outer_relids, inner_relids, sjinfo, restrictlist);
+    let restrictlist = restrictlist.as_slice();
     let (jselec, pselec) = match jointype.is_outer() {
         true => {
             let (pushedquals, joinquals): (Vec<RinfoId>, Vec<RinfoId>) =
@@ -1301,16 +1318,76 @@ fn calc_joinrel_size_estimate(
         false => (clauselist_selectivity(root, restrictlist, 0, jointype, Some(sjinfo)), 0.0),
     };
     let nrows = match jointype {
-        JoinType::Inner => outer_rows * inner_rows * jselec,
-        JoinType::Left | JoinType::Right => (outer_rows * inner_rows * jselec).max(outer_rows) * pselec,
-        JoinType::Full => (outer_rows * inner_rows * jselec).max(outer_rows).max(inner_rows) * pselec,
-        JoinType::Semi => outer_rows * jselec,
-        JoinType::Anti => outer_rows * (1.0 - jselec) * pselec,
+        JoinType::Inner => outer_rows * inner_rows * fkselec * jselec,
+        JoinType::Left | JoinType::Right => (outer_rows * inner_rows * fkselec * jselec).max(outer_rows) * pselec,
+        JoinType::Full => (outer_rows * inner_rows * fkselec * jselec).max(outer_rows).max(inner_rows) * pselec,
+        JoinType::Semi => outer_rows * fkselec * jselec,
+        JoinType::Anti => outer_rows * (1.0 - fkselec * jselec) * pselec,
         JoinType::RightSemi | JoinType::RightAnti | JoinType::UniqueOuter | JoinType::UniqueInner => {
             unreachable!("a join relation's size comes from its SpecialJoinInfo's join type")
         }
     };
     clamp_row_est(nrows)
+}
+
+/// get_foreign_key_join_selectivity returns the selectivity that the foreign keys between a join's sides give it, as
+/// one row of the referenced side for each referencing row, with the join clauses that they account for removed, as
+/// Postgres' function of the same name does: a foreign key counts only when the join compares all of its columns.
+fn get_foreign_key_join_selectivity(
+    root: &PlannerInfo<'_, '_>,
+    outer_relids: &Relids,
+    inner_relids: &Relids,
+    sjinfo: &SpecialJoinInfo,
+    restrictlist: &[RinfoId],
+) -> (f64, Vec<RinfoId>) {
+    let mut fkselec = 1.0;
+    let jointype = sjinfo.jointype;
+    let mut worklist = restrictlist.to_vec();
+    for fkinfo in &root.fkey_list {
+        let ref_is_outer = if outer_relids.is_member(fkinfo.con_relid) && inner_relids.is_member(fkinfo.ref_relid) {
+            false
+        } else if outer_relids.is_member(fkinfo.ref_relid) && inner_relids.is_member(fkinfo.con_relid) {
+            true
+        } else {
+            continue;
+        };
+        if matches!(jointype, JoinType::Semi | JoinType::Anti) && (ref_is_outer || inner_relids.num_members() != 1) {
+            continue;
+        }
+        let (removedlist, kept): (Vec<RinfoId>, Vec<RinfoId>) = worklist.iter().copied().partition(|&r| {
+            let rinfo = &root.rinfos[r];
+            (0..fkinfo.conkey.len()).any(|i| match rinfo.parent_ec {
+                Some(parent_ec) => fkinfo.eclass[i] == Some(parent_ec),
+                None => fkinfo.rinfos[i].contains(&r),
+            })
+        });
+        if removedlist.is_empty() || removedlist.len() != fkinfo.nmatched_ec - fkinfo.nconst_ec + fkinfo.nmatched_ri {
+            continue;
+        }
+        worklist = kept;
+        let ref_rel = &root.rels[fkinfo.ref_relid];
+        let ref_tuples = ref_rel.tuples.max(1.0);
+        fkselec *= match jointype {
+            JoinType::Semi | JoinType::Anti => ref_rel.rows / ref_tuples,
+            _ => 1.0 / ref_tuples,
+        };
+        if fkinfo.nconst_ec > 0 {
+            for i in 0..fkinfo.conkey.len() {
+                let (Some(ec), Some(em)) = (fkinfo.eclass[i], fkinfo.fk_eclass_member[i]) else { continue };
+                if !root.eq_classes[ec].ec_has_const {
+                    continue;
+                }
+                if let Some(rinfo) = super::equivclass::find_derived_clause_for_ec_member(root, ec, em) {
+                    let r = &root.rinfos[rinfo];
+                    let s0 = clause_selectivity(root, &r.clause, Some(r), 0, jointype, Some(sjinfo));
+                    if s0 > 0.0 {
+                        fkselec /= s0;
+                    }
+                }
+            }
+        }
+    }
+    (fkselec.clamp(0.0, 1.0), worklist)
 }
 
 /// APPEND_CPU_COST_MULTIPLIER is the share of a tuple's processing cost that an Append charges for each row it passes

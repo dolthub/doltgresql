@@ -952,3 +952,49 @@ fn check_hashjoinable(root: &mut PlannerInfo<'_, '_>, rinfo: RinfoId) {
     root.rinfos[rinfo].hashjoinable =
         !contain_volatile_functions(root.glob, &r.clause) && !super::clauses::contain_subplans(&r.clause);
 }
+
+/// match_foreign_keys_to_quals keeps the query's foreign keys whose every column pair an equivalence class or a join
+/// clause equates, recording which, as Postgres' function of the same name does.
+pub fn match_foreign_keys_to_quals(root: &mut PlannerInfo<'_, '_>) {
+    let mut newlist = Vec::new();
+    for mut fkinfo in std::mem::take(&mut root.fkey_list) {
+        let rel_kind = |relid: usize| root.rels.get(relid).map(|r| (r.relid == relid, r.reloptkind));
+        if rel_kind(fkinfo.con_relid) != Some((true, RelOptKind::BaseRel))
+            || rel_kind(fkinfo.ref_relid) != Some((true, RelOptKind::BaseRel))
+        {
+            continue;
+        }
+        for colno in 0..fkinfo.conkey.len() {
+            if let Some(ec) = super::equivclass::match_eclasses_to_foreign_key_col(root, &mut fkinfo, colno) {
+                fkinfo.nmatched_ec += 1;
+                if root.eq_classes[ec].ec_has_const {
+                    fkinfo.nconst_ec += 1;
+                }
+                continue;
+            }
+            let (con_attno, ref_attno) = (fkinfo.conkey[colno], fkinfo.confkey[colno]);
+            let is_var = |e: &Expr, varno: usize, attno: usize| match e {
+                Expr::Column(id) => {
+                    matches!(root.glob.node(*id), VarNode::Var(v) if v.varno == varno && v.varattno == attno)
+                }
+                _ => false,
+            };
+            for &rinfo in &root.rels[fkinfo.con_relid].joininfo {
+                let Expr::Compare(CmpOp::Eq, left, right) = &root.rinfos[rinfo].clause else { continue };
+                if (is_var(left, fkinfo.ref_relid, ref_attno) && is_var(right, fkinfo.con_relid, con_attno))
+                    || (is_var(right, fkinfo.ref_relid, ref_attno) && is_var(left, fkinfo.con_relid, con_attno))
+                {
+                    fkinfo.rinfos[colno].push(rinfo);
+                    fkinfo.nmatched_ri += 1;
+                }
+            }
+            if !fkinfo.rinfos[colno].is_empty() {
+                fkinfo.nmatched_rcols += 1;
+            }
+        }
+        if fkinfo.nmatched_ec + fkinfo.nmatched_rcols == fkinfo.conkey.len() {
+            newlist.push(fkinfo);
+        }
+    }
+    root.fkey_list = newlist;
+}

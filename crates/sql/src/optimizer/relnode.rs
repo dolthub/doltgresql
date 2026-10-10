@@ -71,6 +71,7 @@ pub fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, relid: usize) {
     root.rels[relid] = rel;
     if let RteKind::Relation(_, table) = &rte.kind {
         root.rels[relid].indexlist = super::indxpath::get_relation_indexes(root, relid, table);
+        super::plancat::get_relation_foreign_keys(root, relid, table);
     }
 }
 

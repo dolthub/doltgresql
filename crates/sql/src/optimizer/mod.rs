@@ -137,6 +137,8 @@ pub struct PlannerInfo<'r, 'a> {
     pub window_pathkeys: Vec<PkId>,
     pub distinct_pathkeys: Vec<PkId>,
     pub sort_pathkeys: Vec<PkId>,
+    /// The foreign keys between the query's base relations, as Postgres' fkey_list.
+    pub fkey_list: Vec<nodes::ForeignKeyOptInfo>,
     /// The order that a set operation over the query wants its rows in, as Postgres' setop_pathkeys.
     pub setop_pathkeys: Vec<PkId>,
     /// The query's DISTINCT clauses without redundant ones, as Postgres' processed_distinctClause.
@@ -327,6 +329,7 @@ fn new_planner_info<'r, 'a>(
         window_pathkeys: Vec::new(),
         distinct_pathkeys: Vec::new(),
         sort_pathkeys: Vec::new(),
+        fkey_list: Vec::new(),
         setop_pathkeys: Vec::new(),
         processed_distinct_clause: Vec::new(),
         num_ordered_aggs: 0,
@@ -439,6 +442,7 @@ fn query_planner(root: &mut PlannerInfo<'_, '_>, qp_callback: &mut dyn FnMut(&mu
         root.placeholders_frozen = false;
         root.initial_rels.clear();
         root.has_pseudo_constant_quals = false;
+        root.fkey_list.clear();
         root.join_domains.truncate(1);
         relnode::setup_simple_rel_arrays(root);
         if let [JoinTreeNode::Rel(varno)] = root.parse.jointree.fromlist.as_slice()
@@ -484,6 +488,7 @@ fn query_planner(root: &mut PlannerInfo<'_, '_>, qp_callback: &mut dyn FnMut(&mu
             continue;
         }
         placeholder::add_placeholders_to_base_rels(root);
+        initsplan::match_foreign_keys_to_quals(root);
         orclauses::extract_restriction_or_clauses(root);
         return allpaths::make_one_rel(root, &joinlist);
     }

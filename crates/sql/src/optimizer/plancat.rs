@@ -75,3 +75,43 @@ pub fn relation_excluded_by_constraints(root: &mut PlannerInfo<'_, '_>, rel: usi
         constraint_pred.into_iter().filter(|c| !super::clauses::contain_mutable_functions(root.glob, c)).collect();
     super::predtest::predicate_refuted_by(root, &safe_constraints, &clauses, false)
 }
+
+/// get_relation_foreign_keys adds each foreign key of a base relation's table that references the table of another
+/// of the query's relations to the query's foreign keys, as Postgres' function of the same name does.
+pub fn get_relation_foreign_keys(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &crate::catalog::table::TableDef) {
+    if root.rels[rel].reloptkind != super::nodes::RelOptKind::BaseRel || root.parse.rtable.len() < 2 {
+        return;
+    }
+    let txn_root = root.ctx.txn.root.clone();
+    let Ok(fkeys) = crate::foreign::load(root.ctx.db, &txn_root) else { return };
+    let column =
+        |table: &crate::catalog::table::TableDef, name: &String| table.columns.iter().position(|c| c.name == *name);
+    for fk in fkeys.iter().filter(|fk| fk.child_schema == table.schema && fk.child_table == table.name) {
+        let Some(conkey) = fk.child_columns.iter().map(|name| column(table, name)).collect::<Option<Vec<usize>>>()
+        else {
+            continue;
+        };
+        for rti in 1..=root.parse.rtable.len() {
+            let Some(parent) = root.parse.rte(rti).table() else { continue };
+            if parent.schema != fk.parent_schema || parent.name != fk.parent_table || rti == rel {
+                continue;
+            }
+            let Some(confkey) =
+                fk.parent_columns.iter().map(|name| column(parent, name)).collect::<Option<Vec<usize>>>()
+            else {
+                continue;
+            };
+            let nkeys = conkey.len();
+            root.fkey_list.push(super::nodes::ForeignKeyOptInfo {
+                con_relid: rel,
+                ref_relid: rti,
+                conkey: conkey.clone(),
+                confkey,
+                eclass: vec![None; nkeys],
+                fk_eclass_member: vec![None; nkeys],
+                rinfos: vec![Vec::new(); nkeys],
+                ..Default::default()
+            });
+        }
+    }
+}

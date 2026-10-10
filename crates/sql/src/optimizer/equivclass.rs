@@ -715,6 +715,53 @@ fn ec_search_clause_for_ems(
     root.eq_classes[ec].ec_derives_hash.get(&derives_key(leftem, rightem, parent_ec)).copied()
 }
 
+/// match_eclasses_to_foreign_key_col returns the equivalence class that equates a column pair of a foreign key, by
+/// the btree operator family of the referencing column's equality, recording it and its member of the referenced
+/// column, as Postgres' function of the same name does.
+pub fn match_eclasses_to_foreign_key_col(
+    root: &mut PlannerInfo<'_, '_>,
+    fkinfo: &mut super::nodes::ForeignKeyOptInfo,
+    colno: usize,
+) -> Option<EcId> {
+    let (var1varno, var1attno) = (fkinfo.con_relid, fkinfo.conkey[colno]);
+    let (var2varno, var2attno) = (fkinfo.ref_relid, fkinfo.confkey[colno]);
+    let opfamilies: Vec<u32> = root.parse.rte(var1varno).table().map_or(Vec::new(), |table| {
+        super::nodefuncs::btree_opfamily(table.columns[var1attno].ty.oid).into_iter().collect()
+    });
+    let matching_ecs = root.rels[var1varno].eclass_indexes.intersect(&root.rels[var2varno].eclass_indexes);
+    for ec in matching_ecs.members() {
+        let class = &root.eq_classes[ec];
+        if class.ec_has_volatile {
+            continue;
+        }
+        let (mut item1_em, mut item2_em) = (None, None);
+        for &em in &class.ec_members {
+            let Expr::Column(id) = root.eq_members[em].em_expr else { continue };
+            let VarNode::Var(var) = root.glob.node(id) else { continue };
+            if var.varno == var1varno && var.varattno == var1attno {
+                item1_em = Some(em);
+            } else if var.varno == var2varno && var.varattno == var2attno {
+                item2_em = Some(em);
+            }
+            if item1_em.is_some() && item2_em.is_some() {
+                if class.ec_opfamilies == opfamilies {
+                    fkinfo.eclass[colno] = Some(ec);
+                    fkinfo.fk_eclass_member[colno] = item2_em;
+                    return Some(ec);
+                }
+                break;
+            }
+        }
+    }
+    None
+}
+
+/// find_derived_clause_for_ec_member returns the clause that an equivalence class with a constant derived to equate
+/// a member with the constant, as Postgres' function of the same name does.
+pub fn find_derived_clause_for_ec_member(root: &PlannerInfo<'_, '_>, ec: EcId, em: EmId) -> Option<RinfoId> {
+    root.eq_classes[ec].ec_derives_hash.get(&derives_key(em, None, None)).copied()
+}
+
 /// get_eclass_for_sort_expr returns the equivalence class of an expression sorted by operator families, building a
 /// class of the expression alone when none has it and asked to, as Postgres' function of the same name does.
 pub fn get_eclass_for_sort_expr(
