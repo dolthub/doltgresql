@@ -19,7 +19,9 @@
 //! visible columns. Each layer's columns become expressions of the Query: Vars of the join tree, `Expr::AggRef`,
 //! `Expr::WindowRef`, and `Expr::SetRef` of its aggregate calls, window calls, and set-returning functions.
 
-use super::nodes::{FromExpr, JoinTreeNode, PlannerGlobal, Query, SortGroupClause, TargetEntry};
+use super::nodes::{
+    FromExpr, JoinTreeNode, PlannerGlobal, Query, SetOpTree, SetOperationStmt, SortGroupClause, TargetEntry,
+};
 use crate::expr::Expr;
 use crate::plan::{Plan, SortKey};
 use crate::query::Ctx;
@@ -47,15 +49,26 @@ struct Upper {
 pub fn unbind(glob: &mut PlannerGlobal, ctx: &mut Ctx<'_>, plan: Plan) -> Query {
     let (from, upper) = peel(plan);
     let (mut rtable, mut columns) = (Vec::new(), Vec::new());
-    let jointree = match super::build_jointree(glob, ctx, from, &mut rtable, &mut columns) {
-        JoinTreeNode::From(from) => *from,
-        other => FromExpr { fromlist: vec![other], quals: Vec::new() },
+    let own_setop = upper.as_ref().is_none_or(|u| u.only_sorts(from.width()));
+    let mut query = match from {
+        Plan::SetOp { .. } | Plan::Recursive { .. } if own_setop => set_operation_query(glob, ctx, from, &mut columns),
+        from => {
+            let jointree = match super::build_jointree(glob, ctx, from, &mut rtable, &mut columns) {
+                JoinTreeNode::From(from) => *from,
+                other => FromExpr { fromlist: vec![other], quals: Vec::new() },
+            };
+            Query { rtable, jointree, ..Query::default() }
+        }
     };
-    let mut query = Query { rtable, jointree, ..Query::default() };
+    // The columns of a set operation are its grouping keys, numbered by position, as Postgres numbers them.
+    let setop_refs = query.set_operations.is_some();
     let mut meaning = columns;
     let Some(upper) = upper else {
-        query.target_list =
-            meaning.into_iter().map(|expr| TargetEntry { expr, resjunk: false, ressortgroupref: 0 }).collect();
+        query.target_list = meaning
+            .into_iter()
+            .enumerate()
+            .map(|(i, expr)| TargetEntry { expr, resjunk: false, ressortgroupref: if setop_refs { i + 1 } else { 0 } })
+            .collect();
         return query;
     };
     let mut group_exprs = Vec::new();
@@ -91,6 +104,12 @@ pub fn unbind(glob: &mut PlannerGlobal, ctx: &mut Ctx<'_>, plan: Plan) -> Query 
         .map(|(i, e)| TargetEntry { expr: replace(e, &meaning), resjunk: i >= width, ressortgroupref: 0 })
         .collect();
     let mut next_ref = 0;
+    if setop_refs {
+        for tle in query.target_list.iter_mut().take(width) {
+            next_ref += 1;
+            tle.ressortgroupref = next_ref;
+        }
+    }
     let mut sortgroupref = |query: &mut Query, position: usize| {
         let tle = &mut query.target_list[position];
         if tle.ressortgroupref == 0 {
@@ -155,6 +174,70 @@ impl Upper {
     /// is_empty reports whether the upper clauses peeled off nothing below the projection of the select list.
     fn is_empty(&self) -> bool {
         self.srfs.is_empty() && self.windows.is_empty() && self.having.is_none() && self.aggregation.is_none()
+    }
+
+    /// only_sorts reports whether the upper clauses are at most an ORDER BY and LIMIT of the rows below them, which
+    /// are this wide, as a set operation's own clauses are.
+    fn only_sorts(&self, width: usize) -> bool {
+        self.is_empty()
+            && self.distinct.is_none()
+            && self.visible.is_none()
+            && self.target.len() == width
+            && self.target.iter().enumerate().all(|(i, e)| *e == Expr::Column(i))
+    }
+}
+
+/// set_operation_query returns the Query of the plan of a set operation or a recursive WITH query's union, whose
+/// range table holds its terms as subqueries and whose columns are Vars of no relation, as Postgres' parse analysis
+/// makes it, adding those Vars to `columns`.
+fn set_operation_query(glob: &mut PlannerGlobal, ctx: &mut Ctx<'_>, plan: Plan, columns: &mut Vec<Expr>) -> Query {
+    let width = plan.width();
+    let mut rtable = Vec::new();
+    let (mut stmt, recursion) = match plan {
+        Plan::Recursive { work_table, anchor, step, all } => {
+            let larg = setop_tree(glob, ctx, *anchor, &mut rtable);
+            let rarg = setop_tree(glob, ctx, *step, &mut rtable);
+            let stmt = SetOperationStmt { op: crate::plan::SetOp::Union, all, larg, rarg, col_types: Vec::new() };
+            (stmt, Some(work_table))
+        }
+        other => match setop_tree(glob, ctx, other, &mut rtable) {
+            SetOpTree::Op(stmt) => (*stmt, None),
+            SetOpTree::Rel(_) => unreachable!("a set operation"),
+        },
+    };
+    let col_types = rtable.first().map(|rte: &super::nodes::RangeTblEntry| rte.coltypes.clone()).unwrap_or_default();
+    set_col_types(&mut stmt, &col_types);
+    columns.extend((0..width).map(|i| glob.var(0, i, super::nodes::Relids::new())));
+    Query { rtable, set_operations: Some(Box::new(stmt)), recursion, ..Query::default() }
+}
+
+/// setop_tree adds the terms of a set operation's plan to a range table as subqueries and returns its tree.
+fn setop_tree(
+    glob: &mut PlannerGlobal,
+    ctx: &mut Ctx<'_>,
+    plan: Plan,
+    rtable: &mut Vec<super::nodes::RangeTblEntry>,
+) -> SetOpTree {
+    match plan {
+        Plan::SetOp { op, all, left, right } => {
+            let larg = setop_tree(glob, ctx, *left, rtable);
+            let rarg = setop_tree(glob, ctx, *right, rtable);
+            SetOpTree::Op(Box::new(SetOperationStmt { op, all, larg, rarg, col_types: Vec::new() }))
+        }
+        other => match super::subquery_relation(glob, ctx, other, rtable, &mut Vec::new()) {
+            JoinTreeNode::Rel(varno) => SetOpTree::Rel(varno),
+            _ => unreachable!("a subquery relation"),
+        },
+    }
+}
+
+/// set_col_types sets the column types of each set operation of a tree.
+fn set_col_types(stmt: &mut SetOperationStmt, col_types: &[Option<u32>]) {
+    stmt.col_types = col_types.to_vec();
+    for arg in [&mut stmt.larg, &mut stmt.rarg] {
+        if let SetOpTree::Op(op) = arg {
+            set_col_types(op, col_types);
+        }
     }
 }
 

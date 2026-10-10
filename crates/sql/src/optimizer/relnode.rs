@@ -16,10 +16,11 @@
 //! relations and the join relations.
 
 use super::PlannerInfo;
-use super::costsize::{estimate_rel_size, get_typavgwidth, set_joinrel_size_estimates};
+use super::costsize::{clamp_row_est, estimate_rel_size, get_typavgwidth, set_joinrel_size_estimates};
 use super::equivclass::{generate_join_implied_equalities, has_relevant_eclass_joinclause};
 use super::nodes::{Path, PathKind, RelOptInfo, RelOptKind, Relids, RinfoId, RteKind, SpecialJoinInfo, VarNode};
 use super::placeholder::{add_placeholders_to_joinrel, find_placeholder_info};
+use crate::plan::Plan;
 
 /// AUTOVACUUM_ANALYZE_THRESHOLD is how many rows a table must hold for Postgres' autovacuum to have analyzed it, at
 /// its default autovacuum_analyze_threshold.
@@ -59,6 +60,9 @@ pub fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, relid: usize) {
             rel.stats = analyzed.then(|| crate::colstats::table_stats(root.ctx, table)).flatten();
             rel.notnullattnums = (0..table.columns.len()).filter(|&c| !table.columns[c].nullable).collect();
         }
+        RteKind::Plan(Plan::WorkTable(..)) if let Some(rows) = root.glob.non_recursive_rows => {
+            rel.tuples = clamp_row_est(RECURSIVE_WORKTABLE_FACTOR * rows);
+        }
         RteKind::Plan(plan) => rel.tuples = crate::joins::estimate(root.ctx, plan),
         RteKind::Result => rel.tuples = 1.0,
         RteKind::Subquery(..) => {}
@@ -69,6 +73,10 @@ pub fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, relid: usize) {
         root.rels[relid].indexlist = super::indxpath::get_relation_indexes(root, relid, table);
     }
 }
+
+/// RECURSIVE_WORKTABLE_FACTOR is how many times a recursive WITH query's working table is the size of its
+/// non-recursive term, as Postgres' recursive_worktable_factor setting defaults to and set_cte_size_estimates reads.
+const RECURSIVE_WORKTABLE_FACTOR: f64 = 10.0;
 
 /// find_join_rel returns the index of the join relation of a set of relations, when it was built, as Postgres'
 /// function of the same name does.
@@ -317,12 +325,21 @@ pub fn get_baserel_parampathinfo(
     Some(ppi)
 }
 
-/// fetch_upper_rel returns the relation of a step of the query's upper processing, building it the first time, as
-/// Postgres' function of the same name does.
-pub fn fetch_upper_rel(root: &mut PlannerInfo<'_, '_>, kind: super::nodes::UpperRelationKind) -> usize {
-    if let Some(rel) = root.rels.iter().position(|r| r.reloptkind == RelOptKind::UpperRel(kind)) {
+/// fetch_upper_rel returns the relation of a step of the query's upper processing over a set of relations, which
+/// only a set operation's steps tell apart, building it the first time, as Postgres' function of the same name does.
+pub fn fetch_upper_rel(
+    root: &mut PlannerInfo<'_, '_>,
+    kind: super::nodes::UpperRelationKind,
+    relids: &Relids,
+) -> usize {
+    if let Some(rel) = root.rels.iter().position(|r| r.reloptkind == RelOptKind::UpperRel(kind) && r.relids == *relids)
+    {
         return rel;
     }
-    root.rels.push(RelOptInfo { reloptkind: RelOptKind::UpperRel(kind), ..RelOptInfo::default() });
+    root.rels.push(RelOptInfo {
+        reloptkind: RelOptKind::UpperRel(kind),
+        relids: relids.clone(),
+        ..RelOptInfo::default()
+    });
     root.rels.len() - 1
 }

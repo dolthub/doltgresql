@@ -331,6 +331,42 @@ impl Rows for ChainRows<'_> {
     }
 }
 
+/// MergeRows hands out the rows of sorted inputs merged in the order of their sort keys, taking the row of the
+/// earliest input among equal ones, with each input's next row and its key values.
+struct MergeRows<'p> {
+    heads: Vec<(Box<dyn Rows + 'p>, Option<KeyedRow>)>,
+    keys: &'p [SortKey],
+}
+
+/// KeyedRow is a row with the values of its sort keys.
+type KeyedRow = (Vec<Value>, Row);
+
+impl MergeRows<'_> {
+    /// read returns an input's next row with its key values.
+    fn read(ctx: &mut Ctx<'_>, rows: &mut dyn Rows, keys: &[SortKey]) -> Result<Option<KeyedRow>> {
+        let Some(row) = rows.next(ctx)? else { return Ok(None) };
+        let values = keys.iter().map(|k| k.expr.eval(ctx, &row)).collect::<Result<Vec<_>>>()?;
+        Ok(Some((values, row)))
+    }
+}
+
+impl Rows for MergeRows<'_> {
+    fn next(&mut self, ctx: &mut Ctx<'_>) -> Result<Option<Row>> {
+        let mut best: Option<usize> = None;
+        for (i, (_, head)) in self.heads.iter().enumerate() {
+            let Some((values, _)) = head else { continue };
+            let earlier = best.and_then(|b| self.heads[b].1.as_ref()).map(|(v, _)| v);
+            if earlier.is_none_or(|e| crate::plan::compare_sorted(self.keys, values, e) == std::cmp::Ordering::Less) {
+                best = Some(i);
+            }
+        }
+        let Some(i) = best else { return Ok(None) };
+        let (rows, head) = &mut self.heads[i];
+        let next = MergeRows::read(ctx, &mut **rows, self.keys)?;
+        Ok(std::mem::replace(head, next).map(|(_, row)| row))
+    }
+}
+
 /// SharedRows hands out the rows of a plan that ran once for the whole statement.
 struct SharedRows {
     rows: Arc<SubqueryRows>,
@@ -1779,6 +1815,15 @@ impl Plan {
                 previous: None,
                 seen: Groups::new(),
             }),
+            Plan::MergeAppend { inputs, keys } => {
+                let mut heads = Vec::with_capacity(inputs.len());
+                for input in inputs {
+                    let mut rows = input.open(ctx)?;
+                    let head = MergeRows::read(ctx, &mut *rows, keys)?;
+                    heads.push((rows, head));
+                }
+                Box::new(MergeRows { heads, keys })
+            }
             Plan::SetOp { op: SetOp::Union, all: true, left, right } => {
                 Box::new(ChainRows { inputs: vec![left, right], current: None })
             }

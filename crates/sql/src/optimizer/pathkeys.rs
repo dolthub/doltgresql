@@ -313,3 +313,45 @@ fn find_var_for_subquery_tle(root: &PlannerInfo<'_, '_>, rel: usize, column: usi
         })
         .cloned()
 }
+
+/// get_cheapest_path_for_pathkeys returns the cheapest path in total of a list whose rows are in the order of pathkeys
+/// and that are not parameterized, as Postgres' function of the same name does.
+pub fn get_cheapest_path_for_pathkeys(
+    paths: &[std::rc::Rc<super::nodes::Path>],
+    pathkeys: &[PkId],
+) -> Option<std::rc::Rc<super::nodes::Path>> {
+    let mut matched_path: Option<&std::rc::Rc<super::nodes::Path>> = None;
+    for path in paths {
+        if let Some(matched) = matched_path
+            && super::pathnode::compare_path_costs(matched, path, super::pathnode::CostSelector::Total).is_le()
+        {
+            continue;
+        }
+        if pathkeys_contained_in(pathkeys, &path.pathkeys) && path.param.is_empty() {
+            matched_path = Some(path);
+        }
+    }
+    matched_path.cloned()
+}
+
+/// get_cheapest_fractional_path_for_pathkeys returns the path of a list that costs least to read a share of the rows
+/// of, among those whose rows are in the order of pathkeys and that are not parameterized, as Postgres' function of
+/// the same name does.
+pub fn get_cheapest_fractional_path_for_pathkeys(
+    paths: &[std::rc::Rc<super::nodes::Path>],
+    pathkeys: &[PkId],
+    fraction: f64,
+) -> Option<std::rc::Rc<super::nodes::Path>> {
+    let mut matched_path: Option<&std::rc::Rc<super::nodes::Path>> = None;
+    for path in paths {
+        if let Some(matched) = matched_path
+            && super::pathnode::compare_fractional_path_costs(matched, path, fraction).is_le()
+        {
+            continue;
+        }
+        if pathkeys_contained_in(pathkeys, &path.pathkeys) && path.param.is_empty() {
+            matched_path = Some(path);
+        }
+    }
+    matched_path.cloned()
+}

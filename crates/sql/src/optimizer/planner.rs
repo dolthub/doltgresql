@@ -18,7 +18,9 @@
 use std::rc::Rc;
 
 use super::PlannerInfo;
-use super::nodes::{AggStrategy, Path, PathTarget, PkId, Query, RelOptInfo, SortGroupClause, UpperRelationKind};
+use super::nodes::{
+    AggStrategy, Path, PathTarget, PkId, Query, RelOptInfo, Relids, SortGroupClause, TargetEntry, UpperRelationKind,
+};
 use super::pathkeys::{pathkeys_contained_in, pathkeys_count_contained_in};
 use super::pathnode::{add_path, compare_fractional_path_costs, set_cheapest};
 use super::tlist;
@@ -69,6 +71,26 @@ pub fn grouping_planner(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) {
         true => -1.0,
         false => limit_tuples,
     };
+    if root.parse.set_operations.is_some() {
+        if !root.parse.sort_clause.is_empty() {
+            root.tuple_fraction = 0.0;
+        }
+        let mut current_rel = super::prepunion::plan_set_operations(root);
+        root.processed_tlist =
+            postprocess_setop_tlist(std::mem::take(&mut root.processed_tlist), &root.parse.target_list);
+        let cheapest = root.rels[current_rel].cheapest_total_path.clone().expect("a path of a set operation");
+        let final_target = super::pathnode::path_target(root, &cheapest);
+        let (sort_clause, tlist) = (root.parse.sort_clause.clone(), root.processed_tlist.clone());
+        root.sort_pathkeys = make_pathkeys_for_sortclauses(root, &sort_clause, &tlist).unwrap_or_default();
+        if !root.parse.sort_clause.is_empty() {
+            current_rel = create_ordered_paths(root, current_rel, &final_target, limit_tuples);
+        }
+        add_final_paths(root, current_rel, offset_est, count_est);
+        return;
+    }
+    if root.parse.has_aggs {
+        super::planagg::preprocess_minmax_aggregates(root);
+    }
     let qp_extra = QpExtra { active_windows: active_windows.clone() };
     let mut current_rel = super::query_planner(root, &mut |root| standard_qp_callback(root, &qp_extra));
     let final_target = Rc::new(tlist::create_pathtarget(root, &root.processed_tlist));
@@ -143,7 +165,13 @@ pub fn grouping_planner(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) {
             adjust_paths_for_srfs(root, current_rel, &mut final_targets);
         }
     }
-    let final_rel = super::relnode::fetch_upper_rel(root, UpperRelationKind::Final);
+    add_final_paths(root, current_rel, offset_est, count_est);
+}
+
+/// add_final_paths adds each path of the relation of the query's upper processing to its final relation, under the
+/// query's LIMIT and OFFSET, as grouping_planner does last.
+fn add_final_paths(root: &mut PlannerInfo<'_, '_>, current_rel: usize, offset_est: i64, count_est: i64) {
+    let final_rel = super::relnode::fetch_upper_rel(root, UpperRelationKind::Final, &Relids::new());
     let limit = limit_needed(&root.parse);
     for path in root.rels[current_rel].pathlist.clone() {
         let path = match limit {
@@ -152,6 +180,15 @@ pub fn grouping_planner(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) {
         };
         add_path(&mut root.rels[final_rel], path);
     }
+}
+
+/// postprocess_setop_tlist gives the target list of a set operation's result the sort and group clause numbers of
+/// the query's own target list, as Postgres' function of the same name does.
+fn postprocess_setop_tlist(mut new_tlist: Vec<TargetEntry>, orig_tlist: &[TargetEntry]) -> Vec<TargetEntry> {
+    for (new_tle, orig_tle) in new_tlist.iter_mut().filter(|tle| !tle.resjunk).zip(orig_tlist) {
+        new_tle.ressortgroupref = orig_tle.ressortgroupref;
+    }
+    new_tlist
 }
 
 /// preprocess_limit returns the share of a query's rows that its LIMIT and OFFSET read, and sets their estimated
@@ -324,6 +361,13 @@ pub fn make_pathkeys_for_sortclauses(
 fn create_grouping_paths(root: &mut PlannerInfo<'_, '_>, input_rel: usize, target: Rc<PathTarget>) -> usize {
     let agg_costs = super::prepagg::get_agg_clause_costs(root);
     let grouped_rel = make_grouping_rel(root, input_rel, target);
+    if !root.minmax_aggs.is_empty() {
+        let target = Rc::new(tlist::create_pathtarget(root, &root.processed_tlist));
+        let quals = root.parse.having_qual.iter().flat_map(crate::indexscan::conjuncts).cloned().collect();
+        let mmaggregates = root.minmax_aggs.clone();
+        let path = super::pathnode::create_minmaxagg_path(root, grouped_rel, target, mmaggregates, quals);
+        add_path(&mut root.rels[grouped_rel], path);
+    }
     if is_degenerate_grouping(root) {
         create_degenerate_grouping_paths(root, grouped_rel);
     } else {
@@ -341,7 +385,7 @@ fn create_grouping_paths(root: &mut PlannerInfo<'_, '_>, input_rel: usize, targe
 /// make_grouping_rel returns the relation of the query's grouped rows with its target, as Postgres' function of the
 /// same name does.
 fn make_grouping_rel(root: &mut PlannerInfo<'_, '_>, input_rel: usize, target: Rc<PathTarget>) -> usize {
-    let grouped_rel = super::relnode::fetch_upper_rel(root, UpperRelationKind::GroupAgg);
+    let grouped_rel = super::relnode::fetch_upper_rel(root, UpperRelationKind::GroupAgg, &Relids::new());
     root.rels[grouped_rel].reltarget = (*target).clone();
     root.rels[grouped_rel].consider_startup = root.rels[input_rel].consider_startup;
     grouped_rel
@@ -568,7 +612,7 @@ fn create_window_paths(
     output_target: &Rc<PathTarget>,
     active_windows: &[Vec<usize>],
 ) -> usize {
-    let window_rel = super::relnode::fetch_upper_rel(root, UpperRelationKind::Window);
+    let window_rel = super::relnode::fetch_upper_rel(root, UpperRelationKind::Window, &Relids::new());
     root.rels[window_rel].reltarget = (**output_target).clone();
     for path in root.rels[input_rel].pathlist.clone() {
         let cheapest = root.rels[input_rel].cheapest_total_path.clone().expect("every relation has a path");
@@ -628,7 +672,7 @@ fn create_one_window_path(
 /// create_distinct_paths returns the relation of the query's distinct rows, as Postgres' function of the same name
 /// does.
 fn create_distinct_paths(root: &mut PlannerInfo<'_, '_>, input_rel: usize, target: &Rc<PathTarget>) -> usize {
-    let distinct_rel = super::relnode::fetch_upper_rel(root, UpperRelationKind::Distinct);
+    let distinct_rel = super::relnode::fetch_upper_rel(root, UpperRelationKind::Distinct, &Relids::new());
     root.rels[distinct_rel].reltarget = (**target).clone();
     create_final_distinct_paths(root, input_rel, distinct_rel);
     set_cheapest(&mut root.rels[distinct_rel]);
@@ -738,7 +782,7 @@ fn create_ordered_paths(
     target: &Rc<PathTarget>,
     limit_tuples: f64,
 ) -> usize {
-    let ordered_rel = super::relnode::fetch_upper_rel(root, UpperRelationKind::Ordered);
+    let ordered_rel = super::relnode::fetch_upper_rel(root, UpperRelationKind::Ordered, &Relids::new());
     root.rels[ordered_rel].reltarget = (**target).clone();
     root.rels[ordered_rel].consider_startup = root.tuple_fraction > 0.0;
     let cheapest_input_path = root.rels[input_rel].cheapest_total_path.clone().expect("every relation has a path");

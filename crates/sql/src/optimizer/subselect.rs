@@ -652,3 +652,48 @@ fn volatile(e: &Expr) -> bool {
     e.visit(&mut |x| found |= is_volatile_node(x));
     found
 }
+
+/// ss_make_initplan_from_plan returns the expression of an initplan that reads the value of the first column of the
+/// first row of a plan that the planner made, at a cost, as Postgres' function of the same name makes it.
+pub fn ss_make_initplan_from_plan(plan: Plan, startup_cost: f64) -> Expr {
+    let uncorrelated = crate::joins::plan_lowest_level(&plan).is_some_and(|level| level >= 0);
+    let link = Expr::Scalar(Box::new(crate::plan::share_subquery(plan, uncorrelated)));
+    Expr::SubPlan(Box::new(SubPlan {
+        link,
+        args: Vec::new(),
+        init_plan: true,
+        planned: true,
+        startup_cost,
+        per_call_cost: 0.0,
+    }))
+}
+
+/// increment_query_sublevels_up rewrites each read of an enclosing row in a query's expressions to read the row one
+/// further out, for planning the query as a subquery of itself, as Postgres' IncrementVarSublevelsUp does.
+pub fn increment_query_sublevels_up(query: &mut Query) {
+    let mut process = |e: &mut Expr| {
+        let old = std::mem::replace(e, Expr::SubqueryValue);
+        *e = increment_sublevels_up(old, 0);
+    };
+    query.upper_exprs_mut().into_iter().for_each(&mut process);
+    query.jointree.fromlist.iter_mut().for_each(|node| jointree_quals_mut(node, &mut process));
+    query.jointree.quals.iter_mut().for_each(&mut process);
+    for rte in &mut query.rtable {
+        if let RteKind::Plan(plan) = &mut rte.kind {
+            plan.map_exprs(0, &mut |e, depth| increment_sublevels_up(e, depth));
+        }
+    }
+}
+
+/// increment_sublevels_up rewrites each read of an enclosing row in an expression, `nesting` subqueries deep within
+/// its query, to read the row one further out.
+pub fn increment_sublevels_up(e: Expr, nesting: usize) -> Expr {
+    let mut e = match e {
+        Expr::Outer(d, i) if d > nesting => return Expr::Outer(d + 1, i),
+        other => other.map_children(&mut |c| increment_sublevels_up(c, nesting)),
+    };
+    for plan in e.subqueries_mut() {
+        plan.map_exprs(0, &mut |x, depth| increment_sublevels_up(x, nesting + 1 + depth));
+    }
+    e
+}

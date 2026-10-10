@@ -35,6 +35,9 @@ pub fn query_expr_type(glob: &super::nodes::PlannerGlobal, parse: &Query, e: &Ex
     match e {
         Expr::Const(value) => value_type(value),
         Expr::Column(id) => match glob.node(*id) {
+            VarNode::Var(var) if var.varno == 0 => {
+                parse.set_operations.as_ref().and_then(|op| op.col_types.get(var.varattno).copied().flatten())
+            }
             VarNode::Var(var) => parse.rte(var.varno).coltypes.get(var.varattno).copied().flatten(),
             VarNode::PlaceHolderVar(phv) => query_expr_type(glob, parse, &glob.placeholder(phv.phid).phexpr),
         },

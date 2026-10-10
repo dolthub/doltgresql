@@ -1840,10 +1840,10 @@ impl<'b, 'a> Binder<'b, 'a> {
             T::ExistsSublink => crate::plan::is_simple_exists(select),
             _ => crate::plan::is_simple_subquery(select),
         };
-        let deferred = crate::optimizer::enabled() && crate::plan::is_plain_select(select);
+        let deferred = crate::optimizer::enabled() && crate::plan::can_defer(select);
         let mut planner = Planner { ctx: &mut *self.ctx, outer: self.scopes.clone() };
         let query = match deferred {
-            true => planner.plan_select(select, true),
+            true => planner.plan_query_body(select, true),
             false => planner.plan_query(select),
         };
         let inner = std::mem::replace(&mut self.ctx.outer_reach, reach);

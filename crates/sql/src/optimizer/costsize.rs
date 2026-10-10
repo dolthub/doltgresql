@@ -889,6 +889,37 @@ pub fn set_baserel_size_estimates(root: &mut PlannerInfo<'_, '_>, rel: usize) {
     set_rel_width(root, rel);
 }
 
+/// cost_recursive_union returns the rows and costs of a recursive WITH query's union, which runs its recursive term
+/// some 10 times, as Postgres' function of the same name estimates them.
+pub fn cost_recursive_union(nrterm: &Path, rterm: &Path) -> (f64, Costs) {
+    let startup_cost = nrterm.startup_cost;
+    let mut total_cost = nrterm.total_cost;
+    let mut total_rows = nrterm.rows;
+    total_cost += 10.0 * rterm.total_cost;
+    total_rows += 10.0 * rterm.rows;
+    total_cost += CPU_TUPLE_COST * total_rows;
+    (total_rows, (nrterm.disabled_nodes + rterm.disabled_nodes, startup_cost, total_cost))
+}
+
+/// cost_merge_append returns the costs of merging sorted streams of rows, given their inputs' costs, as Postgres'
+/// function of the same name estimates them.
+pub fn cost_merge_append(
+    n_streams: usize,
+    (input_disabled_nodes, input_startup_cost, input_total_cost): Costs,
+    tuples: f64,
+) -> Costs {
+    let n = match n_streams < 2 {
+        true => 2.0,
+        false => n_streams as f64,
+    };
+    let log_n = n.log2();
+    let comparison_cost = 2.0 * CPU_OPERATOR_COST;
+    let startup_cost = comparison_cost * n * log_n;
+    let mut run_cost = tuples * comparison_cost * log_n;
+    run_cost += CPU_TUPLE_COST * APPEND_CPU_COST_MULTIPLIER * tuples;
+    (input_disabled_nodes, startup_cost + input_startup_cost, startup_cost + run_cost + input_total_cost)
+}
+
 /// set_subquery_size_estimates estimates the size of a subquery relation from the rows of its subquery's cheapest
 /// path and the widths of its output columns, as Postgres' function of the same name does.
 pub fn set_subquery_size_estimates(root: &mut PlannerInfo<'_, '_>, rel: usize, tuples: f64, attr_widths: Vec<f64>) {
@@ -901,13 +932,13 @@ pub fn set_subquery_size_estimates(root: &mut PlannerInfo<'_, '_>, rel: usize, t
     set_baserel_size_estimates(root, rel);
 }
 
-/// subquery_attr_widths returns the widths that a planned subquery estimated for its output columns that are plain
-/// Vars, and zero for the others, as set_subquery_size_estimates reads them.
+/// subquery_attr_widths returns the widths that a planned subquery without set operations estimated for its output
+/// columns that are plain Vars, and zero for the others, as set_subquery_size_estimates reads them.
 pub fn subquery_attr_widths(subroot: &PlannerInfo<'_, '_>) -> Vec<f64> {
     let visible = subroot.parse.target_list.iter().filter(|tle| !tle.resjunk);
     visible
         .map(|tle| match &tle.expr {
-            Expr::Column(id) => match subroot.glob.node(*id) {
+            Expr::Column(id) if subroot.parse.set_operations.is_none() => match subroot.glob.node(*id) {
                 super::nodes::VarNode::Var(var) => subroot.rels[var.varno].attr_widths[var.varattno],
                 super::nodes::VarNode::PlaceHolderVar(_) => 0.0,
             },

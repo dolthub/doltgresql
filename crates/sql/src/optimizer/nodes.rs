@@ -242,6 +242,9 @@ pub struct PlannerGlobal {
     nodes: Vec<VarNode>,
     ids: HashMap<VarNode, usize>,
     pub placeholders: Vec<PlaceHolder>,
+    /// The rows of the path of the non-recursive term of the recursive WITH query whose recursive term is being
+    /// planned, as Postgres' non_recursive_path gives them.
+    pub non_recursive_rows: Option<f64>,
 }
 
 impl PlannerGlobal {
@@ -408,6 +411,28 @@ pub struct Query {
     pub sort_clause: Vec<SortGroupClause>,
     pub limit_offset: Option<Expr>,
     pub limit_count: Option<Expr>,
+    /// The tree of set operations whose leaves are the query's range table entries, as Postgres' setOperations is,
+    /// with the ID of the working table of a recursive WITH query's union.
+    pub set_operations: Option<Box<SetOperationStmt>>,
+    pub recursion: Option<usize>,
+}
+
+/// SetOperationStmt is a UNION, INTERSECT, or EXCEPT of two set operations or range table entries, with the types
+/// of its columns, as Postgres' SetOperationStmt is.
+#[derive(Clone, Debug)]
+pub struct SetOperationStmt {
+    pub op: crate::plan::SetOp,
+    pub all: bool,
+    pub larg: SetOpTree,
+    pub rarg: SetOpTree,
+    pub col_types: Vec<Option<u32>>,
+}
+
+/// SetOpTree is an input of a set operation: a range table entry by its index, or another set operation.
+#[derive(Clone, Debug)]
+pub enum SetOpTree {
+    Rel(usize),
+    Op(Box<SetOperationStmt>),
 }
 
 impl Query {
@@ -624,6 +649,14 @@ pub enum PathKind {
     Result(Vec<Expr>),
     /// The rows of each of the paths in turn, where no paths make an empty relation, as Postgres' AppendPath is.
     Append(Vec<Rc<Path>>),
+    /// The rows of paths sorted by the path's pathkeys, merged in that order, as Postgres' MergeAppendPath is.
+    MergeAppend(Vec<Rc<Path>>),
+    /// An INTERSECT or EXCEPT, as Postgres' SetOpPath is.
+    SetOp(Box<SetOpPath>),
+    /// A recursive WITH query's union, as Postgres' RecursiveUnionPath is.
+    RecursiveUnion(Box<RecursiveUnionPath>),
+    /// A query's MIN and MAX aggregates read from indexes, as Postgres' MinMaxAggPath is.
+    MinMaxAgg(Box<MinMaxAggPath>),
     /// A scan of an index of a base relation, which a nested loop runs again for each outer row when the path is
     /// parameterized.
     IndexScan(Box<IndexPath>),
@@ -790,6 +823,7 @@ pub enum RelOptKind {
 /// UpperRelationKind is a step of a query's upper processing, as Postgres' UpperRelationKind is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum UpperRelationKind {
+    SetOp,
     GroupAgg,
     Window,
     Distinct,
@@ -853,6 +887,8 @@ pub struct RelOptInfo {
     /// The plans of the final paths of a subquery relation, which its SubqueryScan paths read, in place of Postgres'
     /// subroot.
     pub subplans: Vec<SubqueryPlan>,
+    /// The estimated number of distinct rows of a subquery relation, which a set operation over it groups.
+    pub subquery_groups: f64,
 }
 
 /// SubqueryPlan is one of the final paths of a subquery that the query around it reads, with its plan and the order
@@ -908,6 +944,45 @@ pub struct GroupPath {
 pub struct WindowAggPath {
     pub subpath: Rc<Path>,
     pub calls: Vec<usize>,
+}
+
+/// MinMaxAggInfo is a MIN or MAX aggregate that an index answers, as Postgres' MinMaxAggInfo holds it: its position
+/// among the query's aggregate calls, the plan that reads its value from the first row of the table in its order,
+/// and that plan's cost.
+#[derive(Clone, Debug)]
+pub struct MinMaxAggInfo {
+    pub agg: usize,
+    pub plan: crate::plan::Plan,
+    pub pathcost: f64,
+    pub disabled_nodes: usize,
+}
+
+/// MinMaxAggPath is the one row of a query's MIN and MAX aggregates, each read by an initplan, under its HAVING
+/// conditions, as Postgres' MinMaxAggPath holds it.
+#[derive(Clone, Debug)]
+pub struct MinMaxAggPath {
+    pub mmaggregates: Vec<MinMaxAggInfo>,
+    pub quals: Vec<Expr>,
+}
+
+/// SetOpPath is an INTERSECT or EXCEPT of two paths' rows, as Postgres' SetOpPath holds it. Doltgres' executor
+/// finds the rows the same way whether the planner costed hashing them or merging them sorted.
+#[derive(Clone, Debug)]
+pub struct SetOpPath {
+    pub leftpath: Rc<Path>,
+    pub rightpath: Rc<Path>,
+    pub op: crate::plan::SetOp,
+    pub all: bool,
+}
+
+/// RecursiveUnionPath is a recursive WITH query's union of its non-recursive term's rows and its recursive term's
+/// rows over its working table, as Postgres' RecursiveUnionPath holds it.
+#[derive(Clone, Debug)]
+pub struct RecursiveUnionPath {
+    pub leftpath: Rc<Path>,
+    pub rightpath: Rc<Path>,
+    pub distinct: bool,
+    pub wt_param_id: usize,
 }
 
 /// LimitPath is a LIMIT and OFFSET, as Postgres' LimitPath holds them.

@@ -123,10 +123,11 @@ fn pull_up_simple_subquery(glob: &mut PlannerGlobal, parse: &mut Query, varno: u
 }
 
 /// is_simple_subquery reports whether a subquery can be pulled up into its parent, as Postgres' function of the same
-/// name decides: it has no aggregates, windows, set-returning functions, grouping, HAVING, ORDER BY, DISTINCT, or
-/// LIMIT, and its output runs no volatile function.
+/// name decides: it has no set operations, aggregates, windows, set-returning functions, grouping, HAVING, ORDER BY,
+/// DISTINCT, or LIMIT, and its output runs no volatile function.
 fn is_simple_subquery(glob: &PlannerGlobal, subquery: &Query) -> bool {
-    !(subquery.has_aggs
+    !(subquery.set_operations.is_some()
+        || subquery.has_aggs
         || !subquery.window_funcs.is_empty()
         || !subquery.target_srfs.is_empty()
         || !subquery.group_clause.is_empty()

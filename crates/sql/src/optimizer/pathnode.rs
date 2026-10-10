@@ -692,7 +692,7 @@ pub fn create_append_path(root: &mut PlannerInfo<'_, '_>, rel: usize, subpaths: 
     let total_cost = subpaths.iter().map(|p| p.total_cost).sum::<f64>()
         + super::costsize::CPU_TUPLE_COST * super::costsize::APPEND_CPU_COST_MULTIPLIER * rows;
     let disabled_nodes = subpaths.iter().map(|p| p.disabled_nodes).sum();
-    let target = subpaths.first().map(|p| path_target(root, p));
+    let target = Some(Rc::new(root.rels[rel].reltarget.clone()));
     upper_path(
         root,
         rel,
@@ -730,4 +730,148 @@ pub fn create_subqueryscan_path(
         total_cost,
         pathtarget: None,
     })
+}
+
+/// create_setop_path returns the path of an INTERSECT or EXCEPT of two paths, hashed or of sorted inputs, with its
+/// estimated groups and rows, as Postgres' function of the same name does.
+pub fn create_setop_path(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    (leftpath, rightpath): (Rc<Path>, Rc<Path>),
+    (op, all): (crate::plan::SetOp, bool),
+    hashed: bool,
+    group_list: Vec<super::nodes::SortGroupClause>,
+    (num_groups, output_rows): (f64, f64),
+) -> Rc<Path> {
+    use super::costsize::{CPU_OPERATOR_COST, HASH_MEM, maxalign};
+    let mut disabled_nodes = leftpath.disabled_nodes + rightpath.disabled_nodes;
+    let compare_cost = CPU_OPERATOR_COST * (leftpath.rows + rightpath.rows) * group_list.len() as f64;
+    let (startup_cost, mut total_cost) = match hashed {
+        false => {
+            (leftpath.startup_cost + rightpath.startup_cost, leftpath.total_cost + rightpath.total_cost + compare_cost)
+        }
+        true => {
+            let startup = leftpath.total_cost + rightpath.total_cost + compare_cost;
+            disabled_nodes += usize::from(!root.enables.hashagg);
+            let hashentrysize = maxalign(leftpath.width) + maxalign(MINIMAL_TUPLE_HEADER);
+            disabled_nodes += usize::from(hashentrysize * num_groups > HASH_MEM);
+            (startup, startup)
+        }
+    };
+    total_cost += CPU_OPERATOR_COST * output_rows;
+    let parent = &root.rels[rel];
+    let pathkeys = match hashed {
+        false => leftpath.pathkeys.clone(),
+        true => Vec::new(),
+    };
+    let kind = PathKind::SetOp(Box::new(super::nodes::SetOpPath { leftpath, rightpath, op, all }));
+    Rc::new(Path {
+        kind,
+        parent: rel,
+        relids: parent.relids.clone(),
+        param: Relids::new(),
+        pathkeys,
+        rows: output_rows,
+        width: parent.reltarget.width,
+        disabled_nodes,
+        startup_cost,
+        total_cost,
+        pathtarget: Some(Rc::new(parent.reltarget.clone())),
+    })
+}
+
+/// MINIMAL_TUPLE_HEADER is the size of the header of a row that a hash table keeps, as Postgres'
+/// SizeofMinimalTupleHeader is.
+const MINIMAL_TUPLE_HEADER: f64 = 15.0;
+
+/// create_recursiveunion_path returns the path of a recursive WITH query's union of its non-recursive term's path
+/// and its recursive term's path, as Postgres' function of the same name does.
+pub fn create_recursiveunion_path(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    leftpath: Rc<Path>,
+    rightpath: Rc<Path>,
+    distinct: bool,
+    wt_param_id: usize,
+) -> Rc<Path> {
+    let parent = &root.rels[rel];
+    let mut target = parent.reltarget.clone();
+    let (rows, costs) = super::costsize::cost_recursive_union(&leftpath, &rightpath);
+    target.width = leftpath.width.max(rightpath.width);
+    Rc::new(Path {
+        parent: rel,
+        relids: parent.relids.clone(),
+        param: Relids::new(),
+        pathkeys: Vec::new(),
+        rows,
+        width: target.width,
+        disabled_nodes: costs.0,
+        startup_cost: costs.1,
+        total_cost: costs.2,
+        pathtarget: Some(Rc::new(target)),
+        kind: PathKind::RecursiveUnion(Box::new(super::nodes::RecursiveUnionPath {
+            leftpath,
+            rightpath,
+            distinct,
+            wt_param_id,
+        })),
+    })
+}
+
+/// create_merge_append_path returns the path of the rows of several paths merged in the order of pathkeys, sorting
+/// those that are not in it, as Postgres' function of the same name does.
+pub fn create_merge_append_path(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    subpaths: Vec<Rc<Path>>,
+    pathkeys: Vec<PkId>,
+) -> Rc<Path> {
+    let parent = &root.rels[rel];
+    let limit_tuples = match parent.relids == root.all_query_rels {
+        true => root.limit_tuples,
+        false => -1.0,
+    };
+    let (mut rows, mut input_disabled_nodes, mut input_startup_cost, mut input_total_cost) = (0.0, 0, 0.0, 0.0);
+    for subpath in &subpaths {
+        rows += subpath.rows;
+        let (disabled_nodes, startup_cost, total_cost) =
+            match super::pathkeys::pathkeys_contained_in(&pathkeys, &subpath.pathkeys) {
+                true => (subpath.disabled_nodes, subpath.startup_cost, subpath.total_cost),
+                false => super::costsize::cost_sort(root, subpath, limit_tuples),
+            };
+        input_disabled_nodes += disabled_nodes;
+        input_startup_cost += startup_cost;
+        input_total_cost += total_cost;
+    }
+    let costs = match subpaths.len() {
+        1 => (input_disabled_nodes, input_startup_cost, input_total_cost),
+        n => super::costsize::cost_merge_append(n, (input_disabled_nodes, input_startup_cost, input_total_cost), rows),
+    };
+    let target = Some(Rc::new(parent.reltarget.clone()));
+    upper_path(root, rel, PathKind::MergeAppend(subpaths), target, pathkeys, rows, costs)
+}
+
+/// create_minmaxagg_path returns the path of the one row of a query's MIN and MAX aggregates that initplans read from
+/// indexes, under its HAVING conditions, as Postgres' function of the same name does.
+pub fn create_minmaxagg_path(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    target: Rc<super::nodes::PathTarget>,
+    mmaggregates: Vec<super::nodes::MinMaxAggInfo>,
+    quals: Vec<crate::expr::Expr>,
+) -> Rc<Path> {
+    let initplan_cost: f64 = mmaggregates.iter().map(|m| m.pathcost).sum();
+    let disabled_nodes = mmaggregates.iter().map(|m| m.disabled_nodes).sum();
+    let mut startup_cost = initplan_cost + target.cost.startup;
+    let mut total_cost = initplan_cost + target.cost.startup + target.cost.per_tuple + super::costsize::CPU_TUPLE_COST;
+    if !quals.is_empty() {
+        let qual_cost = quals.iter().fold(super::costsize::QualCost::default(), |cost, q| {
+            let one = super::costsize::cost_qual_eval_node(q);
+            super::costsize::QualCost { startup: cost.startup + one.startup, per_tuple: cost.per_tuple + one.per_tuple }
+        });
+        startup_cost += qual_cost.startup;
+        total_cost += qual_cost.startup + qual_cost.per_tuple;
+    }
+    let kind = PathKind::MinMaxAgg(Box::new(super::nodes::MinMaxAggPath { mmaggregates, quals }));
+    upper_path(root, rel, kind, Some(target), Vec::new(), 1.0, (disabled_nodes, startup_cost, total_cost))
 }

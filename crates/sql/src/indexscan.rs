@@ -2365,6 +2365,10 @@ pub(crate) fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) 
             vec![(input, depth)]
         }
         Plan::SetOp { left, right, .. } => vec![(left, depth), (right, depth)],
+        Plan::MergeAppend { inputs, keys } => {
+            read(&mut keys.iter().map(|k| &k.expr));
+            inputs.iter().map(|input| (input, depth)).collect()
+        }
         Plan::Recursive { anchor, step, .. } => vec![(anchor, depth), (step, depth)],
         Plan::ProjectSet { input, functions, .. } => {
             read(&mut functions.iter());

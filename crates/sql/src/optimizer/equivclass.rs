@@ -839,3 +839,27 @@ pub fn exprs_known_equal(root: &PlannerInfo<'_, '_>, item1: &Expr, item2: &Expr)
             && ec.ec_members.iter().any(|&em| root.eq_members[em].em_expr == *item2)
     })
 }
+
+/// add_setop_child_rel_equivalences adds each column of a set operation's input to the equivalence class of the
+/// pathkey of its position among the set operation's pathkeys, so that the input's paths in that order have them, as
+/// Postgres' function of the same name does.
+pub fn add_setop_child_rel_equivalences(
+    root: &mut PlannerInfo<'_, '_>,
+    child_rel: usize,
+    child_tlist: &[super::nodes::TargetEntry],
+    setop_pathkeys: &[super::nodes::PkId],
+) {
+    let mut pathkeys = setop_pathkeys.iter();
+    for tle in child_tlist.iter().filter(|tle| !tle.resjunk) {
+        let Some(&pk) = pathkeys.next() else { break };
+        let ec = root.canon_pathkeys[pk].pk_eclass;
+        let parent_em = root.eq_classes[ec].ec_members[0];
+        let jdomain = root.eq_members[parent_em].em_jdomain;
+        let datatype = super::nodefuncs::expr_type(root, &tle.expr).unwrap_or(0);
+        let relids = root.rels[child_rel].relids.clone();
+        add_eq_member(root, ec, tle.expr.clone(), relids, jdomain, datatype);
+    }
+    for ec in 0..root.eq_classes.len() {
+        root.rels[child_rel].eclass_indexes.add_member(ec);
+    }
+}

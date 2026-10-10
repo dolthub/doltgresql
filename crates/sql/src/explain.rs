@@ -135,6 +135,7 @@ fn name_relations(plan: &Plan, names: &mut HashMap<usize, String>, taken: &mut H
             name_relations(left, names, taken);
             name_relations(right, names, taken);
         }
+        Plan::MergeAppend { inputs, .. } => inputs.iter().for_each(|input| name_relations(input, names, taken)),
         Plan::Recursive { anchor, step, .. } => {
             name_relations(anchor, names, taken);
             name_relations(step, names, taken);
@@ -386,6 +387,12 @@ impl Printer {
                     (SetOp::Except, false) => "HashSetOp Except",
                 };
                 (name.into(), vec![], vec![Child::Plan(left), Child::Plan(right)])
+            }
+            Plan::MergeAppend { inputs, keys } => {
+                let names = columns(plan);
+                let keys: Vec<String> = keys.iter().map(|k| expr_text(&k.expr, &names)).collect();
+                let children = inputs.iter().map(Child::Plan).collect();
+                ("Merge Append".into(), vec![format!("Sort Key: {}", keys.join(", "))], children)
             }
             Plan::Values(_) => ("Values Scan on \"*VALUES*\"".into(), vec![], vec![]),
             Plan::Function { .. } | Plan::RowsFrom { .. } => ("Function Scan".into(), vec![], vec![]),

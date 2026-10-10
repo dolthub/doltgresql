@@ -58,6 +58,9 @@ pub fn examine_variable(root: &PlannerInfo<'_, '_>, e: &Expr) -> VariableStatDat
         return VariableStatData { rel: None, stats: None, isunique: false, isbool: false };
     };
     let (varno, attno) = (var.varno, var.varattno);
+    if varno == 0 {
+        return VariableStatData { rel: None, stats: None, isunique: false, isbool: false };
+    }
     let Some(table) = root.parse.rte(varno).table() else {
         return VariableStatData { rel: Some(varno), stats: None, isunique: false, isbool: false };
     };

@@ -17,6 +17,8 @@
 //! relation's column wherever an outer join has made it NULL, as the executor pads the rows that outer joins add, and
 //! a PlaceHolderVar is computed where it is evaluated and read from there above.
 
+use std::rc::Rc;
+
 use super::PlannerInfo;
 use super::costsize::cost_qual_eval_node;
 use super::indxpath::{lookup_keys, to_attnos};
@@ -177,15 +179,34 @@ fn create_upper_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Vec<
             project(root, plan, layout, path)
         }
         PathKind::Append(subpaths) if root.rels[path.parent].reloptkind != super::nodes::RelOptKind::BaseRel => {
-            let mut plans = subpaths.iter().map(|p| create_plan_recurse(root, p));
-            let (first, layout) = plans.next().expect("an Append of upper paths has paths");
-            let plan = plans.fold(first, |left, (right, _)| Plan::SetOp {
+            let mut plans = subpaths.iter().map(|p| create_projected_plan(root, p)).collect::<Vec<Plan>>().into_iter();
+            let first = plans.next().expect("an Append of upper paths has paths");
+            let plan = plans.fold(first, |left, right| Plan::SetOp {
                 op: crate::plan::SetOp::Union,
                 all: true,
                 left: Box::new(left),
                 right: Box::new(right),
             });
-            (plan, layout)
+            (plan, target_slots(root, &super::planner::path_exprs(root, path)))
+        }
+        PathKind::MergeAppend(subpaths) => create_merge_append_plan(root, path, subpaths),
+        PathKind::MinMaxAgg(minmax) => create_minmaxagg_plan(root, path, minmax),
+        PathKind::SetOp(setop) => {
+            let left = create_projected_plan(root, &setop.leftpath);
+            let right = create_projected_plan(root, &setop.rightpath);
+            let plan = Plan::SetOp { op: setop.op, all: setop.all, left: Box::new(left), right: Box::new(right) };
+            (plan, target_slots(root, &super::planner::path_exprs(root, path)))
+        }
+        PathKind::RecursiveUnion(runion) => {
+            let anchor = create_projected_plan(root, &runion.leftpath);
+            let step = create_projected_plan(root, &runion.rightpath);
+            let plan = Plan::Recursive {
+                work_table: runion.wt_param_id,
+                anchor: Box::new(anchor),
+                step: Box::new(step),
+                all: !runion.distinct,
+            };
+            (plan, target_slots(root, &super::planner::path_exprs(root, path)))
         }
         PathKind::Result(quals) => {
             let quals = quals.iter().map(|q| positional(root, q.clone(), &[]));
@@ -198,6 +219,68 @@ fn create_upper_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Vec<
         }
         _ => unreachable!("an upper path"),
     }
+}
+
+/// create_projected_plan makes the plan of a path whose rows hold the columns of its target in order, as the inputs of
+/// a set operation's Append, MergeAppend, SetOp, or RecursiveUnion must.
+fn create_projected_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> Plan {
+    let (plan, layout) = create_plan_recurse(root, path);
+    project(root, plan, layout, path).0
+}
+
+/// create_minmaxagg_plan makes the plan of the one row of a query's MIN and MAX aggregates, each the value of the
+/// first row of its plan under a LIMIT of 1, read by an initplan, under the query's HAVING conditions, as Postgres'
+/// function of the same name does.
+fn create_minmaxagg_plan(
+    root: &mut PlannerInfo<'_, '_>,
+    path: &Path,
+    minmax: &super::nodes::MinMaxAggPath,
+) -> (Plan, Vec<Slot>) {
+    let mut initplans = vec![None; root.parse.aggregates.len()];
+    for info in &minmax.mmaggregates {
+        let limit = Some(Expr::Const(Value::Int8(1)));
+        let plan = Plan::Limit { input: Box::new(info.plan.clone()), limit, offset: None };
+        initplans[info.agg] = Some(super::subselect::ss_make_initplan_from_plan(plan, info.pathcost));
+    }
+    let replace = |e: Expr| replace_minmax_aggs(e, &initplans);
+    let exprs: Vec<Expr> = super::planner::path_exprs(root, path).into_iter().map(replace).collect();
+    let layout = target_slots(root, &super::planner::path_exprs(root, path));
+    let mut plan = Plan::OneRow;
+    if let Some(predicate) =
+        minmax.quals.iter().cloned().map(replace).reduce(|a, b| Expr::And(Box::new(a), Box::new(b)))
+    {
+        plan = Plan::Filter { input: Box::new(plan), predicate };
+    }
+    (Plan::Project { input: Box::new(plan), exprs }, layout)
+}
+
+/// replace_minmax_aggs rewrites each aggregate reference of an expression into the initplan that reads its value, as
+/// Postgres' setrefs.c replaces it with find_minmax_agg_replacement_param.
+fn replace_minmax_aggs(e: Expr, initplans: &[Option<Expr>]) -> Expr {
+    match e {
+        Expr::AggRef(k) => initplans[k].clone().expect("an initplan of each aggregate"),
+        other => other.map_children(&mut |c| replace_minmax_aggs(c, initplans)),
+    }
+}
+
+/// create_merge_append_plan makes the plan of a MergeAppend, sorting each input whose rows are not in the path's
+/// order, as Postgres' function of the same name does.
+fn create_merge_append_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, subpaths: &[Rc<Path>]) -> (Plan, Vec<Slot>) {
+    let layout = target_slots(root, &super::planner::path_exprs(root, path));
+    let mut inputs = Vec::with_capacity(subpaths.len());
+    for subpath in subpaths {
+        let (plan, sub_layout) = create_plan_recurse(root, subpath);
+        let plan = match super::pathkeys::pathkeys_contained_in(&path.pathkeys, &subpath.pathkeys) {
+            true => plan,
+            false => {
+                let keys = sort_keys(root, &path.pathkeys, &sub_layout);
+                Plan::Sort { input: Box::new(plan), keys }
+            }
+        };
+        inputs.push(project(root, plan, sub_layout, subpath).0);
+    }
+    let keys = sort_keys(root, &path.pathkeys, &layout);
+    (Plan::MergeAppend { inputs, keys }, layout)
 }
 
 /// tlist_exprs returns the expressions of the target entries that group clauses read.
@@ -320,6 +403,9 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
         | PathKind::WindowAgg(_)
         | PathKind::Limit(_) => return create_upper_plan(root, path),
         PathKind::Sort(_) => return create_upper_plan(root, path),
+        PathKind::MergeAppend(_) | PathKind::SetOp(_) | PathKind::RecursiveUnion(_) | PathKind::MinMaxAgg(_) => {
+            return create_upper_plan(root, path);
+        }
         PathKind::Append(_) if root.rels[path.parent].reloptkind != super::nodes::RelOptKind::BaseRel => {
             return create_upper_plan(root, path);
         }

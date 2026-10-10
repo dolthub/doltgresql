@@ -92,7 +92,9 @@ fn set_subquery_pathlist(root: &mut PlannerInfo<'_, '_>, rti: usize) {
     let mut subquery = (**subquery).clone();
     let mut safety_info =
         PushdownSafetyInfo { unsafe_flags: vec![0; subquery.target_list.len()], unsafe_volatile: false };
-    if !root.rels[rti].baserestrictinfo.is_empty() && subquery_is_pushdown_safe(root, &subquery, &mut safety_info) {
+    if !root.rels[rti].baserestrictinfo.is_empty()
+        && subquery_is_pushdown_safe(root, &subquery, &subquery, &mut safety_info)
+    {
         let mut upperrestrictlist = Vec::new();
         for rinfo in root.rels[rti].baserestrictinfo.clone() {
             if root.rinfos[rinfo].pseudoconstant {
@@ -122,25 +124,10 @@ fn set_subquery_pathlist(root: &mut PlannerInfo<'_, '_>, rti: usize) {
         true => 0.0,
         false => root.tuple_fraction,
     };
-    let (tuples, attr_widths, subplans, dummy) = {
-        let mut subroot = super::subquery_planner(root.ctx, root.glob, subquery, tuple_fraction);
-        let sub_final_rel = super::relnode::fetch_upper_rel(&mut subroot, super::nodes::UpperRelationKind::Final);
-        let dummy = is_dummy_rel(&subroot, sub_final_rel);
-        let cheapest = subroot.rels[sub_final_rel].cheapest_total_path.clone().expect("a final path");
-        let attr_widths = super::costsize::subquery_attr_widths(&subroot);
-        let mut subplans = Vec::new();
-        for path in subroot.rels[sub_final_rel].pathlist.clone() {
-            let order = super::pathkeys::subquery_output_order(&subroot, &path.pathkeys);
-            let plan = super::createplan::create_plan(&mut subroot, &path);
-            subplans.push(super::nodes::SubqueryPlan { path, plan, order });
-        }
-        (cheapest.rows, attr_widths, subplans, dummy)
-    };
-    if dummy {
+    if !plan_subquery_rel(root, rti, subquery, tuple_fraction) {
         set_dummy_rel_pathlist(root, rti);
         return;
     }
-    super::costsize::set_subquery_size_estimates(root, rti, tuples, attr_widths);
     let rel = &root.rels[rti];
     let trivial_pathtarget = rel.reltarget.exprs.len() == rel.attr_widths.len()
         && rel.reltarget.exprs.iter().enumerate().all(|(i, e)| match e {
@@ -149,13 +136,63 @@ fn set_subquery_pathlist(root: &mut PlannerInfo<'_, '_>, rti: usize) {
             }
             _ => false,
         });
-    root.rels[rti].subplans = subplans;
     for i in 0..root.rels[rti].subplans.len() {
         let order = root.rels[rti].subplans[i].order.clone();
         let pathkeys = super::pathkeys::convert_subquery_pathkeys(root, rti, &order);
         let path = super::pathnode::create_subqueryscan_path(root, rti, i, trivial_pathtarget, pathkeys);
         add_path(&mut root.rels[rti], path);
     }
+}
+
+/// plan_subquery_rel plans the subquery of a subquery relation for a share of its rows, keeping the plans of its
+/// final paths in the relation's `subplans`, its estimated number of distinct rows, and its size estimates, as Postgres'
+/// set_subquery_pathlist and recurse_set_operations plan a subquery and set_subquery_size_estimates sizes its
+/// relation, returning false when the subquery returns no rows.
+pub fn plan_subquery_rel(
+    root: &mut PlannerInfo<'_, '_>,
+    rti: usize,
+    subquery: super::nodes::Query,
+    tuple_fraction: f64,
+) -> bool {
+    let (tuples, attr_widths, subplans, num_groups, dummy) = {
+        let mut subroot = super::subquery_planner(root.ctx, root.glob, subquery, tuple_fraction);
+        let sub_final_rel = super::relnode::fetch_upper_rel(
+            &mut subroot,
+            super::nodes::UpperRelationKind::Final,
+            &super::nodes::Relids::new(),
+        );
+        let dummy = is_dummy_rel(&subroot, sub_final_rel);
+        let cheapest = subroot.rels[sub_final_rel].cheapest_total_path.clone().expect("a final path");
+        let attr_widths = super::costsize::subquery_attr_widths(&subroot);
+        let parse = &subroot.parse;
+        let num_groups = match !parse.group_clause.is_empty()
+            || parse.grouping_sets.is_some()
+            || !parse.distinct_clause.is_empty()
+            || subroot.has_having_qual
+            || parse.has_aggs
+        {
+            true => cheapest.rows,
+            false => {
+                let exprs: Vec<Expr> =
+                    parse.target_list.iter().filter(|tle| !tle.resjunk).map(|tle| tle.expr.clone()).collect();
+                super::selfuncs::estimate_num_groups(&subroot, &exprs, cheapest.rows, None)
+            }
+        };
+        let mut subplans = Vec::new();
+        for path in subroot.rels[sub_final_rel].pathlist.clone() {
+            let order = super::pathkeys::subquery_output_order(&subroot, &path.pathkeys);
+            let plan = super::createplan::create_plan(&mut subroot, &path);
+            subplans.push(super::nodes::SubqueryPlan { path, plan, order });
+        }
+        (cheapest.rows, attr_widths, subplans, num_groups, dummy)
+    };
+    if dummy {
+        return false;
+    }
+    root.rels[rti].subplans = subplans;
+    root.rels[rti].subquery_groups = num_groups;
+    super::costsize::set_subquery_size_estimates(root, rti, tuples, attr_widths);
+    true
 }
 
 /// PushdownSafetyInfo is what subquery_is_pushdown_safe finds of a subquery, as Postgres' pushdown_safety_info holds
@@ -172,6 +209,7 @@ const UNSAFE_HAS_VOLATILE_FUNC: u8 = 1 << 0;
 const UNSAFE_HAS_SET_FUNC: u8 = 1 << 1;
 const UNSAFE_NOTIN_DISTINCTON_CLAUSE: u8 = 1 << 2;
 const UNSAFE_NOTIN_PARTITIONBY_CLAUSE: u8 = 1 << 3;
+const UNSAFE_TYPE_MISMATCH: u8 = 1 << 4;
 
 /// PushdownSafeType is whether a qual can be pushed down into a subquery, as Postgres' pushdown_safe_type is.
 enum PushdownSafeType {
@@ -180,11 +218,13 @@ enum PushdownSafeType {
     WindowClauseRunCond,
 }
 
-/// subquery_is_pushdown_safe reports whether a subquery can take quals pushed down into it, noting the columns that
-/// they must not read, as Postgres' function of the same name does for a subquery without set operations.
+/// subquery_is_pushdown_safe reports whether a subquery, or a leaf of the set operations of the subquery `topquery`,
+/// can take quals pushed down into it, noting the columns that they must not read, as Postgres' function of the same
+/// name does.
 fn subquery_is_pushdown_safe(
     root: &PlannerInfo<'_, '_>,
     subquery: &super::nodes::Query,
+    topquery: &super::nodes::Query,
     safety_info: &mut PushdownSafetyInfo,
 ) -> bool {
     if subquery.limit_offset.is_some() || subquery.limit_count.is_some() {
@@ -196,8 +236,59 @@ fn subquery_is_pushdown_safe(
     if !subquery.distinct_clause.is_empty() || !subquery.window_funcs.is_empty() || !subquery.target_srfs.is_empty() {
         safety_info.unsafe_volatile = true;
     }
-    check_output_expressions(root, subquery, safety_info);
+    if subquery.set_operations.is_none() {
+        check_output_expressions(root, subquery, safety_info);
+    }
+    if std::ptr::eq(subquery, topquery) {
+        if let Some(setops) = &subquery.set_operations {
+            let tree = super::nodes::SetOpTree::Op(setops.clone());
+            return recurse_pushdown_safe(root, &tree, topquery, safety_info);
+        }
+    } else {
+        if subquery.set_operations.is_some() {
+            return false;
+        }
+        let topop = topquery.set_operations.as_ref().expect("the leaf of a set operation");
+        compare_tlist_datatypes(root, subquery, &topop.col_types, safety_info);
+    }
     true
+}
+
+/// recurse_pushdown_safe reports whether each leaf of a tree of set operations can take pushed-down quals, as
+/// Postgres' function of the same name does: none can under an EXCEPT.
+fn recurse_pushdown_safe(
+    root: &PlannerInfo<'_, '_>,
+    set_op: &super::nodes::SetOpTree,
+    topquery: &super::nodes::Query,
+    safety_info: &mut PushdownSafetyInfo,
+) -> bool {
+    match set_op {
+        super::nodes::SetOpTree::Rel(rtindex) => {
+            let RteKind::Subquery(subquery, _) = &topquery.rte(*rtindex).kind else { unreachable!("a leaf subquery") };
+            subquery_is_pushdown_safe(root, subquery, topquery, safety_info)
+        }
+        super::nodes::SetOpTree::Op(op) => {
+            op.op != crate::plan::SetOp::Except
+                && recurse_pushdown_safe(root, &op.larg, topquery, safety_info)
+                && recurse_pushdown_safe(root, &op.rarg, topquery, safety_info)
+        }
+    }
+}
+
+/// compare_tlist_datatypes notes the output columns of a leaf of a set operation whose types differ from the set
+/// operation's, which a pushed-down qual must not read, as Postgres' function of the same name does.
+fn compare_tlist_datatypes(
+    root: &PlannerInfo<'_, '_>,
+    subquery: &super::nodes::Query,
+    col_types: &[Option<u32>],
+    safety_info: &mut PushdownSafetyInfo,
+) {
+    let visible = subquery.target_list.iter().enumerate().filter(|(_, tle)| !tle.resjunk);
+    for ((i, tle), col_type) in visible.zip(col_types) {
+        if super::nodefuncs::query_expr_type(root.glob, subquery, &tle.expr) != *col_type {
+            safety_info.unsafe_flags[i] |= UNSAFE_TYPE_MISMATCH;
+        }
+    }
 }
 
 /// check_output_expressions notes the output columns of a subquery that a pushed-down qual must not read, as
@@ -263,7 +354,9 @@ fn qual_is_pushdown_safe(
         }
         let flags = safety_info.unsafe_flags[var.varattno];
         if flags != 0 {
-            if flags & (UNSAFE_HAS_VOLATILE_FUNC | UNSAFE_HAS_SET_FUNC | UNSAFE_NOTIN_DISTINCTON_CLAUSE) != 0 {
+            let unsafe_flags =
+                UNSAFE_HAS_VOLATILE_FUNC | UNSAFE_HAS_SET_FUNC | UNSAFE_NOTIN_DISTINCTON_CLAUSE | UNSAFE_TYPE_MISMATCH;
+            if flags & unsafe_flags != 0 {
                 return PushdownSafeType::Unsafe;
             }
             safe = PushdownSafeType::WindowClauseRunCond;
@@ -276,6 +369,10 @@ fn qual_is_pushdown_safe(
 /// expressions in place of the relation's columns, into its HAVING when it groups and otherwise into its WHERE, as
 /// Postgres' function of the same name does.
 fn subquery_push_qual(root: &PlannerInfo<'_, '_>, subquery: &mut super::nodes::Query, rti: usize, qual: Expr) {
+    if let Some(setops) = subquery.set_operations.clone() {
+        recurse_push_qual(root, &super::nodes::SetOpTree::Op(setops), subquery, rti, &qual);
+        return;
+    }
     let qual = replace_vars_from_target_list(root, qual, rti, subquery);
     if subquery.has_aggs
         || !subquery.group_clause.is_empty()
@@ -288,6 +385,29 @@ fn subquery_push_qual(root: &PlannerInfo<'_, '_>, subquery: &mut super::nodes::Q
         });
     } else {
         subquery.jointree.quals.push(qual);
+    }
+}
+
+/// recurse_push_qual pushes a restriction of a subquery relation down into each leaf of the subquery's set
+/// operations, as Postgres' function of the same name does.
+fn recurse_push_qual(
+    root: &PlannerInfo<'_, '_>,
+    set_op: &super::nodes::SetOpTree,
+    topquery: &mut super::nodes::Query,
+    rti: usize,
+    qual: &Expr,
+) {
+    match set_op {
+        super::nodes::SetOpTree::Rel(rtindex) => {
+            let RteKind::Subquery(subquery, _) = &mut topquery.rtable[rtindex - 1].kind else {
+                unreachable!("a leaf subquery")
+            };
+            subquery_push_qual(root, subquery, rti, qual.clone());
+        }
+        super::nodes::SetOpTree::Op(op) => {
+            recurse_push_qual(root, &op.larg, topquery, rti, qual);
+            recurse_push_qual(root, &op.rarg, topquery, rti, qual);
+        }
     }
 }
 
@@ -312,7 +432,7 @@ fn replace_vars_from_target_list(
 /// with a NULL, unless its grouping, ordering, or DISTINCT needs it or it returns sets or runs a volatile function, as
 /// Postgres' function of the same name does.
 fn remove_unused_subquery_outputs(root: &PlannerInfo<'_, '_>, subquery: &mut super::nodes::Query, rti: usize) {
-    if !subquery.distinct_clause.is_empty() && !subquery.has_distinct_on {
+    if subquery.set_operations.is_some() || (!subquery.distinct_clause.is_empty() && !subquery.has_distinct_on) {
         return;
     }
     let rel = &root.rels[rti];

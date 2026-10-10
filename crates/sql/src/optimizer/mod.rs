@@ -34,11 +34,13 @@ pub mod nodes;
 mod pathkeys;
 mod pathnode;
 mod placeholder;
+mod planagg;
 mod plancat;
 mod planner;
 mod predtest;
 mod prepagg;
 mod prepjointree;
+mod prepunion;
 mod query;
 mod relnode;
 mod restrictinfo;
@@ -130,6 +132,8 @@ pub struct PlannerInfo<'r, 'a> {
     pub num_ordered_aggs: usize,
     /// Whether the query's expressions hold AlternativeSubPlans, as Postgres' hasAlternativeSubPlans records.
     pub has_alternative_subplans: bool,
+    /// The MIN and MAX aggregates that indexes answer, as Postgres' minmax_aggs holds them.
+    pub minmax_aggs: Vec<nodes::MinMaxAggInfo>,
 }
 
 impl PlannerInfo<'_, '_> {
@@ -162,7 +166,7 @@ pub(crate) fn planner(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
 /// whose columns are the query's visible columns, as Postgres' standard_planner and make_subplan choose and plan it,
 /// and returns the path too.
 fn create_final_plan(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) -> (Plan, Rc<nodes::Path>) {
-    let final_rel = relnode::fetch_upper_rel(root, nodes::UpperRelationKind::Final);
+    let final_rel = relnode::fetch_upper_rel(root, nodes::UpperRelationKind::Final, &Relids::new());
     let best_path = planner::get_cheapest_fractional_path(&root.rels[final_rel], tuple_fraction);
     (createplan::create_plan(root, &best_path), best_path)
 }
@@ -200,10 +204,31 @@ fn subquery_planner<'r, 'a>(
     }
     prepjointree::remove_useless_result_rtes(glob, &mut parse);
     prepagg::preprocess_aggrefs(glob, &mut parse);
+    let mut root = new_planner_info(ctx, glob, parse, tuple_fraction, has_having_qual);
+    subselect::query_exprs(&mut root.parse, &mut |e| {
+        root.has_alternative_subplans |= matches!(e, Expr::AlternativeSubPlan(_))
+    });
+    root.num_ordered_aggs = prepagg::count_ordered_aggs(&root);
+    planner::grouping_planner(&mut root, tuple_fraction);
+    let final_rel = relnode::fetch_upper_rel(&mut root, nodes::UpperRelationKind::Final, &Relids::new());
+    subselect::ss_charge_for_initplans(&mut root, final_rel);
+    pathnode::set_cheapest(&mut root.rels[final_rel]);
+    root
+}
+
+/// new_planner_info returns the planner state of a query before planning it, as Postgres' subquery_planner sets up
+/// its PlannerInfo.
+fn new_planner_info<'r, 'a>(
+    ctx: &'r mut Ctx<'a>,
+    glob: &'r mut PlannerGlobal,
+    parse: Query,
+    tuple_fraction: f64,
+    has_having_qual: bool,
+) -> PlannerInfo<'r, 'a> {
     let enables = costsize::Enables::read(&ctx.session.settings);
     let counting = (parse.group_clause.is_empty() && parse.grouping_sets.is_none() && parse.has_aggs)
         .then(|| parse.aggregates.clone());
-    let mut root = PlannerInfo {
+    PlannerInfo {
         ctx,
         glob,
         parse,
@@ -248,16 +273,8 @@ fn subquery_planner<'r, 'a>(
         sort_pathkeys: Vec::new(),
         num_ordered_aggs: 0,
         has_alternative_subplans: false,
-    };
-    subselect::query_exprs(&mut root.parse, &mut |e| {
-        root.has_alternative_subplans |= matches!(e, Expr::AlternativeSubPlan(_))
-    });
-    root.num_ordered_aggs = prepagg::count_ordered_aggs(&root);
-    planner::grouping_planner(&mut root, tuple_fraction);
-    let final_rel = relnode::fetch_upper_rel(&mut root, nodes::UpperRelationKind::Final);
-    subselect::ss_charge_for_initplans(&mut root, final_rel);
-    pathnode::set_cheapest(&mut root.rels[final_rel]);
-    root
+        minmax_aggs: Vec::new(),
+    }
 }
 
 /// preprocess_having moves each HAVING condition that reads no aggregate, runs no volatile function, and has no
@@ -416,7 +433,7 @@ fn query_planner(root: &mut PlannerInfo<'_, '_>, qp_callback: &mut dyn FnMut(&mu
 /// build_jointree turns a FROM clause's plan into a join tree, as Postgres' parser builds one, adding its inputs to a
 /// range table and the expression of each column of the plan's rows to `output`: a decomposable join becomes a JOIN
 /// with a range table index of its own, whose nullable sides' columns are Vars that the join can make NULL, a
-/// SELECT's projection, LIMIT, DISTINCT, or ORDER BY becomes a subquery, a filter becomes a FROM list with quals, the
+/// SELECT's projection, LIMIT, DISTINCT, or ORDER BY, or a set operation, becomes a subquery, a filter becomes a FROM list with quals, the
 /// one row of an empty FROM clause becomes a RESULT relation, a scan of a table becomes a relation, a WITH query's
 /// reference becomes what ss_process_cte decides, and any other input becomes a relation of its own plan, planned
 /// already, as is any join that is lateral, already planned, or has a subquery in its condition.
@@ -459,9 +476,11 @@ pub(super) fn build_jointree(
             }
             JoinTreeNode::Join(Box::new(JoinExpr { jointype, larg, rarg, quals, rtindex }))
         }
-        Plan::Project { .. } | Plan::Limit { .. } | Plan::Distinct { .. } => {
-            subquery_relation(glob, ctx, plan, rtable, output)
-        }
+        Plan::Project { .. }
+        | Plan::Limit { .. }
+        | Plan::Distinct { .. }
+        | Plan::SetOp { .. }
+        | Plan::Recursive { .. } => subquery_relation(glob, ctx, plan, rtable, output),
         Plan::Sort { ref input, .. } if !matches!(**input, Plan::Window { .. }) => {
             subquery_relation(glob, ctx, plan, rtable, output)
         }
@@ -492,7 +511,7 @@ pub(super) fn build_jointree(
 
 /// subquery_relation adds a subquery of the plan of a SELECT to a range table, adding a Var of each of its visible
 /// columns to `output`, and returns its reference.
-fn subquery_relation(
+pub(super) fn subquery_relation(
     glob: &mut PlannerGlobal,
     ctx: &mut Ctx<'_>,
     plan: Plan,

@@ -191,6 +191,11 @@ pub enum Plan {
     WorkTable(usize, usize),
     /// The rows of a WITH query that every reference to it reads, computed once for the statement.
     CteScan(std::sync::Arc<CteDef>),
+    /// The rows of inputs sorted by the keys, merged in that order, the rows of an earlier input first among equal ones.
+    MergeAppend {
+        inputs: Vec<Plan>,
+        keys: Vec<SortKey>,
+    },
     /// For each input row, the rows of its set-returning calls side by side, padded with NULLs, after its values,
     /// leaving NULL the input columns that nothing above reads.
     ProjectSet {
@@ -490,9 +495,9 @@ impl<'b, 'a> Planner<'b, 'a> {
                 ..PgError::new(code::SYNTAX_ERROR, "SELECT ... INTO is not allowed here")
             });
         }
-        let Some(with) = select.with_clause.as_ref() else { return self.plan_query_body(select) };
+        let Some(with) = select.with_clause.as_ref() else { return self.plan_query_body(select, false) };
         let depth = self.ctx.ctes.len();
-        let result = self.plan_with(with).and_then(|_| self.plan_query_body(select));
+        let result = self.plan_with(with).and_then(|_| self.plan_query_body(select, false));
         self.ctx.ctes.truncate(depth);
         result
     }
@@ -531,7 +536,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             if cte.search_clause.is_some() || cte.cycle_clause.is_some() {
                 self.check_search_and_cycle(cte, query, recursive)?;
             }
-            let unplanned = crate::optimizer::enabled() && !recursive && is_plain_select(query);
+            let unplanned = crate::optimizer::enabled() && (recursive || can_defer(query));
             let planned = if recursive {
                 if cte.search_clause.is_some() || cte.cycle_clause.is_some() {
                     let rewritten = rewrite_search_and_cycle(cte, query, &mut aliases)?;
@@ -541,7 +546,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 }
             } else {
                 let mut planned = match unplanned {
-                    true => self.plan_select(query, true)?,
+                    true => self.plan_query_body(query, true)?,
                     false => self.plan_query(query)?,
                 };
                 rename_columns(&cte.ctename, &mut planned.columns, &aliases, cte.location)?;
@@ -679,7 +684,7 @@ impl<'b, 'a> Planner<'b, 'a> {
         let (Some(left), Some(right)) = (query.larg.as_deref(), query.rarg.as_deref()) else {
             return Err(PgError::internal("a recursive query without both terms"));
         };
-        let mut anchor = self.plan_query(left)?;
+        let mut anchor = self.plan_branch(left)?;
         rename_columns(&cte.ctename, &mut anchor.columns, aliases, cte.location)?;
         for (ty, column) in anchor.types.iter_mut().zip(&mut anchor.columns) {
             if ty.oid == oid::UNKNOWN {
@@ -696,7 +701,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             work_table,
             def: None,
         });
-        let step = self.plan_query(right);
+        let step = self.plan_branch(right);
         self.ctx.ctes.pop();
         let step = step?;
         if step.columns.len() != anchor.columns.len() {
@@ -736,14 +741,15 @@ impl<'b, 'a> Planner<'b, 'a> {
         Ok(Query { plan, columns: anchor.columns, types: anchor.types })
     }
 
-    /// plan_query_body plans a SELECT, VALUES, or set operation without its WITH clause.
-    fn plan_query_body(&mut self, select: &SelectStmt) -> Result<Query> {
+    /// plan_query_body plans a SELECT, VALUES, or set operation without its WITH clause, leaving a SELECT or set
+    /// operation unplanned when `defer` asks for a query that the ported optimizer plans with the query around it.
+    pub(crate) fn plan_query_body(&mut self, select: &SelectStmt, defer: bool) -> Result<Query> {
         let op = SetOperation::try_from(select.op).unwrap_or(SetOperation::SetopNone);
         let (mut query, scope) = match op {
             SetOperation::SetopNone | SetOperation::Undefined if !select.values_lists.is_empty() => {
                 self.plan_values(select)?
             }
-            SetOperation::SetopNone | SetOperation::Undefined => return self.plan_select(select, false),
+            SetOperation::SetopNone | SetOperation::Undefined => return self.plan_select(select, defer),
             _ => self.plan_set_operation(select, op)?,
         };
         // ORDER BY and LIMIT of VALUES and set operations apply to the result's columns.
@@ -765,6 +771,11 @@ impl<'b, 'a> Planner<'b, 'a> {
             query.plan = Plan::Sort { input: Box::new(query.plan), keys };
         }
         query.plan = self.limit(query.plan, select)?;
+        if crate::optimizer::enabled() && !defer && select.values_lists.is_empty() {
+            let plan = crate::optimizer::planner(self.ctx, std::mem::replace(&mut query.plan, Plan::OneRow));
+            query.plan = crate::joins::plan_joins(self.ctx, plan);
+            crate::indexscan::prune(&mut query.plan);
+        }
         Ok(query)
     }
 
@@ -860,8 +871,8 @@ impl<'b, 'a> Planner<'b, 'a> {
     fn plan_set_operation(&mut self, select: &SelectStmt, op: SetOperation) -> Result<(Query, Scope)> {
         let left = select.larg.as_deref().ok_or_else(|| PgError::internal("a set operation without a left side"))?;
         let right = select.rarg.as_deref().ok_or_else(|| PgError::internal("a set operation without a right side"))?;
-        let mut left = self.plan_query(left)?;
-        let mut right = self.plan_query(right)?;
+        let mut left = self.plan_branch(left)?;
+        let mut right = self.plan_branch(right)?;
         let name = match op {
             SetOperation::SetopUnion => "UNION",
             SetOperation::SetopIntersect => "INTERSECT",
@@ -906,6 +917,15 @@ impl<'b, 'a> Planner<'b, 'a> {
         };
         let plan = Plan::SetOp { op, all: select.all, left: Box::new(left.plan), right: Box::new(right.plan) };
         Ok((Query { plan, columns, types }, scope))
+    }
+
+    /// plan_branch plans a term of a set operation, leaving it unplanned for the ported optimizer when it is on and
+    /// the term has no WITH or INTO.
+    fn plan_branch(&mut self, select: &SelectStmt) -> Result<Query> {
+        match crate::optimizer::enabled() && can_defer(select) {
+            true => self.plan_query_body(select, true),
+            false => self.plan_query(select),
+        }
     }
 
     /// plan_from plans the FROM list, joining its items, and returns the plan with its scope.
@@ -1433,8 +1453,8 @@ impl<'b, 'a> Planner<'b, 'a> {
             });
         };
         let mut planner = Planner { ctx: self.ctx, outer: self.outer.clone() };
-        let query = match crate::optimizer::enabled() && is_plain_select(select) {
-            true => planner.plan_select(select, true)?,
+        let query = match crate::optimizer::enabled() && can_defer(select) {
+            true => planner.plan_query_body(select, true)?,
             false => planner.plan_query(select)?,
         };
         let renames: Vec<&str> = alias.colnames.iter().filter_map(node_name).collect();
@@ -2266,14 +2286,10 @@ pub(crate) fn is_simple_exists(select: &SelectStmt) -> bool {
         && !select.target_list.iter().any(|t| has_aggregate(t) || crate::window::has_window(t))
 }
 
-/// is_plain_select reports whether a SELECT is neither a set operation nor VALUES and has no WITH or INTO, which
-/// planning it as one query level can bind without planning it.
-pub(crate) fn is_plain_select(select: &SelectStmt) -> bool {
-    let op = SetOperation::try_from(select.op).unwrap_or(SetOperation::SetopNone);
-    matches!(op, SetOperation::SetopNone | SetOperation::Undefined)
-        && select.with_clause.is_none()
-        && select.into_clause.is_none()
-        && select.values_lists.is_empty()
+/// can_defer reports whether a query has no WITH or INTO, which binding it can leave unplanned for the ported
+/// optimizer to plan with the query around it.
+pub(crate) fn can_defer(select: &SelectStmt) -> bool {
+    select.with_clause.is_none() && select.into_clause.is_none()
 }
 
 /// is_simple_subquery reports whether a subquery in FROM is a plain SELECT that a query around it may pull up into
@@ -3021,6 +3037,10 @@ impl Plan {
                 inputs.push((left, depth));
                 inputs.push((right, depth));
             }
+            Plan::MergeAppend { inputs: merged, keys } => {
+                keys.iter_mut().for_each(|k| map(&mut k.expr, depth));
+                inputs.extend(merged.iter_mut().map(|input| (input, depth)));
+            }
             Plan::Recursive { anchor, step, .. } => {
                 inputs.push((anchor, depth));
                 inputs.push((step, depth));
@@ -3082,6 +3102,7 @@ impl Plan {
                 groups.len() + aggregates.len() + usize::from(sets.is_some())
             }
             Plan::SetOp { left, .. } => left.width(),
+            Plan::MergeAppend { inputs, .. } => inputs.first().map_or(0, Plan::width),
             Plan::Once(input) => input.width(),
         }
     }
