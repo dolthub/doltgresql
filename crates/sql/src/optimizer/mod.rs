@@ -43,6 +43,7 @@ mod planner;
 mod predtest;
 mod prepagg;
 mod prepjointree;
+mod prepqual;
 mod prepunion;
 mod query;
 mod relnode;
@@ -67,6 +68,7 @@ use crate::expr::Expr;
 use crate::functions::aggregate::AggCall;
 use crate::plan::{JoinKind, JoinMethod, Plan};
 use crate::query::Ctx;
+use crate::types::Value;
 
 /// PlannerInfo is the state of planning one query, as Postgres' PlannerInfo holds it. Relations, RestrictInfos,
 /// SpecialJoinInfos, equivalence classes and members, and canonical pathkeys live in vectors here and are referred
@@ -189,6 +191,48 @@ fn plan_subselect(
     (plan, path)
 }
 
+/// preprocess_query_expressions preprocesses each expression of a query and of its range table's inputs, conditions
+/// with preprocess_qual_conditions, as Postgres' subquery_planner does.
+fn preprocess_query_expressions(ctx: &mut Ctx<'_>, parse: &mut Query) {
+    for e in parse.upper_exprs_mut() {
+        let old = std::mem::replace(e, Expr::SubqueryValue);
+        *e = preprocess_expression(ctx, old);
+    }
+    let mut quals = |quals: &mut Vec<Expr>| *quals = preprocess_qual_conditions(ctx, std::mem::take(quals));
+    parse.jointree.fromlist.iter_mut().for_each(|node| subselect::jointree_quals_mut(node, &mut quals));
+    quals(&mut parse.jointree.quals);
+    if parse.having_qual.as_ref().is_some_and(|having| *having == Expr::Const(Value::Bool(true))) {
+        parse.having_qual = None;
+    }
+    for rte in &mut parse.rtable {
+        if let RteKind::Plan(plan) = &mut rte.kind {
+            plan.map_exprs(0, &mut |e, _| subselect::preprocess_subplans(ctx, e));
+        }
+    }
+}
+
+/// preprocess_expression simplifies an expression of a query with eval_const_expressions and plans its SubPlans, as
+/// Postgres' function of the same name does.
+fn preprocess_expression(ctx: &mut Ctx<'_>, e: Expr) -> Expr {
+    let e = clauses::eval_const_expressions(ctx, e);
+    subselect::preprocess_subplans(ctx, e)
+}
+
+/// preprocess_qual_conditions preprocesses a list of conditions that must all hold as their AND, which canonicalize_qual
+/// also simplifies, returning its arguments again, as Postgres' preprocess_expression and make_ands_implicit do for a
+/// qual: none for TRUE.
+fn preprocess_qual_conditions(ctx: &mut Ctx<'_>, quals: Vec<Expr>) -> Vec<Expr> {
+    if quals.is_empty() {
+        return quals;
+    }
+    let qual = clauses::eval_const_expressions(ctx, prepqual::make_andclause(quals));
+    let qual = subselect::preprocess_subplans(ctx, prepqual::canonicalize_qual(qual));
+    match qual {
+        Expr::Const(Value::Bool(true)) => Vec::new(),
+        qual => restrictinfo::and_args(&qual).into_iter().cloned().collect(),
+    }
+}
+
 /// subquery_planner prepares a query's join tree, pulling up its sublinks and subqueries, reducing its outer joins,
 /// and moving the HAVING conditions that read no aggregate to WHERE, then plans it and charges its final paths for
 /// its initplans, returning its planner state, as Postgres' function of the same name does.
@@ -199,7 +243,7 @@ fn subquery_planner<'r, 'a>(
     tuple_fraction: f64,
 ) -> PlannerInfo<'r, 'a> {
     prepjointree::pull_up_subqueries(glob, &mut parse);
-    subselect::preprocess_query_subplans(ctx, &mut parse);
+    preprocess_query_expressions(ctx, &mut parse);
     let has_having_qual = parse.having_qual.is_some();
     preprocess_having(glob, &mut parse);
     if prepjointree::has_outer_joins(&parse) {

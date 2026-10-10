@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The parts of Postgres' optimizer/util/clauses.c that the planner calls: which functions an expression runs, and
-//! which of its relations and Vars it can only be true with when they are not NULL. Doltgres' built-in operators and
+//! The parts of Postgres' optimizer/util/clauses.c that the planner calls: which functions an expression runs,
+//! which of its relations and Vars it can only be true with when they are not NULL, and simplifying its constant parts. Doltgres' built-in operators and
 //! casts are strict, as Postgres' are, and its user-defined routines are volatile unless marked otherwise, which is
 //! Postgres' default.
 
@@ -272,4 +272,327 @@ pub fn expression_returns_set_rows(_root: &super::PlannerInfo<'_, '_>, e: &Expr)
         Expr::SetRef(_) => 1000.0,
         _ => 1.0,
     }
+}
+
+/// EvalConstContext is what eval_const_expressions works with, as Postgres' eval_const_expressions_context holds it:
+/// the context to evaluate expressions in, and whether stable functions may be evaluated too, for estimates.
+struct EvalConstContext<'c, 'a> {
+    ctx: &'c mut crate::query::Ctx<'a>,
+    estimate: bool,
+}
+
+/// eval_const_expressions simplifies an expression, as Postgres' function of the same name does: it evaluates the
+/// parts whose inputs are constants and whose functions are immutable, makes a strict call with a NULL argument NULL,
+/// drops the constant arguments of ANDs and ORs that do not decide them, pushes NOTs down, compares booleans
+/// directly, and drops the CASE branches and COALESCE arguments that cannot be reached. A part whose evaluation fails
+/// stays, so that its error waits until the query runs it.
+pub fn eval_const_expressions(ctx: &mut crate::query::Ctx<'_>, e: Expr) -> Expr {
+    eval_const_expressions_mutator(&mut EvalConstContext { ctx, estimate: false }, e)
+}
+
+/// eval_const_expressions_mutator is eval_const_expressions for each kind of expression, as Postgres' function of the
+/// same name is.
+fn eval_const_expressions_mutator(cx: &mut EvalConstContext<'_, '_>, e: Expr) -> Expr {
+    use crate::types::Value;
+    match e {
+        Expr::Func(index, args) => {
+            let args = args.into_iter().map(|a| eval_const_expressions_mutator(cx, a)).collect();
+            let function = crate::functions::function(index);
+            let safe = match crate::pgcatalog::is_mutable(function.name) {
+                false => true,
+                true => cx.estimate && !crate::pgcatalog::is_volatile(function.name),
+            };
+            simplify_function(cx, Expr::Func(index, args), function.strict, safe)
+        }
+        Expr::Routine(..) | Expr::Operator(..) => {
+            let strict = match &e {
+                Expr::Routine(routine, _) | Expr::Operator(_, routine, ..) => routine.strict,
+                _ => unreachable!("a routine call"),
+            };
+            let e = e.map_children(&mut |c| eval_const_expressions_mutator(cx, c));
+            simplify_function(cx, e, strict, false)
+        }
+        Expr::Arith(..) | Expr::Neg(..) => {
+            let e = e.map_children(&mut |c| eval_const_expressions_mutator(cx, c));
+            simplify_function(cx, e, true, true)
+        }
+        Expr::Compare(..) => {
+            let e = e.map_children(&mut |c| eval_const_expressions_mutator(cx, c));
+            let e = simplify_function(cx, e, true, true);
+            match e {
+                Expr::Compare(op @ (crate::expr::CmpOp::Eq | crate::expr::CmpOp::Ne), l, r) => {
+                    simplify_boolean_equality(op, *l, *r)
+                }
+                other => other,
+            }
+        }
+        Expr::Cast(..) => {
+            let e = e.map_children(&mut |c| eval_const_expressions_mutator(cx, c));
+            let safe = match &e {
+                Expr::Cast(inner, ty, _) => cast_is_immutable(inner, ty.oid) || cx.estimate,
+                _ => unreachable!("a cast"),
+            };
+            simplify_function(cx, e, true, safe)
+        }
+        Expr::Concat(..) | Expr::ArrayOp(..) | Expr::DistinctFrom(..) => {
+            let e = e.map_children(&mut |c| eval_const_expressions_mutator(cx, c));
+            simplify_function(cx, e, false, true)
+        }
+        Expr::DateTime(..) => {
+            let e = e.map_children(&mut |c| eval_const_expressions_mutator(cx, c));
+            let safe = cx.estimate;
+            simplify_function(cx, e, false, safe)
+        }
+        Expr::NullIf(value, test) => {
+            let (value, test) = (eval_const_expressions_mutator(cx, *value), eval_const_expressions_mutator(cx, *test));
+            if matches!(value, Expr::Const(Value::Null)) || matches!(test, Expr::Const(Value::Null)) {
+                return value;
+            }
+            simplify_function(cx, Expr::NullIf(Box::new(value), Box::new(test)), false, true)
+        }
+        Expr::AnyArray(..) => {
+            let e = e.map_children(&mut |c| eval_const_expressions_mutator(cx, c));
+            let mut all_const = true;
+            e.visit_children(&mut |c| all_const &= const_except_element(c));
+            match all_const && !contain_volatile_node(&e) {
+                true => evaluate_expr(cx, e),
+                false => e,
+            }
+        }
+        Expr::Or(..) => {
+            let args: Vec<Expr> = super::restrictinfo::or_args(&e).into_iter().cloned().collect();
+            let (newargs, have_null, force_true) = simplify_or_arguments(cx, args);
+            if force_true {
+                return Expr::Const(Value::Bool(true));
+            }
+            let mut newargs = newargs;
+            if have_null {
+                newargs.push(Expr::Const(Value::Null));
+            }
+            match newargs.len() {
+                0 => Expr::Const(Value::Bool(false)),
+                _ => super::prepqual::make_orclause(newargs),
+            }
+        }
+        Expr::And(..) => {
+            let args: Vec<Expr> = super::restrictinfo::and_args(&e).into_iter().cloned().collect();
+            let (newargs, have_null, force_false) = simplify_and_arguments(cx, args);
+            if force_false {
+                return Expr::Const(Value::Bool(false));
+            }
+            let mut newargs = newargs;
+            if have_null {
+                newargs.push(Expr::Const(Value::Null));
+            }
+            match newargs.len() {
+                0 => Expr::Const(Value::Bool(true)),
+                _ => super::prepqual::make_andclause(newargs),
+            }
+        }
+        Expr::Not(arg) => super::prepqual::negate_clause(eval_const_expressions_mutator(cx, *arg)),
+        Expr::SubPlan(_)
+        | Expr::AlternativeSubPlan(_)
+        | Expr::Exists(_)
+        | Expr::Scalar(_)
+        | Expr::ArraySubquery(..) => e,
+        Expr::Case(whens, default) => {
+            let mut newargs = Vec::new();
+            let mut defresult = None;
+            for (cond, result) in whens {
+                let casecond = eval_const_expressions_mutator(cx, cond);
+                match casecond {
+                    Expr::Const(Value::Bool(true)) => {
+                        defresult = Some(eval_const_expressions_mutator(cx, result));
+                        break;
+                    }
+                    Expr::Const(_) => continue,
+                    casecond => newargs.push((casecond, eval_const_expressions_mutator(cx, result))),
+                }
+            }
+            let defresult = match defresult {
+                Some(defresult) => defresult,
+                None => eval_const_expressions_mutator(cx, *default),
+            };
+            match newargs.is_empty() {
+                true => defresult,
+                false => Expr::Case(newargs, Box::new(defresult)),
+            }
+        }
+        Expr::Coalesce(args) => {
+            let mut newargs = Vec::new();
+            for arg in args {
+                match eval_const_expressions_mutator(cx, arg) {
+                    Expr::Const(Value::Null) => continue,
+                    e @ Expr::Const(_) => {
+                        if newargs.is_empty() {
+                            return e;
+                        }
+                        newargs.push(e);
+                        break;
+                    }
+                    e => newargs.push(e),
+                }
+            }
+            match newargs.is_empty() {
+                true => Expr::Const(Value::Null),
+                false => Expr::Coalesce(newargs),
+            }
+        }
+        Expr::MinMax(..) | Expr::Array(..) | Expr::Row(..) | Expr::Subscript(..) | Expr::Field(..) => {
+            let e = e.map_children(&mut |c| eval_const_expressions_mutator(cx, c));
+            let mut all_const = true;
+            e.visit_children(&mut |c| all_const &= matches!(c, Expr::Const(_)));
+            match all_const {
+                true => evaluate_expr(cx, e),
+                false => e,
+            }
+        }
+        Expr::IsNull(arg, negated) => match eval_const_expressions_mutator(cx, *arg) {
+            Expr::Row(args, _) => {
+                let mut newargs = Vec::new();
+                for relem in args {
+                    match relem {
+                        Expr::Const(Value::Null) if negated => return Expr::Const(Value::Bool(false)),
+                        Expr::Const(_) if !negated => return Expr::Const(Value::Bool(false)),
+                        Expr::Const(_) => continue,
+                        relem => newargs.push(Expr::IsNull(Box::new(relem), negated)),
+                    }
+                }
+                match newargs.is_empty() {
+                    true => Expr::Const(Value::Bool(true)),
+                    false => super::prepqual::make_andclause(newargs),
+                }
+            }
+            Expr::Const(value) => Expr::Const(Value::Bool(matches!(value, Value::Null) != negated)),
+            arg => Expr::IsNull(Box::new(arg), negated),
+        },
+        Expr::BoolTest(arg, test, negated) => match eval_const_expressions_mutator(cx, *arg) {
+            Expr::Const(value) => {
+                let result = match (test, value) {
+                    (Some(want), Value::Bool(b)) => b == want,
+                    (Some(_), _) => false,
+                    (None, value) => matches!(value, Value::Null),
+                };
+                Expr::Const(Value::Bool(result != negated))
+            }
+            arg => Expr::BoolTest(Box::new(arg), test, negated),
+        },
+        other => other.map_children(&mut |c| eval_const_expressions_mutator(cx, c)),
+    }
+}
+
+/// simplify_function returns a call or operation with its arguments simplified already as NULL when it is strict and
+/// an argument is NULL, or as its value when every argument is a constant and evaluating it is safe, as Postgres'
+/// simplify_function and evaluate_function do.
+fn simplify_function(cx: &mut EvalConstContext<'_, '_>, e: Expr, strict: bool, safe: bool) -> Expr {
+    let (mut has_null_input, mut has_nonconst_input) = (false, false);
+    e.visit_children(&mut |c| match c {
+        Expr::Const(crate::types::Value::Null) => has_null_input = true,
+        Expr::Const(_) => {}
+        _ => has_nonconst_input = true,
+    });
+    if strict && has_null_input {
+        return Expr::Const(crate::types::Value::Null);
+    }
+    match !has_nonconst_input && safe {
+        true => evaluate_expr(cx, e),
+        false => e,
+    }
+}
+
+/// evaluate_expr returns an expression's value as a constant, or the expression itself when evaluating it fails, as
+/// Postgres' function of the same name evaluates it at planning.
+fn evaluate_expr(cx: &mut EvalConstContext<'_, '_>, e: Expr) -> Expr {
+    match e.eval(cx.ctx, &[]) {
+        Ok(value) => Expr::Const(value),
+        Err(_) => e,
+    }
+}
+
+/// simplify_or_arguments returns an OR's arguments simplified, without those that are FALSE, and whether one was NULL
+/// and whether one was TRUE, which makes the OR TRUE, as Postgres' function of the same name does.
+fn simplify_or_arguments(cx: &mut EvalConstContext<'_, '_>, args: Vec<Expr>) -> (Vec<Expr>, bool, bool) {
+    use crate::types::Value;
+    let (mut newargs, mut have_null) = (Vec::new(), false);
+    let mut unprocessed_args: std::collections::VecDeque<Expr> = args.into();
+    while let Some(arg) = unprocessed_args.pop_front() {
+        let arg = eval_const_expressions_mutator(cx, arg);
+        match arg {
+            Expr::Or(..) => {
+                let subargs: Vec<Expr> = super::restrictinfo::or_args(&arg).into_iter().cloned().collect();
+                subargs.into_iter().rev().for_each(|a| unprocessed_args.push_front(a));
+            }
+            Expr::Const(Value::Null) => have_null = true,
+            Expr::Const(Value::Bool(true)) => return (Vec::new(), have_null, true),
+            Expr::Const(Value::Bool(false)) => {}
+            arg => newargs.push(arg),
+        }
+    }
+    (newargs, have_null, false)
+}
+
+/// simplify_and_arguments returns an AND's arguments simplified, without those that are TRUE, and whether one was
+/// NULL and whether one was FALSE, which makes the AND FALSE, as Postgres' function of the same name does.
+fn simplify_and_arguments(cx: &mut EvalConstContext<'_, '_>, args: Vec<Expr>) -> (Vec<Expr>, bool, bool) {
+    use crate::types::Value;
+    let (mut newargs, mut have_null) = (Vec::new(), false);
+    let mut unprocessed_args: std::collections::VecDeque<Expr> = args.into();
+    while let Some(arg) = unprocessed_args.pop_front() {
+        let arg = eval_const_expressions_mutator(cx, arg);
+        match arg {
+            Expr::And(..) => {
+                let subargs: Vec<Expr> = super::restrictinfo::and_args(&arg).into_iter().cloned().collect();
+                subargs.into_iter().rev().for_each(|a| unprocessed_args.push_front(a));
+            }
+            Expr::Const(Value::Null) => have_null = true,
+            Expr::Const(Value::Bool(false)) => return (Vec::new(), have_null, true),
+            Expr::Const(Value::Bool(true)) => {}
+            arg => newargs.push(arg),
+        }
+    }
+    (newargs, have_null, false)
+}
+
+/// simplify_boolean_equality returns a comparison of a boolean with a constant boolean as the boolean itself or its
+/// negation, as Postgres' function of the same name does, or the comparison when neither side is such a constant.
+fn simplify_boolean_equality(op: crate::expr::CmpOp, left: Expr, right: Expr) -> Expr {
+    use crate::types::Value;
+    let equal = op == crate::expr::CmpOp::Eq;
+    match (left, right) {
+        (Expr::Const(Value::Bool(b)), other) | (other, Expr::Const(Value::Bool(b))) => match b == equal {
+            true => other,
+            false => super::prepqual::negate_clause(other),
+        },
+        (left, right) => Expr::Compare(op, Box::new(left), Box::new(right)),
+    }
+}
+
+/// cast_is_immutable reports whether a cast of a constant to a type gives the same value in every session, which it
+/// does unless it reads the time zone, a cast to or from a type with one.
+fn cast_is_immutable(inner: &Expr, target: u32) -> bool {
+    use crate::types::Value;
+    let zoned = |oid: u32| matches!(oid, crate::oid::TIMESTAMPTZ | crate::oid::TIMETZ);
+    !zoned(target) && !matches!(inner, Expr::Const(Value::TimestampTz(_) | Value::TimeTz(..)))
+}
+
+/// const_except_element reports whether an argument of a comparison with each element of an array is a constant, or
+/// is built of constants and the array element that the comparison reads.
+fn const_except_element(e: &Expr) -> bool {
+    match e {
+        Expr::Const(_) | Expr::SubqueryValue => true,
+        Expr::Column(_) | Expr::Param(_) | Expr::Outer(..) | Expr::InputColumn(_) => false,
+        other => {
+            let mut all = true;
+            other.visit_children(&mut |c| all &= const_except_element(c));
+            all
+        }
+    }
+}
+
+/// contain_volatile_node reports whether an expression calls a volatile function, outside the expressions of
+/// PlaceHolderVars.
+fn contain_volatile_node(e: &Expr) -> bool {
+    let mut found = false;
+    e.visit(&mut |x| found |= is_volatile_node(x));
+    found
 }

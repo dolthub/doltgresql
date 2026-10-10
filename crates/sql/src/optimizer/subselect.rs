@@ -439,35 +439,18 @@ pub fn query_exprs(query: &mut Query, f: &mut dyn FnMut(&Expr)) {
     query.jointree.quals.iter().for_each(|q| q.visit(f));
 }
 
-/// preprocess_query_subplans plans the SubPlans of a query's expressions and of its range table's inputs that their
-/// binding left unplanned, as Postgres' subquery_planner preprocesses each expression of a query.
-pub fn preprocess_query_subplans(ctx: &mut Ctx<'_>, parse: &mut Query) {
-    let mut process = |e: &mut Expr| {
-        let old = std::mem::replace(e, Expr::SubqueryValue);
-        *e = preprocess_subplans(ctx, old);
-    };
-    parse.upper_exprs_mut().into_iter().for_each(&mut process);
-    parse.jointree.fromlist.iter_mut().for_each(|node| jointree_quals_mut(node, &mut process));
-    parse.jointree.quals.iter_mut().for_each(&mut process);
-    for rte in &mut parse.rtable {
-        if let RteKind::Plan(plan) = &mut rte.kind {
-            plan.map_exprs(0, &mut |e, _| preprocess_subplans(ctx, e));
-        }
-    }
-}
-
-/// jointree_quals_mut is jointree_quals for changing the quals.
-fn jointree_quals_mut(node: &mut JoinTreeNode, f: &mut dyn FnMut(&mut Expr)) {
+/// jointree_quals_mut calls a function with each list of quals of a join tree, for changing them.
+pub fn jointree_quals_mut(node: &mut JoinTreeNode, f: &mut dyn FnMut(&mut Vec<Expr>)) {
     match node {
         JoinTreeNode::Rel(_) => {}
         JoinTreeNode::From(from) => {
             from.fromlist.iter_mut().for_each(|n| jointree_quals_mut(n, f));
-            from.quals.iter_mut().for_each(&mut *f);
+            f(&mut from.quals);
         }
         JoinTreeNode::Join(join) => {
             jointree_quals_mut(&mut join.larg, f);
             jointree_quals_mut(&mut join.rarg, f);
-            join.quals.iter_mut().for_each(&mut *f);
+            f(&mut join.quals);
         }
     }
 }
@@ -676,7 +659,8 @@ pub fn increment_query_sublevels_up(query: &mut Query) {
         *e = increment_sublevels_up(old, 0);
     };
     query.upper_exprs_mut().into_iter().for_each(&mut process);
-    query.jointree.fromlist.iter_mut().for_each(|node| jointree_quals_mut(node, &mut process));
+    let mut quals = |quals: &mut Vec<Expr>| quals.iter_mut().for_each(&mut process);
+    query.jointree.fromlist.iter_mut().for_each(|node| jointree_quals_mut(node, &mut quals));
     query.jointree.quals.iter_mut().for_each(&mut process);
     for rte in &mut query.rtable {
         if let RteKind::Plan(plan) = &mut rte.kind {
