@@ -1350,10 +1350,13 @@ pub fn lookup_keys(
 /// relation_has_unique_index_ext reports whether a unique index of a base relation has each of its key columns
 /// equated with something by one of a list of clauses, whose outer sides are given, or by one of the relation's
 /// restrictions, returning the restrictions that it used when asked, as Postgres' function of the same name does.
+/// A key column may instead be one of a list of expressions that the caller knows are equated with something by
+/// their type's equality.
 pub fn relation_has_unique_index_ext(
     root: &PlannerInfo<'_, '_>,
     rel: usize,
     restrictlist: &[RinfoId],
+    exprlist: &[Expr],
     extra_clauses: Option<&mut Vec<RinfoId>>,
 ) -> bool {
     if root.rels[rel].indexlist.is_empty() {
@@ -1374,7 +1377,7 @@ pub fn relation_has_unique_index_ext(
         }
         restrictlist.push(rinfo);
     }
-    if restrictlist.is_empty() {
+    if restrictlist.is_empty() && exprlist.is_empty() {
         return false;
     }
     for ind in &root.rels[rel].indexlist {
@@ -1397,6 +1400,11 @@ pub fn relation_has_unique_index_ext(
                     exprs.push(rinfo);
                 }
                 true
+            }) || exprlist.iter().any(|expr| {
+                match_index_to_operand(root, expr, c, ind, rel)
+                    && super::nodefuncs::expr_type(root, expr)
+                        .and_then(super::nodefuncs::btree_opfamily)
+                        .is_some_and(|f| Some(f) == ind.opfamily[c])
             })
         });
         if all_matched {

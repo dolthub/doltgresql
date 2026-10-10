@@ -299,12 +299,18 @@ pub enum JoinType {
     Full,
     Semi,
     Anti,
+    /// A semi or anti join of the rows of the inner side, which a hash join runs with the sides swapped.
+    RightSemi,
+    RightAnti,
+    /// A semi join run as an inner join after making the outer or the inner side's join values unique.
+    UniqueOuter,
+    UniqueInner,
 }
 
 impl JoinType {
     /// is_outer reports whether the join keeps rows that find no match, as Postgres' IS_OUTER_JOIN does.
     pub fn is_outer(self) -> bool {
-        matches!(self, JoinType::Left | JoinType::Right | JoinType::Full | JoinType::Anti)
+        matches!(self, JoinType::Left | JoinType::Right | JoinType::Full | JoinType::Anti | JoinType::RightAnti)
     }
 }
 
@@ -678,6 +684,8 @@ pub enum PathKind {
     Material(Rc<Path>),
     /// The rows of a parameterized path cached by the values of its parameters, as Postgres' MemoizePath is.
     Memoize(Box<MemoizePath>),
+    /// The rows of a semi join's inner relation with its join values made unique, as Postgres' UniquePath is.
+    UniquePath(Box<UniquePath>),
     /// The rows of another path sorted by the path's pathkeys, as Postgres' SortPath is.
     Sort(Rc<Path>),
     /// The rows of another path that is sorted by the leading pathkeys already, sorted by the rest within each run of
@@ -749,6 +757,23 @@ pub struct MergePath {
     pub skip_mark_restore: bool,
     /// Whether the inner side's rows are kept in memory so they can be read again.
     pub materialize_inner: bool,
+}
+
+/// UniquePath is a path made unique by the inner values of a semi join's equalities, as Postgres' UniquePath is.
+#[derive(Clone, Debug)]
+pub struct UniquePath {
+    pub subpath: Rc<Path>,
+    pub umethod: UniquePathMethod,
+    pub uniq_exprs: Vec<Expr>,
+}
+
+/// UniquePathMethod is how a UniquePath makes its rows unique, as Postgres' UniquePathMethod is: not at all, since
+/// they are unique already, by hashing them, or by sorting them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UniquePathMethod {
+    Noop,
+    Hash,
+    Sort,
 }
 
 /// MemoizePath is a cache of a parameterized path's rows by the outer expressions it reads, as Postgres' MemoizePath
@@ -906,6 +931,8 @@ pub struct RelOptInfo {
     pub cheapest_startup_path: Option<Rc<Path>>,
     /// The cheapest unparameterized path and the cheapest path of each parameterization.
     pub cheapest_parameterized_paths: Vec<Rc<Path>>,
+    /// The cheapest path of the relation's rows made unique for a semi join, once create_unique_path builds it.
+    pub cheapest_unique_path: Option<Rc<Path>>,
     /// The relations that the relation's paths must read laterally.
     pub direct_lateral_relids: Relids,
     pub lateral_relids: Relids,

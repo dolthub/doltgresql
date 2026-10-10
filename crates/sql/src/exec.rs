@@ -1012,9 +1012,16 @@ impl Rows for JoinRows<'_> {
                     row.extend_from_slice(&self.right[j]);
                     if exact || self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
                         *matched = true;
-                        self.right_matched[j] = true;
-                        if !self.kind.tests_matches() {
-                            return Ok(Some(row));
+                        let first = !std::mem::replace(&mut self.right_matched[j], true);
+                        match self.kind {
+                            JoinKind::RightSemi if first => {
+                                let mut row = vec![Value::Null; self.left_width];
+                                row.extend_from_slice(&self.right[j]);
+                                return Ok(Some(row));
+                            }
+                            JoinKind::RightSemi | JoinKind::RightAnti => {}
+                            _ if !self.kind.tests_matches() => return Ok(Some(row)),
+                            _ => {}
                         }
                     }
                 }
@@ -1027,7 +1034,7 @@ impl Rows for JoinRows<'_> {
                 }
             }
             if self.left_done {
-                if !matches!(self.kind, JoinKind::Right | JoinKind::Full) {
+                if !matches!(self.kind, JoinKind::Right | JoinKind::Full | JoinKind::RightAnti) {
                     return Ok(None);
                 }
                 while self.unmatched < self.right.len() {
@@ -1346,19 +1353,27 @@ struct Memo<'p> {
     keys: &'p [Expr],
     groups: Groups,
     rows: Vec<Vec<Row>>,
+    /// The values that the cached rows hold.
+    values: usize,
 }
+
+/// MEMO_VALUES is how many values a Memo caches before it starts over, about the memory that Postgres' default
+/// hash_mem gives a Memoize cache.
+const MEMO_VALUES: usize = 1 << 18;
 
 impl<'p> Memo<'p> {
     /// of returns the cache of a join's right input when it is a Memoize, with the plan whose rows it caches.
     fn of(right: &'p Plan) -> (Option<Memo<'p>>, &'p Plan) {
         match right {
-            Plan::Memoize { input, keys, .. } => (Some(Memo { keys, groups: Groups::new(), rows: Vec::new() }), input),
+            Plan::Memoize { input, keys, .. } => {
+                (Some(Memo { keys, groups: Groups::new(), rows: Vec::new(), values: 0 }), input)
+            }
             other => (None, other),
         }
     }
 
     /// rows returns the right rows for a left row, from the cache when an earlier left row had the same key values,
-    /// and otherwise by running `run`.
+    /// and otherwise by running `run`, emptying the cache first when it holds MEMO_VALUES values.
     fn rows(
         &mut self,
         ctx: &mut Ctx<'_>,
@@ -1368,11 +1383,18 @@ impl<'p> Memo<'p> {
         ctx.outer.push(left.to_vec());
         let key: Result<Row> = self.keys.iter().map(|k| k.eval(ctx, &[])).collect();
         ctx.outer.pop();
-        let (i, new) = self.groups.insert(&key?);
-        if new {
-            self.rows.push(run(ctx)?);
+        let key = key?;
+        if let Some(i) = self.groups.find(&key) {
+            return Ok(self.rows[i].clone());
         }
-        Ok(self.rows[i].clone())
+        let rows = run(ctx)?;
+        if self.values >= MEMO_VALUES {
+            (self.groups, self.rows, self.values) = (Groups::new(), Vec::new(), 0);
+        }
+        self.values += rows.iter().map(Vec::len).sum::<usize>() + key.len();
+        self.groups.insert(&key);
+        self.rows.push(rows.clone());
+        Ok(rows)
     }
 }
 
@@ -1912,6 +1934,9 @@ impl Plan {
                 dropped,
                 pending: Vec::new().into_iter(),
             }),
+            Plan::CteScan(def) if def.recursive && def.refcount.load(std::sync::atomic::Ordering::Relaxed) == 1 => {
+                def.shared.get().map_or(&def.plan, |(plan, _)| plan).open(ctx)?
+            }
             Plan::Once(_) | Plan::CteScan(_) => Box::new(SharedRows { rows: self.shared_rows(ctx)?, next: 0 }),
             _ => collected(self.run_leaf(ctx)?),
         })

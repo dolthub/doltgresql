@@ -24,8 +24,8 @@ use super::costsize::{
     final_cost_mergejoin,
 };
 use super::nodes::{
-    BitmapPath, JoinPath, JoinType, MemoizePath, MergePath, Path, PathKind, PkId, RelOptInfo, Relids, RinfoId,
-    SubsetCompare,
+    AggStrategy, BitmapPath, JoinPath, JoinType, MemoizePath, MergePath, Path, PathKind, PkId, RelOptInfo, Relids,
+    RinfoId, RteKind, SortGroupClause, SpecialJoinInfo, SubsetCompare, TargetEntry, UniquePath, UniquePathMethod,
 };
 use super::pathkeys::{PathKeysComparison, compare_pathkeys};
 
@@ -165,6 +165,7 @@ pub fn set_cheapest(parent_rel: &mut RelOptInfo) {
     parent_rel.cheapest_startup_path = cheapest_startup_path;
     parent_rel.cheapest_total_path = cheapest_total_path.or(best_param_path);
     parent_rel.cheapest_parameterized_paths = parameterized_paths;
+    parent_rel.cheapest_unique_path = None;
 }
 
 /// add_path adds a path to a relation's paths unless one of them is as cheap, as well ordered, needs no more outer
@@ -317,6 +318,136 @@ pub fn create_memoize_path(
         total_cost: subpath.total_cost + super::costsize::CPU_TUPLE_COST,
         ..(**subpath).clone()
     })
+}
+
+/// create_unique_path returns the path of a semi join's inner relation with the inner values of the join's
+/// equalities made unique, from the relation's cheapest path, building it once, as Postgres' function of the same
+/// name does: rows that a unique index or the subquery proves unique already, or rows hashed or sorted, whichever
+/// costs less, and None when the join's equalities can neither sort nor hash.
+pub fn create_unique_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    sjinfo: &SpecialJoinInfo,
+) -> Option<Rc<Path>> {
+    if let Some(path) = &root.rels[rel].cheapest_unique_path {
+        return Some(path.clone());
+    }
+    let mut semi_can_hash = sjinfo.semi_can_hash;
+    if !(sjinfo.semi_can_btree || semi_can_hash) {
+        return None;
+    }
+    let mut uniq_exprs = Vec::new();
+    let (mut newtlist, mut sort_list) = (Vec::new(), Vec::new());
+    for uniqexpr in &sjinfo.semi_rhs_exprs {
+        if super::nodefuncs::expr_type(root, uniqexpr).and_then(super::nodefuncs::btree_opfamily).is_some() {
+            let ressortgroupref = newtlist.len() + 1;
+            newtlist.push(TargetEntry { expr: uniqexpr.clone(), resjunk: false, ressortgroupref });
+            sort_list.push(SortGroupClause {
+                tle_sort_group_ref: ressortgroupref,
+                descending: false,
+                nulls_first: false,
+                hashable: false,
+            });
+            let sort_pathkeys =
+                super::planner::make_pathkeys_for_sortclauses(root, &sort_list, &newtlist).unwrap_or_default();
+            if sort_pathkeys.len() != sort_list.len() {
+                sort_list.pop();
+                newtlist.pop();
+                continue;
+            }
+        }
+        uniq_exprs.push(uniqexpr.clone());
+    }
+    if uniq_exprs.is_empty() {
+        return None;
+    }
+    let relid = root.rels[rel].relid;
+    let unique_already = match &root.parse.rte(relid).kind {
+        RteKind::Relation(..) => {
+            sjinfo.semi_can_btree && super::indxpath::relation_has_unique_index_ext(root, rel, &[], &uniq_exprs, None)
+        }
+        RteKind::Subquery(subquery, _) => {
+            super::analyzejoins::query_supports_distinctness(subquery)
+                && translate_sub_tlist(root, &uniq_exprs, relid)
+                    .is_some_and(|colnos| super::analyzejoins::query_is_distinct_for(subquery, &colnos))
+        }
+        _ => false,
+    };
+    let rel_rows = root.rels[rel].rows;
+    let path = |umethod, rows, (disabled_nodes, startup_cost, total_cost), pathkeys| {
+        let upath = UniquePath { subpath: subpath.clone(), umethod, uniq_exprs: uniq_exprs.clone() };
+        Rc::new(Path {
+            kind: PathKind::UniquePath(Box::new(upath)),
+            pathkeys,
+            rows,
+            disabled_nodes,
+            startup_cost,
+            total_cost,
+            pathtarget: None,
+            ..(*subpath).clone()
+        })
+    };
+    if unique_already {
+        let costs = (subpath.disabled_nodes, subpath.startup_cost, subpath.total_cost);
+        let pathnode = path(UniquePathMethod::Noop, rel_rows, costs, subpath.pathkeys.clone());
+        root.rels[rel].cheapest_unique_path = Some(pathnode.clone());
+        return Some(pathnode);
+    }
+    let rows = super::selfuncs::estimate_num_groups(root, &uniq_exprs, rel_rows, None, None);
+    let num_cols = uniq_exprs.len();
+    let sort_path = sjinfo.semi_can_btree.then(|| {
+        let (disabled_nodes, startup_cost, total_cost) = super::costsize::cost_sort(root, &subpath, -1.0);
+        (disabled_nodes, startup_cost, total_cost + super::costsize::CPU_OPERATOR_COST * rel_rows * num_cols as f64)
+    });
+    let mut agg_path = None;
+    if semi_can_hash {
+        let hashentrysize = subpath.width + 64.0;
+        if hashentrysize * rows > super::costsize::HASH_MEM {
+            semi_can_hash = false;
+        } else {
+            let costs = (subpath.disabled_nodes, subpath.startup_cost, subpath.total_cost);
+            let aggcosts = super::prepagg::AggClauseCosts::default();
+            let (_, costs) = super::costsize::cost_agg(
+                root,
+                AggStrategy::Hashed,
+                &aggcosts,
+                num_cols,
+                rows,
+                &[],
+                costs,
+                rel_rows,
+                subpath.width,
+            );
+            agg_path = Some(costs);
+        }
+    }
+    let (umethod, costs) = match (sort_path, agg_path.filter(|_| semi_can_hash)) {
+        (Some(sort), Some(agg)) if agg.0 < sort.0 || (agg.0 == sort.0 && agg.2 < sort.2) => {
+            (UniquePathMethod::Hash, agg)
+        }
+        (Some(sort), _) => (UniquePathMethod::Sort, sort),
+        (None, Some(agg)) => (UniquePathMethod::Hash, agg),
+        (None, None) => return None,
+    };
+    let pathnode = path(umethod, rows, costs, Vec::new());
+    root.rels[rel].cheapest_unique_path = Some(pathnode.clone());
+    Some(pathnode)
+}
+
+/// translate_sub_tlist returns the subquery output columns that a list of a subquery relation's Vars reads, or None
+/// when one is not such a Var, as Postgres' function of the same name does.
+fn translate_sub_tlist(root: &PlannerInfo<'_, '_>, tlist: &[crate::expr::Expr], relid: usize) -> Option<Vec<usize>> {
+    tlist
+        .iter()
+        .map(|e| match e {
+            crate::expr::Expr::Column(id) => match root.glob.node(*id) {
+                super::nodes::VarNode::Var(var) if var.varno == relid => Some(var.varattno),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
 }
 
 /// add_path_precheck reports whether a path of these costs and order could be added to a relation's paths, before

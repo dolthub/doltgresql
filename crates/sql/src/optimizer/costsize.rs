@@ -873,7 +873,7 @@ pub fn initial_cost_mergejoin(
         }
         match jointype {
             JoinType::Left | JoinType::Anti => (outerstartsel, outerendsel) = (0.0, 1.0),
-            JoinType::Right => (innerstartsel, innerendsel) = (0.0, 1.0),
+            JoinType::Right | JoinType::RightAnti => (innerstartsel, innerendsel) = (0.0, 1.0),
             _ => {}
         }
     } else {
@@ -940,8 +940,7 @@ pub fn final_cost_mergejoin(
     path.skip_mark_restore = (matches!(path.jpath.jointype, JoinType::Semi | JoinType::Anti) || extra.inner_unique)
         && path.jpath.joinrestrictinfo.len() == path.path_mergeclauses.len();
     let mergejointuples = approx_tuple_count(root, outer_path, inner_path, &path.path_mergeclauses);
-    //TODO: an outer path made unique by create_unique_path reads no inner row again, once that is ported.
-    let rescannedtuples = match path.skip_mark_restore {
+    let rescannedtuples = match matches!(outer_path.kind, PathKind::UniquePath(_)) || path.skip_mark_restore {
         true => 0.0,
         false => (mergejointuples - inner_path_rows).max(0.0),
     };
@@ -1297,6 +1296,9 @@ fn calc_joinrel_size_estimate(
         JoinType::Full => (outer_rows * inner_rows * jselec).max(outer_rows).max(inner_rows) * pselec,
         JoinType::Semi => outer_rows * jselec,
         JoinType::Anti => outer_rows * (1.0 - jselec) * pselec,
+        JoinType::RightSemi | JoinType::RightAnti | JoinType::UniqueOuter | JoinType::UniqueInner => {
+            unreachable!("a join relation's size comes from its SpecialJoinInfo's join type")
+        }
     };
     clamp_row_est(nrows)
 }

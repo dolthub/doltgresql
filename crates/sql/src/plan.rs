@@ -45,6 +45,10 @@ pub enum JoinKind {
     Anti,
     /// Only the left rows that find a match, once each, padded with NULLs as an anti join pads them.
     Semi,
+    /// Only the right rows that find a match, once each, after NULLs for the left columns.
+    RightSemi,
+    /// Only the right rows that find no match, after NULLs for the left columns.
+    RightAnti,
 }
 
 impl JoinKind {
@@ -192,7 +196,8 @@ pub enum Plan {
     },
     /// The rows of the previous round of a recursive WITH query, by the query's ID, and their width.
     WorkTable(usize, usize),
-    /// The rows of a WITH query that every reference to it reads, computed once for the statement.
+    /// The rows of a WITH query that every reference to it reads, computed once for the statement, or read as they
+    /// are computed by the one reference to a recursive query, which a LIMIT may stop reading.
     CteScan(std::sync::Arc<CteDef>),
     /// The rows of the right input of a join that reads its left rows, cached by the keys' values over the left row
     /// (its enclosing row), compared by their bytes when `binary`, as a Postgres Memoize node.

@@ -260,6 +260,9 @@ fn deconstruct_recurse(
                     jtitem.nonnullable_rels = jtitem.qualscope.clone();
                 }
                 JoinType::Right => unreachable!("reduce_outer_joins turns right joins into left joins"),
+                JoinType::RightSemi | JoinType::RightAnti | JoinType::UniqueOuter | JoinType::UniqueInner => {
+                    unreachable!("only join paths are of the join types that swap or unique-ify a semi or anti join")
+                }
             }
             let as_list = |list: JoinList| match list {
                 JoinList::List(list) => list,

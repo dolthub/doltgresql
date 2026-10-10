@@ -332,9 +332,8 @@ fn populate_joinrel_with_paths(
                 mark_dummy_rel(root, rel2);
             }
             add_paths_to_joinrel(root, joinrel, rel1, rel2, sjinfo.jointype, sjinfo, restrictlist);
-            if sjinfo.jointype == JoinType::Left {
-                add_paths_to_joinrel(root, joinrel, rel2, rel1, JoinType::Right, sjinfo, restrictlist);
-            }
+            let swapped = if sjinfo.jointype == JoinType::Left { JoinType::Right } else { JoinType::RightAnti };
+            add_paths_to_joinrel(root, joinrel, rel2, rel1, swapped, sjinfo, restrictlist);
         }
         JoinType::Full => {
             if (is_dummy_rel(root, rel1) && is_dummy_rel(root, rel2)) || constant_false(root, true) {
@@ -353,9 +352,24 @@ fn populate_joinrel_with_paths(
                     return;
                 }
                 add_paths_to_joinrel(root, joinrel, rel1, rel2, JoinType::Semi, sjinfo, restrictlist);
+                add_paths_to_joinrel(root, joinrel, rel2, rel1, JoinType::RightSemi, sjinfo, restrictlist);
+            }
+            if sjinfo.syn_righthand == root.rels[rel2].relids
+                && let Some(cheapest) = root.rels[rel2].cheapest_total_path.clone()
+                && super::pathnode::create_unique_path(root, rel2, cheapest, sjinfo).is_some()
+            {
+                if is_dummy_rel(root, rel1) || is_dummy_rel(root, rel2) || constant_false(root, false) {
+                    mark_dummy_rel(root, joinrel);
+                    return;
+                }
+                add_paths_to_joinrel(root, joinrel, rel1, rel2, JoinType::UniqueInner, sjinfo, restrictlist);
+                add_paths_to_joinrel(root, joinrel, rel2, rel1, JoinType::UniqueOuter, sjinfo, restrictlist);
             }
         }
         JoinType::Right => unreachable!("reduce_outer_joins turns right joins into left joins"),
+        JoinType::RightSemi | JoinType::RightAnti | JoinType::UniqueOuter | JoinType::UniqueInner => {
+            unreachable!("only join paths are of the join types that swap or unique-ify a semi or anti join")
+        }
     }
 }
 

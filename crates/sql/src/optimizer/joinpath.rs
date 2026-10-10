@@ -31,7 +31,7 @@ use super::pathkeys::{
 };
 use super::pathnode::{
     CostSelector, add_path, add_path_precheck, calc_nestloop_required_outer, calc_non_nestloop_required_outer,
-    compare_path_costs, create_join_path, create_memoize_path, create_mergejoin_path,
+    compare_path_costs, create_join_path, create_memoize_path, create_mergejoin_path, create_unique_path,
 };
 use super::restrictinfo::rinfo_is_pushed_down;
 use crate::expr::Expr;
@@ -51,6 +51,16 @@ pub fn add_paths_to_joinrel(
     let outerrelids = root.rels[outerrel].relids.clone();
     let inner_unique = match jointype {
         JoinType::Semi | JoinType::Anti => false,
+        JoinType::UniqueInner => sjinfo.min_lefthand.is_subset(&outerrelids),
+        JoinType::UniqueOuter => super::analyzejoins::innerrel_is_unique(
+            root,
+            &joinrelids,
+            &outerrelids,
+            innerrel,
+            JoinType::Inner,
+            restrictlist,
+            false,
+        ),
         _ => super::analyzejoins::innerrel_is_unique(
             root,
             &joinrelids,
@@ -348,19 +358,30 @@ fn sort_inner_and_outer(
     joinrel: usize,
     outerrel: usize,
     innerrel: usize,
-    jointype: JoinType,
+    mut jointype: JoinType,
     extra: &JoinPathExtraData,
 ) {
     if extra.mergeclause_list.is_empty() {
         return;
     }
-    let (Some(outer_path), Some(inner_path)) =
+    let (Some(mut outer_path), Some(mut inner_path)) =
         (root.rels[outerrel].cheapest_total_path.clone(), root.rels[innerrel].cheapest_total_path.clone())
     else {
         return;
     };
     if path_param_by_rel(root, &outer_path, innerrel) || path_param_by_rel(root, &inner_path, outerrel) {
         return;
+    }
+    match jointype {
+        JoinType::UniqueOuter => {
+            outer_path = create_unique_path(root, outerrel, outer_path, &extra.sjinfo).expect("a unique outer path");
+            jointype = JoinType::Inner;
+        }
+        JoinType::UniqueInner => {
+            inner_path = create_unique_path(root, innerrel, inner_path, &extra.sjinfo).expect("a unique inner path");
+            jointype = JoinType::Inner;
+        }
+        _ => {}
     }
     let all_pathkeys = select_outer_pathkeys_for_merge(root, &extra.mergeclause_list, joinrel);
     for (i, &front_pathkey) in all_pathkeys.iter().enumerate() {
@@ -406,6 +427,11 @@ fn generate_mergejoin_paths(
     inner_cheapest_total: &Rc<Path>,
     merge_pathkeys: &[PkId],
 ) {
+    let save_jointype = jointype;
+    let jointype = match jointype {
+        JoinType::UniqueOuter | JoinType::UniqueInner => JoinType::Inner,
+        other => other,
+    };
     let mergeclauses = find_mergeclauses_for_outer_pathkeys(root, &outerpath.pathkeys, &extra.mergeclause_list);
     if mergeclauses.is_empty() && jointype != JoinType::Full {
         return;
@@ -426,6 +452,9 @@ fn generate_mergejoin_paths(
         jointype,
         extra,
     );
+    if save_jointype == JoinType::UniqueInner {
+        return;
+    }
     let (mut cheapest_startup_inner, mut cheapest_total_inner) =
         match pathkeys_contained_in(&innersortkeys, &inner_cheapest_total.pathkeys) {
             true => (Some(inner_cheapest_total.clone()), Some(inner_cheapest_total.clone())),
@@ -515,25 +544,45 @@ fn match_unsorted_outer(
     jointype: JoinType,
     extra: &JoinPathExtraData,
 ) {
-    let (nestjoin_ok, useallclauses) = match jointype {
-        JoinType::Inner | JoinType::Left | JoinType::Semi | JoinType::Anti => (true, false),
-        JoinType::Right | JoinType::Full => (false, true),
+    let save_jointype = jointype;
+    let (nestjoin_ok, useallclauses, jointype) = match jointype {
+        JoinType::RightSemi => return,
+        JoinType::Inner | JoinType::Left | JoinType::Semi | JoinType::Anti => (true, false, jointype),
+        JoinType::Right | JoinType::RightAnti | JoinType::Full => (false, true, jointype),
+        JoinType::UniqueOuter | JoinType::UniqueInner => (true, false, JoinType::Inner),
     };
     let mut inner_cheapest_total = root.rels[innerrel].cheapest_total_path.clone();
     if inner_cheapest_total.as_ref().is_some_and(|inner| path_param_by_rel(root, inner, outerrel)) {
         inner_cheapest_total = None;
     }
-    let matpath = match (nestjoin_ok && root.enables.material, &inner_cheapest_total) {
-        (true, Some(inner)) if !exec_materializes_output(inner) => Some(create_material_path(root, inner)),
-        _ => None,
-    };
+    let mut matpath = None;
+    if save_jointype == JoinType::UniqueInner {
+        let Some(inner) = inner_cheapest_total else { return };
+        inner_cheapest_total =
+            Some(create_unique_path(root, innerrel, inner, &extra.sjinfo).expect("a unique inner path"));
+    } else if nestjoin_ok
+        && root.enables.material
+        && let Some(inner) = &inner_cheapest_total
+        && !exec_materializes_output(inner)
+    {
+        matpath = Some(create_material_path(root, inner));
+    }
     let outer_paths = root.rels[outerrel].pathlist.clone();
-    for outerpath in outer_paths {
+    for mut outerpath in outer_paths {
         if path_param_by_rel(root, &outerpath, innerrel) {
             continue;
         }
+        if save_jointype == JoinType::UniqueOuter {
+            if root.rels[outerrel].cheapest_total_path.as_ref().is_none_or(|total| !Rc::ptr_eq(&outerpath, total)) {
+                continue;
+            }
+            outerpath = create_unique_path(root, outerrel, outerpath, &extra.sjinfo).expect("a unique outer path");
+        }
         let merge_pathkeys = build_join_pathkeys(root, joinrel, jointype, &outerpath.pathkeys);
-        if nestjoin_ok {
+        if save_jointype == JoinType::UniqueInner {
+            let inner = inner_cheapest_total.clone().expect("a unique inner path");
+            try_nestloop_path(root, joinrel, outerpath.clone(), inner, merge_pathkeys.clone(), jointype, extra);
+        } else if nestjoin_ok {
             let inner_paths = root.rels[innerrel].cheapest_parameterized_paths.clone();
             for innerpath in inner_paths {
                 try_nestloop_path(
@@ -562,13 +611,16 @@ fn match_unsorted_outer(
                 );
             }
         }
+        if save_jointype == JoinType::UniqueOuter {
+            continue;
+        }
         let Some(inner_cheapest_total) = &inner_cheapest_total else { continue };
         generate_mergejoin_paths(
             root,
             joinrel,
             innerrel,
             &outerpath,
-            jointype,
+            save_jointype,
             extra,
             useallclauses,
             inner_cheapest_total,
@@ -634,6 +686,34 @@ fn hash_inner_and_outer(
     {
         return;
     }
+    match jointype {
+        JoinType::UniqueOuter => {
+            let outer = create_unique_path(root, outerrel, cheapest_total_outer, &extra.sjinfo);
+            let outer = outer.expect("a unique outer path");
+            try_hashjoin_path(root, joinrel, outer, cheapest_total_inner, &hashclauses, JoinType::Inner, extra);
+            return;
+        }
+        JoinType::UniqueInner => {
+            let inner = create_unique_path(root, innerrel, cheapest_total_inner, &extra.sjinfo);
+            let inner = inner.expect("a unique inner path");
+            try_hashjoin_path(
+                root,
+                joinrel,
+                cheapest_total_outer.clone(),
+                inner.clone(),
+                &hashclauses,
+                JoinType::Inner,
+                extra,
+            );
+            if let Some(startup) = cheapest_startup_outer
+                && !Rc::ptr_eq(&startup, &cheapest_total_outer)
+            {
+                try_hashjoin_path(root, joinrel, startup, inner, &hashclauses, JoinType::Inner, extra);
+            }
+            return;
+        }
+        _ => {}
+    }
     if let Some(cheapest_startup_outer) = &cheapest_startup_outer {
         try_hashjoin_path(
             root,
@@ -678,6 +758,9 @@ fn select_mergejoin_clauses(
 ) -> (Vec<RinfoId>, bool) {
     let mut result_list = Vec::new();
     let mut have_nonmergeable_joinclause = false;
+    if jointype == JoinType::RightSemi {
+        return (result_list, false);
+    }
     for &rinfo in restrictlist {
         let r = &root.rinfos[rinfo];
         if jointype.is_outer() && rinfo_is_pushed_down(r, &root.rels[joinrel].relids) {
@@ -703,7 +786,7 @@ fn select_mergejoin_clauses(
         result_list.push(rinfo);
     }
     let mergejoin_allowed = match jointype {
-        JoinType::Right | JoinType::Full => !have_nonmergeable_joinclause,
+        JoinType::Right | JoinType::RightAnti | JoinType::Full => !have_nonmergeable_joinclause,
         _ => true,
     };
     (result_list, mergejoin_allowed)

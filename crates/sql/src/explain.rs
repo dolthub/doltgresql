@@ -324,6 +324,8 @@ impl Printer {
                     JoinKind::Full => " Full Join",
                     JoinKind::Anti => " Anti Join",
                     JoinKind::Semi => " Semi Join",
+                    JoinKind::RightSemi => " Right Semi Join",
+                    JoinKind::RightAnti => " Right Anti Join",
                 };
                 let mut names = columns(left);
                 names.extend(columns(right));

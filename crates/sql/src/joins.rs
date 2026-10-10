@@ -110,6 +110,7 @@ pub(crate) fn estimate(ctx: &mut Ctx<'_>, plan: &Plan) -> f64 {
                 JoinKind::Right => joined.max(r),
                 JoinKind::Full => joined.max(l).max(r),
                 JoinKind::Anti | JoinKind::Semi => l * OTHER_SELECTIVITY,
+                JoinKind::RightAnti | JoinKind::RightSemi => r * OTHER_SELECTIVITY,
             }
         }
         _ => UNKNOWN_ROWS,

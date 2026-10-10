@@ -147,7 +147,7 @@ pub fn build_join_pathkeys(
     outer_pathkeys: &[PkId],
 ) -> Vec<PkId> {
     match jointype {
-        super::nodes::JoinType::Full | super::nodes::JoinType::Right => Vec::new(),
+        super::nodes::JoinType::Full | super::nodes::JoinType::Right | super::nodes::JoinType::RightAnti => Vec::new(),
         _ => truncate_useless_pathkeys(root, joinrel, outer_pathkeys),
     }
 }

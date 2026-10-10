@@ -440,6 +440,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
         }
         PathKind::Material(subpath) => return create_plan_recurse(root, subpath),
         PathKind::Memoize(mpath) => return create_plan_recurse(root, &mpath.subpath),
+        PathKind::UniquePath(upath) => return create_unique_plan(root, path, upath),
         PathKind::NestLoop(_) | PathKind::HashJoin(_) | PathKind::MergeJoin(_) => {
             let join = path.kind.join().expect("a join path");
             let inner = match &join.inner.kind {
@@ -552,6 +553,11 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 JoinType::Full => JoinKind::Full,
                 JoinType::Semi => JoinKind::Semi,
                 JoinType::Anti => JoinKind::Anti,
+                JoinType::RightSemi => JoinKind::RightSemi,
+                JoinType::RightAnti => JoinKind::RightAnti,
+                JoinType::UniqueOuter | JoinType::UniqueInner => {
+                    unreachable!("a semi join made unique is planned as an inner join")
+                }
             };
             let condition = joinquals
                 .into_iter()
@@ -570,6 +576,48 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
     };
     let (plan, layout) = add_placeholders(root, path.parent, plan, layout);
     (fix_alternative_subplans(root, plan, path.rows), layout)
+}
+
+/// create_unique_plan makes the plan of a semi join's inner relation made unique by the inner values of the join's
+/// equalities, as Postgres' function of the same name does: the rows themselves when they are unique already, a hashed
+/// aggregation by those values, or a Unique over a sort by them. A hashed aggregation that would drop a column the
+/// relation's target needs is a hashed DISTINCT ON those values instead.
+fn create_unique_plan(
+    root: &mut PlannerInfo<'_, '_>,
+    path: &Path,
+    upath: &super::nodes::UniquePath,
+) -> (Plan, Vec<Slot>) {
+    let (plan, layout) = create_plan_recurse(root, &upath.subpath);
+    let groups: Vec<Expr> = upath.uniq_exprs.iter().map(|e| positional(root, e.clone(), &layout)).collect();
+    match upath.umethod {
+        super::nodes::UniquePathMethod::Noop => (plan, layout),
+        super::nodes::UniquePathMethod::Hash => {
+            let group_layout: Vec<Slot> = upath
+                .uniq_exprs
+                .iter()
+                .map(|e| match e {
+                    Expr::Column(_) => slot(root, e),
+                    other => Slot::Expr(other.clone()),
+                })
+                .collect();
+            let covered = root.rels[path.parent].reltarget.exprs.iter().all(|e| group_layout.contains(&slot(root, e)));
+            match covered {
+                true => (
+                    Plan::Aggregate { input: Box::new(plan), groups, aggregates: Vec::new(), sets: None },
+                    group_layout,
+                ),
+                false => (Plan::Distinct { input: Box::new(plan), keys: Some(groups) }, layout),
+            }
+        }
+        super::nodes::UniquePathMethod::Sort => {
+            let keys = groups
+                .iter()
+                .map(|e| crate::plan::SortKey { expr: e.clone(), descending: false, nulls_first: false })
+                .collect();
+            let sorted = Plan::Sort { input: Box::new(plan), keys };
+            (Plan::Distinct { input: Box::new(sorted), keys: Some(groups) }, layout)
+        }
+    }
 }
 
 /// fix_alternative_subplans replaces each AlternativeSubPlan of a path's plan by the SubPlan that costs least for the

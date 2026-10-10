@@ -23,7 +23,10 @@ use super::equivclass::generate_join_implied_equalities;
 use super::indxpath::relation_has_unique_index_ext;
 use super::initsplan::JoinList;
 use super::joinpath::clause_sides_match_join;
-use super::nodes::{FromExpr, JoinTreeNode, JoinType, RelOptKind, Relids, RinfoId, RteKind, SpecialJoinInfo};
+use super::nodes::{
+    FromExpr, JoinTreeNode, JoinType, Query, RelOptKind, Relids, RinfoId, RteKind, SortGroupClause, SpecialJoinInfo,
+    VarNode,
+};
 use super::prepjointree::get_relids_in_jointree;
 use super::restrictinfo::{binary_op_args, rinfo_is_pushed_down};
 use super::var::{change_var_nodes, change_var_nodes_fn, mutate_query, pull_varnos};
@@ -174,11 +177,18 @@ fn reduce_semijoin_in_jointree(node: &mut JoinTreeNode, syn_righthand: &Relids) 
 }
 
 /// rel_supports_distinctness reports whether a base relation could be proven to have at most one row for some values
-/// of its columns: a table with a unique index that is immediate and not partial, as Postgres' function of the same
-/// name checks. A subquery that the planner did not pull up is already planned, so its distinctness is unknown.
+/// of its columns: a table with a unique index that is immediate and not partial, or a subquery that
+/// query_supports_distinctness accepts, as Postgres' function of the same name checks.
 fn rel_supports_distinctness(root: &PlannerInfo<'_, '_>, relid: usize) -> bool {
     let rel = &root.rels[relid];
-    rel.reloptkind == RelOptKind::BaseRel && rel.indexlist.iter().any(|ind| ind.unique && ind.indpred.is_empty())
+    if rel.reloptkind != RelOptKind::BaseRel {
+        return false;
+    }
+    match &root.parse.rte(relid).kind {
+        RteKind::Relation(..) => rel.indexlist.iter().any(|ind| ind.unique && ind.indpred.is_empty()),
+        RteKind::Subquery(subquery, _) => query_supports_distinctness(subquery),
+        _ => false,
+    }
 }
 
 /// rel_is_distinct_for reports whether a base relation has at most one row for each set of values of the inner sides
@@ -189,9 +199,88 @@ fn rel_is_distinct_for(
     clause_list: &[RinfoId],
     extra_clauses: Option<&mut Vec<RinfoId>>,
 ) -> bool {
-    root.rels[relid].reloptkind == RelOptKind::BaseRel
-        && matches!(root.parse.rte(relid).kind, RteKind::Relation(..))
-        && relation_has_unique_index_ext(root, relid, clause_list, extra_clauses)
+    if root.rels[relid].reloptkind != RelOptKind::BaseRel {
+        return false;
+    }
+    match &root.parse.rte(relid).kind {
+        RteKind::Relation(..) => relation_has_unique_index_ext(root, relid, clause_list, &[], extra_clauses),
+        RteKind::Subquery(subquery, _) => {
+            let distinct_cols: Vec<usize> = clause_list
+                .iter()
+                .filter_map(|&r| {
+                    let rinfo = &root.rinfos[r];
+                    let (left, right) = binary_op_args(&rinfo.clause)?;
+                    let inner = if rinfo.outer_is_left.get() { right } else { left };
+                    let Expr::Column(id) = inner else { return None };
+                    match root.glob.node(*id) {
+                        VarNode::Var(var) if var.varno == relid => Some(var.varattno),
+                        _ => None,
+                    }
+                })
+                .collect();
+            query_is_distinct_for(subquery, &distinct_cols)
+        }
+        _ => false,
+    }
+}
+
+/// query_supports_distinctness reports whether a query's output could be proven distinct by query_is_distinct_for:
+/// it has DISTINCT, GROUP BY, grouping sets, aggregates, HAVING, or a set operation, and no set-returning function in
+/// its target list unless a plain DISTINCT removes their duplicates, as Postgres' function of the same name checks.
+pub fn query_supports_distinctness(query: &Query) -> bool {
+    if !query.target_srfs.is_empty() && (query.distinct_clause.is_empty() || query.has_distinct_on) {
+        return false;
+    }
+    !query.distinct_clause.is_empty()
+        || !query.group_clause.is_empty()
+        || query.grouping_sets.is_some()
+        || query.has_aggs
+        || query.having_qual.is_some()
+        || query.set_operations.is_some()
+}
+
+/// query_is_distinct_for reports whether a query returns at most one row for each set of values of the output columns
+/// at the given positions, because it is DISTINCT or grouped by some of them, aggregates without grouping, or is a set
+/// operation without ALL over all of them, as Postgres' function of the same name and
+/// query_is_distinct_for_with_collations prove it. Every Doltgres type has one equality, which the C collation agrees
+/// with, so only the columns matter.
+pub fn query_is_distinct_for(query: &Query, distinct_cols: &[usize]) -> bool {
+    let tle_column =
+        |sgc: &SortGroupClause| query.target_list.iter().position(|tle| tle.ressortgroupref == sgc.tle_sort_group_ref);
+    let covered = |clauses: &[SortGroupClause]| {
+        clauses.iter().all(|sgc| tle_column(sgc).is_some_and(|column| distinct_cols.contains(&column)))
+    };
+    if !query.distinct_clause.is_empty()
+        && !(!query.target_srfs.is_empty() && query.has_distinct_on)
+        && covered(&query.distinct_clause)
+    {
+        return true;
+    }
+    if !query.target_srfs.is_empty() {
+        return false;
+    }
+    match &query.grouping_sets {
+        None if !query.group_clause.is_empty() => {
+            if covered(&query.group_clause) {
+                return true;
+            }
+        }
+        Some(_) if !query.group_clause.is_empty() => return false,
+        Some(sets) => return matches!(sets.as_slice(), [set] if set.is_empty()),
+        None => {
+            if query.has_aggs || query.having_qual.is_some() {
+                return true;
+            }
+        }
+    }
+    if let Some(topop) = &query.set_operations
+        && !topop.all
+    {
+        return (0..query.target_list.len())
+            .filter(|&column| !query.target_list[column].resjunk)
+            .all(|column| distinct_cols.contains(&column));
+    }
+    false
 }
 
 /// innerrel_is_unique reports whether each outer row matches at most one row of the inner relation by a join's

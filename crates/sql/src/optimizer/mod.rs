@@ -453,7 +453,9 @@ pub(super) fn build_jointree(
                 JoinKind::Left => JoinType::Left,
                 JoinKind::Right => JoinType::Right,
                 JoinKind::Full => JoinType::Full,
-                JoinKind::Semi | JoinKind::Anti => unreachable!("semi and anti joins stay planned"),
+                JoinKind::Semi | JoinKind::Anti | JoinKind::RightSemi | JoinKind::RightAnti => {
+                    unreachable!("semi and anti joins stay planned")
+                }
             };
             rtable.push(RangeTblEntry { kind: RteKind::Join(jointype), coltypes: Vec::new() });
             let rtindex = rtable.len();
