@@ -316,7 +316,7 @@ impl Routine {
     }
 
     /// sql_statements returns the parsed statements of a SQL body.
-    fn sql_statements(&self) -> Result<&[NodeEnum]> {
+    pub(crate) fn sql_statements(&self) -> Result<&[NodeEnum]> {
         let Body::Sql(text) = &self.body else { return Err(PgError::internal("a routine without a SQL body")) };
         let parsed = self.statements.get_or_init(|| parse_body(text));
         parsed.as_deref().map_err(Clone::clone)

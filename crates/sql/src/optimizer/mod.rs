@@ -407,6 +407,9 @@ fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
             all,
         },
         Plan::Once(input) => Plan::Once(Box::new(plan_subquery(ctx, *input))),
+        Plan::OneTimeFilter { input, condition } => {
+            Plan::OneTimeFilter { input: Box::new(plan_subquery(ctx, *input)), condition }
+        }
         leaf @ (Plan::OneRow
         | Plan::Scan(..)
         | Plan::System(_)
@@ -420,7 +423,9 @@ fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
         | Plan::QueryDiff(..)
         | Plan::XmlTable(_)
         | Plan::JsonTable(_)
-        | Plan::WorkTable(..)) => leaf,
+        | Plan::WorkTable(..)
+        | Plan::Memoize { .. }
+        | Plan::MergeAppend { .. }) => leaf,
         other => standard_planner(ctx, other),
     }
 }

@@ -318,6 +318,8 @@ pub fn expression_returns_set_rows(root: &super::PlannerInfo<'_, '_>, e: &Expr) 
 struct EvalConstContext<'c, 'a> {
     ctx: &'c mut crate::query::Ctx<'a>,
     estimate: bool,
+    /// The IDs of the SQL functions being inlined, which are not inlined again inside themselves.
+    active_fns: Vec<Vec<u8>>,
 }
 
 /// eval_const_expressions simplifies an expression, as Postgres' function of the same name does: it evaluates the
@@ -326,14 +328,14 @@ struct EvalConstContext<'c, 'a> {
 /// directly, and drops the CASE branches and COALESCE arguments that cannot be reached. A part whose evaluation fails
 /// stays, so that its error waits until the query runs it.
 pub fn eval_const_expressions(ctx: &mut crate::query::Ctx<'_>, e: Expr) -> Expr {
-    eval_const_expressions_mutator(&mut EvalConstContext { ctx, estimate: false }, e)
+    eval_const_expressions_mutator(&mut EvalConstContext { ctx, estimate: false, active_fns: Vec::new() }, e)
 }
 
 /// estimate_expression_value simplifies an expression as eval_const_expressions does, also evaluating its stable
 /// functions and casts, for estimating what it will be, as Postgres' function of the same name does.
 pub fn estimate_expression_value(root: &super::PlannerInfo<'_, '_>, e: Expr) -> Expr {
     let mut ctx = root.ctx.borrow_mut();
-    eval_const_expressions_mutator(&mut EvalConstContext { ctx: &mut ctx, estimate: true }, e)
+    eval_const_expressions_mutator(&mut EvalConstContext { ctx: &mut ctx, estimate: true, active_fns: Vec::new() }, e)
 }
 
 /// eval_const_expressions_mutator is eval_const_expressions for each kind of expression, as Postgres' function of the
@@ -359,6 +361,11 @@ fn eval_const_expressions_mutator(cx: &mut EvalConstContext<'_, '_>, e: Expr) ->
                 _ => unreachable!("a routine call"),
             };
             let e = e.map_children(&mut |c| eval_const_expressions_mutator(cx, c));
+            if let Expr::Routine(routine, args) = &e
+                && let Some(inlined) = inline_function(cx, routine, args)
+            {
+                return inlined;
+            }
             simplify_function(cx, e, strict, false)
         }
         Expr::Arith(..) | Expr::Neg(..) => {
@@ -559,6 +566,108 @@ fn simplify_function(cx: &mut EvalConstContext<'_, '_>, e: Expr, strict: bool, s
     match !has_nonconst_input && safe {
         true => evaluate_expr(cx, e),
         false => e,
+    }
+}
+
+/// inline_function returns the expression of a SQL function's body with the call's arguments in place of its
+/// parameters, simplified in turn, when the body is one SELECT of one expression that can stand in for the call, as
+/// Postgres' function of the same name does, or None.
+fn inline_function(
+    cx: &mut EvalConstContext<'_, '_>,
+    routine: &crate::routines::Routine,
+    args: &[Expr],
+) -> Option<Expr> {
+    if !matches!(routine.body, crate::routines::Body::Sql(_))
+        || routine.procedure
+        || routine.set_of
+        || routine.ret.oid == crate::oid::RECORD
+        || !routine.columns.is_empty()
+        || routine.inputs().count() != args.len()
+        || cx.active_fns.contains(&routine.object.id)
+    {
+        return None;
+    }
+    let [pg_query::NodeEnum::SelectStmt(select)] = routine.sql_statements().ok()? else { return None };
+    if !select.from_clause.is_empty()
+        || select.where_clause.is_some()
+        || !select.group_clause.is_empty()
+        || select.having_clause.is_some()
+        || !select.window_clause.is_empty()
+        || !select.distinct_clause.is_empty()
+        || !select.sort_clause.is_empty()
+        || select.limit_offset.is_some()
+        || select.limit_count.is_some()
+        || select.with_clause.is_some()
+        || select.into_clause.is_some()
+        || !select.values_lists.is_empty()
+        || select.op != pg_query::protobuf::SetOperation::SetopNone as i32
+        || select.target_list.len() != 1
+    {
+        return None;
+    }
+    let Some(pg_query::NodeEnum::ResTarget(target)) = select.target_list[0].node.as_ref() else { return None };
+    let val = target.val.as_deref()?;
+    let names = (routine.name.clone(), routine.inputs().map(|p| p.name.clone()).collect());
+    let mut types: Vec<u32> = routine.inputs().map(|p| p.ty.oid).collect();
+    let bound = cx.ctx.nested(&mut types, &[], Some(names), |ctx| {
+        crate::expr::Binder::with_scopes(ctx, vec![crate::expr::Scope::default()]).bind(val)
+    });
+    let (newexpr, ty) = bound.ok()?;
+    let glob = PlannerGlobal::default();
+    if ty.oid != routine.ret.oid
+        || contain_subplans(&newexpr)
+        || contain_agg_clause(&newexpr)
+        || contain_window_function(&newexpr)
+        || returns_set(&newexpr)
+        || (!routine.object.is_non_deterministic && contain_volatile_node(&newexpr))
+        || (routine.strict && contain_nonstrict_functions(&glob, &newexpr))
+    {
+        return None;
+    }
+    let mut usecounts = vec![0; args.len()];
+    let newexpr = substitute_actual_parameters(newexpr, args, &mut usecounts);
+    for (param, &usecount) in args.iter().zip(&usecounts) {
+        if usecount == 0 && routine.strict {
+            return None;
+        }
+        if usecount > 1 {
+            let eval_cost = super::costsize::cost_qual_eval_node(param);
+            if contain_subplans(param)
+                || eval_cost.startup + eval_cost.per_tuple > 10.0 * super::costsize::CPU_OPERATOR_COST
+                || contain_volatile_node(param)
+            {
+                return None;
+            }
+        }
+    }
+    cx.active_fns.push(routine.object.id.clone());
+    let newexpr = eval_const_expressions_mutator(cx, newexpr);
+    cx.active_fns.pop();
+    Some(newexpr)
+}
+
+/// returns_set reports whether an expression calls a set-returning function.
+fn returns_set(e: &Expr) -> bool {
+    let mut found = expression_returns_set(e);
+    e.visit(&mut |x| {
+        found |= match x {
+            Expr::Func(f, _) => crate::functions::returns_set(crate::functions::function(*f).name),
+            Expr::Routine(routine, _) => routine.set_of,
+            _ => false,
+        }
+    });
+    found
+}
+
+/// substitute_actual_parameters replaces the parameters of a SQL function's body with the call's arguments, counting
+/// the uses of each, as Postgres' function of the same name does.
+fn substitute_actual_parameters(e: Expr, args: &[Expr], usecounts: &mut [usize]) -> Expr {
+    match e {
+        Expr::Param(i) => {
+            usecounts[i] += 1;
+            args[i].clone()
+        }
+        other => other.map_children(&mut |c| substitute_actual_parameters(c, args, usecounts)),
     }
 }
 

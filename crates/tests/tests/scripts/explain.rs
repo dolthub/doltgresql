@@ -864,3 +864,58 @@ fn test_window_run_conditions() {
         },
     ]);
 }
+
+#[test]
+fn test_planned_views_and_inlined_functions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "views whose plans test a condition once, and SQL functions of one expression",
+            set_up_script: &[
+                "CREATE TABLE pv_a (a INT);",
+                "CREATE TABLE pv_b (b INT);",
+                "CREATE TABLE pv_c (c INT);",
+                "CREATE VIEW pv_v AS SELECT a FROM pv_a WHERE EXISTS (SELECT 1 FROM pv_b JOIN pv_c ON b = c);",
+                "CREATE FUNCTION pv_plus1(x INT) RETURNS INT LANGUAGE SQL IMMUTABLE AS 'SELECT x + 1';",
+                "CREATE FUNCTION pv_add(a INT, b INT) RETURNS INT LANGUAGE SQL STRICT IMMUTABLE RETURN a + b;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM pv_v;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[],
+                        tag: "SELECT 0",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO pv_a VALUES (1); INSERT INTO pv_b VALUES (2); INSERT INTO pv_c VALUES (2);",
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM pv_v;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4)],
+                        rows: &[
+                            &[T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pv_plus1(pv_plus1(a)), pv_add(a, NULL), pv_add(a, 2) FROM pv_a WHERE a = pv_plus1(0);",
+                    expected: Expected::Rows {
+                        columns: &[Column("pv_plus1", INT4), Column("pv_add", INT4), Column("pv_add", INT4)],
+                        rows: &[
+                            &[T("3"), Null, T("3")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
