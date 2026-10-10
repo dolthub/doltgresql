@@ -28,7 +28,8 @@ use super::costsize::{
 };
 use super::equivclass::generate_implied_equalities_for_column;
 use super::nodes::{
-    EcId, EmId, IndexClause, IndexOptInfo, IndexPath, Path, PathKind, RelOptKind, Relids, RinfoId, RteKind, VarNode,
+    EcId, EmId, IndexClause, IndexOptInfo, IndexPath, JoinType, Path, PathKind, RelOptKind, Relids, RinfoId, RteKind,
+    VarNode,
 };
 use super::pathkeys::{build_index_pathkeys, truncate_useless_pathkeys};
 use super::pathnode::{add_path, create_bitmap_and_path, create_bitmap_heap_path, create_bitmap_or_path};
@@ -187,7 +188,7 @@ pub fn create_index_paths(root: &mut PlannerInfo<'_, '_>, rel: usize) {
         this_path_set.extend(bitindexpaths.iter().cloned());
         let bitmapqual = choose_bitmap_and(root, rel, this_path_set);
         let required_outer = bitmapqual.param.clone();
-        let loop_count = get_loop_count(root, &required_outer);
+        let loop_count = get_loop_count(root, rel, &required_outer);
         let bpath = create_bitmap_heap_path(root, rel, bitmapqual, &required_outer, loop_count);
         add_path(&mut root.rels[rel], bpath);
     }
@@ -347,7 +348,7 @@ fn build_index_paths(
         }
     }
     outer_relids.del_member(rel);
-    let loop_count = get_loop_count(root, &outer_relids);
+    let loop_count = get_loop_count(root, rel, &outer_relids);
     let pathkeys_possibly_useful = scantype != ScanTypeControl::BitmapScan
         && outer_relids.is_empty()
         && super::pathkeys::has_useful_pathkeys(root, rel);
@@ -464,10 +465,10 @@ fn check_index_only(root: &PlannerInfo<'_, '_>, rel: usize, index: usize) -> boo
     attrs_used.iter().all(|a| info.indexkeys.contains(&Some(*a)))
 }
 
-/// get_loop_count returns how many times a nested loop runs a parameterized path, the fewest rows among its outer
-/// relations, as Postgres' function of the same name estimates it. A semi join's unique outer rows are not counted
-/// yet.
-fn get_loop_count(root: &PlannerInfo<'_, '_>, outer_relids: &Relids) -> f64 {
+/// get_loop_count returns how many times a nested loop runs a parameterized path of a relation, the fewest rows among
+/// its outer relations, counting a semi join's outer rows once for each distinct join value, as Postgres' function of
+/// the same name estimates it.
+fn get_loop_count(root: &PlannerInfo<'_, '_>, cur_relid: usize, outer_relids: &Relids) -> f64 {
     let mut result = 0.0;
     for outer_relid in outer_relids.members() {
         let Some(outer_rel) = root.rels.get(outer_relid).filter(|r| r.reloptkind == RelOptKind::BaseRel) else {
@@ -476,11 +477,47 @@ fn get_loop_count(root: &PlannerInfo<'_, '_>, outer_relids: &Relids) -> f64 {
         if super::joinrels::is_dummy_rel(root, outer_relid) {
             continue;
         }
-        if result == 0.0 || result > outer_rel.rows {
-            result = outer_rel.rows;
+        let rowcount = adjust_rowcount_for_semijoins(root, cur_relid, outer_relid, outer_rel.rows);
+        if result == 0.0 || result > rowcount {
+            result = rowcount;
         }
     }
     if result > 0.0 { result } else { 1.0 }
+}
+
+/// adjust_rowcount_for_semijoins returns the rows of an outer relation that a parameterized path is run for, at most
+/// the distinct join values of a semi join whose inner side the relation is in and whose outer side is the path's
+/// relation's, as Postgres' function of the same name does.
+fn adjust_rowcount_for_semijoins(
+    root: &PlannerInfo<'_, '_>,
+    cur_relid: usize,
+    outer_relid: usize,
+    rowcount: f64,
+) -> f64 {
+    let mut rowcount = rowcount;
+    for &sj in &root.join_info_list {
+        let sjinfo = &root.sjinfos[sj];
+        if sjinfo.jointype == JoinType::Semi
+            && sjinfo.syn_lefthand.is_member(cur_relid)
+            && sjinfo.syn_righthand.is_member(outer_relid)
+        {
+            let nraw = approximate_joinrel_size(root, &sjinfo.syn_righthand);
+            let nunique = super::selfuncs::estimate_num_groups(root, &sjinfo.semi_rhs_exprs, nraw, None, None);
+            rowcount = rowcount.min(nunique);
+        }
+    }
+    rowcount
+}
+
+/// approximate_joinrel_size returns the product of the rows of a set of base relations, an upper bound on the rows of
+/// their join, as Postgres' function of the same name does.
+fn approximate_joinrel_size(root: &PlannerInfo<'_, '_>, relids: &Relids) -> f64 {
+    relids
+        .members()
+        .filter(|&relid| root.rels.get(relid).is_some_and(|r| r.relid == relid))
+        .filter(|&relid| !super::joinrels::is_dummy_rel(root, relid))
+        .map(|relid| root.rels[relid].rows)
+        .product()
 }
 
 /// build_paths_for_OR returns the bitmap scans of each index that can search by some of a list of clauses, also using
@@ -811,7 +848,7 @@ fn path_usage_comparator(a: &PathClauseUsage, b: &PathClauseUsage) -> std::cmp::
 /// of the same name estimates it.
 fn bitmap_scan_cost_est(root: &mut PlannerInfo<'_, '_>, rel: usize, ipath: &Path) -> f64 {
     let ppi = super::relnode::get_baserel_parampathinfo(root, rel, &ipath.param);
-    let loop_count = get_loop_count(root, &ipath.param);
+    let loop_count = get_loop_count(root, rel, &ipath.param);
     let ((_, _, total_cost), _) = cost_bitmap_heap_scan(root, rel, ppi.as_ref(), ipath, loop_count);
     total_cost
 }
@@ -1546,7 +1583,7 @@ fn create_catalog_lookup_path(root: &mut PlannerInfo<'_, '_>, rel: usize, outer_
         },
         _ => return,
     };
-    let loop_count = get_loop_count(root, &outer_relids);
+    let loop_count = get_loop_count(root, rel, &outer_relids);
     let index = IndexCost {
         pages: 1.0,
         tuples: root.rels[rel].tuples,
