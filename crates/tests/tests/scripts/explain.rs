@@ -1077,3 +1077,72 @@ fn test_lateral_chains_and_correlated_ctes() {
         },
     ]);
 }
+
+#[test]
+fn test_memoized_lookup_filters() {
+    run_scripts(&[
+        ScriptTest {
+            name: "a cached index lookup that filters the rows it finds",
+            set_up_script: &[
+                "CREATE TABLE mm_t (u INT, h INT, tw INT);",
+                "CREATE INDEX mm_t_u ON mm_t (u);",
+                "CREATE INDEX mm_t_h ON mm_t (h);",
+                "INSERT INTO mm_t SELECT i, i % 100, i % 20 FROM generate_series(0, 9999) i;",
+                "ANALYZE mm_t;",
+                "SET enable_hashjoin = off;",
+                "SET enable_mergejoin = off;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM mm_t t1 JOIN mm_t t2 ON t1.u = t2.h WHERE t1.tw = 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("500")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
+
+#[test]
+fn test_right_semi_join_order() {
+    run_scripts(&[
+        ScriptTest {
+            name: "ordering by the column that an IN subquery matches, above a right semi join",
+            set_up_script: &[
+                "CREATE TABLE rs_a (a INT, b INT, c VARCHAR);",
+                "CREATE TABLE rs_b (a INT, b INT, c VARCHAR);",
+                "CREATE TABLE rs_c (a INT, b INT, c INT);",
+                "INSERT INTO rs_a SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 2 = 0;",
+                "INSERT INTO rs_b SELECT i % 25, i, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 3 = 0;",
+                "INSERT INTO rs_c SELECT i, i, i % 25 FROM generate_series(0, 599, 2) i;",
+                "ANALYZE rs_a;",
+                "ANALYZE rs_b;",
+                "ANALYZE rs_c;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT t1.* FROM rs_a t1 WHERE t1.a IN (SELECT t1.b FROM rs_b t1, rs_c t2 WHERE t1.a = 0 AND t1.b = (t2.a + t2.b)/2) AND t1.b = 0 ORDER BY t1.a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", INT4), Column("c", VARCHAR)],
+                        rows: &[
+                            &[T("0"), T("0"), T("0000")],
+                            &[T("150"), T("0"), T("0150")],
+                            &[T("300"), T("0"), T("0300")],
+                            &[T("450"), T("0"), T("0450")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

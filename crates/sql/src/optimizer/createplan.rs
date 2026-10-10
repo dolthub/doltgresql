@@ -636,6 +636,13 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 lateral,
                 method,
             };
+            let mut layout = layout;
+            let dropped = match kind {
+                JoinKind::Semi | JoinKind::Anti => outer_layout.len()..layout.len(),
+                JoinKind::RightSemi | JoinKind::RightAnti => 0..outer_layout.len(),
+                _ => 0..0,
+            };
+            layout[dropped].fill(Slot::Expr(Expr::Const(Value::Null)));
             (filtered(root, plan, &otherquals, &layout), layout)
         }
     };

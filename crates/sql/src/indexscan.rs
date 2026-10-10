@@ -2181,7 +2181,11 @@ fn prune_to(plan: &mut Plan, needed: Option<BTreeSet<usize>>) {
             };
             let (left_needed, right_needed) = (side(false), side(true));
             if let crate::plan::JoinMethod::Lookup { scan, .. } = method {
-                let (read, input) = match &**right {
+                let right = match &**right {
+                    Plan::Memoize { input, .. } => input,
+                    other => other,
+                };
+                let (read, input) = match right {
                     Plan::Project { input, exprs } => match &right_needed {
                         Some(needed) => (columns_read(needed.iter().filter_map(|&i| exprs.get(i))), &**input),
                         None => (columns_read(exprs.iter()), &**input),
