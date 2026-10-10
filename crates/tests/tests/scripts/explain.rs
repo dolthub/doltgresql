@@ -1025,3 +1025,55 @@ fn test_lateral_functions() {
         },
     ]);
 }
+
+#[test]
+fn test_lateral_chains_and_correlated_ctes() {
+    run_scripts(&[
+        ScriptTest {
+            name: "functions that read several FROM items before them, and WITH queries that read an enclosing row",
+            set_up_script: &[
+                "CREATE TABLE lc_t (f1 INT);",
+                "INSERT INTO lc_t VALUES (1), (2);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT count(*), sum(r3) FROM generate_series(1, 2) r1, generate_series(r1, 3) r2, generate_series(r1 + r2, 5) r3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8), Column("sum", INT8)],
+                        rows: &[
+                            &[T("12"), T("49")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM generate_series(1, 2) r1, generate_series(r1, 3) r2, ROWS FROM (generate_series(10 + r1, 11), generate_series(10 + r2, 11)) ORDER BY 1, 2, 3, 4;",
+                    expected: Expected::Rows {
+                        columns: &[Column("r1", INT4), Column("r2", INT4), Column("generate_series", INT4), Column("generate_series", INT4)],
+                        rows: &[
+                            &[T("1"), T("1"), T("11"), T("11")],
+                            &[T("1"), T("2"), T("11"), Null],
+                            &[T("1"), T("3"), T("11"), Null],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT (WITH cte(foo) AS (VALUES (f1)) SELECT (SELECT foo FROM cte)) FROM lc_t ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("foo", INT4)],
+                        rows: &[
+                            &[T("1")],
+                            &[T("2")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

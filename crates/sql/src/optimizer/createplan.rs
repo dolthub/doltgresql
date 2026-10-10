@@ -531,7 +531,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 true => {
                     let (plan, layout) = match &inner.kind {
                         PathKind::BitmapHeapScan(_) => create_bitmap_scan_plan(root, inner, &outer_layout),
-                        PathKind::SeqScan => create_scan_plan(root, inner.parent, &outer_layout),
+                        PathKind::SeqScan => create_lateral_scan_plan(root, inner, &outer_layout),
                         _ => create_param_indexscan_plan(root, inner, &outer_layout),
                     };
                     let (mut plan, layout) = add_placeholders(root, inner.parent, plan, layout);
@@ -796,6 +796,25 @@ fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, outer: &[Slot]) 
             (plan, layout)
         }
         RteKind::Subquery(..) | RteKind::Join(_) => unreachable!("only base relations are scanned"),
+    }
+}
+
+/// create_lateral_scan_plan makes the plan of a lateral function or VALUES list on the inner side of a nested loop,
+/// testing the join clauses that its parameterization moved into it, as Postgres' create_scan_plan adds a
+/// parameterized path's clauses. It reads the columns of the outer rows of the given layout as `Expr::Outer(0, _)`.
+fn create_lateral_scan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, outer: &[Slot]) -> (Plan, Vec<Slot>) {
+    let (plan, layout) = create_scan_plan(root, path.parent, outer);
+    let ppi_clauses = match super::relnode::get_baserel_parampathinfo(root, path.parent, &path.param) {
+        Some(ppi) => order_qual_clauses(root, extract_actual_clauses(root, &ppi.ppi_clauses, false)),
+        None => Vec::new(),
+    };
+    let predicate = ppi_clauses
+        .iter()
+        .map(|&r| param_positional(root, root.rinfos[r].clause.clone(), &layout, outer))
+        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+    match predicate {
+        Some(predicate) => (Plan::Filter { input: Box::new(plan), predicate }, layout),
+        None => (plan, layout),
     }
 }
 

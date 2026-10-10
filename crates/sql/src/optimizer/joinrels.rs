@@ -234,9 +234,14 @@ pub fn init_dummy_sjinfo(left_relids: &Relids, right_relids: &Relids) -> Special
 }
 
 /// make_join_rel joins two relations when that is legal, building their join relation and adding the paths of the
-/// join, and returns the join relation, as Postgres' function of the same name does.
+/// join, and returns the join relation, as Postgres' function of the same name does. Since Doltgres builds no
+/// parameterized join paths, it skips a join that would still read other relations laterally, which could have no
+/// other paths.
 pub fn make_join_rel(root: &mut PlannerInfo<'_, '_>, rel1: usize, rel2: usize) -> Option<usize> {
     let joinrelids = root.rels[rel1].relids.union(&root.rels[rel2].relids);
+    if !super::relnode::min_join_parameterization(root, &joinrelids, rel1, rel2).is_empty() {
+        return None;
+    }
     let (sjinfo, reversed) = join_is_legal(root, rel1, rel2, &joinrelids)?;
     let mut pushed_down_joins = Vec::new();
     let joinrelids = add_outer_joins_to_relids(root, joinrelids, sjinfo, Some(&mut pushed_down_joins));

@@ -291,6 +291,8 @@ pub struct Cte {
     /// The definition that the ported optimizer's references to the query share, when it is on and the query reads
     /// no enclosing row.
     pub def: Option<std::sync::Arc<CteDef>>,
+    /// How many queries enclose the one whose WITH clause defines the query.
+    pub depth: usize,
 }
 
 /// CteDef is a WITH query as the ported optimizer plans it, as Postgres' CommonTableExpr is: the planner inlines it
@@ -600,6 +602,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 plan: Some(planned.plan),
                 work_table,
                 def,
+                depth: self.outer.len(),
             });
         }
         Ok(())
@@ -721,6 +724,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             plan: None,
             work_table,
             def: None,
+            depth: self.outer.len(),
         });
         let step = self.plan_branch(right);
         self.ctx.ctes.pop();
@@ -1370,7 +1374,20 @@ impl<'b, 'a> Planner<'b, 'a> {
                 def.refcount.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 Plan::CteScan(def.clone())
             }
-            (None, plan) => plan.unwrap_or(Plan::WorkTable(cte.work_table, cte.columns.len())),
+            (None, Some(mut plan)) => {
+                let delta = self.outer.len().saturating_sub(cte.depth);
+                if delta > 0 {
+                    plan.map_exprs(0, &mut |e, depth| reach_further_out(e, depth, delta));
+                }
+                let reach = match crate::joins::plan_lowest_level(&plan) {
+                    Some(level) if level >= 0 => usize::MAX,
+                    Some(level) => (self.outer.len() as i64 + level).max(0) as usize,
+                    None => 0,
+                };
+                self.ctx.outer_reach = self.ctx.outer_reach.min(reach);
+                plan
+            }
+            (None, None) => Plan::WorkTable(cte.work_table, cte.columns.len()),
         };
         (plan, Scope { columns })
     }
@@ -3351,6 +3368,19 @@ pub(crate) fn set_rows(ctx: &mut Ctx<'_>, call: &Expr, row: &[Value]) -> Result<
             value => Ok(vec![value]),
         },
     }
+}
+
+/// reach_further_out rewrites the reads of enclosing rows in an expression, `nesting` subqueries deep within a plan, to
+/// read rows `delta` levels further out, for a WITH query's plan that a query nested deeper than its WITH clause reads.
+fn reach_further_out(e: Expr, nesting: usize, delta: usize) -> Expr {
+    let mut e = match e {
+        Expr::Outer(d, i) if d > nesting => return Expr::Outer(d + delta, i),
+        other => other.map_children(&mut |c| reach_further_out(c, nesting, delta)),
+    };
+    for plan in e.subqueries_mut() {
+        plan.map_exprs(0, &mut |x, depth| reach_further_out(x, nesting + 1 + depth, delta));
+    }
+    e
 }
 
 /// is_lateral reports whether a FROM item can see the items before it: a LATERAL subquery, a function, an XMLTABLE,
