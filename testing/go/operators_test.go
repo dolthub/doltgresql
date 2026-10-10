@@ -4036,5 +4036,55 @@ func TestOperators(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "regular expression match operators",
+			SetUpScript: []string{
+				"CREATE TABLE regex_t (id INT PRIMARY KEY, v TEXT);",
+				"CREATE TABLE regex_p (p TEXT);",
+				"INSERT INTO regex_t VALUES (1, 'statement_timeout=1000'), (2, 'other_setting=1');",
+				"INSERT INTO regex_p VALUES ('^other'), ('^x');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// https://github.com/dolthub/doltgresql/issues/3499
+					Query:    "SELECT 'statement_timeout=1000' ~ ANY(ARRAY['statement_timeout']::text[]);",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    "SELECT 'abc' !~ ALL(ARRAY['x', 'y']), 'abc' ~ ANY(ARRAY['x', 'y']);",
+					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Query:    "SELECT id FROM regex_t WHERE v ~ ANY(SELECT p FROM regex_p) ORDER BY id;",
+					Expected: []sql.Row{{int32(2)}},
+				},
+				{
+					Query:    "SELECT id, v ~ 'timeout', v !~ 'timeout' FROM regex_t ORDER BY id;",
+					Expected: []sql.Row{{int32(1), "t", "f"}, {int32(2), "f", "t"}},
+				},
+				{
+					Query:    "SELECT NULL::text ~ 'a', 'a' !~ NULL;",
+					Expected: []sql.Row{{nil, nil}},
+				},
+				{
+					Query:    `SELECT 'abc' ~ '', 'aa' ~ '(a)\1', 'ABC' ~ 'b';`,
+					Expected: []sql.Row{{"t", "t", "f"}},
+				},
+				{
+					Query:    "SELECT 'pg_class'::name ~ '^pg_', 'pg_class'::name !~ '^pg_';",
+					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Skip:     true, // TODO: bpchar values are not padded to their declared length
+					Query:    "SELECT 'x'::char(3) ~ 'x  $';",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:           "SELECT 'abc' ~ '(';",
+					ExpectedErr:     "invalid regular expression",
+					ExpectedErrCode: "2201B",
+				},
+			},
+		},
 	})
 }

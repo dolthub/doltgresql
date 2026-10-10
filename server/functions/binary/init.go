@@ -34,6 +34,8 @@ func Init() {
 	initBinaryMultiply()
 	initBinaryNotEqual()
 	initBinaryPlus()
+	initBinaryRegexMatch()
+	initBinaryRegexNotMatch()
 	initBinaryShiftLeft()
 	initBinaryShiftRight()
 	initJSON()

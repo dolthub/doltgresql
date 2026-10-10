@@ -14886,7 +14886,6 @@ sub_type:
 /* TODO: not all operators are included */
 operator:
   subquery_op
-| '~' { $$.val = tree.RegMatch }
 | SQRT { $$.val = tree.UnarySqrt }
 | CBRT { $$.val = tree.UnaryCbrt }
 | '?' { $$.val = tree.JSONExists }
@@ -14935,6 +14934,8 @@ subquery_op:
 | NOT_LA LIKE  { $$.val = tree.NotLike  }
 | ILIKE        { $$.val = tree.ILike    }
 | NOT_LA ILIKE { $$.val = tree.NotILike }
+| '~'          { $$.val = tree.RegMatch }
+| NOT_REGMATCH { $$.val = tree.NotRegMatch }
   // cannot put SIMILAR TO here, because SIMILAR TO is a hack.
   // the regular expression is preprocessed by a function (similar_escape),
   // and the ~ operator for posix regular expressions is used.
