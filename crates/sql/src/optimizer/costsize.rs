@@ -19,17 +19,18 @@
 use std::rc::Rc;
 
 use super::PlannerInfo;
-use super::clausesel::{clause_selectivity, clauselist_selectivity};
+use super::clausesel::{self, clause_selectivity, clauselist_selectivity};
 use super::nodes::{JoinType, Path, PathKind, Relids, RinfoId, SpecialJoinInfo};
 use super::restrictinfo::{join_clause_is_movable_into, rinfo_is_pushed_down};
 use crate::expr::Expr;
+use crate::types::Value;
 
 /// SEQ_PAGE_COST, RANDOM_PAGE_COST, CPU_TUPLE_COST, CPU_INDEX_TUPLE_COST, and CPU_OPERATOR_COST are Postgres' default
 /// cost settings: of reading a page in order and out of order, and of processing a row, an index entry, and an
 /// operator.
 const SEQ_PAGE_COST: f64 = 1.0;
 pub const RANDOM_PAGE_COST: f64 = 4.0;
-const CPU_TUPLE_COST: f64 = 0.01;
+pub const CPU_TUPLE_COST: f64 = 0.01;
 pub const CPU_INDEX_TUPLE_COST: f64 = 0.005;
 pub const CPU_OPERATOR_COST: f64 = 0.0025;
 
@@ -67,6 +68,7 @@ pub struct Enables {
     pub hashjoin: bool,
     pub material: bool,
     pub sort: bool,
+    pub incremental_sort: bool,
     pub hashagg: bool,
     pub self_join_elimination: bool,
 }
@@ -84,6 +86,7 @@ impl Enables {
             hashjoin: on("enable_hashjoin"),
             material: on("enable_material"),
             sort: on("enable_sort"),
+            incremental_sort: on("enable_incremental_sort"),
             hashagg: on("enable_hashagg"),
             self_join_elimination: on("enable_self_join_elimination"),
         }
@@ -918,4 +921,332 @@ fn calc_joinrel_size_estimate(
         JoinType::Anti => outer_rows * (1.0 - jselec) * pselec,
     };
     clamp_row_est(nrows)
+}
+
+/// APPEND_CPU_COST_MULTIPLIER is the share of a tuple's processing cost that an Append charges for each row it passes
+/// on, as Postgres' constant of the same name is.
+pub const APPEND_CPU_COST_MULTIPLIER: f64 = 0.5;
+
+/// HASH_MEM_LIMIT is the memory that a hashed aggregation may take, Postgres' default work_mem times its default
+/// hash_mem_multiplier.
+const HASH_MEM_LIMIT: f64 = 4.0 * 1024.0 * 1024.0 * 2.0;
+
+/// cost_tuplesort returns the startup and run costs of sorting rows of a width, of which a LIMIT may read only
+/// some, as Postgres' function of the same name estimates them.
+pub fn cost_tuplesort(tuples: f64, width: f64, comparison_cost: f64, limit_tuples: f64) -> (f64, f64) {
+    let tuples = tuples.max(2.0);
+    let comparison_cost = comparison_cost + 2.0 * CPU_OPERATOR_COST;
+    let input_bytes = relation_byte_size(tuples, width);
+    let (output_tuples, output_bytes) = match limit_tuples > 0.0 && limit_tuples < tuples {
+        true => (limit_tuples, relation_byte_size(limit_tuples, width)),
+        false => (tuples, input_bytes),
+    };
+    let startup_cost = if output_bytes > SORT_MEM {
+        let npages = (input_bytes / BLCKSZ).ceil();
+        let nruns = input_bytes / SORT_MEM;
+        let mergeorder = (SORT_MEM / (BLCKSZ * 2.0 + BLCKSZ * 32.0)).floor().clamp(6.0, 500.0);
+        let log_runs = if nruns > mergeorder { (nruns.ln() / mergeorder.ln()).ceil() } else { 1.0 };
+        let npageaccesses = 2.0 * npages * log_runs;
+        comparison_cost * tuples * tuples.log2() + npageaccesses * (SEQ_PAGE_COST * 0.75 + RANDOM_PAGE_COST * 0.25)
+    } else if tuples > 2.0 * output_tuples || input_bytes > SORT_MEM {
+        comparison_cost * tuples * (2.0 * output_tuples).log2()
+    } else {
+        comparison_cost * tuples * tuples.log2()
+    };
+    (startup_cost, CPU_OPERATOR_COST * tuples)
+}
+
+/// cost_incremental_sort returns the costs of sorting a path's rows by pathkeys whose leading keys order them
+/// already, sorting each run of rows with equal leading keys, as Postgres' function of the same name does.
+pub fn cost_incremental_sort(
+    root: &mut PlannerInfo<'_, '_>,
+    pathkeys: &[super::nodes::PkId],
+    presorted_keys: usize,
+    input: &Path,
+    limit_tuples: f64,
+) -> Costs {
+    let input_run_cost = input.total_cost - input.startup_cost;
+    let input_tuples = input.rows.max(2.0);
+    let mut input_groups = input_tuples.min(200.0);
+    let mut presorted_exprs = Vec::new();
+    let mut unknown_varno = false;
+    for &pk in pathkeys.iter().take(presorted_keys) {
+        let ec = root.canon_pathkeys[pk].pk_eclass;
+        let member = root.eq_classes[ec].ec_members[0];
+        let expr = root.eq_members[member].em_expr.clone();
+        if super::var::pull_varnos(root, &expr).is_empty() {
+            unknown_varno = true;
+            break;
+        }
+        presorted_exprs.push(expr);
+    }
+    if !unknown_varno {
+        input_groups = super::selfuncs::estimate_num_groups(root, &presorted_exprs, input_tuples, None);
+    }
+    let group_tuples = input_tuples / input_groups;
+    let group_input_run_cost = input_run_cost / input_groups;
+    let (group_startup_cost, group_run_cost) = cost_tuplesort(group_tuples, input.width, 0.0, limit_tuples);
+    let startup_cost = group_startup_cost + input.startup_cost + group_input_run_cost;
+    let mut run_cost = group_run_cost
+        + (group_run_cost + group_startup_cost) * (input_groups - 1.0)
+        + group_input_run_cost * (input_groups - 1.0);
+    run_cost += (CPU_TUPLE_COST + 0.0) * input_tuples;
+    run_cost += 2.0 * CPU_TUPLE_COST * input_groups;
+    (input.disabled_nodes, startup_cost, startup_cost + run_cost)
+}
+
+/// hash_agg_entry_size returns the memory that one group of a hashed aggregation takes, as Postgres' function of the
+/// same name estimates it for its transition states and grouped tuple.
+fn hash_agg_entry_size(num_trans: usize, tuple_width: f64, transition_space: f64) -> f64 {
+    const CHUNKHDRSZ: f64 = 8.0;
+    let tuple_size = 16.0 + tuple_width;
+    let pergroup_size = num_trans as f64 * 16.0;
+    let tuple_chunk_size = CHUNKHDRSZ + tuple_size;
+    let pergroup_chunk_size = if pergroup_size > 0.0 { CHUNKHDRSZ + pergroup_size } else { 0.0 };
+    let transition_chunk_size = if transition_space > 0.0 { CHUNKHDRSZ + transition_space } else { 0.0 };
+    24.0 + tuple_chunk_size + pergroup_chunk_size + transition_chunk_size
+}
+
+/// hash_agg_set_limits returns the memory limit, the most groups, and the partitions that a hashed aggregation of
+/// groups of an entry size spills into, as Postgres' function of the same name chooses them.
+fn hash_agg_set_limits(hashentrysize: f64, input_groups: f64) -> (f64, f64, f64) {
+    if input_groups * hashentrysize <= HASH_MEM_LIMIT {
+        return (HASH_MEM_LIMIT, (HASH_MEM_LIMIT / hashentrysize).floor(), 0.0);
+    }
+    let npartitions = hash_choose_num_partitions(input_groups, hashentrysize);
+    let partition_mem = BLCKSZ + BLCKSZ * npartitions;
+    let mem_limit = match HASH_MEM_LIMIT > 4.0 * partition_mem {
+        true => HASH_MEM_LIMIT - partition_mem,
+        false => HASH_MEM_LIMIT * 0.75,
+    };
+    let ngroups_limit = if mem_limit > hashentrysize { (mem_limit / hashentrysize).floor() } else { 1.0 };
+    (mem_limit, ngroups_limit, npartitions)
+}
+
+/// hash_choose_num_partitions returns how many partitions a hashed aggregation that spills writes, a power of two,
+/// as Postgres' function of the same name chooses it.
+fn hash_choose_num_partitions(input_groups: f64, hashentrysize: f64) -> f64 {
+    let partition_limit = (HASH_MEM_LIMIT * 0.25) / BLCKSZ;
+    let mem_wanted = 1.50 * input_groups * hashentrysize;
+    let dpartitions = (1.0 + mem_wanted / HASH_MEM_LIMIT).min(partition_limit).clamp(4.0, 1024.0);
+    let partition_bits = (dpartitions.floor() as u32).next_power_of_two().trailing_zeros().min(32);
+    f64::from(1u32 << partition_bits)
+}
+
+/// cost_agg returns the rows and costs of an aggregation of rows with a cost, as Postgres' function of the same name
+/// estimates them: a plain aggregation returns one row after reading them all, a sorted one returns each group as
+/// it ends, and a hashed one returns the groups after reading every row, spilling those beyond its memory.
+#[allow(clippy::too_many_arguments)]
+pub fn cost_agg(
+    root: &PlannerInfo<'_, '_>,
+    aggstrategy: super::nodes::AggStrategy,
+    aggcosts: &super::prepagg::AggClauseCosts,
+    num_group_cols: usize,
+    num_groups: f64,
+    quals: &[Expr],
+    (mut disabled_nodes, input_startup_cost, input_total_cost): Costs,
+    input_tuples: f64,
+    input_width: f64,
+) -> (f64, Costs) {
+    use super::nodes::AggStrategy;
+    let (mut startup_cost, mut total_cost, mut output_tuples);
+    match aggstrategy {
+        AggStrategy::Plain => {
+            startup_cost = input_total_cost
+                + aggcosts.trans_cost.startup
+                + aggcosts.trans_cost.per_tuple * input_tuples
+                + aggcosts.final_cost.startup
+                + aggcosts.final_cost.per_tuple;
+            total_cost = startup_cost + CPU_TUPLE_COST;
+            output_tuples = 1.0;
+        }
+        AggStrategy::Sorted | AggStrategy::Mixed => {
+            startup_cost = input_startup_cost;
+            total_cost = input_total_cost;
+            if aggstrategy == AggStrategy::Mixed && !root.enables.hashagg {
+                disabled_nodes += 1;
+            }
+            total_cost += aggcosts.trans_cost.startup + aggcosts.trans_cost.per_tuple * input_tuples;
+            total_cost += CPU_OPERATOR_COST * num_group_cols as f64 * input_tuples;
+            total_cost += aggcosts.final_cost.startup + aggcosts.final_cost.per_tuple * num_groups;
+            total_cost += CPU_TUPLE_COST * num_groups;
+            output_tuples = num_groups;
+        }
+        AggStrategy::Hashed => {
+            startup_cost = input_total_cost;
+            if !root.enables.hashagg {
+                disabled_nodes += 1;
+            }
+            startup_cost += aggcosts.trans_cost.startup + aggcosts.trans_cost.per_tuple * input_tuples;
+            startup_cost += CPU_OPERATOR_COST * num_group_cols as f64 * input_tuples;
+            startup_cost += aggcosts.final_cost.startup;
+            total_cost = startup_cost + aggcosts.final_cost.per_tuple * num_groups + CPU_TUPLE_COST * num_groups;
+            output_tuples = num_groups;
+        }
+    }
+    if matches!(aggstrategy, AggStrategy::Hashed | AggStrategy::Mixed) {
+        let hashentrysize = hash_agg_entry_size(root.parse.aggregates.len(), input_width, aggcosts.transition_space);
+        let (mem_limit, ngroups_limit, num_partitions) = hash_agg_set_limits(hashentrysize, num_groups);
+        let nbatches = ((num_groups * hashentrysize) / mem_limit).max(num_groups / ngroups_limit).ceil().max(1.0);
+        let num_partitions = num_partitions.max(2.0);
+        let depth = (nbatches.ln() / num_partitions.ln()).ceil();
+        let pages = relation_byte_size(input_tuples, input_width) / BLCKSZ;
+        let pages_written = pages * depth * 2.0;
+        let pages_read = pages * depth * 2.0;
+        startup_cost += pages_written * RANDOM_PAGE_COST;
+        total_cost += pages_written * RANDOM_PAGE_COST + pages_read * SEQ_PAGE_COST;
+        let spill_cost = depth * input_tuples * 2.0 * CPU_TUPLE_COST;
+        startup_cost += spill_cost;
+        total_cost += spill_cost;
+    }
+    if !quals.is_empty() {
+        let qual_cost = quals.iter().fold(QualCost::default(), |c, q| {
+            let one = cost_qual_eval_node(q);
+            QualCost { startup: c.startup + one.startup, per_tuple: c.per_tuple + one.per_tuple }
+        });
+        startup_cost += qual_cost.startup;
+        total_cost += qual_cost.startup + output_tuples * qual_cost.per_tuple;
+        let clauses: Vec<(&Expr, Option<&super::nodes::RestrictInfo>)> = quals.iter().map(|q| (q, None)).collect();
+        output_tuples =
+            clamp_row_est(output_tuples * clausesel::list_selectivity(root, &clauses, 0, JoinType::Inner, None));
+    }
+    (output_tuples, (disabled_nodes, startup_cost, total_cost))
+}
+
+/// cost_group returns the rows and costs of a GROUP BY without aggregates over sorted rows, as Postgres' function of
+/// the same name estimates them.
+pub fn cost_group(
+    root: &PlannerInfo<'_, '_>,
+    num_group_cols: usize,
+    num_groups: f64,
+    quals: &[Expr],
+    (disabled_nodes, input_startup_cost, input_total_cost): Costs,
+    input_tuples: f64,
+) -> (f64, Costs) {
+    let mut output_tuples = num_groups;
+    let mut startup_cost = input_startup_cost;
+    let mut total_cost = input_total_cost + CPU_OPERATOR_COST * input_tuples * num_group_cols as f64;
+    if !quals.is_empty() {
+        let qual_cost = quals.iter().fold(QualCost::default(), |c, q| {
+            let one = cost_qual_eval_node(q);
+            QualCost { startup: c.startup + one.startup, per_tuple: c.per_tuple + one.per_tuple }
+        });
+        startup_cost += qual_cost.startup;
+        total_cost += qual_cost.startup + output_tuples * qual_cost.per_tuple;
+        let clauses: Vec<(&Expr, Option<&super::nodes::RestrictInfo>)> = quals.iter().map(|q| (q, None)).collect();
+        output_tuples =
+            clamp_row_est(output_tuples * clausesel::list_selectivity(root, &clauses, 0, JoinType::Inner, None));
+    }
+    (output_tuples, (disabled_nodes, startup_cost, total_cost))
+}
+
+/// cost_windowagg returns the costs of a window's calls over rows with a cost, as Postgres' function of the same name
+/// estimates them, where a call costs its function and arguments for each row and the window compares its keys.
+pub fn cost_windowagg(
+    root: &mut PlannerInfo<'_, '_>,
+    calls: &[usize],
+    (disabled_nodes, input_startup_cost, input_total_cost): Costs,
+    input_tuples: f64,
+) -> Costs {
+    let winclause = &root.parse.window_funcs[calls[0]];
+    let num_part_cols = winclause.partition.len();
+    let num_order_cols = winclause.order.len();
+    let mut startup_cost = input_startup_cost;
+    let mut total_cost = input_total_cost;
+    for &k in calls {
+        let call = &root.parse.window_funcs[k];
+        let mut wfunccost = CPU_OPERATOR_COST;
+        for arg in call.args.iter().chain(&call.filter) {
+            let cost = cost_qual_eval_node(arg);
+            startup_cost += cost.startup;
+            wfunccost += cost.per_tuple;
+        }
+        total_cost += wfunccost * input_tuples;
+    }
+    total_cost += CPU_OPERATOR_COST * (num_part_cols + num_order_cols) as f64 * input_tuples;
+    total_cost += CPU_TUPLE_COST * input_tuples;
+    let startup_tuples = get_windowclause_startup_tuples(root, calls[0], input_tuples);
+    if startup_tuples > 1.0 {
+        startup_cost += (total_cost - startup_cost) / input_tuples * (startup_tuples - 1.0);
+    }
+    (disabled_nodes, startup_cost, total_cost)
+}
+
+/// get_windowclause_startup_tuples estimates how many rows a window reads before it returns its first, from its
+/// partition's and peer group's estimated rows and its frame's end, as Postgres' function of the same name does.
+fn get_windowclause_startup_tuples(root: &mut PlannerInfo<'_, '_>, call: usize, input_tuples: f64) -> f64 {
+    use crate::window::frame;
+    let wc = root.parse.window_funcs[call].clone();
+    let partition_tuples = match wc.partition.is_empty() {
+        true => input_tuples,
+        false => input_tuples / super::selfuncs::estimate_num_groups(root, &wc.partition, input_tuples, None),
+    };
+    let peer_tuples = match wc.order.is_empty() {
+        true => 1.0,
+        false => {
+            let orderexprs: Vec<Expr> = wc.order.iter().map(|k| k.expr.clone()).collect();
+            partition_tuples / super::selfuncs::estimate_num_groups(root, &orderexprs, partition_tuples, None)
+        }
+    };
+    let options = wc.options;
+    let return_tuples = if options & frame::END_UNBOUNDED_FOLLOWING != 0 {
+        partition_tuples
+    } else if options & frame::END_OFFSET_PRECEDING != 0 {
+        1.0
+    } else if options & frame::END_OFFSET_FOLLOWING != 0 {
+        let end_offset_value = match &wc.end {
+            crate::window::Bound::Following(Expr::Const(v)) => match v {
+                Value::Null => 1.0,
+                Value::Int2(_) | Value::Int4(_) | Value::Int8(_) => v.to_i64().unwrap_or(1) as f64,
+                _ => partition_tuples / peer_tuples * clausesel::DEFAULT_INEQ_SEL,
+            },
+            _ => partition_tuples / peer_tuples * clausesel::DEFAULT_INEQ_SEL,
+        };
+        match options & frame::ROWS != 0 {
+            true => end_offset_value + 1.0,
+            false => peer_tuples * (end_offset_value + 1.0),
+        }
+    } else if options & frame::ROWS != 0 {
+        1.0
+    } else if wc.order.is_empty() {
+        partition_tuples
+    } else {
+        peer_tuples
+    };
+    let return_tuples = match !wc.partition.is_empty() || !wc.order.is_empty() {
+        true => (return_tuples + 1.0).min(partition_tuples),
+        false => return_tuples.min(partition_tuples),
+    };
+    clamp_row_est(return_tuples)
+}
+
+/// set_pathtarget_cost_width sets the cost of evaluating a target's expressions and the width of its rows, as
+/// Postgres' function of the same name does.
+pub fn set_pathtarget_cost_width(root: &PlannerInfo<'_, '_>, target: &mut super::nodes::PathTarget) {
+    let mut cost = QualCost::default();
+    let mut tuple_width = 0.0;
+    for expr in &target.exprs {
+        tuple_width += get_expr_width(root, expr);
+        let is_var = matches!(expr, Expr::Column(id) if matches!(root.glob.node(*id), super::nodes::VarNode::Var(_)));
+        if !is_var {
+            let one = cost_qual_eval_node(expr);
+            cost.startup += one.startup;
+            cost.per_tuple += one.per_tuple;
+        }
+    }
+    target.cost = cost;
+    target.width = tuple_width;
+}
+
+/// get_expr_width returns the estimated width of an expression's values: a Var's column width, or its type's
+/// average width, as Postgres' function of the same name does.
+pub fn get_expr_width(root: &PlannerInfo<'_, '_>, expr: &Expr) -> f64 {
+    if let Expr::Column(id) = expr
+        && let super::nodes::VarNode::Var(var) = root.glob.node(*id)
+        && let Some(width) = root.rels.get(var.varno).and_then(|rel| rel.attr_widths.get(var.varattno))
+        && *width > 0.0
+    {
+        return *width;
+    }
+    get_typavgwidth(super::nodefuncs::expr_type(root, expr), -1)
 }

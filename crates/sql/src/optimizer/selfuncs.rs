@@ -530,3 +530,124 @@ pub fn btcostestimate(root: &PlannerInfo<'_, '_>, rel: usize, path: &IndexPath, 
     };
     costs
 }
+
+/// GroupVarInfo is a Var of a grouping with its relation and estimated distinct values, as Postgres' GroupVarInfo
+/// holds it.
+struct GroupVarInfo {
+    var: Expr,
+    rel: Option<usize>,
+    ndistinct: f64,
+}
+
+/// estimate_num_groups estimates the groups that grouping rows by expressions makes, or of a grouping set's
+/// positions among them, as Postgres' function of the same name does: a boolean has two values, an expression with
+/// statistics or a unique Var has its distinct values, and any other expression the distinct values of its Vars,
+/// multiplied over the relations, each relation's product clamped to its rows.
+pub fn estimate_num_groups(
+    root: &PlannerInfo<'_, '_>,
+    group_exprs: &[Expr],
+    input_rows: f64,
+    pgset: Option<&[usize]>,
+) -> f64 {
+    let input_rows = clamp_row_est(input_rows);
+    if group_exprs.is_empty() || pgset.is_some_and(|s| s.is_empty()) {
+        return 1.0;
+    }
+    let mut varinfos: Vec<GroupVarInfo> = Vec::new();
+    let mut srf_multiplier: f64 = 1.0;
+    let mut numdistinct = 1.0;
+    for (i, groupexpr) in group_exprs.iter().enumerate() {
+        if pgset.is_some_and(|s| !s.contains(&i)) {
+            continue;
+        }
+        srf_multiplier = srf_multiplier.max(super::clauses::expression_returns_set_rows(root, groupexpr));
+        if super::nodefuncs::expr_type(root, groupexpr) == Some(super::nodefuncs::BOOLOID) {
+            numdistinct *= 2.0;
+            continue;
+        }
+        let vardata = examine_variable(root, groupexpr);
+        if vardata.stats.is_some() || vardata.isunique {
+            add_unique_group_var(root, &mut varinfos, groupexpr.clone(), &vardata);
+            continue;
+        }
+        let varshere = super::var::pull_var_clause(root.glob, groupexpr, false);
+        if varshere.is_empty() {
+            if super::clauses::contain_volatile_functions(root.glob, groupexpr) {
+                return input_rows;
+            }
+            continue;
+        }
+        for var in varshere {
+            let var = Expr::Column(var);
+            let vardata = examine_variable(root, &var);
+            add_unique_group_var(root, &mut varinfos, var, &vardata);
+        }
+    }
+    if varinfos.is_empty() {
+        return (numdistinct * srf_multiplier).ceil().min(input_rows).max(1.0);
+    }
+    while !varinfos.is_empty() {
+        let rel = varinfos[0].rel;
+        let (relvarinfos, newvarinfos): (Vec<GroupVarInfo>, Vec<GroupVarInfo>) =
+            varinfos.into_iter().partition(|v| v.rel == rel);
+        let mut reldistinct = 1.0;
+        let mut relmaxndistinct = reldistinct;
+        let relvarcount = relvarinfos.len();
+        for varinfo in &relvarinfos {
+            reldistinct *= varinfo.ndistinct;
+            relmaxndistinct = f64::max(relmaxndistinct, varinfo.ndistinct);
+        }
+        if let Some(rel) = rel.map(|r| &root.rels[r])
+            && rel.tuples > 0.0
+        {
+            let mut clamp = rel.tuples;
+            if relvarcount > 1 {
+                clamp *= 0.1;
+                if clamp < relmaxndistinct {
+                    clamp = relmaxndistinct.min(rel.tuples);
+                }
+            }
+            reldistinct = reldistinct.min(clamp);
+            if reldistinct > 0.0 && rel.rows < rel.tuples {
+                reldistinct *= 1.0 - ((rel.tuples - rel.rows) / rel.tuples).powf(rel.tuples / reldistinct);
+            }
+            numdistinct *= clamp_row_est(reldistinct);
+        }
+        varinfos = newvarinfos;
+    }
+    (numdistinct * srf_multiplier).ceil().min(input_rows).max(1.0)
+}
+
+/// add_unique_group_var adds a grouping's Var to its Var infos unless it is there already, or a Var of another
+/// relation that it is known equal to has fewer distinct values, as Postgres' function of the same name does.
+fn add_unique_group_var(
+    root: &PlannerInfo<'_, '_>,
+    varinfos: &mut Vec<GroupVarInfo>,
+    var: Expr,
+    vardata: &VariableStatData,
+) {
+    let (ndistinct, _) = get_variable_numdistinct(root, vardata);
+    let base = |e: &Expr| match e {
+        Expr::Column(id) => match root.glob.node(*id) {
+            VarNode::Var(v) => Some((v.varno, v.varattno)),
+            VarNode::PlaceHolderVar(_) => None,
+        },
+        _ => None,
+    };
+    let mut i = 0;
+    while i < varinfos.len() {
+        let same = varinfos[i].var == var || (base(&var).is_some() && base(&var) == base(&varinfos[i].var));
+        if same {
+            return;
+        }
+        if vardata.rel != varinfos[i].rel && super::equivclass::exprs_known_equal(root, &var, &varinfos[i].var) {
+            if varinfos[i].ndistinct <= ndistinct {
+                return;
+            }
+            varinfos.remove(i);
+            continue;
+        }
+        i += 1;
+    }
+    varinfos.push(GroupVarInfo { var, rel: vardata.rel, ndistinct });
+}

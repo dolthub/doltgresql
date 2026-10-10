@@ -257,6 +257,7 @@ pub fn create_join_path(
         disabled_nodes,
         startup_cost,
         total_cost,
+        pathtarget: None,
     })
 }
 
@@ -284,6 +285,7 @@ pub fn create_bitmap_heap_path(
         disabled_nodes,
         startup_cost,
         total_cost,
+        pathtarget: None,
     })
 }
 
@@ -321,5 +323,383 @@ fn create_bitmap_tree_path(
         disabled_nodes: 0,
         startup_cost: total_cost,
         total_cost,
+        pathtarget: None,
     })
+}
+
+/// upper_path returns a path of an upper relation over another path, with its target, rows, and costs, and its
+/// subpath's order unless given.
+#[allow(clippy::too_many_arguments)]
+fn upper_path(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    kind: PathKind,
+    target: Option<Rc<super::nodes::PathTarget>>,
+    pathkeys: Vec<PkId>,
+    rows: f64,
+    (disabled_nodes, startup_cost, total_cost): Costs,
+) -> Rc<Path> {
+    let parent = &root.rels[rel];
+    let width = target.as_ref().map_or(parent.reltarget.width, |t| t.width);
+    Rc::new(Path {
+        kind,
+        parent: rel,
+        relids: parent.relids.clone(),
+        param: Relids::new(),
+        pathkeys,
+        rows,
+        width,
+        disabled_nodes,
+        startup_cost,
+        total_cost,
+        pathtarget: target,
+    })
+}
+
+/// path_target returns the target of a path's rows.
+pub fn path_target(root: &PlannerInfo<'_, '_>, path: &Path) -> Rc<super::nodes::PathTarget> {
+    match &path.pathtarget {
+        Some(target) => target.clone(),
+        None => Rc::new(root.rels[path.parent].reltarget.clone()),
+    }
+}
+
+/// create_sort_path makes the path of a sort of another path's rows by pathkeys, of which a LIMIT may read only some,
+/// as Postgres' function of the same name does.
+pub fn create_sort_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    pathkeys: Vec<PkId>,
+    limit_tuples: f64,
+) -> Rc<Path> {
+    let costs = super::costsize::cost_sort(root, &subpath, limit_tuples);
+    let target = Some(path_target(root, &subpath));
+    let rows = subpath.rows;
+    upper_path(root, rel, PathKind::Sort(subpath), target, pathkeys, rows, costs)
+}
+
+/// create_incremental_sort_path makes the path of a sort of another path's rows by pathkeys whose leading keys it
+/// is sorted by already, as Postgres' function of the same name does.
+pub fn create_incremental_sort_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    pathkeys: Vec<PkId>,
+    presorted_keys: usize,
+    limit_tuples: f64,
+) -> Rc<Path> {
+    let costs = super::costsize::cost_incremental_sort(root, &pathkeys, presorted_keys, &subpath, limit_tuples);
+    let target = Some(path_target(root, &subpath));
+    let rows = subpath.rows;
+    upper_path(root, rel, PathKind::IncrementalSort(subpath), target, pathkeys, rows, costs)
+}
+
+/// is_projection_capable_path reports whether a path's plan computes any target, as Postgres' function of the same
+/// name in createplan.c decides: every plan but a sort, a unique pass, a limit, or a set operation.
+pub fn is_projection_capable_path(path: &Path) -> bool {
+    !matches!(
+        path.kind,
+        PathKind::Sort(_)
+            | PathKind::IncrementalSort(_)
+            | PathKind::Unique(..)
+            | PathKind::Limit(_)
+            | PathKind::Material(_)
+            | PathKind::Append(_)
+            | PathKind::ProjectSet(_)
+    )
+}
+
+/// create_projection_path makes the path that computes a target over another path's rows, which costs only the
+/// target's own expressions when the subpath can compute it itself, as Postgres' function of the same name does.
+pub fn create_projection_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    target: Rc<super::nodes::PathTarget>,
+) -> Rc<Path> {
+    let subpath = match &subpath.kind {
+        PathKind::Projection(inner) if inner.parent == rel => inner.clone(),
+        _ => subpath,
+    };
+    let oldtarget = path_target(root, &subpath);
+    let (startup_cost, total_cost) = match is_projection_capable_path(&subpath) || oldtarget.exprs == target.exprs {
+        true => (
+            subpath.startup_cost + (target.cost.startup - oldtarget.cost.startup),
+            subpath.total_cost
+                + (target.cost.startup - oldtarget.cost.startup)
+                + (target.cost.per_tuple - oldtarget.cost.per_tuple) * subpath.rows,
+        ),
+        false => (
+            subpath.startup_cost + target.cost.startup,
+            subpath.total_cost
+                + target.cost.startup
+                + (super::costsize::CPU_TUPLE_COST + target.cost.per_tuple) * subpath.rows,
+        ),
+    };
+    let (rows, disabled_nodes, pathkeys) = (subpath.rows, subpath.disabled_nodes, subpath.pathkeys.clone());
+    let costs = (disabled_nodes, startup_cost, total_cost);
+    upper_path(root, rel, PathKind::Projection(subpath), Some(target), pathkeys, rows, costs)
+}
+
+/// apply_projection_to_path makes a path compute a target, changing its target when its plan can compute any, as
+/// Postgres' function of the same name does.
+pub fn apply_projection_to_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    path: Rc<Path>,
+    target: Rc<super::nodes::PathTarget>,
+) -> Rc<Path> {
+    if !is_projection_capable_path(&path) {
+        return create_projection_path(root, rel, path, target);
+    }
+    let oldcost = path_target(root, &path).cost;
+    let mut path = (*path).clone();
+    path.startup_cost += target.cost.startup - oldcost.startup;
+    path.total_cost += target.cost.startup - oldcost.startup + (target.cost.per_tuple - oldcost.per_tuple) * path.rows;
+    path.width = target.width;
+    path.pathtarget = Some(target);
+    Rc::new(path)
+}
+
+/// create_set_projection_path makes the path that computes a target with set-returning functions over another
+/// path's rows, as Postgres' function of the same name does.
+pub fn create_set_projection_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    target: Rc<super::nodes::PathTarget>,
+) -> Rc<Path> {
+    let tlist_rows =
+        target.exprs.iter().map(|e| super::clauses::expression_returns_set_rows(root, e)).fold(1.0, f64::max);
+    let rows = subpath.rows * tlist_rows;
+    let startup_cost = subpath.startup_cost + target.cost.startup;
+    let total_cost = subpath.total_cost
+        + target.cost.startup
+        + (super::costsize::CPU_TUPLE_COST + target.cost.per_tuple) * subpath.rows
+        + (rows - subpath.rows) * super::costsize::CPU_TUPLE_COST / 2.0;
+    let (disabled_nodes, pathkeys) = (subpath.disabled_nodes, subpath.pathkeys.clone());
+    upper_path(
+        root,
+        rel,
+        PathKind::ProjectSet(subpath),
+        Some(target),
+        pathkeys,
+        rows,
+        (disabled_nodes, startup_cost, total_cost),
+    )
+}
+
+/// create_agg_path makes the path of an aggregation of another path's rows, as Postgres' function of the same name
+/// does: a sorted aggregation keeps the order of its group keys.
+#[allow(clippy::too_many_arguments)]
+pub fn create_agg_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    target: Rc<super::nodes::PathTarget>,
+    aggstrategy: super::nodes::AggStrategy,
+    group_clause: Vec<super::nodes::SortGroupClause>,
+    qual: Vec<crate::expr::Expr>,
+    aggcosts: &super::prepagg::AggClauseCosts,
+    num_groups: f64,
+) -> Rc<Path> {
+    let pathkeys = match aggstrategy {
+        super::nodes::AggStrategy::Sorted => subpath.pathkeys.iter().take(root.num_groupby_pathkeys).copied().collect(),
+        _ => Vec::new(),
+    };
+    let input_width = path_target(root, &subpath).width;
+    let (rows, (disabled_nodes, mut startup_cost, mut total_cost)) = super::costsize::cost_agg(
+        root,
+        aggstrategy,
+        aggcosts,
+        group_clause.len(),
+        num_groups,
+        &qual,
+        (subpath.disabled_nodes, subpath.startup_cost, subpath.total_cost),
+        subpath.rows,
+        input_width,
+    );
+    startup_cost += target.cost.startup;
+    total_cost += target.cost.startup + target.cost.per_tuple * rows;
+    let kind = PathKind::Agg(Box::new(super::nodes::AggPath { subpath, group_clause, qual }));
+    upper_path(root, rel, kind, Some(target), pathkeys, rows, (disabled_nodes, startup_cost, total_cost))
+}
+
+/// create_group_path makes the path of a GROUP BY without aggregates over another path's sorted rows, as Postgres'
+/// function of the same name does.
+pub fn create_group_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    group_clause: Vec<super::nodes::SortGroupClause>,
+    qual: Vec<crate::expr::Expr>,
+    num_groups: f64,
+) -> Rc<Path> {
+    let target = Rc::new(root.rels[rel].reltarget.clone());
+    let (rows, (disabled_nodes, mut startup_cost, mut total_cost)) = super::costsize::cost_group(
+        root,
+        group_clause.len(),
+        num_groups,
+        &qual,
+        (subpath.disabled_nodes, subpath.startup_cost, subpath.total_cost),
+        subpath.rows,
+    );
+    startup_cost += target.cost.startup;
+    total_cost += target.cost.startup + target.cost.per_tuple * rows;
+    let pathkeys = subpath.pathkeys.clone();
+    let kind = PathKind::Group(Box::new(super::nodes::GroupPath { subpath, group_clause, qual }));
+    upper_path(root, rel, kind, Some(target), pathkeys, rows, (disabled_nodes, startup_cost, total_cost))
+}
+
+/// create_upper_unique_path makes the path of the first row of each run of another sorted path's rows with equal
+/// first keys, as Postgres' function of the same name does.
+pub fn create_upper_unique_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    num_cols: usize,
+    num_groups: f64,
+) -> Rc<Path> {
+    let target = Some(path_target(root, &subpath));
+    let costs = (
+        subpath.disabled_nodes,
+        subpath.startup_cost,
+        subpath.total_cost + super::costsize::CPU_OPERATOR_COST * subpath.rows * num_cols as f64,
+    );
+    let pathkeys = subpath.pathkeys.clone();
+    upper_path(root, rel, PathKind::Unique(subpath, num_cols), target, pathkeys, num_groups, costs)
+}
+
+/// create_windowagg_path makes the path of one window's calls over another path's rows, as Postgres' function of the
+/// same name does.
+pub fn create_windowagg_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    target: Rc<super::nodes::PathTarget>,
+    calls: Vec<usize>,
+) -> Rc<Path> {
+    let (disabled_nodes, mut startup_cost, mut total_cost) = super::costsize::cost_windowagg(
+        root,
+        &calls,
+        (subpath.disabled_nodes, subpath.startup_cost, subpath.total_cost),
+        subpath.rows,
+    );
+    let rows = subpath.rows;
+    startup_cost += target.cost.startup;
+    total_cost += target.cost.startup + target.cost.per_tuple * rows;
+    let pathkeys = subpath.pathkeys.clone();
+    let kind = PathKind::WindowAgg(Box::new(super::nodes::WindowAggPath { subpath, calls }));
+    upper_path(root, rel, kind, Some(target), pathkeys, rows, (disabled_nodes, startup_cost, total_cost))
+}
+
+/// create_limit_path makes the path of the query's LIMIT and OFFSET over another path, with their estimated row
+/// counts, as Postgres' function of the same name does.
+pub fn create_limit_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    offset_est: i64,
+    count_est: i64,
+) -> Rc<Path> {
+    let (limit_offset, limit_count) = (root.parse.limit_offset.clone(), root.parse.limit_count.clone());
+    limit_path(root, rel, subpath, limit_offset, limit_count, offset_est, count_est)
+}
+
+/// create_limit_path_one makes the path of a LIMIT 1 over another path, as Postgres' create_final_distinct_paths
+/// makes one for a DISTINCT whose keys are all constant.
+pub fn create_limit_path_one(root: &mut PlannerInfo<'_, '_>, rel: usize, subpath: Rc<Path>) -> Rc<Path> {
+    let one = Some(crate::expr::Expr::Const(crate::types::Value::Int8(1)));
+    limit_path(root, rel, subpath, None, one, 0, 1)
+}
+
+/// limit_path makes the path of a LIMIT and OFFSET over another path.
+fn limit_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    limit_offset: Option<crate::expr::Expr>,
+    limit_count: Option<crate::expr::Expr>,
+    offset_est: i64,
+    count_est: i64,
+) -> Rc<Path> {
+    let (mut rows, mut startup_cost, mut total_cost) = (subpath.rows, subpath.startup_cost, subpath.total_cost);
+    adjust_limit_rows_costs(&mut rows, &mut startup_cost, &mut total_cost, offset_est, count_est);
+    let target = Some(path_target(root, &subpath));
+    let (disabled_nodes, pathkeys) = (subpath.disabled_nodes, subpath.pathkeys.clone());
+    let kind = PathKind::Limit(Box::new(super::nodes::LimitPath { subpath, limit_offset, limit_count }));
+    upper_path(root, rel, kind, target, pathkeys, rows, (disabled_nodes, startup_cost, total_cost))
+}
+
+/// adjust_limit_rows_costs adjusts a path's rows and costs for the rows that a LIMIT and OFFSET read, where -1 is an
+/// estimate that is not a constant, as Postgres' function of the same name does.
+pub fn adjust_limit_rows_costs(
+    rows: &mut f64,
+    startup_cost: &mut f64,
+    total_cost: &mut f64,
+    offset_est: i64,
+    count_est: i64,
+) {
+    let (input_rows, input_startup_cost, input_total_cost) = (*rows, *startup_cost, *total_cost);
+    if offset_est != 0 {
+        let offset_rows = match offset_est > 0 {
+            true => offset_est as f64,
+            false => super::costsize::clamp_row_est(input_rows * 0.10),
+        }
+        .min(*rows);
+        if input_rows > 0.0 {
+            *startup_cost += (input_total_cost - input_startup_cost) * offset_rows / input_rows;
+        }
+        *rows = (*rows - offset_rows).max(1.0);
+    }
+    if count_est != 0 {
+        let count_rows = match count_est > 0 {
+            true => count_est as f64,
+            false => super::costsize::clamp_row_est(input_rows * 0.10),
+        }
+        .min(*rows);
+        if input_rows > 0.0 {
+            *total_cost = *startup_cost + (input_total_cost - input_startup_cost) * count_rows / input_rows;
+        }
+        *rows = count_rows.max(1.0);
+    }
+}
+
+/// create_group_result_path makes the path of the one row of a grouping without input rows or group keys under its
+/// HAVING conditions, as Postgres' function of the same name does.
+pub fn create_group_result_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    target: Rc<super::nodes::PathTarget>,
+    havingqual: Vec<crate::expr::Expr>,
+) -> Rc<Path> {
+    let mut startup_cost = target.cost.startup;
+    let mut total_cost = target.cost.startup + super::costsize::CPU_TUPLE_COST + target.cost.per_tuple;
+    for qual in &havingqual {
+        let cost = super::costsize::cost_qual_eval_node(qual);
+        startup_cost += cost.startup + cost.per_tuple;
+        total_cost += cost.startup + cost.per_tuple;
+    }
+    upper_path(root, rel, PathKind::Result(havingqual), Some(target), Vec::new(), 1.0, (0, startup_cost, total_cost))
+}
+
+/// create_append_path makes the path of the rows of several paths in turn, as Postgres' function of the same name
+/// does without parallel workers.
+pub fn create_append_path(root: &mut PlannerInfo<'_, '_>, rel: usize, subpaths: Vec<Rc<Path>>) -> Rc<Path> {
+    let rows = subpaths.iter().map(|p| p.rows).sum();
+    let startup_cost = subpaths.first().map_or(0.0, |p| p.startup_cost);
+    let total_cost = subpaths.iter().map(|p| p.total_cost).sum::<f64>()
+        + super::costsize::CPU_TUPLE_COST * super::costsize::APPEND_CPU_COST_MULTIPLIER * rows;
+    let disabled_nodes = subpaths.iter().map(|p| p.disabled_nodes).sum();
+    let target = subpaths.first().map(|p| path_target(root, p));
+    upper_path(
+        root,
+        rel,
+        PathKind::Append(subpaths),
+        target,
+        Vec::new(),
+        rows,
+        (disabled_nodes, startup_cost, total_cost),
+    )
 }

@@ -217,6 +217,16 @@ impl Value {
         std::iter::repeat_with(|| Value::Null).take(width).collect()
     }
 
+    /// to_i64 returns the value of an integer.
+    pub fn to_i64(&self) -> Option<i64> {
+        match self {
+            Value::Int2(n) => Some(i64::from(*n)),
+            Value::Int4(n) => Some(i64::from(*n)),
+            Value::Int8(n) => Some(*n),
+            _ => None,
+        }
+    }
+
     /// is_null reports whether the value is NULL.
     pub fn is_null(&self) -> bool {
         matches!(self, Value::Null)

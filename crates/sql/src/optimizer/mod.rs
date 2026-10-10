@@ -37,11 +37,14 @@ mod placeholder;
 mod plancat;
 mod planner;
 mod predtest;
+mod prepagg;
 mod prepjointree;
+mod query;
 mod relnode;
 mod restrictinfo;
 mod selfuncs;
 mod subselect;
+mod tlist;
 mod var;
 
 use std::collections::{BTreeSet, HashMap};
@@ -58,7 +61,7 @@ use nodes::{
 use crate::expr::Expr;
 use crate::functions::aggregate::AggCall;
 use crate::indexscan::columns_read;
-use crate::plan::{JoinKind, JoinMethod, Plan, SortKey};
+use crate::plan::{JoinKind, JoinMethod, Plan};
 use crate::query::Ctx;
 
 /// PlannerInfo is the state of planning one query, as Postgres' PlannerInfo holds it. Relations, RestrictInfos,
@@ -105,12 +108,27 @@ pub struct PlannerInfo<'r, 'a> {
     pub enables: costsize::Enables,
     /// The rows that the query reads of the join of every relation, or a fraction of them below one, or zero for all.
     pub tuple_fraction: f64,
-    /// The order of the rows that the query's ORDER BY asks for, as Postgres' query_pathkeys, and its sort keys.
+    /// The order of the rows that the query's upper processing asks for, as Postgres' query_pathkeys.
     pub query_pathkeys: Vec<PkId>,
-    pub query_sortkeys: Vec<SortKey>,
     /// The aggregate calls of an aggregate without groups over the join's rows, which Doltgres' executor answers from
     /// an index's entry counts when they only count rows.
     pub counting: Option<Vec<AggCall>>,
+    /// The query's target list and group clauses as the upper planning uses them, as Postgres' processed_tlist and
+    /// processed_groupClause.
+    pub processed_tlist: Vec<nodes::TargetEntry>,
+    pub processed_group_clause: Vec<nodes::SortGroupClause>,
+    pub has_having_qual: bool,
+    /// The most rows that the query's LIMIT reads of the join of every relation, or -1 for all.
+    pub limit_tuples: f64,
+    /// The orders that the query's grouping, windows, DISTINCT, and ORDER BY ask for, and how many pathkeys of the
+    /// grouping's are its group keys'.
+    pub group_pathkeys: Vec<PkId>,
+    pub num_groupby_pathkeys: usize,
+    pub window_pathkeys: Vec<PkId>,
+    pub distinct_pathkeys: Vec<PkId>,
+    pub sort_pathkeys: Vec<PkId>,
+    /// How many aggregate calls take ordered or DISTINCT input.
+    pub num_ordered_aggs: usize,
 }
 
 impl PlannerInfo<'_, '_> {
@@ -122,9 +140,6 @@ impl PlannerInfo<'_, '_> {
         }
     }
 }
-
-/// LIMIT_FRACTION is the share of a query's rows that Postgres assumes a LIMIT that is not a constant reads.
-const LIMIT_FRACTION: f64 = 0.10;
 
 /// enabled reports whether the DOLTGRES_PG_PLANNER environment variable asks for this planner, which stands beside
 /// the older one until it plans every query that the older one does.
@@ -139,197 +154,37 @@ fn plannable(from: &Plan) -> bool {
     !matches!(from, Plan::OneRow)
 }
 
-/// Upper is what the nodes above a query's FROM and WHERE clauses ask of them: the columns of their rows that the
-/// nodes read, or None for every column, the rows they read, as Postgres' tuple_fraction counts them (zero for all),
-/// the most rows that a LIMIT reads (zero without one), the order of ORDER BY keys over their rows that a sort above
-/// asks for, and the aggregate calls of an aggregate without groups directly above them.
-#[derive(Clone, Default)]
-struct Upper {
-    needed: Option<BTreeSet<usize>>,
-    tuple_fraction: f64,
-    limit_tuples: f64,
-    order: Option<Vec<SortKey>>,
-    counting: Option<Vec<AggCall>>,
-}
-
-/// planner plans the FROM and WHERE clauses of a query whose upper parts are already built over them, given what the
-/// upper parts read, as Postgres' grouping_planner calls query_planner, removing a sort that the cheapest plan's
-/// order makes unnecessary.
+/// planner plans the SELECT that the binder built a plan of, as Postgres' standard_planner does: it turns the plan
+/// back into a Query and plans it.
 pub(crate) fn planner(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
-    plan_upper(ctx, plan, Upper::default()).0
-}
-
-/// plan_upper is planner for a plan under nodes that ask what `upper` holds, also reporting whether the plan's rows
-/// come in the order that `upper` asks for.
-fn plan_upper(ctx: &mut Ctx<'_>, plan: Plan, upper: Upper) -> (Plan, bool) {
-    let union = |a: Option<BTreeSet<usize>>, b: Option<BTreeSet<usize>>| Some(a?.union(&b?).copied().collect());
-    let below =
-        |needed: Option<BTreeSet<usize>>, width: usize| needed.map(|n| n.into_iter().filter(|&c| c < width).collect());
-    let all = |needed| Upper { needed, ..Upper::default() };
-    let unordered = |plan: Plan| (plan, false);
-    let Upper { needed, tuple_fraction, limit_tuples, order, counting } = upper;
-    match plan {
-        Plan::Project { input, exprs } => {
-            let read = match &needed {
-                Some(needed) => columns_read(needed.iter().filter_map(|&i| exprs.get(i))),
-                None => columns_read(exprs.iter()),
-            };
-            let order = order.and_then(|keys| {
-                let project = |k: &SortKey| match k.expr {
-                    Expr::Column(i) => Some(SortKey { expr: exprs.get(i)?.clone(), ..k.clone() }),
-                    _ => None,
-                };
-                keys.iter().map(project).collect::<Option<Vec<SortKey>>>()
-            });
-            let upper = Upper { needed: read, tuple_fraction, limit_tuples, order, counting: None };
-            let (input, ordered) = plan_upper(ctx, *input, upper);
-            (Plan::Project { input: Box::new(input), exprs }, ordered)
-        }
-        Plan::Sort { input, keys } => {
-            let read = union(needed, columns_read(keys.iter().map(|k| &k.expr)));
-            let order = Some(keys.clone());
-            let upper = Upper { needed: read, tuple_fraction, limit_tuples, order, counting: None };
-            match plan_upper(ctx, *input, upper) {
-                (input, true) => unordered(input),
-                (input, false) => unordered(Plan::Sort { input: Box::new(input), keys }),
-            }
-        }
-        Plan::Limit { input, limit, offset } => {
-            let count = |e: &Option<Expr>| match e {
-                Some(Expr::Const(crate::types::Value::Int8(n))) => Some(*n as f64),
-                Some(_) => None,
-                None => Some(0.0),
-            };
-            let (tuple_fraction, limit_tuples) = match (count(&limit), count(&offset)) {
-                (Some(limit), Some(offset)) if limit > 0.0 => (limit + offset, limit + offset),
-                _ => (LIMIT_FRACTION, 0.0),
-            };
-            let upper = Upper { needed, tuple_fraction, limit_tuples, order: None, counting: None };
-            unordered(Plan::Limit { input: Box::new(plan_upper(ctx, *input, upper).0), limit, offset })
-        }
-        Plan::Distinct { input, keys } => {
-            let read = match &keys {
-                Some(keys) => union(needed, columns_read(keys.iter())),
-                None => None,
-            };
-            unordered(Plan::Distinct { input: Box::new(plan_upper(ctx, *input, all(read)).0), keys })
-        }
-        Plan::Aggregate { input, groups, aggregates, sets } => {
-            let mut exprs: Vec<&Expr> = groups.iter().collect();
-            for call in &aggregates {
-                exprs.extend(&call.args);
-                exprs.extend(&call.filter);
-                exprs.extend(call.order.iter().map(|(e, _, _)| e));
-            }
-            let read = columns_read(exprs);
-            let counting = (groups.is_empty() && sets.is_none()).then(|| aggregates.clone());
-            let upper = Upper { needed: read, counting, ..Upper::default() };
-            let input = Box::new(plan_upper(ctx, *input, upper).0);
-            unordered(Plan::Aggregate { input, groups, aggregates, sets })
-        }
-        Plan::Window { input, calls } => {
-            let width = input.width();
-            let mut exprs: Vec<&Expr> = Vec::new();
-            for call in &calls {
-                exprs.extend(&call.args);
-                exprs.extend(&call.filter);
-                exprs.extend(&call.partition);
-                exprs.extend(call.order.iter().map(|k| &k.expr));
-                if let Some(range) = &call.range {
-                    exprs.push(&range.key);
-                    exprs.extend(range.start.iter().chain(&range.end).map(|(e, _)| e));
-                }
-            }
-            let read = union(below(needed, width), columns_read(exprs));
-            unordered(Plan::Window { input: Box::new(plan_upper(ctx, *input, all(read)).0), calls })
-        }
-        Plan::ProjectSet { input, functions, dropped } => {
-            let read = union(below(needed, input.width()), columns_read(functions.iter()));
-            unordered(Plan::ProjectSet { input: Box::new(plan_upper(ctx, *input, all(read)).0), functions, dropped })
-        }
-        Plan::Filter { input, predicate } if matches!(*input, Plan::Aggregate { .. } | Plan::Window { .. }) => {
-            let read = union(needed, columns_read([&predicate]));
-            unordered(Plan::Filter { input: Box::new(plan_upper(ctx, *input, all(read)).0), predicate })
-        }
-        Plan::Filter { input, predicate } if plannable(&input) => {
-            let quals = crate::indexscan::conjuncts(&predicate).into_iter().cloned().collect();
-            query_planner(ctx, *input, quals, Upper { needed, tuple_fraction, limit_tuples, order, counting })
-        }
-        scan @ Plan::Scan(..) if order.is_some() => {
-            query_planner(ctx, scan, Vec::new(), Upper { needed, tuple_fraction, limit_tuples, order, counting })
-        }
-        join @ Plan::Join { .. } if plannable(&join) => {
-            query_planner(ctx, join, Vec::new(), Upper { needed, tuple_fraction, limit_tuples, order, counting })
-        }
-        other => unordered(other),
-    }
-}
-
-/// plan_subquery plans a subquery that its query left unplanned for pulling up, when it stays a relation of its
-/// own, as Postgres' subquery_planner plans a subquery that it could not pull up.
-fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
-    match plan {
-        join @ Plan::Join { .. } if !decomposable(&join) => match join {
-            Plan::Join { left, right, kind, condition, lateral, method } => Plan::Join {
-                left: Box::new(plan_subquery(ctx, *left)),
-                right: Box::new(plan_subquery(ctx, *right)),
-                kind,
-                condition,
-                lateral,
-                method,
-            },
-            other => other,
-        },
-        other => planner(ctx, other),
-    }
-}
-
-/// decomposable reports whether a join's inputs can join in any order the planner finds: it is not lateral, not
-/// already planned, and has no subquery in its condition.
-fn decomposable(join: &Plan) -> bool {
-    matches!(join, Plan::Join { condition, lateral: false, method: JoinMethod::Unplanned, .. }
-        if !condition.as_ref().is_some_and(crate::plan::has_subquery))
-}
-
-/// query_planner plans a FROM clause's plan under the conjuncts of the WHERE clause, as Postgres' subquery_planner
-/// prepares a query's join tree and query_planner plans it: it turns the plan back into a Query, pulls up its
-/// sublinks and subqueries, reduces outer joins, finds the cheapest path of the join of every relation, and makes a
-/// plan of it, whose columns are in the FROM clause's order, given what the query reads above it, also reporting
-/// whether the plan's rows come in the order that `upper` asks for. Conditions with subqueries filter the plan's
-/// rows afterwards.
-fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, upper: Upper) -> (Plan, bool) {
-    let Upper { needed, tuple_fraction, limit_tuples, order, counting } = upper;
     let mut glob = PlannerGlobal::default();
-    let (mut rtable, mut columns) = (Vec::new(), Vec::new());
-    let node = build_jointree(&mut glob, ctx, from, &mut rtable, &mut columns);
-    let (node, quals) = subselect::pull_up_sublinks(&mut glob, ctx, node, quals, &mut rtable, &columns);
-    let (kept, later): (Vec<Expr>, Vec<Expr>) = quals.into_iter().partition(|q| !crate::plan::has_subquery(q));
-    let jointree = FromExpr { fromlist: vec![node], quals: kept.into_iter().map(|q| to_vars(q, &columns)).collect() };
-    let usable = |keys: &Vec<SortKey>| keys.iter().all(|k| !crate::plan::has_subquery(&k.expr));
-    let order = order.filter(usable).unwrap_or_default();
-    let mut needed = needed.and_then(|n| Some(n.union(&columns_read(&later)?).copied().collect::<BTreeSet<usize>>()));
-    if let Some(needed) = &mut needed {
-        needed.extend(columns_read(order.iter().map(|k| &k.expr)).unwrap_or_default());
-    }
-    let target_list =
-        columns.into_iter().enumerate().map(|(i, e)| needed.as_ref().is_none_or(|n| n.contains(&i)).then_some(e));
-    let mut parse = Query { rtable, jointree, target_list: target_list.collect() };
-    prepjointree::pull_up_subqueries(&mut glob, &mut parse);
+    let parse = query::unbind(&mut glob, ctx, plan);
+    subquery_planner(ctx, &mut glob, parse, 0.0)
+}
+
+/// subquery_planner prepares a query's join tree, pulling up its sublinks and subqueries, reducing its outer joins,
+/// and moving the HAVING conditions that read no aggregate to WHERE, then plans it and makes the plan of its cheapest
+/// path for the rows it reads, whose columns are the query's visible columns, as Postgres' function of the same name
+/// does with standard_planner's choice of the final path.
+fn subquery_planner(ctx: &mut Ctx<'_>, glob: &mut PlannerGlobal, mut parse: Query, tuple_fraction: f64) -> Plan {
+    prepjointree::pull_up_subqueries(glob, &mut parse);
     for rte in parse.rtable.iter_mut() {
         if let RteKind::Subquery(_, plan) = &rte.kind {
             rte.kind = RteKind::Plan(plan_subquery(ctx, plan.clone()));
         }
     }
+    let has_having_qual = parse.having_qual.is_some();
+    preprocess_having(glob, &mut parse);
     if prepjointree::has_outer_joins(&parse) {
-        prepjointree::reduce_outer_joins(&mut glob, &mut parse);
+        prepjointree::reduce_outer_joins(glob, &mut parse);
     }
-    prepjointree::remove_useless_result_rtes(&mut glob, &mut parse);
-    let query_sortkeys: Vec<SortKey> =
-        order.into_iter().map(|k| SortKey { expr: to_target(k.expr, &parse.target_list), ..k }).collect();
+    prepjointree::remove_useless_result_rtes(glob, &mut parse);
     let enables = costsize::Enables::read(&ctx.session.settings);
+    let counting = (parse.group_clause.is_empty() && parse.grouping_sets.is_none() && parse.has_aggs())
+        .then(|| parse.aggregates.clone());
     let mut root = PlannerInfo {
         ctx,
-        glob: &mut glob,
+        glob,
         parse,
         rels: Vec::new(),
         join_rel_hash: HashMap::new(),
@@ -360,24 +215,105 @@ fn query_planner(ctx: &mut Ctx<'_>, from: Plan, quals: Vec<Expr>, upper: Upper) 
         enables,
         tuple_fraction,
         query_pathkeys: Vec::new(),
-        query_sortkeys,
         counting,
+        processed_tlist: Vec::new(),
+        processed_group_clause: Vec::new(),
+        has_having_qual,
+        limit_tuples: -1.0,
+        group_pathkeys: Vec::new(),
+        num_groupby_pathkeys: 0,
+        window_pathkeys: Vec::new(),
+        distinct_pathkeys: Vec::new(),
+        sort_pathkeys: Vec::new(),
+        num_ordered_aggs: 0,
     };
-    let final_rel = query_planner_body(&mut root);
-    let path = planner::create_ordered_paths(&mut root, final_rel, limit_tuples);
-    let ordered = !root.query_pathkeys.is_empty() && !matches!(path.kind, nodes::PathKind::Sort(_));
-    let plan = createplan::create_plan(&mut root, &path);
-    let plan = match later.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
-        Some(predicate) => Plan::Filter { input: Box::new(plan), predicate },
-        None => plan,
-    };
-    (plan, ordered)
+    root.num_ordered_aggs = prepagg::count_ordered_aggs(&root);
+    planner::grouping_planner(&mut root, tuple_fraction);
+    let final_rel = relnode::fetch_upper_rel(&mut root, nodes::UpperRelationKind::Final);
+    pathnode::set_cheapest(&mut root.rels[final_rel]);
+    let best_path = planner::get_cheapest_fractional_path(&root.rels[final_rel], root.tuple_fraction);
+    createplan::create_plan(&mut root, &best_path)
 }
 
-/// query_planner_body is Postgres' query_planner: it builds the base relations, distributes the join tree's
-/// clauses, and finds the cheapest paths of the join of every relation, starting over whenever it removes a join,
-/// and returns that relation. A join tree of one RESULT relation is that relation's one row.
-fn query_planner_body(root: &mut PlannerInfo<'_, '_>) -> usize {
+/// preprocess_having moves each HAVING condition that reads no aggregate, runs no volatile function, and has no
+/// subquery to WHERE, keeping it in HAVING too when the query has no group keys, as Postgres' subquery_planner does.
+fn preprocess_having(glob: &PlannerGlobal, parse: &mut Query) {
+    let Some(having) = parse.having_qual.take() else { return };
+    let mut new_having = Vec::new();
+    for clause in crate::indexscan::conjuncts(&having).into_iter().cloned() {
+        let mut has_agg = false;
+        clause.visit(&mut |e| has_agg |= matches!(e, Expr::AggRef(_) | Expr::Grouping(..)));
+        if has_agg || clauses::contain_volatile_functions(glob, &clause) || crate::plan::has_subquery(&clause) {
+            new_having.push(clause);
+        } else if !parse.group_clause.is_empty()
+            && parse.grouping_sets.as_ref().is_none_or(|sets| sets.first().is_some_and(|s| !s.is_empty()))
+        {
+            parse.jointree.quals.push(clause);
+        } else {
+            parse.jointree.quals.push(clause.clone());
+            new_having.push(clause);
+        }
+    }
+    parse.having_qual = new_having.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+}
+
+/// plan_subquery plans a subquery that its query left unplanned for pulling up, when it stays a relation of its
+/// own, as Postgres' subquery_planner plans a subquery that it could not pull up.
+fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
+    match plan {
+        join @ Plan::Join { .. } if !decomposable(&join) => match join {
+            Plan::Join { left, right, kind, condition, lateral, method } => Plan::Join {
+                left: Box::new(plan_subquery(ctx, *left)),
+                right: Box::new(plan_subquery(ctx, *right)),
+                kind,
+                condition,
+                lateral,
+                method,
+            },
+            other => other,
+        },
+        Plan::SetOp { op, all, left, right } => Plan::SetOp {
+            op,
+            all,
+            left: Box::new(plan_subquery(ctx, *left)),
+            right: Box::new(plan_subquery(ctx, *right)),
+        },
+        Plan::Recursive { work_table, anchor, step, all } => Plan::Recursive {
+            work_table,
+            anchor: Box::new(plan_subquery(ctx, *anchor)),
+            step: Box::new(plan_subquery(ctx, *step)),
+            all,
+        },
+        Plan::Once(input) => Plan::Once(Box::new(plan_subquery(ctx, *input))),
+        leaf @ (Plan::OneRow
+        | Plan::System(_)
+        | Plan::Catalog(_)
+        | Plan::CatalogIndexScan(_)
+        | Plan::IndexScan(_)
+        | Plan::BitmapHeapScan(_)
+        | Plan::Values(_)
+        | Plan::Function { .. }
+        | Plan::RowsFrom { .. }
+        | Plan::QueryDiff(..)
+        | Plan::XmlTable(_)
+        | Plan::JsonTable(_)
+        | Plan::WorkTable(..)) => leaf,
+        other => planner(ctx, other),
+    }
+}
+
+/// decomposable reports whether a join's inputs can join in any order the planner finds: it is not lateral, not
+/// already planned, and has no subquery in its condition.
+fn decomposable(join: &Plan) -> bool {
+    matches!(join, Plan::Join { condition, lateral: false, method: JoinMethod::Unplanned, .. }
+        if !condition.as_ref().is_some_and(crate::plan::has_subquery))
+}
+
+/// query_planner builds the base relations, distributes the join tree's clauses, sets the orders that the upper
+/// processing asks for by its callback, and finds the cheapest paths of the join of every relation, starting over
+/// whenever it removes a join, and returns that relation, as Postgres' function of the same name does. A join tree of
+/// one RESULT relation is that relation's one row.
+fn query_planner(root: &mut PlannerInfo<'_, '_>, qp_callback: &mut dyn FnMut(&mut PlannerInfo<'_, '_>)) -> usize {
     loop {
         root.rels.clear();
         root.join_rel_hash.clear();
@@ -422,25 +358,24 @@ fn query_planner_body(root: &mut PlannerInfo<'_, '_>) -> usize {
                 disabled_nodes: 0,
                 startup_cost: 0.0,
                 total_cost: 0.01,
+                pathtarget: None,
             };
             pathnode::add_path(&mut root.rels[varno], Rc::new(path));
             pathnode::set_cheapest(&mut root.rels[varno]);
             root.ec_merging_done = true;
+            qp_callback(root);
             return varno;
         }
         let jointree = JoinTreeNode::From(Box::new(root.parse.jointree.clone()));
         initsplan::add_base_rels_to_query(root, &jointree);
-        let final_tlist: Vec<Expr> = root.parse.target_list.iter().flatten().cloned().collect();
+        let mut final_tlist: Vec<Expr> = root.parse.upper_exprs();
+        final_tlist.extend(subplan_vars(&root.parse));
         initsplan::build_base_rel_tlists(root, &final_tlist);
         placeholder::find_placeholders_in_jointree(root);
         let joinlist = initsplan::deconstruct_jointree(root);
         equivclass::reconsider_outer_join_clauses(root);
         equivclass::generate_base_implied_equalities(root);
-        let sortkeys = root.query_sortkeys.clone();
-        match pathkeys::make_pathkeys_for_sortclauses(root, &sortkeys) {
-            Some(query_pathkeys) => root.query_pathkeys = query_pathkeys,
-            None => root.query_sortkeys.clear(),
-        }
+        qp_callback(root);
         placeholder::fix_placeholder_input_needed_levels(root);
         if analyzejoins::remove_useless_outer_joins(root)
             || analyzejoins::reduce_unique_semijoins(root)
@@ -451,6 +386,16 @@ fn query_planner_body(root: &mut PlannerInfo<'_, '_>) -> usize {
         placeholder::add_placeholders_to_base_rels(root);
         return allpaths::make_one_rel(root, &joinlist);
     }
+}
+
+/// subplan_vars returns the expressions of the FROM clause's columns that the WHERE conditions with subqueries read,
+/// which the join of the query's relations must hold.
+fn subplan_vars(parse: &Query) -> Vec<Expr> {
+    let mut read = BTreeSet::new();
+    for qual in &parse.subplan_quals {
+        read.extend(columns_read([qual]).unwrap_or_else(|| (0..parse.sublink_columns.len()).collect()));
+    }
+    read.into_iter().filter_map(|i| parse.sublink_columns.get(i).cloned()).collect()
 }
 
 /// build_jointree turns a FROM clause's plan into a join tree, as Postgres' parser builds one, adding its inputs to a
@@ -506,10 +451,13 @@ pub(super) fn build_jointree(
                 JoinTreeNode::From(from) => *from,
                 other => FromExpr { fromlist: vec![other], quals: Vec::new() },
             };
-            let target_list = exprs.into_iter().map(|e| Some(to_vars(e, &sub_columns))).collect();
-            let subquery = Query { rtable: sub_rtable, jointree, target_list };
+            let target_list = exprs
+                .into_iter()
+                .map(|e| nodes::TargetEntry { expr: to_vars(e, &sub_columns), resjunk: false, ressortgroupref: 0 })
+                .collect();
+            let subquery = Query { rtable: sub_rtable, jointree, target_list, ..Query::default() };
             let coltypes =
-                subquery.target_list.iter().flatten().map(|e| nodefuncs::query_expr_type(glob, &subquery, e)).collect();
+                subquery.target_list.iter().map(|tle| nodefuncs::query_expr_type(glob, &subquery, &tle.expr)).collect();
             push_relation(glob, rtable, output, RteKind::Subquery(Box::new(subquery), original), coltypes)
         }
         Plan::Filter { input, predicate } if !crate::plan::has_subquery(&predicate) => {
@@ -596,13 +544,5 @@ fn to_vars(e: Expr, columns: &[Expr]) -> Expr {
     match e {
         Expr::Column(c) => columns[c].clone(),
         other => other.map_children(&mut |c| to_vars(c, columns)),
-    }
-}
-
-/// to_target rewrites an expression over the columns of a query's output into one over its target list.
-fn to_target(e: Expr, target_list: &[Option<Expr>]) -> Expr {
-    match e {
-        Expr::Column(c) => target_list[c].clone().expect("a sort key reads a column of the output"),
-        other => other.map_children(&mut |c| to_target(c, target_list)),
     }
 }

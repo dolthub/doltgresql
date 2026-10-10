@@ -359,25 +359,99 @@ pub struct JoinExpr {
 }
 
 /// FromExpr is a FROM list, which joins its members by its WHERE conditions.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct FromExpr {
     pub fromlist: Vec<JoinTreeNode>,
     pub quals: Vec<Expr>,
 }
 
-/// Query is the part of a query that the planner plans: its range table, indexed from 1, its join tree, and the
-/// expression of each column of its rows, or None for a column that nothing reads, as Postgres' Query holds them.
-#[derive(Clone, Debug)]
+/// TargetEntry is a column of a query's output, or a junk column that its upper clauses read, as Postgres'
+/// TargetEntry is: its expression, whether it is junk, and the number that sort and group clauses refer to it by, or
+/// 0.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TargetEntry {
+    pub expr: Expr,
+    pub resjunk: bool,
+    pub ressortgroupref: usize,
+}
+
+/// SortGroupClause is a grouping, ordering, or DISTINCT key, as Postgres' SortGroupClause is: the number of the
+/// target entry it reads, whether it orders descending and with NULLs first, and whether its values can be hashed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SortGroupClause {
+    pub tle_sort_group_ref: usize,
+    pub descending: bool,
+    pub nulls_first: bool,
+    pub hashable: bool,
+}
+
+/// Query is a query as the planner plans it, as Postgres' Query holds it: its range table, indexed from 1, its join
+/// tree, its target list, and its upper clauses: its aggregate and window calls and set-returning functions, which
+/// `Expr::AggRef`, `Expr::WindowRef`, and `Expr::SetRef` refer to by position, its GROUP BY keys and grouping sets,
+/// HAVING, DISTINCT, ORDER BY, and LIMIT and OFFSET. A grouping set lists positions in `group_clause`.
+#[derive(Clone, Debug, Default)]
 pub struct Query {
     pub rtable: Vec<RangeTblEntry>,
     pub jointree: FromExpr,
-    pub target_list: Vec<Option<Expr>>,
+    pub target_list: Vec<TargetEntry>,
+    pub aggregates: Vec<crate::functions::aggregate::AggCall>,
+    pub window_funcs: Vec<crate::window::WindowCall>,
+    pub target_srfs: Vec<Expr>,
+    pub group_clause: Vec<SortGroupClause>,
+    pub grouping_sets: Option<Vec<Vec<usize>>>,
+    pub having_qual: Option<Expr>,
+    pub distinct_clause: Vec<SortGroupClause>,
+    pub has_distinct_on: bool,
+    pub sort_clause: Vec<SortGroupClause>,
+    pub limit_offset: Option<Expr>,
+    pub limit_count: Option<Expr>,
+    /// The WHERE conditions with subqueries that sublink pull-up left, over the FROM clause's columns by position,
+    /// which filter the join of the query's relations, and the expression of each of those columns.
+    pub subplan_quals: Vec<Expr>,
+    pub sublink_columns: Vec<Expr>,
 }
 
 impl Query {
     /// rte returns the range table entry at an index, as Postgres' rt_fetch does.
     pub fn rte(&self, varno: usize) -> &RangeTblEntry {
         &self.rtable[varno - 1]
+    }
+
+    /// upper_exprs_mut returns the expressions of the query's target list and upper clauses to change.
+    pub fn upper_exprs_mut(&mut self) -> Vec<&mut Expr> {
+        let mut exprs: Vec<&mut Expr> = self.target_list.iter_mut().map(|tle| &mut tle.expr).collect();
+        for call in &mut self.aggregates {
+            exprs.extend(call.args.iter_mut());
+            exprs.extend(call.filter.iter_mut());
+            exprs.extend(call.order.iter_mut().map(|(e, ..)| e));
+        }
+        for call in &mut self.window_funcs {
+            exprs.extend(call.args.iter_mut());
+            exprs.extend(call.filter.iter_mut());
+            exprs.extend(call.partition.iter_mut());
+            exprs.extend(call.order.iter_mut().map(|k| &mut k.expr));
+            if let Some(range) = &mut call.range {
+                exprs.push(&mut range.key);
+                exprs.extend(range.start.iter_mut().chain(range.end.iter_mut()).map(|(e, _)| e));
+            }
+        }
+        exprs.extend(self.target_srfs.iter_mut());
+        exprs.extend(self.having_qual.iter_mut());
+        exprs.extend(self.limit_offset.iter_mut());
+        exprs.extend(self.limit_count.iter_mut());
+        exprs.extend(self.sublink_columns.iter_mut());
+        exprs
+    }
+
+    /// upper_exprs returns the expressions of the query's target list and upper clauses.
+    pub fn upper_exprs(&self) -> Vec<Expr> {
+        let mut query = self.clone();
+        query.upper_exprs_mut().into_iter().map(|e| e.clone()).collect()
+    }
+
+    /// has_aggs reports whether the query calls aggregates, as Postgres' hasAggs does.
+    pub fn has_aggs(&self) -> bool {
+        !self.aggregates.is_empty()
     }
 }
 
@@ -535,10 +609,12 @@ pub struct PlaceHolderInfo {
     pub ph_width: f64,
 }
 
-/// PathTarget is the expressions of a path's rows with their estimated cost and width, as Postgres' PathTarget is.
+/// PathTarget is the expressions of a path's rows with their estimated cost and width, and the sort or group clause
+/// number of each, or 0, as Postgres' PathTarget is.
 #[derive(Clone, Debug, Default)]
 pub struct PathTarget {
     pub exprs: Vec<Expr>,
+    pub sortgrouprefs: Vec<usize>,
     pub cost: super::costsize::QualCost,
     pub width: f64,
 }
@@ -567,9 +643,27 @@ pub enum PathKind {
     Lookup(crate::plan::JoinMethod),
     /// The rows of another path of the same relation, kept in memory so that a nested loop reads them again cheaply.
     Material(Rc<Path>),
-    /// The rows of another path of the same relation sorted in the query's ORDER BY order, which the sort that the
-    /// query already holds above the join's rows does.
+    /// The rows of another path sorted by the path's pathkeys, as Postgres' SortPath is.
     Sort(Rc<Path>),
+    /// The rows of another path that is sorted by the leading pathkeys already, sorted by the rest within each run of
+    /// rows with equal leading keys, as Postgres' IncrementalSortPath is.
+    IncrementalSort(Rc<Path>),
+    /// The rows of another path computed into a different target, as Postgres' ProjectionPath is.
+    Projection(Rc<Path>),
+    /// The rows of another path with the rows of the target's set-returning functions, as Postgres' ProjectSetPath is.
+    ProjectSet(Rc<Path>),
+    /// An aggregation of another path's rows, as Postgres' AggPath is.
+    Agg(Box<AggPath>),
+    /// The rows of another path sorted by its group keys, one for each group, as Postgres' GroupPath is.
+    Group(Box<GroupPath>),
+    /// The first row of each run of rows of another sorted path that have the same first keys, as Postgres'
+    /// UpperUniquePath is.
+    Unique(Rc<Path>, usize),
+    /// Window calls over another path's rows, sorted by the window's partition and order, as Postgres' WindowAggPath
+    /// is.
+    WindowAgg(Box<WindowAggPath>),
+    /// The rows of another path that LIMIT and OFFSET keep, as Postgres' LimitPath is.
+    Limit(Box<LimitPath>),
     /// A nested loop of an outer path over an inner one.
     NestLoop(JoinPath),
     /// A hash join probing a hash table of the inner path with the outer path's rows.
@@ -612,6 +706,8 @@ pub struct Path {
     pub disabled_nodes: usize,
     pub startup_cost: f64,
     pub total_cost: f64,
+    /// The expressions of the path's rows, or None for its relation's.
+    pub pathtarget: Option<Rc<PathTarget>>,
 }
 
 /// IndexOptInfo is the planner's knowledge of an index of a table, as Postgres' IndexOptInfo holds it: Dolt's
@@ -691,6 +787,18 @@ pub enum RelOptKind {
     Unused,
     BaseRel,
     JoinRel,
+    /// A relation of the query's upper processing, as Postgres' fetch_upper_rel makes it.
+    UpperRel(UpperRelationKind),
+}
+
+/// UpperRelationKind is a step of a query's upper processing, as Postgres' UpperRelationKind is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum UpperRelationKind {
+    GroupAgg,
+    Window,
+    Distinct,
+    Ordered,
+    Final,
 }
 
 /// RelOptInfo is a base or join relation: its rows and width estimates, its paths, and the clauses that apply to
@@ -746,4 +854,47 @@ pub struct RelOptInfo {
     pub joininfo: Vec<RinfoId>,
     /// Whether an equivalence class may give the relation join clauses.
     pub has_eclass_joins: bool,
+}
+
+/// AggStrategy is how an aggregation finds its groups, as Postgres' AggStrategy is: all rows in one group, a run of
+/// sorted rows, a hash table, or both for grouping sets.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AggStrategy {
+    Plain,
+    Sorted,
+    Hashed,
+    Mixed,
+}
+
+/// AggPath is an aggregation, as Postgres' AggPath holds it: its input, its group keys, and the HAVING conditions
+/// that its groups must meet.
+#[derive(Clone, Debug)]
+pub struct AggPath {
+    pub subpath: Rc<Path>,
+    pub group_clause: Vec<SortGroupClause>,
+    pub qual: Vec<Expr>,
+}
+
+/// GroupPath is a GROUP BY without aggregates over sorted rows, as Postgres' GroupPath holds it.
+#[derive(Clone, Debug)]
+pub struct GroupPath {
+    pub subpath: Rc<Path>,
+    pub group_clause: Vec<SortGroupClause>,
+    pub qual: Vec<Expr>,
+}
+
+/// WindowAggPath is the window calls of one window over sorted rows, as Postgres' WindowAggPath holds them, by the
+/// positions of its calls in the query's window calls.
+#[derive(Clone, Debug)]
+pub struct WindowAggPath {
+    pub subpath: Rc<Path>,
+    pub calls: Vec<usize>,
+}
+
+/// LimitPath is a LIMIT and OFFSET, as Postgres' LimitPath holds them.
+#[derive(Clone, Debug)]
+pub struct LimitPath {
+    pub subpath: Rc<Path>,
+    pub limit_offset: Option<Expr>,
+    pub limit_count: Option<Expr>,
 }

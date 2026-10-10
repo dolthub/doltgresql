@@ -3859,6 +3859,65 @@ impl Expr {
         })
     }
 
+    /// visit_children calls the function on each of the expression's own arguments, outside subquery plans.
+    pub fn visit_children(&self, f: &mut dyn FnMut(&Expr)) {
+        match self {
+            Expr::Cast(e, ..)
+            | Expr::Neg(e, _)
+            | Expr::Not(e)
+            | Expr::Spread(e)
+            | Expr::IsNull(e, _)
+            | Expr::BoolTest(e, ..)
+            | Expr::Field(e, _) => f(e),
+            Expr::Arith(_, l, r, _)
+            | Expr::Compare(_, l, r)
+            | Expr::Concat(l, r)
+            | Expr::And(l, r)
+            | Expr::Or(l, r)
+            | Expr::NullIf(l, r)
+            | Expr::DateTime(_, l, r)
+            | Expr::AnyArray(l, r, _)
+            | Expr::Shared(l, r)
+            | Expr::Operator(_, _, l, r)
+            | Expr::ArrayOp(_, l, r)
+            | Expr::DistinctFrom(l, r, _) => {
+                f(l);
+                f(r);
+            }
+            Expr::Func(_, args)
+            | Expr::Routine(_, args)
+            | Expr::Coalesce(args)
+            | Expr::MinMax(_, args)
+            | Expr::Array(_, args, _)
+            | Expr::Xml(_, args)
+            | Expr::Grouping(args, ..)
+            | Expr::Row(args, _) => args.iter().for_each(&mut *f),
+            Expr::RowCompare(_, l, r) => l.iter().chain(r).for_each(&mut *f),
+            Expr::Subscript(base, subscripts, _) => {
+                f(base);
+                for (l, u) in subscripts {
+                    l.iter().chain(u).for_each(&mut *f);
+                }
+            }
+            Expr::SubscriptAssign(base, _, subscripts, _, value) => {
+                f(base);
+                for (l, u) in subscripts {
+                    l.iter().chain(u).for_each(&mut *f);
+                }
+                f(value);
+            }
+            Expr::Case(whens, otherwise) => {
+                for (c, r) in whens {
+                    f(c);
+                    f(r);
+                }
+                f(otherwise);
+            }
+            Expr::AnySubquery(c, ..) => f(c),
+            _ => {}
+        }
+    }
+
     /// visit calls the function on the expression and each of its descendants, outside subquery plans.
     pub fn visit(&self, f: &mut dyn FnMut(&Expr)) {
         f(self);

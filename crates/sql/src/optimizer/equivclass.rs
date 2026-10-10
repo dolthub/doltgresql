@@ -828,3 +828,14 @@ pub fn is_redundant_with_indexclauses(
         iclause.rinfo == rinfo || (parent_ec.is_some() && root.rinfos[iclause.rinfo].parent_ec == parent_ec)
     })
 }
+
+/// exprs_known_equal reports whether an equivalence class without volatile members holds both expressions, as
+/// Postgres' function of the same name does.
+pub fn exprs_known_equal(root: &PlannerInfo<'_, '_>, item1: &Expr, item2: &Expr) -> bool {
+    root.eq_classes.iter().any(|ec| {
+        !ec.ec_has_volatile
+            && ec.ec_merged.is_none()
+            && ec.ec_members.iter().any(|&em| root.eq_members[em].em_expr == *item1)
+            && ec.ec_members.iter().any(|&em| root.eq_members[em].em_expr == *item2)
+    })
+}

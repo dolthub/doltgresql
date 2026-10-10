@@ -51,6 +51,10 @@ pub fn query_expr_type(glob: &super::nodes::PlannerGlobal, parse: &Query, e: &Ex
         | Expr::AnySubquery(..)
         | Expr::AnyArray(..) => Some(BOOLOID),
         Expr::Func(f, _) => known_type(crate::functions::function(*f).ret),
+        Expr::AggRef(k) => parse.aggregates.get(*k).map(|call| call.ret),
+        Expr::WindowRef(k) => parse.window_funcs.get(*k).map(|call| call.ret.oid),
+        Expr::SetRef(k) => parse.target_srfs.get(*k).and_then(|call| query_expr_type(glob, parse, call)),
+        Expr::Grouping(..) => Some(23),
         Expr::Routine(routine, _) | Expr::Operator(_, routine, ..) => known_type(routine.ret.oid),
         Expr::Coalesce(args) | Expr::MinMax(_, args) => query_expr_type(glob, parse, args.first()?),
         Expr::NullIf(value, _) => query_expr_type(glob, parse, value),

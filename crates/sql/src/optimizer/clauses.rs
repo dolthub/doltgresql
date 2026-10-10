@@ -256,3 +256,20 @@ pub fn find_forced_null_var(glob: &PlannerGlobal, e: &Expr) -> Option<usize> {
         _ => None,
     }
 }
+
+/// expression_returns_set reports whether an expression calls a set-returning function, as Postgres' function of
+/// the same name does.
+pub fn expression_returns_set(e: &Expr) -> bool {
+    let mut found = false;
+    e.visit(&mut |x| found |= matches!(x, Expr::SetRef(_)));
+    found
+}
+
+/// expression_returns_set_rows estimates the rows that a set-returning function returns for each input row, or one
+/// for any other expression, as Postgres' function of the same name does with each function's default of 1000.
+pub fn expression_returns_set_rows(_root: &super::PlannerInfo<'_, '_>, e: &Expr) -> f64 {
+    match e {
+        Expr::SetRef(_) => 1000.0,
+        _ => 1.0,
+    }
+}

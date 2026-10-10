@@ -89,7 +89,7 @@ pub fn contain_var_clause(e: &Expr) -> bool {
 
 /// mutate_query rewrites the expressions of a query's target list and join tree.
 pub fn mutate_query(query: &mut Query, f: &mut dyn FnMut(Expr) -> Expr) {
-    for e in query.target_list.iter_mut().flatten() {
+    for e in query.upper_exprs_mut() {
         *e = f(std::mem::replace(e, Expr::Const(crate::types::Value::Null)));
     }
     let mut node = JoinTreeNode::From(Box::new(std::mem::replace(

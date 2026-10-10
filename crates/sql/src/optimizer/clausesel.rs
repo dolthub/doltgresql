@@ -23,7 +23,7 @@ use crate::expr::{CmpOp, Expr};
 use crate::types::Value;
 
 /// DEFAULT_INEQ_SEL is the share of rows that Postgres assumes an inequality keeps without statistics.
-const DEFAULT_INEQ_SEL: f64 = 1.0 / 3.0;
+pub const DEFAULT_INEQ_SEL: f64 = 1.0 / 3.0;
 
 /// DEFAULT_RANGE_INEQ_SEL is the share of rows that Postgres assumes a pair of bounds on one value keeps without
 /// statistics.

@@ -315,3 +315,13 @@ pub fn get_baserel_parampathinfo(
     root.rels[rel].ppilist.push(ppi.clone());
     Some(ppi)
 }
+
+/// fetch_upper_rel returns the relation of a step of the query's upper processing, building it the first time, as
+/// Postgres' function of the same name does.
+pub fn fetch_upper_rel(root: &mut PlannerInfo<'_, '_>, kind: super::nodes::UpperRelationKind) -> usize {
+    if let Some(rel) = root.rels.iter().position(|r| r.reloptkind == RelOptKind::UpperRel(kind)) {
+        return rel;
+    }
+    root.rels.push(RelOptInfo { reloptkind: RelOptKind::UpperRel(kind), ..RelOptInfo::default() });
+    root.rels.len() - 1
+}

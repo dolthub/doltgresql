@@ -101,7 +101,7 @@ fn pull_up_simple_subquery(glob: &mut PlannerGlobal, parse: &mut Query, varno: u
     }
     let rtoffset = parse.rtable.len();
     offset_var_nodes(glob, &mut subquery, rtoffset);
-    let targetlist: Vec<Expr> = subquery.target_list.iter().map(|e| e.clone().expect("a subquery's column")).collect();
+    let targetlist: Vec<Expr> = subquery.target_list.iter().map(|tle| tle.expr.clone()).collect();
     let mut rvcontext = PullupReplaceVars {
         rv_cache: vec![None; targetlist.len()],
         targetlist,
@@ -127,7 +127,7 @@ fn pull_up_simple_subquery(glob: &mut PlannerGlobal, parse: &mut Query, varno: u
 /// LIMIT, and the planner pulls one up unless its output runs a volatile function, or has a subquery, whose plan reads
 /// its enclosing rows by position.
 fn is_simple_subquery(glob: &PlannerGlobal, subquery: &Query) -> bool {
-    !subquery.target_list.iter().flatten().any(|e| contain_volatile_functions(glob, e) || contain_subplans(e))
+    !subquery.target_list.iter().any(|tle| contain_volatile_functions(glob, &tle.expr) || contain_subplans(&tle.expr))
 }
 
 /// pull_up_simple_values replaces the query's only relation, a VALUES list of one row, by its expressions, as
@@ -204,7 +204,7 @@ struct PullupReplaceVars {
 /// perform_pullup_replace_vars replaces the Vars of a pulled-up relation in the query's target list and join tree,
 /// as Postgres' function of the same name does.
 fn perform_pullup_replace_vars(glob: &mut PlannerGlobal, parse: &mut Query, rvcontext: &mut PullupReplaceVars) {
-    for e in parse.target_list.iter_mut().flatten() {
+    for e in parse.upper_exprs_mut() {
         *e = pullup_replace_vars(glob, e.clone(), rvcontext);
     }
     let mut node = JoinTreeNode::From(Box::new(std::mem::replace(
@@ -712,7 +712,7 @@ fn remove_result_refs(glob: &mut PlannerGlobal, parse: &Query, varno: usize, sub
 /// query_phids returns the IDs of the PlaceHolderVars that a query's expressions hold, with those that their
 /// expressions hold.
 fn query_phids(glob: &PlannerGlobal, parse: &Query) -> Vec<usize> {
-    let mut exprs: Vec<Expr> = parse.target_list.iter().flatten().cloned().collect();
+    let mut exprs: Vec<Expr> = parse.upper_exprs();
     collect_quals(&JoinTreeNode::From(Box::new(parse.jointree.clone())), &mut exprs);
     exprs_phids(glob, &exprs)
 }

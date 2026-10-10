@@ -435,6 +435,7 @@ pub fn mark_dummy_rel(root: &mut PlannerInfo<'_, '_>, rel: usize) {
         disabled_nodes: 0,
         startup_cost: 0.0,
         total_cost: 0.0,
+        pathtarget: None,
     };
     add_path(r, Rc::new(path));
     set_cheapest(r);

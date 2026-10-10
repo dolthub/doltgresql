@@ -27,32 +27,274 @@ use crate::expr::Expr;
 use crate::plan::{JoinKind, JoinMethod, Plan};
 use crate::types::Value;
 
-/// Slot is what a column of a plan's rows holds: a relation's attribute, or a PlaceHolderVar by its ID.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Slot is what a column of a plan's rows holds: a relation's attribute, a PlaceHolderVar by its ID, or an
+/// expression of the query's upper processing that a plan below computed, as an aggregate call or a group key.
+#[derive(Clone, Debug, PartialEq)]
 enum Slot {
     Var(usize, usize),
     PlaceHolder(usize),
+    Expr(Expr),
 }
 
-/// create_plan makes the plan of a path of the relation that joins every base relation, whose columns are the
-/// query's target list, where those that nothing reads are NULL or whatever the path's rows hold there.
+/// create_plan makes the plan of the query's final path, whose columns are the visible columns of the query's target
+/// list.
 pub fn create_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> Plan {
     let (plan, layout) = create_plan_recurse(root, path);
-    let exprs: Vec<Option<Expr>> =
-        root.parse.target_list.iter().map(|e| e.as_ref().map(|e| positional(root, e.clone(), &layout))).collect();
-    if exprs.len() == layout.len()
-        && exprs.iter().enumerate().all(|(i, e)| e.as_ref().is_none_or(|e| *e == Expr::Column(i)))
-    {
+    let exprs: Vec<Expr> = root
+        .parse
+        .target_list
+        .iter()
+        .filter(|tle| !tle.resjunk)
+        .map(|tle| positional(root, tle.expr.clone(), &layout))
+        .collect();
+    if exprs.len() == layout.len() && exprs.iter().enumerate().all(|(i, e)| *e == Expr::Column(i)) {
         return plan;
     }
-    let exprs = exprs.into_iter().map(|e| e.unwrap_or(Expr::Const(Value::Null))).collect();
     Plan::Project { input: Box::new(plan), exprs }
+}
+
+/// target_slots returns the slots of the expressions of a target.
+fn target_slots(root: &PlannerInfo<'_, '_>, exprs: &[Expr]) -> Vec<Slot> {
+    exprs.iter().map(|e| expr_slot(root, e)).collect()
+}
+
+/// expr_slot returns the slot of an expression: a Var's or PlaceHolderVar's own slot, or the expression.
+fn expr_slot(root: &PlannerInfo<'_, '_>, e: &Expr) -> Slot {
+    match e {
+        Expr::Column(_) => slot(root, e),
+        other => Slot::Expr(other.clone()),
+    }
+}
+
+/// project returns a plan that computes a path's target over a plan's rows of a layout, unless the rows are that
+/// target already.
+fn project(root: &PlannerInfo<'_, '_>, plan: Plan, layout: Vec<Slot>, path: &Path) -> (Plan, Vec<Slot>) {
+    let exprs = super::planner::path_exprs(root, path);
+    let slots = target_slots(root, &exprs);
+    if slots == layout {
+        return (plan, layout);
+    }
+    let positional_exprs = exprs.iter().map(|e| positional(root, e.clone(), &layout)).collect();
+    (Plan::Project { input: Box::new(plan), exprs: positional_exprs }, slots)
+}
+
+/// sort_keys returns the sort keys of pathkeys over a plan's rows of a layout, by the member of each key's class that
+/// the rows hold or that their columns compute, as Postgres' prepare_sort_from_pathkeys finds them.
+fn sort_keys(
+    root: &PlannerInfo<'_, '_>,
+    pathkeys: &[super::nodes::PkId],
+    layout: &[Slot],
+) -> Vec<crate::plan::SortKey> {
+    pathkeys
+        .iter()
+        .filter_map(|&pk| {
+            let pathkey = &root.canon_pathkeys[pk];
+            let members = &root.eq_classes[pathkey.pk_eclass].ec_members;
+            let expr =
+                members.iter().map(|&em| &root.eq_members[em].em_expr).find(|e| computable(root, e, layout))?.clone();
+            Some(crate::plan::SortKey {
+                expr: positional(root, expr, layout),
+                descending: pathkey.pk_descending,
+                nulls_first: pathkey.pk_nulls_first,
+            })
+        })
+        .collect()
+}
+
+/// computable reports whether an expression can be computed from rows of a layout: the rows hold it, or its Vars
+/// and PlaceHolderVars, without reading an aggregate, window, or set-returning call that they do not hold.
+fn computable(root: &PlannerInfo<'_, '_>, e: &Expr, layout: &[Slot]) -> bool {
+    if layout.contains(&Slot::Expr(e.clone())) {
+        return true;
+    }
+    match e {
+        Expr::Column(_) => layout.contains(&slot(root, e)),
+        Expr::AggRef(_) | Expr::WindowRef(_) | Expr::SetRef(_) => false,
+        other => {
+            let mut ok = true;
+            other.visit_children(&mut |c| ok &= computable(root, c, layout));
+            ok
+        }
+    }
+}
+
+/// create_upper_plan makes the plan of a path of the query's upper processing, as Postgres' createplan functions of
+/// each kind do, returning it with what each column of its rows holds.
+fn create_upper_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Vec<Slot>) {
+    match &path.kind {
+        PathKind::Projection(subpath) => {
+            let (plan, layout) = create_plan_recurse(root, subpath);
+            project(root, plan, layout, path)
+        }
+        PathKind::Sort(subpath) | PathKind::IncrementalSort(subpath) => {
+            let (plan, layout) = create_plan_recurse(root, subpath);
+            let keys = sort_keys(root, &path.pathkeys, &layout);
+            (Plan::Sort { input: Box::new(plan), keys }, layout)
+        }
+        PathKind::Unique(subpath, num_keys) => {
+            let (plan, layout) = create_plan_recurse(root, subpath);
+            let keys = sort_keys(root, &subpath.pathkeys[..*num_keys], &layout);
+            let keys = Some(keys.into_iter().map(|k| k.expr).collect());
+            (Plan::Distinct { input: Box::new(plan), keys }, layout)
+        }
+        PathKind::Limit(lpath) => {
+            let (plan, layout) = create_plan_recurse(root, &lpath.subpath);
+            let plan = Plan::Limit {
+                input: Box::new(plan),
+                limit: lpath.limit_count.clone(),
+                offset: lpath.limit_offset.clone(),
+            };
+            (plan, layout)
+        }
+        PathKind::Agg(apath) => {
+            let group_exprs = tlist_exprs(root, &apath.group_clause);
+            create_agg_plan(root, path, &apath.subpath, group_exprs, &apath.qual, true)
+        }
+        PathKind::Group(gpath) => {
+            let group_exprs = tlist_exprs(root, &gpath.group_clause);
+            create_agg_plan(root, path, &gpath.subpath, group_exprs, &gpath.qual, false)
+        }
+        PathKind::WindowAgg(wpath) => {
+            let (plan, mut layout) = create_plan_recurse(root, &wpath.subpath);
+            let calls: Vec<crate::window::WindowCall> =
+                wpath.calls.iter().map(|&k| window_call(root, root.parse.window_funcs[k].clone(), &layout)).collect();
+            layout.extend(wpath.calls.iter().map(|&k| Slot::Expr(Expr::WindowRef(k))));
+            let plan = Plan::Window { input: Box::new(plan), calls };
+            project(root, plan, layout, path)
+        }
+        PathKind::ProjectSet(subpath) => {
+            let (plan, mut layout) = create_plan_recurse(root, subpath);
+            let mut functions = Vec::new();
+            for e in super::planner::path_exprs(root, path) {
+                if let Expr::SetRef(k) = e
+                    && !layout.contains(&Slot::Expr(Expr::SetRef(k)))
+                {
+                    functions.push(positional(root, root.parse.target_srfs[k].clone(), &layout));
+                    layout.push(Slot::Expr(Expr::SetRef(k)));
+                }
+            }
+            let plan = Plan::ProjectSet { input: Box::new(plan), functions, dropped: Vec::new() };
+            project(root, plan, layout, path)
+        }
+        PathKind::Append(subpaths) if root.rels[path.parent].reloptkind != super::nodes::RelOptKind::BaseRel => {
+            let mut plans = subpaths.iter().map(|p| create_plan_recurse(root, p));
+            let (first, layout) = plans.next().expect("an Append of upper paths has paths");
+            let plan = plans.fold(first, |left, (right, _)| Plan::SetOp {
+                op: crate::plan::SetOp::Union,
+                all: true,
+                left: Box::new(left),
+                right: Box::new(right),
+            });
+            (plan, layout)
+        }
+        PathKind::Result(quals) => {
+            let quals = quals.iter().map(|q| positional(root, q.clone(), &[]));
+            let predicate = quals.reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+            let plan = match predicate {
+                Some(predicate) => Plan::Filter { input: Box::new(Plan::OneRow), predicate },
+                None => Plan::OneRow,
+            };
+            project(root, plan, Vec::new(), path)
+        }
+        _ => unreachable!("an upper path"),
+    }
+}
+
+/// tlist_exprs returns the expressions of the target entries that group clauses read.
+fn tlist_exprs(root: &PlannerInfo<'_, '_>, clauses: &[super::nodes::SortGroupClause]) -> Vec<Expr> {
+    super::tlist::get_sortgrouplist_exprs(clauses, &root.parse.target_list)
+}
+
+/// create_agg_plan makes the plan of an aggregation or GROUP BY over a path's rows: their group keys and the query's
+/// aggregate calls over them, under the HAVING conditions, computing the path's target, as Postgres' create_agg_plan
+/// and create_group_plan do. Doltgres' aggregation keeps its groups in the order it first meets them, which is the
+/// order of sorted rows.
+fn create_agg_plan(
+    root: &mut PlannerInfo<'_, '_>,
+    path: &Path,
+    subpath: &Path,
+    group_exprs: Vec<Expr>,
+    qual: &[Expr],
+    with_aggregates: bool,
+) -> (Plan, Vec<Slot>) {
+    let (plan, layout) = create_plan_recurse(root, subpath);
+    let groups = group_exprs.iter().map(|g| positional(root, g.clone(), &layout)).collect();
+    let aggregates: Vec<crate::functions::aggregate::AggCall> = match with_aggregates {
+        true => root.parse.aggregates.iter().map(|call| agg_call(root, call.clone(), &layout)).collect(),
+        false => Vec::new(),
+    };
+    let mut agg_layout: Vec<Slot> = group_exprs.iter().map(|g| expr_slot(root, g)).collect();
+    agg_layout.extend((0..aggregates.len()).map(|k| Slot::Expr(Expr::AggRef(k))));
+    let mut plan =
+        Plan::Aggregate { input: Box::new(plan), groups, aggregates, sets: root.parse.grouping_sets.clone() };
+    if root.parse.grouping_sets.is_some() {
+        agg_layout.push(Slot::Expr(Expr::Const(Value::Text("grouping mask".into()))));
+    }
+    let predicate = qual
+        .iter()
+        .map(|q| grouping_mask(positional(root, q.clone(), &agg_layout), &agg_layout))
+        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
+    if let Some(predicate) = predicate {
+        plan = Plan::Filter { input: Box::new(plan), predicate };
+    }
+    let (plan, slots) = project(root, plan, agg_layout.clone(), path);
+    let plan = match plan {
+        Plan::Project { input, exprs } => {
+            Plan::Project { input, exprs: exprs.into_iter().map(|e| grouping_mask(e, &agg_layout)).collect() }
+        }
+        other => other,
+    };
+    (plan, slots)
+}
+
+/// grouping_mask points the GROUPING calls of an expression over an aggregation's rows at the column of the mask that
+/// grouping sets add.
+fn grouping_mask(e: Expr, layout: &[Slot]) -> Expr {
+    let mask = layout.iter().position(|s| *s == Slot::Expr(Expr::Const(Value::Text("grouping mask".into()))));
+    match e {
+        Expr::Grouping(args, locations, _) => Expr::Grouping(args, locations, mask),
+        other => other.map_children(&mut |c| grouping_mask(c, layout)),
+    }
+}
+
+/// agg_call rewrites an aggregate call's expressions over a layout's rows.
+fn agg_call(
+    root: &PlannerInfo<'_, '_>,
+    mut call: crate::functions::aggregate::AggCall,
+    layout: &[Slot],
+) -> crate::functions::aggregate::AggCall {
+    call.args = call.args.into_iter().map(|a| positional(root, a, layout)).collect();
+    call.filter = call.filter.map(|f| positional(root, f, layout));
+    call.order = call.order.into_iter().map(|(e, d, n)| (positional(root, e, layout), d, n)).collect();
+    call
+}
+
+/// window_call rewrites a window call's expressions over a layout's rows.
+fn window_call(
+    root: &PlannerInfo<'_, '_>,
+    mut call: crate::window::WindowCall,
+    layout: &[Slot],
+) -> crate::window::WindowCall {
+    call.args = call.args.into_iter().map(|a| positional(root, a, layout)).collect();
+    call.filter = call.filter.map(|f| positional(root, f, layout));
+    call.partition = call.partition.into_iter().map(|p| positional(root, p, layout)).collect();
+    for key in &mut call.order {
+        key.expr = positional(root, key.expr.clone(), layout);
+    }
+    if let Some(range) = &mut call.range {
+        range.key = positional(root, range.key.clone(), layout);
+        for (e, _) in range.start.iter_mut().chain(range.end.iter_mut()) {
+            *e = positional(root, e.clone(), layout);
+        }
+    }
+    call
 }
 
 /// create_plan_recurse makes the plan of a path, returning it with what each column of its rows holds.
 fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Vec<Slot>) {
     let (plan, layout) = match &path.kind {
         PathKind::SeqScan | PathKind::Lookup(_) => create_scan_plan(root, path.parent),
+        PathKind::Result(_) if path.pathtarget.is_some() => return create_upper_plan(root, path),
         PathKind::Result(quals) => {
             let quals = quals.iter().map(|q| positional(root, q.clone(), &[]));
             let predicate = quals.reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
@@ -65,13 +307,25 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
         PathKind::IndexScan(best_path) => create_indexscan_plan(root, path.parent, best_path),
         PathKind::BitmapHeapScan(_) => create_bitmap_scan_plan(root, path, &[]),
         PathKind::BitmapAnd(_) | PathKind::BitmapOr(_) => unreachable!("a bitmap tree is planned by its heap scan"),
+        PathKind::Projection(_)
+        | PathKind::IncrementalSort(_)
+        | PathKind::ProjectSet(_)
+        | PathKind::Agg(_)
+        | PathKind::Group(_)
+        | PathKind::Unique(..)
+        | PathKind::WindowAgg(_)
+        | PathKind::Limit(_) => return create_upper_plan(root, path),
+        PathKind::Sort(_) => return create_upper_plan(root, path),
+        PathKind::Append(_) if root.rels[path.parent].reloptkind != super::nodes::RelOptKind::BaseRel => {
+            return create_upper_plan(root, path);
+        }
         PathKind::Append(_) => {
             let layout: Vec<Slot> = root.rels[path.parent].reltarget.exprs.iter().map(|e| slot(root, e)).collect();
             let nulls =
                 Plan::Project { input: Box::new(Plan::OneRow), exprs: vec![Expr::Const(Value::Null); layout.len()] };
             (Plan::Filter { input: Box::new(nulls), predicate: Expr::Const(Value::Bool(false)) }, layout)
         }
-        PathKind::Material(subpath) | PathKind::Sort(subpath) => return create_plan_recurse(root, subpath),
+        PathKind::Material(subpath) => return create_plan_recurse(root, subpath),
         PathKind::NestLoop(join) | PathKind::HashJoin(join) => {
             let (outer_plan, outer_layout) = create_plan_recurse(root, &join.outer);
             let lateral = !join.inner.param.is_empty()
@@ -560,6 +814,11 @@ fn slot(root: &PlannerInfo<'_, '_>, e: &Expr) -> Slot {
 /// Postgres' setrefs.c rewrites a plan's Vars to refer to its inputs' columns. A PlaceHolderVar that the rows do not
 /// hold is computed from its expression.
 fn positional(root: &PlannerInfo<'_, '_>, e: Expr, layout: &[Slot]) -> Expr {
+    if !matches!(e, Expr::Column(_))
+        && let Some(i) = layout.iter().position(|s| matches!(s, Slot::Expr(x) if *x == e))
+    {
+        return Expr::Column(i);
+    }
     match e {
         Expr::Column(id) => {
             let target = slot(root, &Expr::Column(id));

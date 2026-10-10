@@ -136,6 +136,7 @@ fn add_scan_path(
         disabled_nodes,
         startup_cost,
         total_cost,
+        pathtarget: None,
     };
     add_path(&mut root.rels[rel], Rc::new(path));
 }

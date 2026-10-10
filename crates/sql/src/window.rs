@@ -29,7 +29,7 @@ use crate::query::Ctx;
 use crate::types::Value;
 
 /// Frame option bits of a window definition, as Postgres' parser sets them.
-mod frame {
+pub mod frame {
     pub const RANGE: i32 = 0x2;
     pub const ROWS: i32 = 0x4;
     pub const GROUPS: i32 = 0x8;

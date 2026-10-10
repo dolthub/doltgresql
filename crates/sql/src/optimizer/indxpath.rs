@@ -433,6 +433,7 @@ fn create_index_path(
         disabled_nodes,
         startup_cost,
         total_cost,
+        pathtarget: None,
     })
 }
 
@@ -1564,6 +1565,7 @@ fn create_catalog_lookup_path(root: &mut PlannerInfo<'_, '_>, rel: usize, outer_
         disabled_nodes,
         startup_cost,
         total_cost,
+        pathtarget: None,
     };
     add_path(&mut root.rels[rel], Rc::new(path));
 }
