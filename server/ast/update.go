@@ -47,6 +47,7 @@ func nodeUpdate(ctx *Context, node *tree.Update) (update *vitess.Update, err err
 	}
 
 	tableExprs := vitess.TableExprs{table}
+	var target vitess.TableName
 	if len(node.From) > 0 {
 		vitessTableExprs := make(vitess.TableExprs, len(node.From))
 		for i, tableExpr := range node.From {
@@ -64,9 +65,14 @@ func nodeUpdate(ctx *Context, node *tree.Update) (update *vitess.Update, err err
 				RightExpr: table,
 			},
 		}
+		aliasedTable := table.(*vitess.AliasedTableExpr)
+		target.Name = aliasedTable.As
+		if target.Name.IsEmpty() {
+			target.Name = aliasedTable.Expr.(vitess.TableName).Name
+		}
 	}
 
-	exprs, err := nodeUpdateExprs(ctx, node.Exprs)
+	exprs, err := nodeUpdateExprs(ctx, node.Exprs, target)
 	if err != nil {
 		return nil, err
 	}
