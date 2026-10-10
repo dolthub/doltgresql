@@ -18,7 +18,6 @@ import (
 	"context"
 	"os"
 	"runtime"
-	"slices"
 	"testing"
 
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
@@ -870,24 +869,18 @@ func TestBlobs(t *testing.T) {
 
 func TestIndexes(t *testing.T) {
 	// MySQL index metadata and error behavior differ.
-	skippedScripts := []string{
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"show create table with duplicate primary key", // auto-generated constraint names differ
 		"unique key duplicate key update",
 		"multiple indexes over same set of columns",
 		"secondary index errors",
 		"indexes and if exists",
 		"Test oversized primary-key lookups",
-	}
-	h := newDoltgresServerHarness(t)
+	})
 	defer h.Close()
 
 	h.Setup(setup.MydbData)
 	for _, script := range queries.IndexQueries {
-		if slices.Contains(skippedScripts, script.Name) {
-			t.Run(script.Name, func(t *testing.T) { t.Skip("Doltgres does not yet pass this script") })
-			continue
-		}
-
 		enginetest.TestScript(t, h, script)
 	}
 }
@@ -933,7 +926,7 @@ func TestDropForeignKeys(t *testing.T) {
 
 func TestForeignKeys(t *testing.T) {
 	// MySQL foreign-key syntax, metadata, or error expectations differ.
-	skippedScripts := []string{
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"Delayed foreign key resolution: update",
 		"Delayed foreign key resolution: delete",
 		"Delayed foreign key resolution insert",
@@ -954,7 +947,6 @@ func TestForeignKeys(t *testing.T) {
 		"ON UPDATE CASCADE recomputes chained virtual columns",
 		"ON DELETE CASCADE maintains an index over a virtual column, self-referential",
 		"ON DELETE CASCADE maintains an index over a virtual column between stored columns",
-		"CREATE TABLE Type Mismatch",
 		"CREATE TABLE Disallow TEXT/BLOB",
 		"Test foreign keys with spatial parent columns",
 		"ALTER TABLE Single Named FOREIGN KEY",
@@ -987,8 +979,7 @@ func TestForeignKeys(t *testing.T) {
 		"INSERT IGNORE INTO works correctly with foreign key violations",
 		"ALTER TABLE ADD CONSTRAINT for different database",
 		"Creating a foreign key on a table with an unsupported type works", // POINT values are not supported
-	}
-	h := newDoltgresServerHarness(t)
+	})
 	defer h.Close()
 
 	for _, suite := range []struct {
@@ -1004,12 +995,13 @@ func TestForeignKeys(t *testing.T) {
 	} {
 		h.Setup(suite.setupData...)
 		for _, script := range suite.scripts {
-			if slices.Contains(skippedScripts, script.Name) {
-				t.Run(script.Name, func(t *testing.T) { t.Skip("Doltgres does not yet pass this script") })
-				continue
+			// Scope this substring skip to its script to preserve similarly named cases.
+			scriptHarness := h
+			if script.Name == "CREATE TABLE Type Mismatch" {
+				scriptHarness = h.WithSkippedQueries([]string{script.Name})
 			}
 
-			enginetest.TestScript(t, h, script)
+			enginetest.TestScript(t, scriptHarness, script)
 		}
 	}
 }
@@ -1073,7 +1065,7 @@ func TestReadOnly(t *testing.T) {
 
 func TestViews(t *testing.T) {
 	// MySQL view metadata, syntax, and errors differ.
-	skippedScripts := []string{
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"can't create table with same name as existing view", // Doltgres needs to return a different error message
 		"can't create view with same name as existing table", // different error message
 		"existing views",
@@ -1086,17 +1078,11 @@ func TestViews(t *testing.T) {
 		"show view",
 		"views with defaults",
 		"SHOW CREATE VIEW returns stored definition regardless of underlying object state",
-	}
-	h := newDoltgresServerHarness(t)
+	})
 	defer h.Close()
 
 	h.Setup(setup.MydbData)
 	for _, script := range queries.ViewScripts {
-		if slices.Contains(skippedScripts, script.Name) {
-			t.Run(script.Name, func(t *testing.T) { t.Skip("Doltgres does not yet pass this script") })
-			continue
-		}
-
 		enginetest.TestScript(t, h, script)
 	}
 }
@@ -1178,7 +1164,7 @@ func TestInnerNestedInNaturalJoins(t *testing.T) {
 
 func TestColumnDefaults(t *testing.T) {
 	// MySQL default syntax and result formatting differ.
-	skippedScripts := []string{
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"update columns with default", // broken, see repro in update_test.go
 		"preserve now()",              // harness error
 		"update join ambiguous default",
@@ -1210,17 +1196,11 @@ func TestColumnDefaults(t *testing.T) {
 		"System variables in ALTER TABLE ADD COLUMN defaults are not allowed",
 		"User variables in ALTER TABLE ALTER COLUMN defaults are not allowed",
 		"System variables in ALTER TABLE ALTER COLUMN defaults are not allowed",
-	}
-	h := newDoltgresServerHarness(t)
+	})
 	defer h.Close()
 
 	h.Setup(setup.MydbData)
 	for _, script := range queries.ColumnDefaultTests {
-		if slices.Contains(skippedScripts, script.Name) {
-			t.Run(script.Name, func(t *testing.T) { t.Skip("Doltgres does not yet pass this script") })
-			continue
-		}
-
 		enginetest.TestScript(t, h, script)
 	}
 }
@@ -1234,7 +1214,7 @@ func TestOnUpdateExprScripts(t *testing.T) {
 
 func TestAlterTable(t *testing.T) {
 	// MySQL ALTER TABLE syntax, metadata, or error behavior differs.
-	skippedScripts := []string{
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"modify set column",
 		"ALTER TABLE ... ALTER ADD CHECK / DROP CHECK",
 		"ALTER TABLE AUTO INCREMENT no-ops on table with no original auto increment key",
@@ -1260,17 +1240,11 @@ func TestAlterTable(t *testing.T) {
 		"add column with inline check constraint definition",
 		"multi-alter ddl column errors",
 		"ALTER TABLE does not change column collations",
-	}
-	h := newDoltgresServerHarness(t)
+	})
 	defer h.Close()
 
 	h.Setup(setup.MydbData, setup.Pk_tablesData)
 	for _, script := range queries.AlterTableScripts {
-		if slices.Contains(skippedScripts, script.Name) {
-			t.Run(script.Name, func(t *testing.T) { t.Skip("Doltgres does not yet pass this script") })
-			continue
-		}
-
 		enginetest.TestScript(t, h, script)
 	}
 }
@@ -1312,7 +1286,7 @@ func TestSelectIntoFile(t *testing.T) {
 
 func TestJsonScripts(t *testing.T) {
 	// MySQL JSON functions, formats, or error expectations differ.
-	skippedScripts := []string{
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"types survive round-trip into tables",
 		"unsigned tinyint is still unsigned after round-trip into table",
 		"JSON_ARRAGG with simple and nested json objects.",
@@ -1334,17 +1308,11 @@ func TestJsonScripts(t *testing.T) {
 		"json_object with escaped k:v pairs from table",
 		"json_value preserves types",
 		"JSON_ARRAY properly handles CHAR bind vars", // bind-variable execution is not implemented by the server harness
-	}
-	h := newDoltgresServerHarness(t)
+	})
 	defer h.Close()
 
 	h.Setup(setup.MydbData, setup.BlobData)
 	for _, script := range queries.JsonScripts {
-		if slices.Contains(skippedScripts, script.Name) {
-			t.Run(script.Name, func(t *testing.T) { t.Skip("Doltgres does not yet pass this script") })
-			continue
-		}
-
 		enginetest.TestScript(t, h, script)
 	}
 }
@@ -1365,7 +1333,7 @@ func TestRollbackTriggers(t *testing.T) {
 
 func TestStoredProcedures(t *testing.T) {
 	// MySQL stored procedure syntax and metadata are not supported.
-	skippedScripts := []string{
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"REPEAT with OnceBefore returns first loop evaluation result set",
 		"WHILE returns previous loop evaluation result set",
 		"Simple SELECT",
@@ -1400,7 +1368,6 @@ func TestStoredProcedures(t *testing.T) {
 		"FETCH captures state at OPEN",
 		"FETCH implicitly closes",
 		"SQLEXCEPTION declare handler",
-		"DECLARE CONTINUE HANDLER",
 		"Test cursor continue-handler checksum loops",
 		"DECLARE HANDLERs exit according to the block they were declared in",
 		"Labeled BEGIN...END",
@@ -1464,8 +1431,7 @@ func TestStoredProcedures(t *testing.T) {
 		"DROP procedures",
 		"SHOW procedures",
 		"SHOW non-existent procedures",
-	}
-	h := newDoltgresServerHarness(t)
+	})
 	defer h.Close()
 
 	h.Setup(setup.MydbData)
@@ -1482,12 +1448,13 @@ func TestStoredProcedures(t *testing.T) {
 	} {
 		t.Run(suite.name, func(t *testing.T) {
 			for _, script := range suite.scripts {
-				if slices.Contains(skippedScripts, script.Name) {
-					t.Run(script.Name, func(t *testing.T) { t.Skip("Doltgres does not yet pass this script") })
-					continue
+				// Scope this substring skip to its script to preserve similarly named cases.
+				scriptHarness := h
+				if script.Name == "DECLARE CONTINUE HANDLER" {
+					scriptHarness = h.WithSkippedQueries([]string{script.Name})
 				}
 
-				enginetest.TestScript(t, h, script)
+				enginetest.TestScript(t, scriptHarness, script)
 			}
 		})
 	}
@@ -1949,7 +1916,7 @@ func TestStatisticIndexes(t *testing.T) {
 
 func TestCharsetCollationEngine(t *testing.T) {
 	// MySQL character set syntax and collation behavior differ.
-	skippedScripts := []string{
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"CAST(... AS BINARY) function",
 		"Issue #5482",
 		"LIKE with a space terminated prefix matches rows with a multibyte character after the prefix",
@@ -1985,17 +1952,11 @@ func TestCharsetCollationEngine(t *testing.T) {
 		"SET validates character set and collation variables",
 		"setting charset/collation sets the other",
 		"ENUM collation handling",
-	}
-	h := newDoltgresServerHarness(t)
+	})
 	defer h.Close()
 
 	h.Setup(setup.MydbData)
 	for _, script := range queries.CharsetCollationEngineTests {
-		if slices.Contains(skippedScripts, script.Name) {
-			t.Run(script.Name, func(t *testing.T) { t.Skip("Doltgres does not yet pass this script") })
-			continue
-		}
-
 		enginetest.TestScript(t, h, script)
 	}
 }
