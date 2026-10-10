@@ -785,6 +785,19 @@ pub fn increment_query_sublevels_up(query: &mut Query) {
     }
 }
 
+/// decrement_sublevels_up rewrites each read of a row further out than `nesting + 1` levels, `nesting` subqueries deep
+/// within a plan, to read the row one level closer, as Postgres' IncrementVarSublevelsUp does with a delta of -1.
+pub fn decrement_sublevels_up(e: Expr, nesting: usize) -> Expr {
+    let mut e = match e {
+        Expr::Outer(d, i) if d > nesting + 1 => return Expr::Outer(d - 1, i),
+        other => other.map_children(&mut |c| decrement_sublevels_up(c, nesting)),
+    };
+    for plan in e.subqueries_mut() {
+        plan.map_exprs(0, &mut |x, depth| decrement_sublevels_up(x, nesting + 1 + depth));
+    }
+    e
+}
+
 /// increment_sublevels_up rewrites each read of an enclosing row in an expression, `nesting` subqueries deep within
 /// its query, to read the row one further out.
 pub fn increment_sublevels_up(e: Expr, nesting: usize) -> Expr {

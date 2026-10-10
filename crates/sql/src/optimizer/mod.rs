@@ -430,6 +430,19 @@ fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
     }
 }
 
+/// unlateral returns the right input of a lateral join without its lateral reach, reading the rows of the enclosing
+/// queries one level closer, when it reads nothing of the join's left rows, as Postgres plans a LATERAL item that
+/// refers to no item before it as an ordinary relation.
+fn unlateral(right: &Plan) -> Option<Plan> {
+    let mut read = std::collections::BTreeSet::new();
+    if !crate::indexscan::outer_reads(right, 1, &mut read) || !read.is_empty() {
+        return None;
+    }
+    let mut right = right.clone();
+    let reached = right.map_exprs(0, &mut |e, depth| subselect::decrement_sublevels_up(e, depth));
+    reached.then_some(right)
+}
+
 /// decomposable reports whether a join's inputs can join in any order the planner finds: it is not lateral and not
 /// already planned.
 fn decomposable(join: &Plan) -> bool {
@@ -533,6 +546,18 @@ pub(super) fn build_jointree(
     rtable: &mut Vec<RangeTblEntry>,
     output: &mut Vec<Expr>,
 ) -> JoinTreeNode {
+    let plan = match plan {
+        Plan::Join { left, right, kind, condition, lateral: true, method: JoinMethod::Unplanned } => {
+            match unlateral(&right) {
+                Some(right) => {
+                    let method = JoinMethod::Unplanned;
+                    Plan::Join { left, right: Box::new(right), kind, condition, lateral: false, method }
+                }
+                None => Plan::Join { left, right, kind, condition, lateral: true, method: JoinMethod::Unplanned },
+            }
+        }
+        other => other,
+    };
     match plan {
         Plan::Join { left, right, kind, condition, .. } if decomposable(&plan) && !kind.tests_matches() => {
             let jointype = match kind {

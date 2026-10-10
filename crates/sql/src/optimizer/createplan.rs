@@ -306,7 +306,7 @@ fn tlist_exprs(root: &PlannerInfo<'_, '_>, clauses: &[super::nodes::SortGroupCla
 }
 
 /// create_agg_plan makes the plan of an aggregation or GROUP BY over a path's rows: their group keys and the query's
-/// aggregate calls over them, under the HAVING conditions, computing the path's target, as Postgres' create_agg_plan
+/// aggregate calls over them that the rows do not hold already, under the HAVING conditions, computing the path's target, as Postgres' create_agg_plan
 /// and create_group_plan do. Doltgres' aggregation keeps its groups in the order it first meets them, which is the
 /// order of sorted rows.
 fn create_agg_plan(
@@ -320,12 +320,14 @@ fn create_agg_plan(
 ) -> (Plan, Vec<Slot>) {
     let (plan, layout) = create_plan_recurse(root, subpath);
     let groups = group_exprs.iter().map(|g| positional(root, g.clone(), &layout)).collect();
-    let mut aggregates: Vec<crate::functions::aggregate::AggCall> = match with_aggregates {
-        true => root.parse.aggregates.iter().map(|call| agg_call(root, call.clone(), &layout)).collect(),
+    let computed: Vec<usize> = match with_aggregates {
+        true => (0..root.parse.aggregates.len()).filter(|&k| !layout.contains(&Slot::Expr(Expr::AggRef(k)))).collect(),
         false => Vec::new(),
     };
+    let mut aggregates: Vec<crate::functions::aggregate::AggCall> =
+        computed.iter().map(|&k| agg_call(root, root.parse.aggregates[k].clone(), &layout)).collect();
     let mut agg_layout: Vec<Slot> = group_exprs.iter().map(|g| expr_slot(root, g)).collect();
-    agg_layout.extend((0..aggregates.len()).map(|k| Slot::Expr(Expr::AggRef(k))));
+    agg_layout.extend(computed.iter().map(|&k| Slot::Expr(Expr::AggRef(k))));
     for var in dependent_vars(root, path, qual, &agg_layout) {
         aggregates.push(min_call(root, &var, &layout));
         agg_layout.push(slot(root, &var));
