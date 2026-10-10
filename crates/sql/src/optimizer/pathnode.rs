@@ -24,7 +24,8 @@ use super::costsize::{
     final_cost_mergejoin,
 };
 use super::nodes::{
-    BitmapPath, JoinPath, JoinType, MergePath, Path, PathKind, PkId, RelOptInfo, Relids, RinfoId, SubsetCompare,
+    BitmapPath, JoinPath, JoinType, MemoizePath, MergePath, Path, PathKind, PkId, RelOptInfo, Relids, RinfoId,
+    SubsetCompare,
 };
 use super::pathkeys::{PathKeysComparison, compare_pathkeys};
 
@@ -294,6 +295,28 @@ pub fn create_mergejoin_path(
     };
     let cost = final_cost_mergejoin(root, &mut pathnode, workspace, extra);
     create_join_path(joinrel, &root.rels[joinrel], PathKind::MergeJoin(Box::new(pathnode)), cost, pathkeys)
+}
+
+/// create_memoize_path makes a path that caches a parameterized path's rows by the values of its parameter
+/// expressions, for a number of runs, as Postgres' function of the same name does.
+pub fn create_memoize_path(
+    subpath: &Rc<Path>,
+    param_exprs: Vec<crate::expr::Expr>,
+    binary_mode: bool,
+    calls: f64,
+) -> Rc<Path> {
+    let mpath = MemoizePath {
+        subpath: subpath.clone(),
+        param_exprs,
+        binary_mode,
+        calls: super::costsize::clamp_row_est(calls),
+    };
+    Rc::new(Path {
+        kind: PathKind::Memoize(Box::new(mpath)),
+        startup_cost: subpath.startup_cost + super::costsize::CPU_TUPLE_COST,
+        total_cost: subpath.total_cost + super::costsize::CPU_TUPLE_COST,
+        ..(**subpath).clone()
+    })
 }
 
 /// add_path_precheck reports whether a path of these costs and order could be added to a relation's paths, before

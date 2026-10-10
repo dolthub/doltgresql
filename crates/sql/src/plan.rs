@@ -194,6 +194,13 @@ pub enum Plan {
     WorkTable(usize, usize),
     /// The rows of a WITH query that every reference to it reads, computed once for the statement.
     CteScan(std::sync::Arc<CteDef>),
+    /// The rows of the right input of a join that reads its left rows, cached by the keys' values over the left row
+    /// (its enclosing row), compared by their bytes when `binary`, as a Postgres Memoize node.
+    Memoize {
+        input: Box<Plan>,
+        keys: Vec<Expr>,
+        binary: bool,
+    },
     /// The rows of inputs sorted by the keys, merged in that order, the rows of an earlier input first among equal ones.
     MergeAppend {
         inputs: Vec<Plan>,
@@ -3044,6 +3051,10 @@ impl Plan {
                 keys.iter_mut().for_each(|k| map(&mut k.expr, depth));
                 inputs.extend(merged.iter_mut().map(|input| (input, depth)));
             }
+            Plan::Memoize { input, keys, .. } => {
+                keys.iter_mut().for_each(|e| map(e, depth));
+                inputs.push((input, depth));
+            }
             Plan::Recursive { anchor, step, .. } => {
                 inputs.push((anchor, depth));
                 inputs.push((step, depth));
@@ -3106,6 +3117,7 @@ impl Plan {
             }
             Plan::SetOp { left, .. } => left.width(),
             Plan::MergeAppend { inputs, .. } => inputs.first().map_or(0, Plan::width),
+            Plan::Memoize { input, .. } => input.width(),
             Plan::Once(input) => input.width(),
         }
     }

@@ -1290,6 +1290,7 @@ impl Rows for ProbeRows<'_> {
 struct LateralRows<'p> {
     left: Box<dyn Rows + 'p>,
     right: &'p Plan,
+    memo: Option<Memo<'p>>,
     kind: JoinKind,
     condition: Option<&'p Expr>,
     right_width: usize,
@@ -1303,11 +1304,19 @@ impl Rows for LateralRows<'_> {
                 return Ok(Some(row));
             }
             let Some(l) = self.left.next(ctx)? else { return Ok(None) };
-            ctx.outer.push(l.clone());
-            let right_rows = self.right.run(ctx);
-            ctx.outer.pop();
+            let right = self.right;
+            let run = |ctx: &mut Ctx<'_>| {
+                ctx.outer.push(l.clone());
+                let right_rows = right.run(ctx);
+                ctx.outer.pop();
+                right_rows
+            };
+            let right_rows = match self.memo.as_mut() {
+                Some(memo) => memo.rows(ctx, &l, run)?,
+                None => run(ctx)?,
+            };
             let mut out = Vec::new();
-            for r in right_rows? {
+            for r in right_rows {
                 let mut row = l.clone();
                 row.extend(r);
                 if self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
@@ -1331,12 +1340,49 @@ impl Rows for LateralRows<'_> {
     }
 }
 
+/// Memo caches the right rows of a join whose right input is a Memoize, by the values of its keys over each left row,
+/// which they read as their enclosing row.
+struct Memo<'p> {
+    keys: &'p [Expr],
+    groups: Groups,
+    rows: Vec<Vec<Row>>,
+}
+
+impl<'p> Memo<'p> {
+    /// of returns the cache of a join's right input when it is a Memoize, with the plan whose rows it caches.
+    fn of(right: &'p Plan) -> (Option<Memo<'p>>, &'p Plan) {
+        match right {
+            Plan::Memoize { input, keys, .. } => (Some(Memo { keys, groups: Groups::new(), rows: Vec::new() }), input),
+            other => (None, other),
+        }
+    }
+
+    /// rows returns the right rows for a left row, from the cache when an earlier left row had the same key values,
+    /// and otherwise by running `run`.
+    fn rows(
+        &mut self,
+        ctx: &mut Ctx<'_>,
+        left: &[Value],
+        run: impl FnOnce(&mut Ctx<'_>) -> Result<Vec<Row>>,
+    ) -> Result<Vec<Row>> {
+        ctx.outer.push(left.to_vec());
+        let key: Result<Row> = self.keys.iter().map(|k| k.eval(ctx, &[])).collect();
+        ctx.outer.pop();
+        let (i, new) = self.groups.insert(&key?);
+        if new {
+            self.rows.push(run(ctx)?);
+        }
+        Ok(self.rows[i].clone())
+    }
+}
+
 /// LookupRows joins each left row with the right rows that its key values find in an index of the right input's
 /// table, keeping those that the right input's filter, the ranges of its index scan, and the join condition keep, and
 /// computing the expressions of a projection above them.
 struct LookupRows<'p> {
     left: Box<dyn Rows + 'p>,
     right_plan: &'p Plan,
+    memo: Option<Memo<'p>>,
     keys: &'p [Expr],
     found: crate::indexscan::IndexRows<'p>,
     /// The table columns of the index's keys.
@@ -1365,6 +1411,7 @@ impl<'p> LookupRows<'p> {
         scan: &'p crate::indexscan::IndexScan,
         keys: &'p [Expr],
     ) -> Result<LookupRows<'p>> {
+        let (memo, right) = Memo::of(right);
         let (project, input) = match right {
             Plan::Project { input, exprs } => (Some(exprs.as_slice()), &**input),
             other => (None, other),
@@ -1377,6 +1424,7 @@ impl<'p> LookupRows<'p> {
         Ok(LookupRows {
             left: left.open(ctx)?,
             right_plan: right,
+            memo,
             keys,
             found: scan.open_lookup(ctx)?,
             columns: scan.index_columns(),
@@ -1440,8 +1488,16 @@ impl Rows for LookupRows<'_> {
                 return Ok(Some(row));
             }
             let Some(l) = self.left.next(ctx)? else { return Ok(None) };
+            let matches = match self.memo.take() {
+                Some(mut memo) => {
+                    let matches = memo.rows(ctx, &l, |ctx| self.matches(ctx, &l));
+                    self.memo = Some(memo);
+                    matches?
+                }
+                None => self.matches(ctx, &l)?,
+            };
             let mut out = Vec::new();
-            for r in self.matches(ctx, &l)? {
+            for r in matches {
                 let mut row = l.clone();
                 row.extend(r);
                 if self.condition.map_or(Ok(true), |c| c.is_true(ctx, &row))? {
@@ -1755,14 +1811,18 @@ impl Plan {
                 };
                 Box::new(LimitRows { input, skip, remaining })
             }
-            Plan::Join { left, right, kind, condition, lateral: true, .. } => Box::new(LateralRows {
-                left: left.open(ctx)?,
-                right,
-                kind: *kind,
-                condition: condition.as_ref(),
-                right_width: right.width(),
-                pending: Vec::new().into_iter(),
-            }),
+            Plan::Join { left, right, kind, condition, lateral: true, .. } => {
+                let (memo, right) = Memo::of(right);
+                Box::new(LateralRows {
+                    left: left.open(ctx)?,
+                    right,
+                    memo,
+                    kind: *kind,
+                    condition: condition.as_ref(),
+                    right_width: right.width(),
+                    pending: Vec::new().into_iter(),
+                })
+            }
             Plan::Join { left, right, kind, condition, method: JoinMethod::Lookup { scan, keys }, .. }
                 if !Lookup::finds_whole_keys(scan, keys, right, condition.as_ref(), left.width())? =>
             {
@@ -1815,6 +1875,7 @@ impl Plan {
                 previous: None,
                 seen: Groups::new(),
             }),
+            Plan::Memoize { input, .. } => input.open(ctx)?,
             Plan::MergeAppend { inputs, keys } => {
                 let mut heads = Vec::with_capacity(inputs.len());
                 for input in inputs {

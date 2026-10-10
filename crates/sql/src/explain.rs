@@ -136,6 +136,7 @@ fn name_relations(plan: &Plan, names: &mut HashMap<usize, String>, taken: &mut H
             name_relations(right, names, taken);
         }
         Plan::MergeAppend { inputs, .. } => inputs.iter().for_each(|input| name_relations(input, names, taken)),
+        Plan::Memoize { input, .. } => name_relations(input, names, taken),
         Plan::Recursive { anchor, step, .. } => {
             name_relations(anchor, names, taken);
             name_relations(step, names, taken);
@@ -195,6 +196,7 @@ fn columns(plan: &Plan) -> Vec<String> {
         | Plan::Sort { input, .. }
         | Plan::Limit { input, .. }
         | Plan::Distinct { input, .. }
+        | Plan::Memoize { input, .. }
         | Plan::Once(input) => columns(input),
         Plan::Project { input, exprs } => {
             let names = columns(input);
@@ -231,6 +233,8 @@ enum Child<'p> {
     Bitmap(&'p crate::indexscan::Bitmap),
     /// The right input of a lateral join, which reads a left row of the given columns as its enclosing row.
     Lateral(&'p Plan, Vec<String>),
+    /// A child under a Memoize of its rows by the keys, which read a left row of the given columns.
+    Memoized(&'p [Expr], bool, Vec<String>, Box<Child<'p>>),
 }
 
 /// Lookup is the index lookups that a join makes for each of its left rows: the index and the relation it belongs
@@ -360,6 +364,10 @@ impl Printer {
                         )
                     }
                     JoinMethod::Lookup { .. } | JoinMethod::CatalogLookup { .. } => {
+                        let (memoize, right) = match &**right {
+                            Plan::Memoize { input, keys, binary } => (Some((keys, *binary)), &**input),
+                            other => (None, other),
+                        };
                         let lookup = Lookup::of(method, columns(left), right);
                         let keys = lookup.keys;
                         let looked_up = |c: &&Expr| matches!(c, Expr::Compare(CmpOp::Eq, a, b) if keys.contains(a) || keys.contains(b));
@@ -373,7 +381,13 @@ impl Printer {
                             true => Vec::new(),
                             false => vec![format!("Join Filter: {}", rest.join(" AND "))],
                         };
-                        (format!("Nested Loop{kind}"), properties, vec![Child::Plan(left), Child::Lookup(lookup)])
+                        let lookup = match memoize {
+                            Some((keys, binary)) => {
+                                Child::Memoized(keys, binary, columns(left), Box::new(Child::Lookup(lookup)))
+                            }
+                            None => Child::Lookup(lookup),
+                        };
+                        (format!("Nested Loop{kind}"), properties, vec![Child::Plan(left), lookup])
                     }
                     JoinMethod::MaterializedLoop => (
                         format!("Nested Loop{kind}"),
@@ -399,6 +413,9 @@ impl Printer {
                     (SetOp::Except, false) => "HashSetOp Except",
                 };
                 (name.into(), vec![], vec![Child::Plan(left), Child::Plan(right)])
+            }
+            Plan::Memoize { input, keys, binary } => {
+                ("Memoize".into(), memoize_properties(keys, *binary), vec![Child::Plan(input)])
             }
             Plan::MergeAppend { inputs, keys } => {
                 let names = columns(plan);
@@ -463,19 +480,33 @@ impl Printer {
             });
         }
         for child in children {
-            match child {
-                Child::Plan(plan) => self.node(plan, depth + 1, Vec::new(), Vec::new()),
-                Child::Held(name, plan) => {
-                    self.lines.push(format!("{}->  {name}", " ".repeat(6 * depth + 2)));
-                    self.node(plan, depth + 2, Vec::new(), Vec::new());
-                }
-                Child::Lookup(lookup) => self.lookup(&lookup, depth + 1),
-                Child::Bitmap(bitmap) => self.bitmap(bitmap, depth + 1),
-                Child::Lateral(plan, names) => {
-                    ENCLOSING.with(|e| e.borrow_mut().push(names));
-                    self.node(plan, depth + 1, Vec::new(), Vec::new());
-                    ENCLOSING.with(|e| e.borrow_mut().pop());
-                }
+            self.child(child, depth);
+        }
+    }
+
+    /// child prints a child of a node printed at a depth.
+    fn child(&mut self, child: Child<'_>, depth: usize) {
+        match child {
+            Child::Plan(plan) => self.node(plan, depth + 1, Vec::new(), Vec::new()),
+            Child::Held(name, plan) => {
+                self.lines.push(format!("{}->  {name}", " ".repeat(6 * depth + 2)));
+                self.node(plan, depth + 2, Vec::new(), Vec::new());
+            }
+            Child::Lookup(lookup) => self.lookup(&lookup, depth + 1),
+            Child::Bitmap(bitmap) => self.bitmap(bitmap, depth + 1),
+            Child::Lateral(plan, names) => {
+                ENCLOSING.with(|e| e.borrow_mut().push(names));
+                self.node(plan, depth + 1, Vec::new(), Vec::new());
+                ENCLOSING.with(|e| e.borrow_mut().pop());
+            }
+            Child::Memoized(keys, binary, names, child) => {
+                self.lines.push(format!("{}->  Memoize", " ".repeat(6 * depth + 2)));
+                ENCLOSING.with(|e| e.borrow_mut().push(names));
+                let properties = memoize_properties(keys, binary);
+                ENCLOSING.with(|e| e.borrow_mut().pop());
+                let pad = " ".repeat(6 * (depth + 1) + 2);
+                self.lines.extend(properties.into_iter().map(|property| format!("{pad}{property}")));
+                self.child(*child, depth + 1);
             }
         }
     }
@@ -527,6 +558,15 @@ impl Printer {
             self.lines.push(format!("{pad}Filter: {}", expr_text(predicate, &own_columns(input))));
         }
     }
+}
+
+/// memoize_properties returns the `Cache Key` and `Cache Mode` lines of a Memoize by keys that read its enclosing row.
+fn memoize_properties(keys: &[Expr], binary: bool) -> Vec<String> {
+    let keys: Vec<String> = keys.iter().map(|k| expr_text(k, &[])).collect();
+    vec![
+        format!("Cache Key: {}", keys.join(", ")),
+        format!("Cache Mode: {}", if binary { "binary" } else { "logical" }),
+    ]
 }
 
 /// index_ranges returns the `Index Ranges` line of a scan of an index, or the `Index Cond` line of the conditions

@@ -2369,6 +2369,10 @@ pub(crate) fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) 
             read(&mut keys.iter().map(|k| &k.expr));
             inputs.iter().map(|input| (input, depth)).collect()
         }
+        Plan::Memoize { input, keys, .. } => {
+            read(&mut keys.iter());
+            vec![(input, depth)]
+        }
         Plan::Recursive { anchor, step, .. } => vec![(anchor, depth), (step, depth)],
         Plan::ProjectSet { input, functions, .. } => {
             read(&mut functions.iter());

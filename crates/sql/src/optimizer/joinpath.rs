@@ -23,7 +23,7 @@ use super::costsize::{
     JoinPathExtraData, SemiAntiJoinFactors, compute_semi_anti_join_factors, cost_hashjoin, cost_material,
     cost_nestloop, has_indexed_join_quals, initial_cost_mergejoin,
 };
-use super::nodes::{JoinPath, JoinType, Path, PathKind, PkId, Relids, RestrictInfo, RinfoId, SpecialJoinInfo};
+use super::nodes::{JoinPath, JoinType, Path, PathKind, PkId, Relids, RestrictInfo, RinfoId, SpecialJoinInfo, VarNode};
 use super::pathkeys::{
     build_join_pathkeys, find_mergeclauses_for_outer_pathkeys, get_cheapest_path_for_pathkeys,
     make_inner_pathkeys_for_merge, pathkeys_contained_in, pathkeys_count_contained_in, select_outer_pathkeys_for_merge,
@@ -31,9 +31,10 @@ use super::pathkeys::{
 };
 use super::pathnode::{
     CostSelector, add_path, add_path_precheck, calc_nestloop_required_outer, calc_non_nestloop_required_outer,
-    compare_path_costs, create_join_path, create_mergejoin_path,
+    compare_path_costs, create_join_path, create_memoize_path, create_mergejoin_path,
 };
 use super::restrictinfo::rinfo_is_pushed_down;
+use crate::expr::Expr;
 
 /// add_paths_to_joinrel adds the paths of a join of an outer relation to an inner one to their join relation, as
 /// Postgres' function of the same name does.
@@ -94,6 +95,122 @@ pub fn add_paths_to_joinrel(
 /// path_param_by_rel reports whether a path needs rows of a relation's, as Postgres' PATH_PARAM_BY_REL does.
 fn path_param_by_rel(root: &PlannerInfo<'_, '_>, path: &Path, rel: usize) -> bool {
     path.param.overlap(&root.rels[rel].relids)
+}
+
+/// paraminfo_get_equal_hashops returns the outer expressions that a parameterized path reads, by which a cache of its
+/// rows is keyed, and whether the cache must compare them by their bytes, as Postgres' function of the same name does,
+/// or None when a parameterizing clause is not a comparison of an outer and an inner expression or a lateral
+/// expression is volatile. Every Doltgres type can hash its values and has one equality, which compares them.
+fn paraminfo_get_equal_hashops(
+    root: &PlannerInfo<'_, '_>,
+    param_info: Option<&super::nodes::ParamPathInfo>,
+    outerrel: usize,
+    innerrel: usize,
+    ph_lateral_vars: Vec<Expr>,
+) -> Option<(Vec<Expr>, bool)> {
+    let mut param_exprs: Vec<Expr> = Vec::new();
+    let mut binary_mode = false;
+    for &r in param_info.map_or(&[][..], |p| &p.ppi_clauses) {
+        let rinfo = &root.rinfos[r];
+        let Expr::Compare(_, left, right) = &rinfo.clause else { return None };
+        if !clause_sides_match_join(rinfo, &root.rels[outerrel].relids, &root.rels[innerrel].relids) {
+            return None;
+        }
+        let expr = if rinfo.outer_is_left.get() { left } else { right };
+        if !param_exprs.contains(expr) {
+            param_exprs.push((**expr).clone());
+        }
+        if !rinfo.hashjoinable {
+            binary_mode = true;
+        }
+    }
+    //TODO: add the inner relation's lateral_vars, once find_lateral_references is ported.
+    for expr in ph_lateral_vars {
+        if super::clauses::contain_volatile_functions(root.glob, &expr) {
+            return None;
+        }
+        if !param_exprs.contains(&expr) {
+            param_exprs.push(expr);
+        }
+        binary_mode = true;
+    }
+    Some((param_exprs, binary_mode))
+}
+
+/// extract_lateral_vars_from_phvs returns the lateral references of the PlaceHolderVars that a base relation computes,
+/// which a cache of its rows must also be keyed by, as Postgres' extract_lateral_vars_from_PHVs does.
+fn extract_lateral_vars_from_phvs(root: &PlannerInfo<'_, '_>, innerrelids: &Relids) -> Vec<Expr> {
+    let mut ph_lateral_vars = Vec::new();
+    if !root.has_lateral_rtes || innerrelids.num_members() > 1 {
+        return ph_lateral_vars;
+    }
+    for phinfo in &root.placeholder_list {
+        if phinfo.ph_lateral.is_empty() || phinfo.ph_eval_at != *innerrelids {
+            continue;
+        }
+        let phexpr = &root.glob.placeholder(phinfo.phid).phexpr;
+        if !super::var::pull_varnos(root, phexpr).overlap(innerrelids) {
+            ph_lateral_vars.push(phexpr.clone());
+            continue;
+        }
+        for id in super::var::pull_var_clause(root.glob, phexpr, true) {
+            let lateral = match root.glob.node(id) {
+                VarNode::Var(var) => phinfo.ph_lateral.is_member(var.varno),
+                VarNode::PlaceHolderVar(phv) => root
+                    .placeholder_list
+                    .iter()
+                    .find(|p| p.phid == phv.phid)
+                    .is_some_and(|p| p.ph_eval_at.is_subset(&phinfo.ph_lateral)),
+            };
+            if lateral {
+                ph_lateral_vars.push(Expr::Column(id));
+            }
+        }
+    }
+    ph_lateral_vars
+}
+
+/// get_memoize_path returns a path that caches a parameterized inner path's rows by the outer values it reads, for a
+/// nested loop with an outer path, when the cache could save reading it again, as Postgres' function of the same name
+/// does.
+fn get_memoize_path(
+    root: &mut PlannerInfo<'_, '_>,
+    innerrel: usize,
+    outerrel: usize,
+    inner_path: &Rc<Path>,
+    outer_path: &Path,
+    jointype: JoinType,
+    extra: &JoinPathExtraData,
+) -> Option<Rc<Path>> {
+    if !root.enables.memoize || root.rels[outer_path.parent].rows < 2.0 {
+        return None;
+    }
+    let ph_lateral_vars = extract_lateral_vars_from_phvs(root, &root.rels[innerrel].relids);
+    let param_info = super::relnode::get_baserel_parampathinfo(root, inner_path.parent, &inner_path.param);
+    if param_info.as_ref().is_none_or(|p| p.ppi_clauses.is_empty()) && ph_lateral_vars.is_empty() {
+        return None;
+    }
+    if !extra.inner_unique && matches!(jointype, JoinType::Semi | JoinType::Anti) {
+        return None;
+    }
+    if extra.inner_unique {
+        let param_info = param_info.as_ref()?;
+        let ppi_serials: Relids = param_info.ppi_clauses.iter().map(|&r| root.rinfos[r].rinfo_serial).collect();
+        if extra.restrictlist.iter().any(|&r| !ppi_serials.is_member(root.rinfos[r].rinfo_serial)) {
+            return None;
+        }
+    }
+    let volatile = |e: &Expr| super::clauses::contain_volatile_functions(root.glob, e);
+    let rel = &root.rels[innerrel];
+    if rel.reltarget.exprs.iter().any(volatile)
+        || rel.baserestrictinfo.iter().any(|&r| volatile(&root.rinfos[r].clause))
+        || param_info.iter().flat_map(|p| &p.ppi_clauses).any(|&r| volatile(&root.rinfos[r].clause))
+    {
+        return None;
+    }
+    let (param_exprs, binary_mode) =
+        paraminfo_get_equal_hashops(root, param_info.as_ref(), outerrel, innerrel, ph_lateral_vars)?;
+    Some(create_memoize_path(inner_path, param_exprs, binary_mode, outer_path.rows))
 }
 
 /// try_nestloop_path adds a nested loop of two paths to the join relation, whose rows are in the order of the given
@@ -419,7 +536,19 @@ fn match_unsorted_outer(
         if nestjoin_ok {
             let inner_paths = root.rels[innerrel].cheapest_parameterized_paths.clone();
             for innerpath in inner_paths {
-                try_nestloop_path(root, joinrel, outerpath.clone(), innerpath, merge_pathkeys.clone(), jointype, extra);
+                try_nestloop_path(
+                    root,
+                    joinrel,
+                    outerpath.clone(),
+                    innerpath.clone(),
+                    merge_pathkeys.clone(),
+                    jointype,
+                    extra,
+                );
+                if let Some(mpath) = get_memoize_path(root, innerrel, outerrel, &innerpath, &outerpath, jointype, extra)
+                {
+                    try_nestloop_path(root, joinrel, outerpath.clone(), mpath, merge_pathkeys.clone(), jointype, extra);
+                }
             }
             if let Some(matpath) = &matpath {
                 try_nestloop_path(
@@ -555,7 +684,7 @@ fn select_mergejoin_clauses(
             continue;
         }
         if !r.can_join || r.mergeopfamilies.is_empty() {
-            if !matches!(r.clause, crate::expr::Expr::Const(_)) {
+            if !matches!(r.clause, Expr::Const(_)) {
                 have_nonmergeable_joinclause = true;
             }
             continue;

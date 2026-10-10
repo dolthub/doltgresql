@@ -676,6 +676,8 @@ pub enum PathKind {
     Lookup(crate::plan::JoinMethod),
     /// The rows of another path of the same relation, kept in memory so that a nested loop reads them again cheaply.
     Material(Rc<Path>),
+    /// The rows of a parameterized path cached by the values of its parameters, as Postgres' MemoizePath is.
+    Memoize(Box<MemoizePath>),
     /// The rows of another path sorted by the path's pathkeys, as Postgres' SortPath is.
     Sort(Rc<Path>),
     /// The rows of another path that is sorted by the leading pathkeys already, sorted by the rest within each run of
@@ -747,6 +749,16 @@ pub struct MergePath {
     pub skip_mark_restore: bool,
     /// Whether the inner side's rows are kept in memory so they can be read again.
     pub materialize_inner: bool,
+}
+
+/// MemoizePath is a cache of a parameterized path's rows by the outer expressions it reads, as Postgres' MemoizePath
+/// is: whether those compare by their bytes rather than by equality, and how many times the path is expected to run.
+#[derive(Clone, Debug)]
+pub struct MemoizePath {
+    pub subpath: Rc<Path>,
+    pub param_exprs: Vec<Expr>,
+    pub binary_mode: bool,
+    pub calls: f64,
 }
 
 /// MergeScanSelCache is the shares of a merge clause's sides that a merge join in an order reads, as

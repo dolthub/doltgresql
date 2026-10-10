@@ -21,7 +21,8 @@ use std::rc::Rc;
 use super::PlannerInfo;
 use super::clausesel::{self, clause_selectivity, clauselist_selectivity};
 use super::nodes::{
-    JoinType, MergePath, MergeScanSelCache, Path, PathKey, PathKind, PkId, Relids, RinfoId, SpecialJoinInfo,
+    JoinType, MemoizePath, MergePath, MergeScanSelCache, Path, PathKey, PathKind, PkId, Relids, RinfoId,
+    SpecialJoinInfo,
 };
 use super::restrictinfo::{join_clause_is_movable_into, rinfo_is_pushed_down};
 use crate::expr::Expr;
@@ -70,6 +71,7 @@ pub struct Enables {
     pub hashjoin: bool,
     pub mergejoin: bool,
     pub material: bool,
+    pub memoize: bool,
     pub sort: bool,
     pub incremental_sort: bool,
     pub hashagg: bool,
@@ -89,6 +91,7 @@ impl Enables {
             hashjoin: on("enable_hashjoin"),
             mergejoin: on("enable_mergejoin"),
             material: on("enable_material"),
+            memoize: on("enable_memoize"),
             sort: on("enable_sort"),
             incremental_sort: on("enable_incremental_sort"),
             hashagg: on("enable_hashagg"),
@@ -645,12 +648,57 @@ pub fn cost_sort(root: &PlannerInfo<'_, '_>, input: &Path, limit_tuples: f64) ->
 
 /// cost_rescan returns the startup and total costs of reading a path's rows again, as Postgres' function of the same
 /// name does: kept rows cost little to read again, and a hash table or a function's rows need not be built again.
-fn cost_rescan(path: &Path) -> (f64, f64) {
+fn cost_rescan(root: &PlannerInfo<'_, '_>, path: &Path) -> (f64, f64) {
     match &path.kind {
-        PathKind::Material(_) => (0.0, CPU_OPERATOR_COST * path.rows),
-        PathKind::HashJoin(_) => (0.0, path.total_cost - path.startup_cost),
+        PathKind::HashJoin(join) => match exec_choose_hash_table_size(join.inner.rows, join.inner.width).1 == 1.0 {
+            true => (0.0, path.total_cost - path.startup_cost),
+            false => (path.startup_cost, path.total_cost),
+        },
+        PathKind::Material(_) | PathKind::Sort(_) => {
+            let mut run_cost = CPU_OPERATOR_COST * path.rows;
+            let nbytes = relation_byte_size(path.rows, path.width);
+            if nbytes > SORT_MEM {
+                run_cost += SEQ_PAGE_COST * (nbytes / BLCKSZ).ceil();
+            }
+            (0.0, run_cost)
+        }
+        PathKind::Memoize(mpath) => cost_memoize_rescan(root, mpath),
         _ => (path.startup_cost, path.total_cost),
     }
+}
+
+/// cost_memoize_rescan returns the startup and total costs of reading a memoized path's rows again, from the share
+/// of its runs that find their parameters' rows in the cache, as Postgres' function of the same name does: a cache of
+/// entries that fit in memory, and as many distinct parameters as estimate_num_groups finds, or one for each run when
+/// it only has defaults.
+fn cost_memoize_rescan(root: &PlannerInfo<'_, '_>, mpath: &MemoizePath) -> (f64, f64) {
+    let (input_startup_cost, input_total_cost) = (mpath.subpath.startup_cost, mpath.subpath.total_cost);
+    let (tuples, calls) = (mpath.subpath.rows, mpath.calls);
+    let mut est_entry_bytes =
+        relation_byte_size(tuples, mpath.subpath.width) + exec_estimate_cache_entry_overhead_bytes(tuples);
+    for e in &mpath.param_exprs {
+        est_entry_bytes += get_expr_width(root, e);
+    }
+    let est_cache_entries = (HASH_MEM / est_entry_bytes).floor();
+    let mut estinfo = super::selfuncs::EstimationInfo::default();
+    let mut ndistinct = super::selfuncs::estimate_num_groups(root, &mpath.param_exprs, calls, None, Some(&mut estinfo));
+    if estinfo.used_default {
+        ndistinct = calls;
+    }
+    let evict_ratio = 1.0 - est_cache_entries.min(ndistinct) / ndistinct;
+    let hit_ratio = ((calls - ndistinct) / calls) * (est_cache_entries / ndistinct.max(est_cache_entries));
+    let mut total_cost = input_total_cost * (1.0 - hit_ratio) + CPU_OPERATOR_COST;
+    total_cost += CPU_TUPLE_COST * evict_ratio;
+    total_cost += CPU_OPERATOR_COST / 10.0 * evict_ratio * tuples;
+    total_cost += CPU_TUPLE_COST + CPU_OPERATOR_COST * tuples;
+    let startup_cost = input_startup_cost * (1.0 - hit_ratio) + CPU_TUPLE_COST;
+    (startup_cost, total_cost)
+}
+
+/// exec_estimate_cache_entry_overhead_bytes returns the memory that a memoize cache entry of a number of rows takes
+/// besides the rows, as Postgres' ExecEstimateCacheEntryOverheadBytes does for its entry, key, and tuple structs.
+fn exec_estimate_cache_entry_overhead_bytes(ntuples: f64) -> f64 {
+    24.0 + 24.0 + 16.0 * ntuples
 }
 
 /// SemiAntiJoinFactors are the share of outer rows that find a match and the average matches of one, which a semi,
@@ -698,7 +746,7 @@ pub fn cost_nestloop(
     joinrestrictinfo: &[RinfoId],
     has_indexed_join_quals: bool,
 ) -> Costs {
-    let (inner_rescan_start_cost, inner_rescan_total_cost) = cost_rescan(inner);
+    let (inner_rescan_start_cost, inner_rescan_total_cost) = cost_rescan(root, inner);
     let disabled_nodes = disabled(root.enables.nestloop) + inner.disabled_nodes + outer.disabled_nodes;
     let mut startup_cost = outer.startup_cost + inner.startup_cost;
     let mut run_cost = outer.total_cost - outer.startup_cost;

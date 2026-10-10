@@ -439,29 +439,39 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
             (Plan::Filter { input: Box::new(nulls), predicate: Expr::Const(Value::Bool(false)) }, layout)
         }
         PathKind::Material(subpath) => return create_plan_recurse(root, subpath),
+        PathKind::Memoize(mpath) => return create_plan_recurse(root, &mpath.subpath),
         PathKind::NestLoop(_) | PathKind::HashJoin(_) | PathKind::MergeJoin(_) => {
             let join = path.kind.join().expect("a join path");
+            let inner = match &join.inner.kind {
+                PathKind::Memoize(mpath) => &mpath.subpath,
+                _ => &join.inner,
+            };
             let (mut outer_plan, outer_layout) = create_plan_recurse(root, &join.outer);
-            let lateral = !join.inner.param.is_empty()
-                && match &join.inner.kind {
+            let lateral = !inner.param.is_empty()
+                && match &inner.kind {
                     PathKind::BitmapHeapScan(_) => true,
                     PathKind::IndexScan(ipath) => {
-                        lookup_keys(root, join.inner.parent, ipath.index, &ipath.indexclauses).is_none()
+                        lookup_keys(root, inner.parent, ipath.index, &ipath.indexclauses).is_none()
                     }
                     _ => false,
                 };
             let (mut inner_plan, inner_layout) = match lateral {
                 true => {
-                    let (plan, layout) = match &join.inner.kind {
-                        PathKind::BitmapHeapScan(_) => create_bitmap_scan_plan(root, &join.inner, &outer_layout),
-                        _ => create_param_indexscan_plan(root, &join.inner, &outer_layout),
+                    let (plan, layout) = match &inner.kind {
+                        PathKind::BitmapHeapScan(_) => create_bitmap_scan_plan(root, inner, &outer_layout),
+                        _ => create_param_indexscan_plan(root, inner, &outer_layout),
                     };
-                    let (mut plan, layout) = add_placeholders(root, join.inner.parent, plan, layout);
+                    let (mut plan, layout) = add_placeholders(root, inner.parent, plan, layout);
                     plan.map_exprs(0, &mut |e, depth| read_lateral_row(e, depth));
                     (plan, layout)
                 }
-                false => create_plan_recurse(root, &join.inner),
+                false => create_plan_recurse(root, inner),
             };
+            if let PathKind::Memoize(mpath) = &join.inner.kind {
+                let keys = mpath.param_exprs.iter().map(|e| param_positional(root, e.clone(), &[], &outer_layout));
+                let keys = keys.map(|e| read_lateral_row(e, 0)).collect();
+                inner_plan = Plan::Memoize { input: Box::new(inner_plan), keys, binary: mpath.binary_mode };
+            }
             if let PathKind::MergeJoin(mpath) = &path.kind {
                 for (plan, sortkeys, layout) in [
                     (&mut outer_plan, &mpath.outersortkeys, &outer_layout),
@@ -482,16 +492,14 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                     .partition(|&r| !rinfo_is_pushed_down(&root.rinfos[r], &path.relids)),
                 false => (join.joinrestrictinfo.clone(), Vec::new()),
             };
-            if !lateral
-                && let Some(ppi) = super::relnode::get_baserel_parampathinfo(root, join.inner.parent, &join.inner.param)
-            {
+            if !lateral && let Some(ppi) = super::relnode::get_baserel_parampathinfo(root, inner.parent, &inner.param) {
                 joinquals.extend(ppi.ppi_clauses.into_iter().filter(|r| !join.joinrestrictinfo.contains(r)));
             }
             let joinquals: Vec<Expr> = match &path.kind {
                 PathKind::HashJoin(_) => {
                     let (hashclauses, rest): (Vec<RinfoId>, Vec<RinfoId>) = joinquals.into_iter().partition(|&r| {
                         let r = &root.rinfos[r];
-                        r.hashjoinable && clause_sides_match_join(r, &join.outer.relids, &join.inner.relids)
+                        r.hashjoinable && clause_sides_match_join(r, &join.outer.relids, &inner.relids)
                     });
                     let mut quals = get_switched_clauses(root, &hashclauses, &join.outer.relids);
                     quals.extend(order_qual_clauses(root, rest).into_iter().map(|r| root.rinfos[r].clause.clone()));
@@ -506,13 +514,13 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 _ => order_qual_clauses(root, joinquals).into_iter().map(|r| root.rinfos[r].clause.clone()).collect(),
             };
             let otherquals = order_qual_clauses(root, otherquals);
-            let method = match (&path.kind, &join.inner.kind) {
+            let method = match (&path.kind, &inner.kind) {
                 (PathKind::HashJoin(_), _) => JoinMethod::Hash,
                 (PathKind::MergeJoin(mpath), _) => {
                     JoinMethod::Merge { clauses: mpath.path_mergeclauses.len(), materialized: mpath.materialize_inner }
                 }
-                (_, PathKind::IndexScan(best_path)) if !join.inner.param.is_empty() && !lateral => {
-                    let rel = join.inner.parent;
+                (_, PathKind::IndexScan(best_path)) if !inner.param.is_empty() && !lateral => {
+                    let rel = inner.parent;
                     let keys = lookup_keys(root, rel, best_path.index, &best_path.indexclauses)
                         .expect("a parameterized index path has lookup keys");
                     let table =

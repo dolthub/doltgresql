@@ -354,7 +354,8 @@ PlannerInfo and are referred to by index, and Vars are ids into a per-statement 
 `equal()` becomes id equality. Dolt has no tuple IDs for bitmap scans, so a bitmap is the sorted set of primary keys
 that its index scans find, BitmapAnd and BitmapOr merge those sets, and the heap scan looks each key up in the primary
 index in key order; a parameterized bitmap scan is the inner side of a lateral nested loop and builds its ranges from
-each outer row.
+each outer row. A merge join runs as a hash join over its sorted inputs, which keeps the outer order that is all its
+pathkeys promise, and no join path is parameterized, since only a nested loop's inner side reads outer rows.
 
 ## 4. Habits and tooling worth copying
 
