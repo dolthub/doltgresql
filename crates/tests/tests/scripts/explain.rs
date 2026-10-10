@@ -796,3 +796,71 @@ fn test_group_by_unique_columns() {
         },
     ]);
 }
+
+#[test]
+fn test_window_run_conditions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "restrictions on window functions of a subquery",
+            set_up_script: &[
+                "CREATE TABLE wr_t (id INT PRIMARY KEY, g INT, v INT);",
+                "INSERT INTO wr_t SELECT i, i % 3, i * 7 % 11 FROM generate_series(1, 30) i;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (SELECT id, row_number() OVER (ORDER BY v, id) rn FROM wr_t) s WHERE rn <= 3 ORDER BY rn;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("rn", INT8)],
+                        rows: &[
+                            &[T("11"), T("1")],
+                            &[T("22"), T("2")],
+                            &[T("8"), T("3")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (SELECT id, g, rank() OVER (PARTITION BY g ORDER BY v) r FROM wr_t) s WHERE r < 2 AND id > 3 ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("g", INT4), Column("r", INT8)],
+                        rows: &[
+                            &[T("11"), T("2"), T("1")],
+                            &[T("22"), T("1"), T("1")],
+                            &[T("30"), T("0"), T("1")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (SELECT id, count(*) OVER (ORDER BY id) c FROM wr_t) s WHERE 5 >= c ORDER BY id;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("c", INT8)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("2"), T("2")],
+                            &[T("3"), T("3")],
+                            &[T("4"), T("4")],
+                            &[T("5"), T("5")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (SELECT id, row_number() OVER (ORDER BY id) rn FROM wr_t) s WHERE rn = 4;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("rn", INT8)],
+                        rows: &[
+                            &[T("4"), T("4")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

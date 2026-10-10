@@ -44,6 +44,12 @@ fn any_node(glob: &PlannerGlobal, e: &Expr, test: &mut dyn FnMut(&Expr) -> bool)
     found
 }
 
+/// is_pseudo_constant_clause reports whether an expression reads no Var of the query and runs no volatile function,
+/// so that it does not change while a scan runs, as Postgres' function of the same name does.
+pub fn is_pseudo_constant_clause(glob: &PlannerGlobal, e: &Expr) -> bool {
+    !super::var::contain_var_clause(e) && !contain_volatile_functions(glob, e)
+}
+
 /// contain_volatile_functions reports whether an expression calls a volatile function, as Postgres' function of the
 /// same name does.
 pub fn contain_volatile_functions(glob: &PlannerGlobal, e: &Expr) -> bool {

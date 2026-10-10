@@ -89,6 +89,27 @@ pub struct WindowCall {
     pub ret: ColumnType,
     /// The comparisons of a RANGE frame with offsets.
     pub range: Option<RangeKeys>,
+    /// The conditions that hold of the call's values only up to some row of each partition, as Postgres'
+    /// WindowFunc.runCondition holds them.
+    pub run_condition: Vec<RunCondition>,
+}
+
+/// RunCondition is a comparison of a window function's value with a value that does not change, which holds until
+/// some row of a partition and never again after it, as Postgres' WindowFuncRunCondition is: the comparison, whether
+/// the call is on its left, and the other value.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RunCondition {
+    pub op: crate::expr::CmpOp,
+    pub wfunc_left: bool,
+    pub arg: Expr,
+}
+
+/// Monotonic is how a window function's value moves over the rows of a partition, as Postgres' MonotonicFunction
+/// reports it: whether it never decreases, and whether it never increases.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Monotonic {
+    pub increasing: bool,
+    pub decreasing: bool,
 }
 
 /// RangeKeys are what a RANGE frame with offsets compares rows by: the ordering value as the type of the ordering value
@@ -394,7 +415,22 @@ impl<'b, 'a> Binder<'b, 'a> {
                 Some(RangeKeys { key, start, end })
             }
         };
-        Ok((WindowCall { kind, args, distinct: false, filter, partition, order, options, start, end, ret, range }, ret))
+        let run_condition = Vec::new();
+        let call = WindowCall {
+            kind,
+            args,
+            distinct: false,
+            filter,
+            partition,
+            order,
+            options,
+            start,
+            end,
+            ret,
+            range,
+            run_condition,
+        };
+        Ok((call, ret))
     }
 }
 
@@ -480,6 +516,49 @@ impl Partition<'_> {
 }
 
 impl WindowCall {
+    /// monotonic returns how the call's value moves over the rows of a partition, as the support functions of Postgres'
+    /// ranking functions and of count answer SupportRequestWFuncMonotonic: ranks never decrease, and a count never
+    /// decreases when its frame starts at the partition's start and never increases when it ends at the partition's
+    /// end, and stays the same without an ORDER BY.
+    pub fn monotonic(&self) -> Monotonic {
+        match self.kind {
+            WindowKind::RowNumber
+            | WindowKind::Rank
+            | WindowKind::DenseRank
+            | WindowKind::PercentRank
+            | WindowKind::CumeDist
+            | WindowKind::Ntile => Monotonic { increasing: true, decreasing: false },
+            WindowKind::Aggregate(index) if crate::functions::aggregate::AGGREGATES[index].name == "count" => {
+                match self.order.is_empty() {
+                    true => Monotonic { increasing: true, decreasing: true },
+                    false => Monotonic {
+                        increasing: self.start == Bound::UnboundedPreceding,
+                        decreasing: self.end == Bound::UnboundedFollowing,
+                    },
+                }
+            }
+            _ => Monotonic::default(),
+        }
+    }
+
+    /// name returns the name of the call's function.
+    pub fn name(&self) -> &'static str {
+        match self.kind {
+            WindowKind::RowNumber => "row_number",
+            WindowKind::Rank => "rank",
+            WindowKind::DenseRank => "dense_rank",
+            WindowKind::PercentRank => "percent_rank",
+            WindowKind::CumeDist => "cume_dist",
+            WindowKind::Ntile => "ntile",
+            WindowKind::Lag => "lag",
+            WindowKind::Lead => "lead",
+            WindowKind::FirstValue => "first_value",
+            WindowKind::LastValue => "last_value",
+            WindowKind::NthValue => "nth_value",
+            WindowKind::Aggregate(index) => crate::functions::aggregate::AGGREGATES[index].name,
+        }
+    }
+
     /// compute returns the call's value for each row of the input, in input order.
     pub fn compute(&self, ctx: &mut Ctx<'_>, rows: &[Vec<Value>]) -> Result<Vec<Value>> {
         let mut keyed: Vec<(Vec<Value>, Vec<Value>, usize)> = Vec::with_capacity(rows.len());

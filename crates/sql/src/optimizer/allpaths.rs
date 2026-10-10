@@ -24,7 +24,7 @@ use super::initsplan::JoinList;
 use super::joinrels::{is_dummy_rel, join_search_one_level};
 use super::nodes::{JoinType, Path, PathKind, RelOptKind, RteKind, VarNode};
 use super::pathnode::{add_path, set_cheapest};
-use crate::expr::Expr;
+use crate::expr::{CmpOp, Expr};
 use crate::plan::Plan;
 
 /// make_one_rel finds the paths of every base relation and then of the join of them all, returning that relation,
@@ -112,6 +112,7 @@ fn set_dummy_rel_pathlist(root: &mut PlannerInfo<'_, '_>, rti: usize) {
 fn set_subquery_pathlist(root: &mut PlannerInfo<'_, '_>, rti: usize) {
     let RteKind::Subquery(subquery, _) = &root.parse.rte(rti).kind else { unreachable!("a subquery relation") };
     let mut subquery = (**subquery).clone();
+    let mut run_cond_attrs = std::collections::BTreeSet::new();
     let mut safety_info =
         PushdownSafetyInfo { unsafe_flags: vec![0; subquery.target_list.len()], unsafe_volatile: false };
     if !root.rels[rti].baserestrictinfo.is_empty()
@@ -128,12 +129,20 @@ fn set_subquery_pathlist(root: &mut PlannerInfo<'_, '_>, rti: usize) {
                     let clause = root.rinfos[rinfo].clause.clone();
                     subquery_push_qual(root, &mut subquery, rti, clause);
                 }
-                PushdownSafeType::WindowClauseRunCond | PushdownSafeType::Unsafe => upperrestrictlist.push(rinfo),
+                PushdownSafeType::WindowClauseRunCond => {
+                    let clause = &root.rinfos[rinfo].clause;
+                    if subquery.window_funcs.is_empty()
+                        || check_and_push_window_quals(root, &mut subquery, rti, clause, &mut run_cond_attrs)
+                    {
+                        upperrestrictlist.push(rinfo);
+                    }
+                }
+                PushdownSafeType::Unsafe => upperrestrictlist.push(rinfo),
             }
         }
         root.rels[rti].baserestrictinfo = upperrestrictlist;
     }
-    remove_unused_subquery_outputs(root, &mut subquery, rti);
+    remove_unused_subquery_outputs(root, &mut subquery, rti, run_cond_attrs);
     let parse = &root.parse;
     let tuple_fraction = match parse.has_aggs
         || !parse.group_clause.is_empty()
@@ -388,6 +397,80 @@ fn qual_is_pushdown_safe(
     safe
 }
 
+/// find_window_run_conditions adds a run condition to the window function that a subquery's output column computes,
+/// from a comparison of the column with a pseudo-constant, when the function's value moves in one direction so that
+/// the comparison holds only up to some row, recording the column, and reports whether it did, as Postgres' function of
+/// the same name does. An equality becomes the inequality that holds up to the rows it keeps.
+fn find_window_run_conditions(
+    root: &PlannerInfo<'_, '_>,
+    subquery: &mut super::nodes::Query,
+    attno: usize,
+    op: CmpOp,
+    otherexpr: &Expr,
+    wfunc_left: bool,
+    run_cond_attrs: &mut std::collections::BTreeSet<usize>,
+) -> bool {
+    let Expr::WindowRef(k) = subquery.target_list[attno].expr else { return false };
+    let call = &subquery.window_funcs[k];
+    let mut has_subplans = false;
+    for e in call.args.iter().chain(&call.filter) {
+        e.visit(&mut |x| has_subplans |= matches!(x, Expr::SubPlan(_) | Expr::AlternativeSubPlan(_)));
+    }
+    if has_subplans || !super::clauses::is_pseudo_constant_clause(root.glob, otherexpr) {
+        return false;
+    }
+    let monotonic = call.monotonic();
+    let (increasing, decreasing) = (monotonic.increasing, monotonic.decreasing);
+    let runoperator = match op {
+        CmpOp::Lt | CmpOp::Le if (wfunc_left && increasing) || (!wfunc_left && decreasing) => op,
+        CmpOp::Gt | CmpOp::Ge if (wfunc_left && decreasing) || (!wfunc_left && increasing) => op,
+        CmpOp::Eq if increasing && decreasing => op,
+        CmpOp::Eq if increasing => {
+            if wfunc_left {
+                CmpOp::Le
+            } else {
+                CmpOp::Ge
+            }
+        }
+        CmpOp::Eq if decreasing => {
+            if wfunc_left {
+                CmpOp::Ge
+            } else {
+                CmpOp::Le
+            }
+        }
+        _ => return false,
+    };
+    let arg = super::subselect::increment_sublevels_up(otherexpr.clone(), 0);
+    let condition = crate::window::RunCondition { op: runoperator, wfunc_left, arg };
+    subquery.window_funcs[k].run_condition.push(condition);
+    run_cond_attrs.insert(attno);
+    true
+}
+
+/// check_and_push_window_quals adds a run condition to the window function of a subquery's output column that a
+/// restriction compares with a pseudo-constant, and reports whether the restriction must stay, which it always does,
+/// as Postgres' function of the same name does.
+fn check_and_push_window_quals(
+    root: &PlannerInfo<'_, '_>,
+    subquery: &mut super::nodes::Query,
+    rti: usize,
+    clause: &Expr,
+    run_cond_attrs: &mut std::collections::BTreeSet<usize>,
+) -> bool {
+    let Expr::Compare(op, left, right) = clause else { return true };
+    for (var, other, wfunc_left) in [(left, right, true), (right, left, false)] {
+        if let Expr::Column(id) = **var
+            && let VarNode::Var(var) = root.glob.node(id)
+            && var.varno == rti
+            && find_window_run_conditions(root, subquery, var.varattno, *op, other, wfunc_left, run_cond_attrs)
+        {
+            return true;
+        }
+    }
+    true
+}
+
 /// subquery_push_qual pushes a restriction of a subquery relation down into the subquery, reading its output
 /// expressions in place of the relation's columns, into its HAVING when it groups and otherwise into its WHERE, as
 /// Postgres' function of the same name does.
@@ -453,13 +536,18 @@ fn replace_vars_from_target_list(
 
 /// remove_unused_subquery_outputs replaces each output column of a subquery that the query around it does not read
 /// with a NULL, unless its grouping, ordering, or DISTINCT needs it or it returns sets or runs a volatile function, as
-/// Postgres' function of the same name does.
-fn remove_unused_subquery_outputs(root: &PlannerInfo<'_, '_>, subquery: &mut super::nodes::Query, rti: usize) {
+/// Postgres' function of the same name does. The extra columns count as read.
+fn remove_unused_subquery_outputs(
+    root: &PlannerInfo<'_, '_>,
+    subquery: &mut super::nodes::Query,
+    rti: usize,
+    extra_used_attrs: std::collections::BTreeSet<usize>,
+) {
     if subquery.set_operations.is_some() || (!subquery.distinct_clause.is_empty() && !subquery.has_distinct_on) {
         return;
     }
     let rel = &root.rels[rti];
-    let mut attrs_used = std::collections::BTreeSet::new();
+    let mut attrs_used = extra_used_attrs;
     let exprs = rel.reltarget.exprs.iter().chain(rel.baserestrictinfo.iter().map(|&r| &root.rinfos[r].clause));
     for e in exprs {
         for id in super::var::pull_var_clause(root.glob, e, false) {

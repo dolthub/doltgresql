@@ -478,7 +478,30 @@ impl Printer {
             Plan::WorkTable(..) => ("WorkTable Scan".into(), vec![], vec![]),
             Plan::CteScan(def) => (format!("CTE Scan on {}", def.name), vec![], vec![]),
             Plan::ProjectSet { input, .. } => ("ProjectSet".into(), vec![], vec![Child::Plan(input)]),
-            Plan::Window { input, .. } => ("WindowAgg".into(), vec![], vec![Child::Plan(input)]),
+            Plan::Window { input, calls } => {
+                let columns = &columns(input);
+                let conditions: Vec<String> = calls
+                    .iter()
+                    .flat_map(|call| {
+                        let args: Vec<String> = call.args.iter().map(|a| expr_text(a, columns)).collect();
+                        let args = if args.is_empty() && call.name() == "count" { "*".into() } else { args.join(", ") };
+                        let wfunc = format!("{}({args}) OVER (?)", call.name());
+                        call.run_condition.iter().map(move |rc| {
+                            let (op, arg) = (cmp_text(rc.op), expr_text(&rc.arg, columns));
+                            match rc.wfunc_left {
+                                true => format!("({wfunc} {op} {arg})"),
+                                false => format!("({arg} {op} {wfunc})"),
+                            }
+                        })
+                    })
+                    .collect();
+                let properties = match conditions.len() {
+                    0 => vec![],
+                    1 => vec![format!("Run Condition: {}", conditions[0])],
+                    _ => vec![format!("Run Condition: ({})", conditions.join(" AND "))],
+                };
+                ("WindowAgg".into(), properties, vec![Child::Plan(input)])
+            }
         };
         properties.extend(filters);
         let prefix = if depth == 0 { String::new() } else { format!("{}->  ", " ".repeat(6 * (depth - 1) + 2)) };

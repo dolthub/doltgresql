@@ -429,6 +429,9 @@ fn window_call(
     for key in &mut call.order {
         key.expr = positional(root, key.expr.clone(), layout);
     }
+    for condition in &mut call.run_condition {
+        condition.arg = positional(root, condition.arg.clone(), layout);
+    }
     if let Some(range) = &mut call.range {
         range.key = positional(root, range.key.clone(), layout);
         for (e, _) in range.start.iter_mut().chain(range.end.iter_mut()) {
