@@ -280,6 +280,22 @@ pub fn expression_returns_set(e: &Expr) -> bool {
     found
 }
 
+/// contain_agg_clause reports whether an expression holds an aggregate call or GROUPING, as Postgres' function of the
+/// same name does.
+pub fn contain_agg_clause(e: &Expr) -> bool {
+    let mut found = false;
+    e.visit(&mut |x| found |= matches!(x, Expr::AggRef(_) | Expr::Grouping(..)));
+    found
+}
+
+/// contain_window_function reports whether an expression holds a window function call, as Postgres' function of the
+/// same name does.
+pub fn contain_window_function(e: &Expr) -> bool {
+    let mut found = false;
+    e.visit(&mut |x| found |= matches!(x, Expr::WindowRef(_)));
+    found
+}
+
 /// expression_returns_set_rows estimates the rows that a set-returning function returns for each input row, or one
 /// for any other expression, as Postgres' function of the same name does.
 pub fn expression_returns_set_rows(root: &super::PlannerInfo<'_, '_>, e: &Expr) -> f64 {
@@ -328,6 +344,9 @@ fn eval_const_expressions_mutator(cx: &mut EvalConstContext<'_, '_>, e: Expr) ->
         Expr::Func(index, args) => {
             let args = args.into_iter().map(|a| eval_const_expressions_mutator(cx, a)).collect();
             let function = crate::functions::function(index);
+            if crate::functions::returns_set(function.name) {
+                return Expr::Func(index, args);
+            }
             let safe = match func_volatility(function.name) {
                 (false, _) => true,
                 (true, volatile) => cx.estimate && !volatile,
@@ -358,11 +377,14 @@ fn eval_const_expressions_mutator(cx: &mut EvalConstContext<'_, '_>, e: Expr) ->
         }
         Expr::Cast(..) => {
             let e = e.map_children(&mut |c| eval_const_expressions_mutator(cx, c));
-            let safe = match &e {
-                Expr::Cast(inner, ty, _) => cast_is_immutable(inner, ty.oid) || cx.estimate,
+            let (safe, domain) = match &e {
+                Expr::Cast(inner, ty, _) => (
+                    cast_is_immutable(inner, ty.oid) || cx.estimate,
+                    crate::usertypes::get(ty.oid).is_some_and(|t| matches!(t.kind, crate::usertypes::Kind::Domain(_))),
+                ),
                 _ => unreachable!("a cast"),
             };
-            simplify_function(cx, e, true, safe)
+            simplify_function(cx, e, !domain, safe)
         }
         Expr::Concat(..) | Expr::ArrayOp(..) | Expr::DistinctFrom(..) => {
             let e = e.map_children(&mut |c| eval_const_expressions_mutator(cx, c));
@@ -477,25 +499,35 @@ fn eval_const_expressions_mutator(cx: &mut EvalConstContext<'_, '_>, e: Expr) ->
                 false => e,
             }
         }
-        Expr::IsNull(arg, negated) => match eval_const_expressions_mutator(cx, *arg) {
-            Expr::Row(args, _) => {
-                let mut newargs = Vec::new();
-                for relem in args {
-                    match relem {
-                        Expr::Const(Value::Null) if negated => return Expr::Const(Value::Bool(false)),
-                        Expr::Const(_) if !negated => return Expr::Const(Value::Bool(false)),
-                        Expr::Const(_) => continue,
-                        relem => newargs.push(Expr::IsNull(Box::new(relem), negated)),
+        Expr::IsNull(arg, negated) => {
+            let arg = match *arg {
+                Expr::Row(args, ty) => {
+                    Expr::Row(args.into_iter().map(|a| eval_const_expressions_mutator(cx, a)).collect(), ty)
+                }
+                arg => eval_const_expressions_mutator(cx, arg),
+            };
+            match arg {
+                Expr::Row(args, _) => {
+                    let mut newargs = Vec::new();
+                    for relem in args {
+                        match relem {
+                            Expr::Const(Value::Null) if negated => return Expr::Const(Value::Bool(false)),
+                            Expr::Const(value) if !negated && !matches!(value, Value::Null) => {
+                                return Expr::Const(Value::Bool(false));
+                            }
+                            Expr::Const(_) => continue,
+                            relem => newargs.push(Expr::IsNull(Box::new(relem), negated)),
+                        }
+                    }
+                    match newargs.is_empty() {
+                        true => Expr::Const(Value::Bool(true)),
+                        false => super::prepqual::make_andclause(newargs),
                     }
                 }
-                match newargs.is_empty() {
-                    true => Expr::Const(Value::Bool(true)),
-                    false => super::prepqual::make_andclause(newargs),
-                }
+                arg @ Expr::Const(_) => evaluate_expr(cx, Expr::IsNull(Box::new(arg), negated)),
+                arg => Expr::IsNull(Box::new(arg), negated),
             }
-            Expr::Const(value) => Expr::Const(Value::Bool(matches!(value, Value::Null) != negated)),
-            arg => Expr::IsNull(Box::new(arg), negated),
-        },
+        }
         Expr::BoolTest(arg, test, negated) => match eval_const_expressions_mutator(cx, *arg) {
             Expr::Const(value) => {
                 let result = match (test, value) {

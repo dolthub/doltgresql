@@ -215,9 +215,13 @@ fn columns(plan: &Plan) -> Vec<String> {
             names.extend(columns(right));
             names
         }
-        Plan::Aggregate { input, groups, .. } => {
+        Plan::Aggregate { input, groups, aggregates, .. } => {
             let names = columns(input);
-            groups.iter().map(|e| expr_text(e, &names)).collect()
+            let calls = aggregates.iter().map(|call| {
+                let args: Vec<String> = call.args.iter().map(|a| expr_text(a, &names)).collect();
+                format!("{}({})", crate::functions::aggregate::AGGREGATES[call.index].name, args.join(", "))
+            });
+            groups.iter().map(|e| expr_text(e, &names)).chain(calls).collect()
         }
         _ => Vec::new(),
     }

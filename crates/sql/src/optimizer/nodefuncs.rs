@@ -24,8 +24,8 @@ use crate::types::Value;
 /// BOOLOID is the OID of the boolean type.
 pub const BOOLOID: u32 = 16;
 
-/// UNKNOWN_TYPE and UNKNOWN_OPFAMILY stand for the type of an expression that the planner does not know and its btree
-/// operator family, which orders values as Doltgres compares them.
+/// UNKNOWN_TYPE stands for the type of an expression that the planner does not know, and UNKNOWN_OPFAMILY for the btree
+/// operator family of a type that the planner knows of none for, which orders values as Doltgres compares them.
 pub const UNKNOWN_TYPE: u32 = 0;
 pub const UNKNOWN_OPFAMILY: u32 = 0;
 

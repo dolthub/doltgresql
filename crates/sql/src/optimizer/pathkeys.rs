@@ -153,12 +153,12 @@ pub fn build_join_pathkeys(
 }
 
 /// make_pathkeys_for_sortclauses returns the pathkeys of sort keys over Vars, without redundant ones, as Postgres'
-/// function of the same name does, or None when the planner does not know a key's btree operator family.
+/// function of the same name does.
 pub fn make_pathkeys_for_sortclauses(root: &mut PlannerInfo<'_, '_>, sortclauses: &[SortKey]) -> Option<Vec<PkId>> {
     let mut pathkeys = Vec::new();
     for (i, sortcl) in sortclauses.iter().enumerate() {
-        let opcintype = super::nodefuncs::expr_type(root, &sortcl.expr)?;
-        let opfamily = super::nodefuncs::btree_opfamily(opcintype)?;
+        let opcintype = super::nodefuncs::expr_type(root, &sortcl.expr).unwrap_or(super::nodefuncs::UNKNOWN_TYPE);
+        let opfamily = super::nodefuncs::btree_opfamily(opcintype).unwrap_or(super::nodefuncs::UNKNOWN_OPFAMILY);
         let pathkey = make_pathkey_from_sortinfo(
             root,
             sortcl.expr.clone(),
@@ -451,8 +451,7 @@ pub fn append_pathkeys(root: &PlannerInfo<'_, '_>, mut target: Vec<PkId>, source
 
 /// make_pathkeys_for_sortclauses_extended returns the pathkeys of sort or group clauses over a target list, without
 /// redundant ones, which it also removes from the clauses when asked, and gives each new key's class the clause's
-/// number when asked, as Postgres' function of the same name does, or None when the planner does not know a key's
-/// btree operator family, so that the clauses cannot be sorted.
+/// number when asked, as Postgres' function of the same name does.
 pub fn make_pathkeys_for_sortclauses_extended(
     root: &mut PlannerInfo<'_, '_>,
     sortclauses: &mut Vec<super::nodes::SortGroupClause>,
@@ -461,21 +460,12 @@ pub fn make_pathkeys_for_sortclauses_extended(
     set_ec_sortref: bool,
 ) -> Option<Vec<PkId>> {
     let mut pathkeys = Vec::new();
-    let mut sortable = true;
     let mut i = 0;
     while i < sortclauses.len() {
         let sortcl = sortclauses[i];
         let sortkey = super::tlist::get_sortgroupclause_expr(&sortcl, tlist);
         let opcintype = super::nodefuncs::expr_type(root, &sortkey).unwrap_or(super::nodefuncs::UNKNOWN_TYPE);
-        let opfamily = match opcintype {
-            super::nodefuncs::UNKNOWN_TYPE => Some(super::nodefuncs::UNKNOWN_OPFAMILY),
-            _ => super::nodefuncs::btree_opfamily(opcintype),
-        };
-        let Some(opfamily) = opfamily else {
-            sortable = false;
-            i += 1;
-            continue;
-        };
+        let opfamily = super::nodefuncs::btree_opfamily(opcintype).unwrap_or(super::nodefuncs::UNKNOWN_OPFAMILY);
         let pathkey = make_pathkey_from_sortinfo(
             root,
             sortkey,
@@ -499,7 +489,7 @@ pub fn make_pathkeys_for_sortclauses_extended(
         }
         i += 1;
     }
-    sortable.then_some(pathkeys)
+    Some(pathkeys)
 }
 
 /// has_useful_pathkeys reports whether an order of a relation's rows could be useful, for a merge join, the query's

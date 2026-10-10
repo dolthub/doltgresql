@@ -45,8 +45,9 @@ pub fn create_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> Plan {
         .parse
         .target_list
         .iter()
-        .filter(|tle| !tle.resjunk)
-        .map(|tle| positional(root, tle.expr.clone(), &layout))
+        .enumerate()
+        .filter(|(_, tle)| !tle.resjunk)
+        .map(|(i, tle)| positional_at(root, tle.expr.clone(), &layout, i))
         .collect();
     if exprs.len() == layout.len() && exprs.iter().enumerate().all(|(i, e)| *e == Expr::Column(i)) {
         return plan;
@@ -75,8 +76,18 @@ fn project(root: &PlannerInfo<'_, '_>, plan: Plan, layout: Vec<Slot>, path: &Pat
     if slots == layout {
         return (plan, layout);
     }
-    let positional_exprs = exprs.iter().map(|e| positional(root, e.clone(), &layout)).collect();
+    let positional_exprs = exprs.iter().enumerate().map(|(i, e)| positional_at(root, e.clone(), &layout, i)).collect();
     (Plan::Project { input: Box::new(plan), exprs: positional_exprs }, slots)
+}
+
+/// positional_at is positional for the expression of a target's column at a position, which reads the rows' column at
+/// that position when the rows hold the expression there, so that equal calls of a volatile function each keep their
+/// own value.
+fn positional_at(root: &PlannerInfo<'_, '_>, e: Expr, layout: &[Slot], position: usize) -> Expr {
+    match layout.get(position) == Some(&expr_slot(root, &e)) {
+        true => Expr::Column(position),
+        false => positional(root, e, layout),
+    }
 }
 
 /// sort_keys returns the sort keys of pathkeys over a plan's rows of a layout, as Postgres' prepare_sort_from_pathkeys
@@ -316,22 +327,7 @@ fn create_agg_plan(
     let mut agg_layout: Vec<Slot> = group_exprs.iter().map(|g| expr_slot(root, g)).collect();
     agg_layout.extend((0..aggregates.len()).map(|k| Slot::Expr(Expr::AggRef(k))));
     for var in dependent_vars(root, path, qual, &agg_layout) {
-        let ret = super::nodefuncs::expr_type(root, &var).unwrap_or(crate::oid::UNKNOWN);
-        let index = crate::functions::aggregate::AGGREGATES
-            .iter()
-            .position(|aggregate| aggregate.name == "min")
-            .expect("the min aggregate");
-        let args = vec![positional(root, var.clone(), &layout)];
-        let call = crate::functions::aggregate::AggCall {
-            index,
-            args,
-            distinct: false,
-            filter: None,
-            order: Vec::new(),
-            ret,
-            user: None,
-        };
-        aggregates.push(call);
+        aggregates.push(min_call(root, &var, &layout));
         agg_layout.push(slot(root, &var));
     }
     let grouping_sets = sets.is_some();
@@ -393,6 +389,25 @@ fn dependent_vars(root: &PlannerInfo<'_, '_>, path: &Path, qual: &[Expr], agg_la
         }
     }
     vars
+}
+
+/// min_call returns the MIN call over a layout's rows that gives each group's value of a Var that the group keys
+/// determine, which Postgres' Agg reads from the group's first row.
+fn min_call(root: &PlannerInfo<'_, '_>, var: &Expr, layout: &[Slot]) -> crate::functions::aggregate::AggCall {
+    let ret = super::nodefuncs::expr_type(root, var).unwrap_or(crate::oid::UNKNOWN);
+    let index = crate::functions::aggregate::AGGREGATES
+        .iter()
+        .position(|aggregate| aggregate.name == "min")
+        .expect("the min aggregate");
+    crate::functions::aggregate::AggCall {
+        index,
+        args: vec![positional(root, var.clone(), layout)],
+        distinct: false,
+        filter: None,
+        order: Vec::new(),
+        ret,
+        user: None,
+    }
 }
 
 /// grouping_mask points the GROUPING calls of an expression over an aggregation's rows at the column of the mask that
@@ -644,22 +659,16 @@ fn create_unique_plan(
     match upath.umethod {
         super::nodes::UniquePathMethod::Noop => (plan, layout),
         super::nodes::UniquePathMethod::Hash => {
-            let group_layout: Vec<Slot> = upath
-                .uniq_exprs
-                .iter()
-                .map(|e| match e {
-                    Expr::Column(_) => slot(root, e),
-                    other => Slot::Expr(other.clone()),
-                })
-                .collect();
-            let covered = root.rels[path.parent].reltarget.exprs.iter().all(|e| group_layout.contains(&slot(root, e)));
-            match covered {
-                true => (
-                    Plan::Aggregate { input: Box::new(plan), groups, aggregates: Vec::new(), sets: None },
-                    group_layout,
-                ),
-                false => (Plan::Distinct { input: Box::new(plan), keys: Some(groups) }, layout),
+            let mut group_layout: Vec<Slot> = upath.uniq_exprs.iter().map(|e| expr_slot(root, e)).collect();
+            let mut aggregates = Vec::new();
+            for var in root.rels[path.parent].reltarget.exprs.clone() {
+                if group_layout.contains(&slot(root, &var)) {
+                    continue;
+                }
+                aggregates.push(min_call(root, &var, &layout));
+                group_layout.push(slot(root, &var));
             }
+            (Plan::Aggregate { input: Box::new(plan), groups, aggregates, sets: None }, group_layout)
         }
         super::nodes::UniquePathMethod::Sort => {
             let keys = groups

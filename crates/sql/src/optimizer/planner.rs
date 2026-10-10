@@ -821,7 +821,7 @@ fn generate_setop_child_grouplist(
 }
 
 /// make_pathkeys_for_sortclauses returns the pathkeys of sort or group clauses over a target list, as Postgres'
-/// function of the same name does, or None when the planner does not know a key's btree operator family.
+/// function of the same name does.
 pub fn make_pathkeys_for_sortclauses(
     root: &mut PlannerInfo<'_, '_>,
     clauses: &[SortGroupClause],

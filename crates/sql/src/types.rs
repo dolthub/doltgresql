@@ -25,7 +25,7 @@ pub const TEXT_FORMAT: i16 = 0;
 pub const BINARY_FORMAT: i16 = 1;
 
 /// Value is a SQL value.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Null,
     Bool(bool),
@@ -78,6 +78,46 @@ pub enum Value {
     Range(Box<crate::rangetypes::Range>),
     /// A value of a multirange type.
     Multirange(Box<crate::rangetypes::Multirange>),
+}
+
+impl PartialEq for Value {
+    /// eq compares values as Postgres' equal() compares constants, so NaN equals NaN as it does in Postgres.
+    fn eq(&self, other: &Value) -> bool {
+        match (self, other) {
+            (Value::Null, Value::Null) => true,
+            (Value::Bool(a), Value::Bool(b)) => a == b,
+            (Value::Int2(a), Value::Int2(b)) => a == b,
+            (Value::Int4(a), Value::Int4(b)) => a == b,
+            (Value::Int8(a), Value::Int8(b)) => a == b,
+            (Value::Float4(a), Value::Float4(b)) => a == b || (a.is_nan() && b.is_nan()),
+            (Value::Float8(a), Value::Float8(b)) => a == b || (a.is_nan() && b.is_nan()),
+            (Value::Numeric(a), Value::Numeric(b)) => a == b,
+            (Value::Date(a), Value::Date(b)) => a == b,
+            (Value::Time(a), Value::Time(b)) => a == b,
+            (Value::TimeTz(a0, a1), Value::TimeTz(b0, b1)) => a0 == b0 && a1 == b1,
+            (Value::Timestamp(a), Value::Timestamp(b)) => a == b,
+            (Value::TimestampTz(a), Value::TimestampTz(b)) => a == b,
+            (Value::Interval(a), Value::Interval(b)) => a == b,
+            (Value::Array(a), Value::Array(b)) => a == b,
+            (Value::Record(a), Value::Record(b)) => a == b,
+            (Value::Json(a), Value::Json(b)) => a == b,
+            (Value::Jsonb(a), Value::Jsonb(b)) => a == b,
+            (Value::Xml(a), Value::Xml(b)) => a == b,
+            (Value::Text(a), Value::Text(b)) => a == b,
+            (Value::Set(a), Value::Set(b)) => a == b,
+            (Value::Oid(a), Value::Oid(b)) => a == b,
+            (Value::Reg(a), Value::Reg(b)) => a == b,
+            (Value::Enum(a), Value::Enum(b)) => a == b,
+            (Value::Composite(a), Value::Composite(b)) => a == b,
+            (Value::Bytea(a), Value::Bytea(b)) => a == b,
+            (Value::Uuid(a), Value::Uuid(b)) => a == b,
+            (Value::Bit(a), Value::Bit(b)) => a == b,
+            (Value::Base(a), Value::Base(b)) => a == b,
+            (Value::Range(a), Value::Range(b)) => a == b,
+            (Value::Multirange(a), Value::Multirange(b)) => a == b,
+            _ => false,
+        }
+    }
 }
 
 /// BaseValue is a value of a base type that an extension provides, as the bytes that Doltgres stores for it.

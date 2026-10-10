@@ -391,6 +391,9 @@ fn remove_self_join_rel(root: &mut PlannerInfo<'_, '_>, to_keep: usize, to_remov
     {
         let mut f = change_var_nodes_fn(root.glob, to_remove, to_keep);
         mutate_query(&mut root.parse, &mut f);
+        for tle in &mut root.processed_tlist {
+            tle.expr = f(std::mem::replace(&mut tle.expr, Expr::SubqueryValue));
+        }
     }
     let mut jointree = JoinTreeNode::From(Box::new(root.parse.jointree.clone()));
     let (mut hoist_quals, mut found_relid) = (Vec::new(), false);

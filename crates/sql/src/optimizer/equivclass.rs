@@ -798,7 +798,14 @@ pub fn get_eclass_for_sort_expr(
     let ec = root.eq_classes.len() - 1;
     let expr_relids = super::var::pull_varnos(root, &expr);
     let newem = add_eq_member(root, ec, expr, expr_relids, 0, opcintype);
-    if root.eq_classes[ec].ec_has_const && root.eq_classes[ec].ec_has_volatile {
+    let clauses = |e: &Expr| {
+        super::clauses::expression_returns_set(e)
+            || super::clauses::contain_agg_clause(e)
+            || super::clauses::contain_window_function(e)
+    };
+    if root.eq_classes[ec].ec_has_const
+        && (root.eq_classes[ec].ec_has_volatile || clauses(&root.eq_members[newem].em_expr))
+    {
         root.eq_classes[ec].ec_has_const = false;
         root.eq_members[newem].em_is_const = false;
     }
