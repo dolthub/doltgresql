@@ -67,6 +67,45 @@ pub fn and_args(e: &Expr) -> Vec<&Expr> {
     }
 }
 
+/// rinfo_is_constant_true reports whether a RestrictInfo's clause is the constant TRUE, as Postgres' function of the
+/// same name does.
+fn rinfo_is_constant_true(rinfo: &RestrictInfo) -> bool {
+    matches!(rinfo.clause, Expr::Const(crate::types::Value::Bool(true)))
+}
+
+/// extract_actual_clauses returns the RestrictInfos of a list that are pseudoconstant or not, as asked, leaving out
+/// the constant TRUE, as Postgres' function of the same name returns their clauses.
+pub fn extract_actual_clauses(root: &PlannerInfo<'_, '_>, rinfos: &[RinfoId], pseudoconstant: bool) -> Vec<RinfoId> {
+    rinfos
+        .iter()
+        .copied()
+        .filter(|&r| root.rinfos[r].pseudoconstant == pseudoconstant && !rinfo_is_constant_true(&root.rinfos[r]))
+        .collect()
+}
+
+/// extract_actual_join_clauses splits the RestrictInfos of an outer join's clauses into its own join conditions and
+/// the conditions pushed down to it, leaving out pseudoconstant clauses and the constant TRUE, as Postgres' function of
+/// the same name does.
+pub fn extract_actual_join_clauses(
+    root: &PlannerInfo<'_, '_>,
+    rinfos: &[RinfoId],
+    joinrelids: &Relids,
+) -> (Vec<RinfoId>, Vec<RinfoId>) {
+    let (mut joinquals, mut otherquals) = (Vec::new(), Vec::new());
+    for &r in rinfos {
+        let rinfo = &root.rinfos[r];
+        if rinfo_is_constant_true(rinfo) {
+            continue;
+        }
+        match rinfo_is_pushed_down(rinfo, joinrelids) {
+            true if !rinfo.pseudoconstant => otherquals.push(r),
+            true => {}
+            false => joinquals.push(r),
+        }
+    }
+    (joinquals, otherquals)
+}
+
 /// make_restrictinfo builds the RestrictInfo of a clause and returns its ID, giving an OR clause the RestrictInfos of
 /// its arguments, as Postgres' function of the same name does.
 pub fn make_restrictinfo(root: &mut PlannerInfo<'_, '_>, clause: Expr, args: RestrictInfoArgs) -> RinfoId {

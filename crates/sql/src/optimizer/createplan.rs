@@ -24,7 +24,7 @@ use super::costsize::cost_qual_eval_node;
 use super::indxpath::{lookup_keys, to_attnos};
 use super::joinpath::clause_sides_match_join;
 use super::nodes::{IndexPath, JoinType, Path, PathKind, RinfoId, RteKind, VarNode};
-use super::restrictinfo::rinfo_is_pushed_down;
+use super::restrictinfo::{extract_actual_clauses, extract_actual_join_clauses};
 use crate::expr::Expr;
 use crate::plan::{JoinKind, JoinMethod, Plan};
 use crate::types::Value;
@@ -523,10 +523,9 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 }
             }
             let layout = [outer_layout.as_slice(), inner_layout.as_slice()].concat();
-            let actual = join.joinrestrictinfo.iter().copied().filter(|&r| !root.rinfos[r].pseudoconstant);
-            let (mut joinquals, otherquals): (Vec<RinfoId>, Vec<RinfoId>) = match join.jointype.is_outer() {
-                true => actual.partition(|&r| !rinfo_is_pushed_down(&root.rinfos[r], &path.relids)),
-                false => (actual.collect(), Vec::new()),
+            let (mut joinquals, otherquals) = match join.jointype.is_outer() {
+                true => extract_actual_join_clauses(root, &join.joinrestrictinfo, &path.relids),
+                false => (extract_actual_clauses(root, &join.joinrestrictinfo, false), Vec::new()),
             };
             if !lateral && let Some(ppi) = super::relnode::get_baserel_parampathinfo(root, inner.parent, &inner.param) {
                 joinquals.extend(ppi.ppi_clauses.into_iter().filter(|r| !join.joinrestrictinfo.contains(r)));
@@ -666,19 +665,13 @@ fn create_unique_plan(
     }
 }
 
-/// actual_clauses returns the clauses of a list that are not pseudoconstant, which a gating plan tests instead, as
-/// Postgres' extract_actual_clauses does.
-fn actual_clauses(root: &PlannerInfo<'_, '_>, rinfos: &[RinfoId]) -> Vec<RinfoId> {
-    rinfos.iter().copied().filter(|&r| !root.rinfos[r].pseudoconstant).collect()
-}
-
 /// get_gating_quals returns the pseudoconstant clauses of a node's quals in the order to test them, as Postgres'
 /// function of the same name does.
 fn get_gating_quals(root: &PlannerInfo<'_, '_>, quals: Vec<RinfoId>) -> Vec<RinfoId> {
     if !root.has_pseudo_constant_quals {
         return Vec::new();
     }
-    order_qual_clauses(root, quals).into_iter().filter(|&r| root.rinfos[r].pseudoconstant).collect()
+    extract_actual_clauses(root, &order_qual_clauses(root, quals), true)
 }
 
 /// create_gating_plan returns a plan under a Result that tests pseudoconstant clauses once, as Postgres' function of
@@ -750,7 +743,7 @@ fn add_placeholders(root: &PlannerInfo<'_, '_>, rel: usize, plan: Plan, mut layo
 /// under a filter, the one row of a RESULT relation, or its own plan with the restrictions pushed into it, where an
 /// index of a system catalog may answer them.
 fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<Slot>) {
-    let restrictinfo = order_qual_clauses(root, actual_clauses(root, &root.rels[rel].baserestrictinfo));
+    let restrictinfo = order_qual_clauses(root, extract_actual_clauses(root, &root.rels[rel].baserestrictinfo, false));
     match root.parse.rte(rel).kind.clone() {
         RteKind::Relation(plan, _) => {
             let layout = base_slots(rel, plan.width());
@@ -778,7 +771,7 @@ fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<Sl
 /// subquery's final paths and tests the restrictions that the subquery did not take, as Postgres' function of the
 /// same name does.
 fn create_subqueryscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, subplan: usize) -> (Plan, Vec<Slot>) {
-    let scan_clauses = order_qual_clauses(root, actual_clauses(root, &root.rels[rel].baserestrictinfo));
+    let scan_clauses = order_qual_clauses(root, extract_actual_clauses(root, &root.rels[rel].baserestrictinfo, false));
     let plan = root.rels[rel].subplans[subplan].plan.clone();
     let layout = base_slots(rel, plan.width());
     (filtered(root, plan, &scan_clauses, &layout), layout)
@@ -805,7 +798,7 @@ fn create_indexscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, best_path: 
         Some(found) => found,
         None => (scan_of(root, None).expect("a scan of every entry is always possible").0, false),
     };
-    let qpqual: Vec<RinfoId> = actual_clauses(root, &scan_clauses)
+    let qpqual: Vec<RinfoId> = extract_actual_clauses(root, &scan_clauses, false)
         .into_iter()
         .filter(|&r| !exact || !best_path.indexclauses.iter().any(|iclause| iclause.rinfo == r && !iclause.lossy))
         .collect();
