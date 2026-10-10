@@ -230,7 +230,7 @@ fn preprocess_limit(
     offset_est: &mut i64,
     count_est: &mut i64,
 ) -> f64 {
-    let estimate = |root: &mut PlannerInfo<'_, '_>, e: &Expr| match e.clone().fold(root.ctx) {
+    let estimate = |root: &mut PlannerInfo<'_, '_>, e: &Expr| match e.clone().fold(root.ctx.get_mut()) {
         Expr::Const(Value::Null) => Some(None),
         Expr::Const(v) => Some(v.to_i64()),
         _ => None,

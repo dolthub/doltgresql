@@ -357,8 +357,8 @@ fn mcv_selectivity(vardata: &VariableStatData, op: CmpOp, constval: &Value, varo
 
 /// ineq_histogram_selectivity returns the share of the histogram's population that an inequality with a constant
 /// keeps, interpolating within the bin that holds the constant, or -1 without a histogram, as Postgres' function of
-/// the same name does. Doltgres does not probe an index for a column's actual extremes, which Postgres'
-/// get_actual_variable_range reads.
+/// the same name does: a search that reaches the histogram's first or last bound reads the column's actual extreme
+/// in its place.
 fn ineq_histogram_selectivity(
     root: &PlannerInfo<'_, '_>,
     vardata: &VariableStatData,
@@ -367,17 +367,30 @@ fn ineq_histogram_selectivity(
     constval: &Value,
 ) -> f64 {
     let Some(column) = vardata.column() else { return -1.0 };
-    let values = &column.histogram;
+    let mut values = std::borrow::Cow::Borrowed(column.histogram.as_slice());
     if values.len() <= 1 {
         return -1.0;
     }
-    let op = match iseq {
-        true => CmpOp::Le,
-        false => CmpOp::Lt,
+    let op = match (isgt, iseq) {
+        (false, false) => CmpOp::Lt,
+        (false, true) => CmpOp::Le,
+        (true, false) => CmpOp::Gt,
+        (true, true) => CmpOp::Ge,
     };
     let (mut lobound, mut hibound) = (0, values.len());
+    let mut have_end = false;
+    if values.len() == 2 {
+        let (min, max) = values.to_mut().split_at_mut(1);
+        have_end = get_actual_variable_range(root, vardata, Some(&mut min[0]), Some(&mut max[0]));
+    }
     while lobound < hibound {
         let probe = (lobound + hibound) / 2;
+        let nvalues = values.len();
+        if probe == 0 && nvalues > 2 {
+            have_end = get_actual_variable_range(root, vardata, Some(&mut values.to_mut()[0]), None);
+        } else if probe == nvalues - 1 && nvalues > 2 {
+            have_end = get_actual_variable_range(root, vardata, None, Some(&mut values.to_mut()[probe]));
+        }
         let mut ltcmp = apply_comparison(op, &values[probe], constval).unwrap_or(false);
         if isgt {
             ltcmp = !ltcmp;
@@ -425,8 +438,69 @@ fn ineq_histogram_selectivity(
         histfrac
     };
     let hist_selec = if isgt { 1.0 - histfrac } else { histfrac };
+    if have_end {
+        return hist_selec.clamp(0.0, 1.0);
+    }
     let cutoff = 0.01 / (values.len() - 1) as f64;
     hist_selec.clamp(cutoff, 1.0 - cutoff)
+}
+
+/// get_actual_variable_range reads the smallest and largest values, as asked, that a table's column holds now, from
+/// the ends of an index whose first column it is, and reports whether it found them, as Postgres' function of the
+/// same name does.
+fn get_actual_variable_range(
+    root: &PlannerInfo<'_, '_>,
+    vardata: &VariableStatData,
+    min: Option<&mut Value>,
+    max: Option<&mut Value>,
+) -> bool {
+    let (Some(rel), Expr::Column(id)) = (vardata.rel, &vardata.var) else { return false };
+    let VarNode::Var(var) = root.glob.node(*id) else { return false };
+    let Some(table) = root.parse.rte(rel).table() else { return false };
+    let index = root.rels[rel].indexlist.iter().find(|index| {
+        index.sortable
+            && index.indpred.is_empty()
+            && index.indexkeys.first() == Some(&Some(var.varattno))
+            && index.opfamily.first().is_some_and(Option::is_some)
+    });
+    let Some(index) = index else { return false };
+    let table = Arc::new(table.clone());
+    let mut ctx = root.ctx.borrow_mut();
+    let mut have_data = true;
+    for (endpoint, reverse) in [(min, index.reverse_sort[0]), (max, !index.reverse_sort[0])] {
+        if let Some(endpoint) = endpoint
+            && have_data
+        {
+            match get_actual_variable_endpoint(&mut ctx, &table, index.index, var.varattno, reverse) {
+                Some(value) => *endpoint = value,
+                None => have_data = false,
+            }
+        }
+    }
+    have_data
+}
+
+/// get_actual_variable_endpoint returns the first value of a column that is not NULL in an index's order or the
+/// reverse, reading at most VISITED_ROWS_LIMIT rows, as Postgres' function of the same name does.
+fn get_actual_variable_endpoint(
+    ctx: &mut crate::query::Ctx<'_>,
+    table: &Arc<crate::catalog::table::TableDef>,
+    index: Option<usize>,
+    attno: usize,
+    reverse: bool,
+) -> Option<Value> {
+    const VISITED_ROWS_LIMIT: usize = 100;
+    let not_null = Expr::IsNull(Box::new(Expr::Column(attno)), true);
+    let (scan, _) = crate::indexscan::scan_of_index(ctx, table, index, Some(&not_null), reverse)?;
+    let plan = crate::plan::Plan::IndexScan(Box::new(scan));
+    let mut rows = plan.open(ctx).ok()?;
+    for _ in 0..VISITED_ROWS_LIMIT {
+        let row = rows.next(ctx).ok()??;
+        if !row[attno].is_null() {
+            return Some(row[attno].clone());
+        }
+    }
+    None
 }
 
 /// compare_values compares two values of the statistics or of a clause, when they are of comparable kinds.

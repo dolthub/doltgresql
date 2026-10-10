@@ -52,18 +52,18 @@ pub fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, relid: usize) {
         RteKind::Relation(_, table) => {
             let rows = prolly::Node::decode(table.table.primary_index.clone()).map_or(0.0, |r| r.tree_count() as f64);
             let data_width = table.columns.iter().map(|c| get_typavgwidth(Some(c.ty.oid), c.ty.modifier)).sum();
-            let session = &root.ctx.session;
+            let session = &root.ctx.get_mut().session;
             let vacuumed = session.engine.vacuumed(&session.database, &table.schema, &table.name);
             let autovacuumed = rows > AUTOVACUUM_ANALYZE_THRESHOLD;
             (rel.pages, rel.tuples) = estimate_rel_size(rows, data_width, autovacuumed || vacuumed.is_some());
             let analyzed = autovacuumed || vacuumed == Some(true);
-            rel.stats = analyzed.then(|| crate::colstats::table_stats(root.ctx, table)).flatten();
+            rel.stats = analyzed.then(|| crate::colstats::table_stats(root.ctx.get_mut(), table)).flatten();
             rel.notnullattnums = (0..table.columns.len()).filter(|&c| !table.columns[c].nullable).collect();
         }
         RteKind::Plan(Plan::WorkTable(..)) if let Some(rows) = root.glob.non_recursive_rows => {
             rel.tuples = clamp_row_est(RECURSIVE_WORKTABLE_FACTOR * rows);
         }
-        RteKind::Plan(plan) => rel.tuples = crate::joins::estimate(root.ctx, plan),
+        RteKind::Plan(plan) => rel.tuples = crate::joins::estimate(root.ctx.get_mut(), plan),
         RteKind::Result => rel.tuples = 1.0,
         RteKind::Subquery(..) => {}
         RteKind::Join(_) => unreachable!("only base relations are built"),

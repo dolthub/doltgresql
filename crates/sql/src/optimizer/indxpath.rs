@@ -51,7 +51,7 @@ type IndexClauseSet = Vec<Vec<IndexClause>>;
 /// each key column's btree operator family, direction, and NULL placement, and a secondary index's primary key
 /// columns after its own, which order its entries too.
 pub fn get_relation_indexes(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &TableDef) -> Vec<Rc<IndexOptInfo>> {
-    let rules = root.ctx.index_rules(table).ok();
+    let rules = root.ctx.get_mut().index_rules(table).ok();
     let glob = &mut *root.glob;
     let mut to_vars = |e: &Expr| super::var::replace_columns(e.clone(), &mut |c| glob.var(rel, c, Relids::new()));
     let mut hidden = Vec::new();
@@ -98,7 +98,7 @@ pub fn get_relation_indexes(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &
             .collect();
         let (pages, tree_height) = match index {
             Some(i) => {
-                let height = root.ctx.db.read(&table.indexes[i].root).map_or(0, |r| r.level());
+                let height = root.ctx.get_mut().db.read(&table.indexes[i].root).map_or(0, |r| r.level());
                 (super::costsize::estimate_rel_pages(rel_tuples, width(columns) + width(&table.key_columns)), height)
             }
             None => (rel_pages, prolly::Node::decode(table.table.primary_index.clone()).map_or(0, |r| r.level())),
@@ -1569,7 +1569,7 @@ fn create_catalog_lookup_path(root: &mut PlannerInfo<'_, '_>, rel: usize, outer_
     let Some(condition) = condition else { return };
     let RteKind::Plan(plan) = &root.parse.rte(rel).kind else { return };
     let plan = plan.clone();
-    let Some(found) = crate::joins::lookup(root.ctx, &plan, &condition, left_width) else { return };
+    let Some(found) = crate::joins::lookup(root.ctx.get_mut(), &plan, &condition, left_width) else { return };
     let method = match found.method {
         JoinMethod::CatalogLookup { index, keys } => JoinMethod::CatalogLookup {
             index,

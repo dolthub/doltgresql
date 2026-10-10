@@ -107,7 +107,7 @@ fn build_minmax_path(
         vec![SortGroupClause { tle_sort_group_ref: 1, descending: reverse_sort, nulls_first, hashable: false }];
     parse.limit_offset = None;
     parse.limit_count = Some(Expr::Const(Value::Int8(1)));
-    let mut subroot = super::new_planner_info(root.ctx, root.glob, parse, 1.0, false);
+    let mut subroot = super::new_planner_info(root.ctx.get_mut(), root.glob, parse, 1.0, false);
     subroot.processed_tlist = subroot.parse.target_list.clone();
     subroot.limit_tuples = 1.0;
     let final_rel = super::query_planner(&mut subroot, &mut minmax_qp_callback);

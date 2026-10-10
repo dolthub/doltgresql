@@ -65,7 +65,7 @@ struct GeqoSettings {
 /// geqo returns the relation that joins the initial relations, built in the order of the cheapest tour that the
 /// genetic search finds, as Postgres' function of the same name does.
 pub fn geqo(root: &mut PlannerInfo<'_, '_>, number_of_rels: usize, initial_rels: Vec<usize>) -> usize {
-    let setting = |name: &str| root.ctx.session.settings.get(name).unwrap_or_default();
+    let setting = |name: &str| root.ctx.borrow().session.settings.get(name).unwrap_or_default();
     let settings = GeqoSettings {
         effort: setting("geqo_effort").parse().unwrap_or(5),
         pool_size: setting("geqo_pool_size").parse().unwrap_or(0),

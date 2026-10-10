@@ -25,12 +25,12 @@ use crate::types::Value;
 /// Doltgres' tables have no inheritance or partitions, and every check constraint is valid.
 pub fn get_relation_constraints(root: &mut PlannerInfo<'_, '_>, rel: usize, include_notnull: bool) -> Vec<Expr> {
     let Some(table) = root.parse.rte(rel).table().cloned() else { return Vec::new() };
-    let checks = root.ctx.check_rules(&table).unwrap_or_default();
+    let checks = root.ctx.get_mut().check_rules(&table).unwrap_or_default();
     let glob = &mut *root.glob;
     let mut result: Vec<Expr> = checks
         .into_iter()
         .map(|check| super::var::replace_columns(check, &mut |c| glob.var(rel, c, Relids::new())))
-        .map(|check| check.fold(root.ctx))
+        .map(|check| check.fold(root.ctx.get_mut()))
         .collect();
     if include_notnull {
         for (attno, column) in table.columns.iter().enumerate() {
@@ -56,7 +56,7 @@ pub fn relation_excluded_by_constraints(root: &mut PlannerInfo<'_, '_>, rel: usi
     {
         return true;
     }
-    let constraint_exclusion = root.ctx.session.settings.get("constraint_exclusion");
+    let constraint_exclusion = root.ctx.get_mut().session.settings.get("constraint_exclusion");
     match constraint_exclusion.as_deref() {
         Some("on") if root.rels[rel].reloptkind == RelOptKind::BaseRel => {}
         _ => return false,
@@ -82,8 +82,8 @@ pub fn get_relation_foreign_keys(root: &mut PlannerInfo<'_, '_>, rel: usize, tab
     if root.rels[rel].reloptkind != super::nodes::RelOptKind::BaseRel || root.parse.rtable.len() < 2 {
         return;
     }
-    let txn_root = root.ctx.txn.root.clone();
-    let Ok(fkeys) = crate::foreign::load(root.ctx.db, &txn_root) else { return };
+    let txn_root = root.ctx.get_mut().txn.root.clone();
+    let Ok(fkeys) = crate::foreign::load(root.ctx.get_mut().db, &txn_root) else { return };
     let column =
         |table: &crate::catalog::table::TableDef, name: &String| table.columns.iter().position(|c| c.name == *name);
     for fk in fkeys.iter().filter(|fk| fk.child_schema == table.schema && fk.child_table == table.name) {

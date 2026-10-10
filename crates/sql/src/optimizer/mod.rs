@@ -78,7 +78,7 @@ pub(crate) use restrictinfo::or_args;
 /// SpecialJoinInfos, equivalence classes and members, and canonical pathkeys live in vectors here and are referred
 /// to by index.
 pub struct PlannerInfo<'r, 'a> {
-    pub ctx: &'r mut Ctx<'a>,
+    pub ctx: std::cell::RefCell<&'r mut Ctx<'a>>,
     pub glob: &'r mut PlannerGlobal,
     pub parse: Query,
     /// The relations, by index: the simple relations at their range table indexes, then the join relations.
@@ -303,7 +303,7 @@ fn new_planner_info<'r, 'a>(
     let counting = (parse.group_clause.is_empty() && parse.grouping_sets.is_none() && parse.has_aggs)
         .then(|| parse.aggregates.clone());
     PlannerInfo {
-        ctx,
+        ctx: std::cell::RefCell::new(ctx),
         glob,
         parse,
         rels: Vec::new(),

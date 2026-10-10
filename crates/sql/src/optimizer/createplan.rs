@@ -761,7 +761,7 @@ fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<Sl
                 .map(|&r| to_attnos(root, root.rinfos[r].clause.clone(), rel))
                 .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
             let plan = match predicate {
-                Some(predicate) => crate::plan::Planner { ctx: root.ctx, outer: Vec::new() }
+                Some(predicate) => crate::plan::Planner { ctx: root.ctx.get_mut(), outer: Vec::new() }
                     .use_indexes(crate::plan::push_down(plan, predicate)),
                 None => plan,
             };
@@ -796,7 +796,7 @@ fn create_indexscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, best_path: 
         .map(|&r| to_attnos(root, root.rinfos[r].clause.clone(), rel))
         .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
     let scan_of = |root: &mut PlannerInfo<'_, '_>, predicate: Option<&Expr>| {
-        crate::indexscan::scan_of_index(root.ctx, &table, index, predicate, best_path.backward)
+        crate::indexscan::scan_of_index(root.ctx.get_mut(), &table, index, predicate, best_path.backward)
     };
     let (scan, exact) = match scan_of(root, predicate.as_ref()) {
         Some(found) => found,
@@ -830,7 +830,7 @@ fn create_param_indexscan_plan(root: &mut PlannerInfo<'_, '_>, path: &Path, oute
         .collect();
     let to_row = |root: &PlannerInfo<'_, '_>, e: Expr| param_positional(root, e, &layout, outer);
     let cond = indexquals.iter().map(|e| to_row(root, e.clone())).reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
-    let every = crate::indexscan::scan_of_index(root.ctx, &table, index, None, best_path.backward)
+    let every = crate::indexscan::scan_of_index(root.ctx.get_mut(), &table, index, None, best_path.backward)
         .expect("a scan of every entry")
         .0;
     let scan = crate::indexscan::IndexScan { parameterized: cond, ..every };
@@ -981,7 +981,9 @@ fn create_bitmap_subplan(
             let index_ecs: Vec<super::nodes::EcId> =
                 ipath.indexclauses.iter().filter_map(|iclause| root.rinfos[iclause.rinfo].parent_ec).collect();
             let every = |root: &mut PlannerInfo<'_, '_>| {
-                crate::indexscan::scan_of_index(root.ctx, table, index, None, false).expect("a scan of every entry").0
+                crate::indexscan::scan_of_index(root.ctx.get_mut(), table, index, None, false)
+                    .expect("a scan of every entry")
+                    .0
             };
             if !bitmapqual.param.is_empty() {
                 let layout = base_slots(rel, table.columns.len());
@@ -990,16 +992,17 @@ fn create_bitmap_subplan(
                 return (Bitmap::Index(Box::new(scan)), quals, indexquals, index_ecs);
             }
             let predicate = and(indexquals.iter().map(|e| to_attnos(root, e.clone(), rel)).collect());
-            let scan = match crate::indexscan::scan_of_index(root.ctx, table, index, predicate.as_ref(), false) {
-                Some((scan, covered)) => {
-                    *exact &= covered;
-                    scan
-                }
-                None => {
-                    *exact = false;
-                    every(root)
-                }
-            };
+            let scan =
+                match crate::indexscan::scan_of_index(root.ctx.get_mut(), table, index, predicate.as_ref(), false) {
+                    Some((scan, covered)) => {
+                        *exact &= covered;
+                        scan
+                    }
+                    None => {
+                        *exact = false;
+                        every(root)
+                    }
+                };
             (Bitmap::Index(Box::new(scan)), quals, indexquals, index_ecs)
         }
         _ => unreachable!("a bitmap tree holds index scans, BitmapAnds, and BitmapOrs"),

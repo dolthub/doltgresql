@@ -178,7 +178,7 @@ pub fn plan_subquery_rel(
     setops: Option<&super::nodes::SetOperationStmt>,
 ) -> bool {
     let (tuples, attr_widths, subplans, num_groups, dummy) = {
-        let mut subroot = super::subquery_planner(root.ctx, root.glob, subquery, tuple_fraction, setops);
+        let mut subroot = super::subquery_planner(root.ctx.get_mut(), root.glob, subquery, tuple_fraction, setops);
         let sub_final_rel = super::relnode::fetch_upper_rel(
             &mut subroot,
             super::nodes::UpperRelationKind::Final,
@@ -569,7 +569,7 @@ fn make_rel_from_joinlist(root: &mut PlannerInfo<'_, '_>, joinlist: &[JoinList])
         [rel] => Some(*rel),
         _ => {
             root.initial_rels = initial_rels.clone();
-            let settings = &root.ctx.session.settings;
+            let settings = &root.ctx.get_mut().session.settings;
             let enable_geqo = settings.get("geqo").is_none_or(|value| value != "off");
             let geqo_threshold = settings.get("geqo_threshold").and_then(|value| value.parse().ok()).unwrap_or(12);
             match enable_geqo && initial_rels.len() >= geqo_threshold {

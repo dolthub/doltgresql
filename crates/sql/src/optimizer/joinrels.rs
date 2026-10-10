@@ -344,7 +344,7 @@ fn populate_joinrel_with_paths(
             add_paths_to_joinrel(root, joinrel, rel1, rel2, JoinType::Full, sjinfo, restrictlist);
             add_paths_to_joinrel(root, joinrel, rel2, rel1, JoinType::Full, sjinfo, restrictlist);
             if root.rels[joinrel].pathlist.is_empty() {
-                root.ctx.planner_error.get_or_insert(PgError::new(
+                root.ctx.get_mut().planner_error.get_or_insert(PgError::new(
                     code::FEATURE_NOT_SUPPORTED,
                     "FULL JOIN is only supported with merge-joinable or hash-joinable join conditions",
                 ));
