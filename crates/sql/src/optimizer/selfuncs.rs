@@ -22,6 +22,7 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 
 use super::PlannerInfo;
+use super::clauses::estimate_expression_value;
 use super::clausesel::DEFAULT_INEQ_SEL;
 use super::costsize::clamp_row_est;
 use super::nodes::{IndexClause, IndexOptInfo, IndexPath, JoinType, Relids, RinfoId, SpecialJoinInfo, VarNode};
@@ -123,12 +124,6 @@ fn strip_all_phvs_deep(root: &PlannerInfo<'_, '_>, e: &Expr) -> Expr {
     }
 }
 
-/// estimate_expression_value returns an expression with the parts it can evaluate now folded into constants, as
-/// Postgres' function of the same name does, which the binder did already for the expressions that read no Var.
-pub fn estimate_expression_value(e: &Expr) -> Expr {
-    e.clone()
-}
-
 /// get_restriction_variable returns the statistics of the variable side of a binary clause and its other side,
 /// with whether the variable is on the left, when one side reads the relation's Vars and the other reads none, as
 /// Postgres' function of the same name does.
@@ -141,8 +136,8 @@ pub fn get_restriction_variable(
     let vardata = examine_variable(root, left, varrelid);
     let rdata = examine_variable(root, right, varrelid);
     match (vardata.rel, rdata.rel) {
-        (Some(_), None) => Some((vardata, estimate_expression_value(&rdata.var), true)),
-        (None, Some(_)) => Some((rdata, estimate_expression_value(&vardata.var), false)),
+        (Some(_), None) => Some((vardata, estimate_expression_value(root, rdata.var.clone()), true)),
+        (None, Some(_)) => Some((rdata, estimate_expression_value(root, vardata.var.clone()), false)),
         _ => None,
     }
 }
@@ -621,7 +616,7 @@ pub fn scalararraysel(
     let element_sel = |element: &Expr| {
         let substitute = |e: &Expr| match e {
             Expr::SubqueryValue => element.clone(),
-            other => estimate_expression_value(other),
+            other => estimate_expression_value(root, other.clone()),
         };
         let (l, r) = (substitute(left), substitute(right));
         match (is_join_clause, sjinfo) {
@@ -629,7 +624,7 @@ pub fn scalararraysel(
             _ => restriction_selectivity(root, *op, &l, &r, varrelid),
         }
     };
-    let elements: Option<Vec<Expr>> = match estimate_expression_value(array) {
+    let elements: Option<Vec<Expr>> = match estimate_expression_value(root, array.clone()) {
         Expr::Const(Value::Null) => return 0.0,
         Expr::Const(Value::Array(array)) => Some(array.values.iter().cloned().map(Expr::Const).collect()),
         Expr::Array(_, items, _) => Some(items),

@@ -298,6 +298,13 @@ pub fn eval_const_expressions(ctx: &mut crate::query::Ctx<'_>, e: Expr) -> Expr 
     eval_const_expressions_mutator(&mut EvalConstContext { ctx, estimate: false }, e)
 }
 
+/// estimate_expression_value simplifies an expression as eval_const_expressions does, also evaluating its stable
+/// functions and casts, for estimating what it will be, as Postgres' function of the same name does.
+pub fn estimate_expression_value(root: &super::PlannerInfo<'_, '_>, e: Expr) -> Expr {
+    let mut ctx = root.ctx.borrow_mut();
+    eval_const_expressions_mutator(&mut EvalConstContext { ctx: &mut ctx, estimate: true }, e)
+}
+
 /// eval_const_expressions_mutator is eval_const_expressions for each kind of expression, as Postgres' function of the
 /// same name is.
 fn eval_const_expressions_mutator(cx: &mut EvalConstContext<'_, '_>, e: Expr) -> Expr {

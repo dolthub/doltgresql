@@ -59,6 +59,25 @@ pub fn query_expr_type(glob: &super::nodes::PlannerGlobal, parse: &Query, e: &Ex
         Expr::AggRef(k) => parse.aggregates.get(*k).map(|call| call.ret),
         Expr::WindowRef(k) => parse.window_funcs.get(*k).map(|call| call.ret.oid),
         Expr::SetRef(k) => parse.target_srfs.get(*k).and_then(|call| query_expr_type(glob, parse, call)),
+        Expr::DateTime(op, l, r) => {
+            use crate::expr::DateOp as D;
+            Some(match op {
+                D::DatePlusDays | D::DateMinusDays => 1082,
+                D::DateMinusDate => 23,
+                D::TimestampPlusInterval(true) | D::TimestampMinusInterval(true) | D::DatePlusTimeTz => 1184,
+                D::TimestampPlusInterval(false) | D::TimestampMinusInterval(false) | D::DatePlusTime => 1114,
+                D::TimePlusInterval | D::TimeMinusInterval => {
+                    let lt = query_expr_type(glob, parse, l)?;
+                    if lt == 1186 { query_expr_type(glob, parse, r)? } else { lt }
+                }
+                D::TimestampMinusTimestamp
+                | D::TimeMinusTime
+                | D::IntervalPlusInterval
+                | D::IntervalMinusInterval
+                | D::IntervalTimesFloat
+                | D::IntervalDivFloat => 1186,
+            })
+        }
         Expr::Grouping(..) => Some(23),
         Expr::Routine(routine, _) | Expr::Operator(_, routine, ..) => known_type(routine.ret.oid),
         Expr::Coalesce(args) | Expr::MinMax(_, args) => query_expr_type(glob, parse, args.first()?),
