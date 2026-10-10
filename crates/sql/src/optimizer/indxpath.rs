@@ -1465,6 +1465,7 @@ pub fn match_index_to_operand(
     index: &IndexOptInfo,
     rel: usize,
 ) -> bool {
+    let operand = &super::placeholder::strip_noop_phvs(root.glob, operand.clone());
     let operand = match operand {
         Expr::Cast(arg, ty, _)
             if ty.modifier < 0
@@ -1476,13 +1477,6 @@ pub fn match_index_to_operand(
         {
             arg
         }
-        other => other,
-    };
-    let operand = match operand {
-        Expr::Column(id) => match root.glob.node(*id) {
-            VarNode::PlaceHolderVar(phv) if phv.phnullingrels.is_empty() => &root.glob.placeholder(phv.phid).phexpr,
-            _ => operand,
-        },
         other => other,
     };
     match index.indexkeys[indexcol] {

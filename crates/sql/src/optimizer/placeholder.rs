@@ -156,3 +156,17 @@ pub fn contain_placeholder_references_to(root: &PlannerInfo<'_, '_>, clause: &[E
     }
     found
 }
+
+/// strip_noop_phvs replaces each PlaceHolderVar of an expression that no outer join can make NULL with its
+/// expression, as Postgres' function of the same name does.
+pub fn strip_noop_phvs(glob: &super::nodes::PlannerGlobal, node: Expr) -> Expr {
+    match node {
+        Expr::Column(id) => match glob.node(id) {
+            VarNode::PlaceHolderVar(phv) if phv.phnullingrels.is_empty() => {
+                strip_noop_phvs(glob, glob.placeholder(phv.phid).phexpr.clone())
+            }
+            _ => node,
+        },
+        other => other.map_children(&mut |c| strip_noop_phvs(glob, c)),
+    }
+}
