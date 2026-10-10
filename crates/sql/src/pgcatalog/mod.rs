@@ -172,6 +172,27 @@ pub fn is_volatile(function: &str) -> bool {
         .contains(function)
 }
 
+/// function_cost returns the cost of a call of a built-in function in units of cpu_operator_cost, the largest procost
+/// of its forms in pg_proc, or 1 for a function that pg_proc lacks.
+pub fn function_cost(function: &str) -> f64 {
+    static COSTS: std::sync::OnceLock<std::collections::HashMap<String, f64>> = OnceLock::new();
+    COSTS
+        .get_or_init(|| {
+            let mut costs = std::collections::HashMap::new();
+            let Some(proc) = lookup("pg_catalog", "pg_proc") else { return costs };
+            let (Some(name), Some(procost)) = (proc.column("proname"), proc.column("procost")) else { return costs };
+            for r in builtin::rows(proc) {
+                let cost = r[procost].output().unwrap_or_default().parse::<f64>().unwrap_or(1.0);
+                let entry = costs.entry(r[name].output().unwrap_or_default()).or_insert(cost);
+                *entry = entry.max(cost);
+            }
+            costs
+        })
+        .get(function)
+        .copied()
+        .unwrap_or(1.0)
+}
+
 /// function_rows returns the rows that a built-in set-returning function is assumed to return for each call, the
 /// largest prorows of its set-returning forms in pg_proc, or None when it has none.
 pub fn function_rows(function: &str) -> Option<f64> {

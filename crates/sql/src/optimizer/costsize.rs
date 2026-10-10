@@ -25,7 +25,7 @@ use super::nodes::{
     SpecialJoinInfo,
 };
 use super::restrictinfo::{join_clause_is_movable_into, rinfo_is_pushed_down};
-use crate::expr::Expr;
+use crate::expr::{CmpOp, Expr};
 use crate::types::Value;
 
 /// SEQ_PAGE_COST, RANDOM_PAGE_COST, CPU_TUPLE_COST, CPU_INDEX_TUPLE_COST, and CPU_OPERATOR_COST are Postgres' default
@@ -54,6 +54,10 @@ const ITEM_ID: f64 = 4.0;
 /// HASH_MEM is the memory that a hash join's table may take, as Postgres' default work_mem times its default
 /// hash_mem_multiplier.
 pub const HASH_MEM: f64 = 4.0 * 1024.0 * 1024.0 * 2.0;
+
+/// MIN_ARRAY_SIZE_FOR_HASHED_SAOP is the fewest constant array elements that Postgres compares by hashing them, as
+/// its constant of the same name is.
+const MIN_ARRAY_SIZE_FOR_HASHED_SAOP: f64 = 9.0;
 
 /// ROUTINE_COST is the cost of a call of a user-defined routine in units of an operator's, as Postgres' default COST
 /// of a function written in SQL or PL/pgSQL.
@@ -131,7 +135,10 @@ pub struct QualCost {
 /// cost_qual_eval returns the cost of evaluating a list of clauses, as Postgres' function of the same name does.
 pub fn cost_qual_eval(root: &PlannerInfo<'_, '_>, quals: &[RinfoId]) -> QualCost {
     quals.iter().fold(QualCost::default(), |cost, &q| {
-        let one = cost_qual_eval_node(&root.rinfos[q].clause);
+        let mut one = cost_qual_eval_node(&root.rinfos[q].clause);
+        if root.rinfos[q].pseudoconstant {
+            one = QualCost { startup: one.startup + one.per_tuple, per_tuple: 0.0 };
+        }
         QualCost { startup: cost.startup + one.startup, per_tuple: cost.per_tuple + one.per_tuple }
     })
 }
@@ -159,10 +166,36 @@ fn cost_qual_eval_walker(e: &Expr, total: &mut QualCost) {
         }
         return;
     }
+    match e {
+        Expr::Grouping(..) => {
+            total.per_tuple += CPU_OPERATOR_COST;
+            return;
+        }
+        Expr::AnyArray(comparison, array, all) => {
+            let estarraylen = super::selfuncs::estimate_array_length(array);
+            let hashed = matches!(**array, Expr::Const(Value::Array(_)))
+                && estarraylen >= MIN_ARRAY_SIZE_FOR_HASHED_SAOP
+                && matches!(**comparison, Expr::Compare(op, ..) if op == if *all { CmpOp::Ne } else { CmpOp::Eq });
+            match hashed {
+                true => {
+                    total.startup += estarraylen * CPU_OPERATOR_COST;
+                    total.per_tuple += CPU_OPERATOR_COST + CPU_OPERATOR_COST;
+                }
+                false => total.per_tuple += CPU_OPERATOR_COST * estarraylen * 0.5,
+            }
+            cost_qual_eval_walker(array, total);
+            comparison.visit_children(&mut |c| cost_qual_eval_walker(c, total));
+            return;
+        }
+        _ => {}
+    }
     total.per_tuple += match e {
         Expr::Routine(..) | Expr::Operator(..) => ROUTINE_COST * CPU_OPERATOR_COST,
-        Expr::Func(..)
-        | Expr::Cast(..)
+        Expr::Func(index, _) => {
+            crate::pgcatalog::function_cost(crate::functions::function(*index).name) * CPU_OPERATOR_COST
+        }
+        Expr::Xml(..) => CPU_OPERATOR_COST,
+        Expr::Cast(..)
         | Expr::Arith(..)
         | Expr::Neg(..)
         | Expr::Compare(..)
@@ -176,7 +209,6 @@ fn cost_qual_eval_walker(e: &Expr, total: &mut QualCost) {
         | Expr::Scalar(_)
         | Expr::ArraySubquery(..)
         | Expr::AnySubquery(..) => CPU_OPERATOR_COST,
-        Expr::AnyArray(..) => CPU_OPERATOR_COST * 0.5 * 10.0,
         Expr::RowCompare(_, fields, _) => CPU_OPERATOR_COST * fields.len() as f64,
         _ => 0.0,
     };
