@@ -466,12 +466,12 @@ pub fn make_pathkeys_for_sortclauses_extended(
     while i < sortclauses.len() {
         let sortcl = sortclauses[i];
         let sortkey = super::tlist::get_sortgroupclause_expr(&sortcl, tlist);
-        let Some(opcintype) = super::nodefuncs::expr_type(root, &sortkey) else {
-            sortable = false;
-            i += 1;
-            continue;
+        let opcintype = super::nodefuncs::expr_type(root, &sortkey).unwrap_or(super::nodefuncs::UNKNOWN_TYPE);
+        let opfamily = match opcintype {
+            super::nodefuncs::UNKNOWN_TYPE => Some(super::nodefuncs::UNKNOWN_OPFAMILY),
+            _ => super::nodefuncs::btree_opfamily(opcintype),
         };
-        let Some(opfamily) = super::nodefuncs::btree_opfamily(opcintype) else {
+        let Some(opfamily) = opfamily else {
             sortable = false;
             i += 1;
             continue;

@@ -24,6 +24,11 @@ use crate::types::Value;
 /// BOOLOID is the OID of the boolean type.
 pub const BOOLOID: u32 = 16;
 
+/// UNKNOWN_TYPE and UNKNOWN_OPFAMILY stand for the type of an expression that the planner does not know and its btree
+/// operator family, which orders values as Doltgres compares them.
+pub const UNKNOWN_TYPE: u32 = 0;
+pub const UNKNOWN_OPFAMILY: u32 = 0;
+
 /// expr_type returns the OID of the type of an expression, or None where the planner does not know it, as Postgres'
 /// exprType does.
 pub fn expr_type(root: &PlannerInfo<'_, '_>, e: &Expr) -> Option<u32> {

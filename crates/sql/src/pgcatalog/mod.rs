@@ -154,6 +154,18 @@ pub fn is_immutable(expr: &pg_query::Node) -> bool {
     })
 }
 
+/// is_listed reports whether pg_proc lists a built-in function, which it does not for Doltgres' own functions.
+pub fn is_listed(function: &str) -> bool {
+    static LISTED: std::sync::OnceLock<std::collections::HashSet<String>> = OnceLock::new();
+    LISTED
+        .get_or_init(|| {
+            let Some(proc) = lookup("pg_catalog", "pg_proc") else { return Default::default() };
+            let Some(name) = proc.column("proname") else { return Default::default() };
+            builtin::rows(proc).iter().map(|r| r[name].output().unwrap_or_default()).collect()
+        })
+        .contains(function)
+}
+
 /// is_volatile reports whether a built-in function has a volatile form, as pg_proc's provolatile shows them.
 pub fn is_volatile(function: &str) -> bool {
     static VOLATILE: std::sync::OnceLock<std::collections::HashSet<String>> = OnceLock::new();

@@ -61,7 +61,7 @@ pub fn contain_volatile_functions(glob: &PlannerGlobal, e: &Expr) -> bool {
 /// count as mutable, since Doltgres does not record their volatility.
 pub fn contain_mutable_functions(glob: &PlannerGlobal, e: &Expr) -> bool {
     any_node(glob, e, &mut |x| match x {
-        Expr::Func(f, _) => crate::pgcatalog::is_mutable(crate::functions::function(*f).name),
+        Expr::Func(f, _) => func_volatility(crate::functions::function(*f).name).0,
         Expr::Routine(..) | Expr::Operator(..) => true,
         _ => false,
     })
@@ -70,9 +70,18 @@ pub fn contain_mutable_functions(glob: &PlannerGlobal, e: &Expr) -> bool {
 /// is_volatile_node reports whether an expression node calls a volatile function, not counting its arguments.
 pub fn is_volatile_node(e: &Expr) -> bool {
     match e {
-        Expr::Func(f, _) => crate::pgcatalog::is_volatile(crate::functions::function(*f).name),
+        Expr::Func(f, _) => func_volatility(crate::functions::function(*f).name).1,
         Expr::Routine(..) | Expr::Operator(..) => true,
         _ => false,
+    }
+}
+
+/// func_volatility returns whether a built-in function is not immutable and whether it is volatile, as pg_proc's
+/// provolatile shows them, counting the functions that pg_proc lacks, Doltgres' own, as volatile.
+fn func_volatility(function: &str) -> (bool, bool) {
+    match crate::pgcatalog::is_listed(function) {
+        true => (crate::pgcatalog::is_mutable(function), crate::pgcatalog::is_volatile(function)),
+        false => (true, true),
     }
 }
 
@@ -319,9 +328,9 @@ fn eval_const_expressions_mutator(cx: &mut EvalConstContext<'_, '_>, e: Expr) ->
         Expr::Func(index, args) => {
             let args = args.into_iter().map(|a| eval_const_expressions_mutator(cx, a)).collect();
             let function = crate::functions::function(index);
-            let safe = match crate::pgcatalog::is_mutable(function.name) {
-                false => true,
-                true => cx.estimate && !crate::pgcatalog::is_volatile(function.name),
+            let safe = match func_volatility(function.name) {
+                (false, _) => true,
+                (true, volatile) => cx.estimate && !volatile,
             };
             simplify_function(cx, Expr::Func(index, args), function.strict, safe)
         }

@@ -676,8 +676,8 @@ pub(super) fn push_relation(
     JoinTreeNode::Rel(varno)
 }
 
-/// plan_coltypes returns the types of the columns of a plan's rows that the planner knows: a VALUES list's constants
-/// and casts, and the declared columns of a function.
+/// plan_coltypes returns the types of the columns of a plan's rows that the planner knows: a VALUES list's constants,
+/// and casts, a catalog's columns, and the declared columns of a function.
 fn plan_coltypes(plan: &Plan) -> Vec<Option<u32>> {
     let width = plan.width();
     match plan {
@@ -689,6 +689,7 @@ fn plan_coltypes(plan: &Plan) -> Vec<Option<u32>> {
                 _ => None,
             })
             .collect(),
+        Plan::Catalog(table) => table.columns.iter().map(|c| Some(c.type_oid)).collect(),
         Plan::Function { defined: Some(columns), ordinality, .. } => {
             let mut types: Vec<Option<u32>> = columns.iter().map(|(_, ty)| Some(ty.oid)).collect();
             if *ordinality {
