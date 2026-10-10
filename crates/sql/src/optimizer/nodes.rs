@@ -856,7 +856,7 @@ pub struct Path {
 /// an expression, where the first `nkeycolumns` are the ones index clauses search and a secondary index then orders
 /// its entries by the primary key's columns, the expression of each expression column, each column's btree operator
 /// family, direction, and NULL placement, whether its order gives its entries' order (a unique index of content
-/// hashes does not), whether it is unique, its predicate's conjuncts and whether the query's clauses imply them, and
+/// hashes does not), whether it is unique and checks that at once, its predicate's conjuncts and whether the query's clauses imply them, and
 /// the restrictions that a scan of it must test.
 #[derive(Clone, Debug)]
 pub struct IndexOptInfo {
@@ -872,6 +872,7 @@ pub struct IndexOptInfo {
     pub nulls_first: Vec<bool>,
     pub sortable: bool,
     pub unique: bool,
+    pub immediate: bool,
     pub indpred: Vec<Expr>,
     pub pred_ok: bool,
     pub indrestrictinfo: Vec<RinfoId>,

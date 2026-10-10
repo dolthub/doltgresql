@@ -94,7 +94,7 @@ pub fn remove_useless_groupby_columns(root: &mut PlannerInfo<'_, '_>) {
         let rel = &root.rels[relid];
         let mut best_keycolumns: Option<(usize, BTreeSet<usize>)> = None;
         for index in &rel.indexlist {
-            if !index.unique || !index.indpred.is_empty() || !index.indexprs.is_empty() {
+            if !index.unique || !index.immediate || !index.indpred.is_empty() || !index.indexprs.is_empty() {
                 continue;
             }
             let mut ind_attnos = BTreeSet::new();

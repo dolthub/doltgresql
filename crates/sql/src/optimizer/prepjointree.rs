@@ -102,11 +102,12 @@ fn pull_up_simple_subquery(glob: &mut PlannerGlobal, parse: &mut Query, varno: u
     let rtoffset = parse.rtable.len();
     offset_var_nodes(glob, &mut subquery, rtoffset);
     let targetlist: Vec<Expr> = subquery.target_list.iter().map(|tle| tle.expr.clone()).collect();
+    let wrap_option = if parse.grouping_sets.is_some() { ReplaceWrap::All } else { ReplaceWrap::None };
     let mut rvcontext = PullupReplaceVars {
         rv_cache: vec![None; targetlist.len()],
         targetlist,
         varno,
-        wrap_option: ReplaceWrap::None,
+        wrap_option,
         done: HashSet::new(),
     };
     perform_pullup_replace_vars(glob, parse, &mut rvcontext);
@@ -181,24 +182,22 @@ fn pull_up_constant_function(glob: &mut PlannerGlobal, parse: &mut Query, varno:
         return JoinTreeNode::Rel(varno);
     };
     let targetlist = vec![call.clone()];
-    let mut rvcontext = PullupReplaceVars {
-        rv_cache: vec![None],
-        targetlist,
-        varno,
-        wrap_option: ReplaceWrap::None,
-        done: HashSet::new(),
-    };
+    let wrap_option = if parse.grouping_sets.is_some() { ReplaceWrap::All } else { ReplaceWrap::None };
+    let mut rvcontext =
+        PullupReplaceVars { rv_cache: vec![None], targetlist, varno, wrap_option, done: HashSet::new() };
     perform_pullup_replace_vars(glob, parse, &mut rvcontext);
     parse.rtable[varno - 1].kind = RteKind::Result;
     JoinTreeNode::Rel(varno)
 }
 
 /// ReplaceWrap is when pullup_replace_vars wraps an expression in a PlaceHolderVar, as Postgres' ReplaceWrapOption
-/// is: only where an outer join can make it NULL, or also where it reads no Var, as a FULL JOIN's condition needs.
+/// is: only where an outer join can make it NULL, also where it reads no Var, as a FULL JOIN's condition needs, or
+/// always, as grouping sets need.
 #[derive(Clone, Copy, PartialEq)]
 enum ReplaceWrap {
     None,
     VarFree,
+    All,
 }
 
 /// PullupReplaceVars is the state of replacing the Vars of a pulled-up relation by its expressions, as Postgres'
@@ -278,6 +277,7 @@ fn pullup_replace_vars_callback(glob: &mut PlannerGlobal, var: Var, rcon: &mut P
             let mut newnode = rcon.targetlist[varattno].clone();
             if need_phv {
                 let wrap = match &newnode {
+                    _ if rcon.wrap_option == ReplaceWrap::All => true,
                     Expr::Column(_) => false,
                     other => !(contain_var_clause(other) && !contain_nonstrict_functions(glob, other)),
                 };

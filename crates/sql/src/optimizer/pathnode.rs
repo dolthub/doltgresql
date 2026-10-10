@@ -1172,7 +1172,8 @@ pub fn create_minmaxagg_path(
 /// create_groupingsets_path returns the path of an aggregation by grouping sets over a path's rows, in rollups that
 /// are sorted or hashed, under the HAVING conditions, as Postgres' function of the same name does: the first rollup
 /// costs an aggregation of the path's rows, each sorted rollup after the first sorted one a sort and an aggregation of
-/// them, and each other one an aggregation of them.
+/// them, and each other one an aggregation of them. Its rows are in no order, since Doltgres' executor returns the
+/// groups of one grouping set after another.
 pub fn create_groupingsets_path(
     root: &mut PlannerInfo<'_, '_>,
     rel: usize,
@@ -1191,10 +1192,6 @@ pub fn create_groupingsets_path(
     if aggstrategy == AggStrategy::Mixed && rollups.len() == 1 {
         aggstrategy = AggStrategy::Hashed;
     }
-    let pathkeys = match aggstrategy == AggStrategy::Sorted && rollups.len() == 1 {
-        true => root.group_pathkeys.clone(),
-        false => Vec::new(),
-    };
     let input_width = path_target(root, &subpath).width;
     let (mut rows, (mut disabled_nodes, mut startup_cost, mut total_cost)) = (0.0, (0, 0.0, 0.0));
     let mut is_first_sort = true;
@@ -1256,5 +1253,5 @@ pub fn create_groupingsets_path(
     startup_cost += target.cost.startup;
     total_cost += target.cost.startup + target.cost.per_tuple * rows;
     let kind = PathKind::GroupingSets(Box::new(super::nodes::GroupingSetsPath { subpath, rollups, qual: having_qual }));
-    upper_path(root, rel, kind, Some(target), pathkeys, rows, (disabled_nodes, startup_cost, total_cost))
+    upper_path(root, rel, kind, Some(target), Vec::new(), rows, (disabled_nodes, startup_cost, total_cost))
 }

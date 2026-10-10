@@ -362,7 +362,13 @@ fn preprocess_having(glob: &PlannerGlobal, parse: &mut Query) {
     for clause in crate::indexscan::conjuncts(&having).into_iter().cloned() {
         let mut has_agg = false;
         clause.visit(&mut |e| has_agg |= matches!(e, Expr::AggRef(_) | Expr::Grouping(..)));
-        if has_agg || clauses::contain_volatile_functions(glob, &clause) || crate::plan::has_subquery(&clause) {
+        let grouped_column =
+            !parse.group_clause.is_empty() && parse.grouping_sets.is_some() && var::contain_var_clause(&clause);
+        if has_agg
+            || clauses::contain_volatile_functions(glob, &clause)
+            || crate::plan::has_subquery(&clause)
+            || grouped_column
+        {
             new_having.push(clause);
         } else if !parse.group_clause.is_empty()
             && parse.grouping_sets.as_ref().is_none_or(|sets| sets.first().is_some_and(|s| !s.is_empty()))

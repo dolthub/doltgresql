@@ -1433,6 +1433,7 @@ fn collect_grouping_input_vars(root: &PlannerInfo<'_, '_>, e: &Expr, out: &mut V
             }
         }
         Expr::Grouping(..) => {}
+        Expr::SetRef(k) => collect_grouping_input_vars(root, &root.parse.target_srfs[*k], out),
         Expr::Column(id) => {
             if !out.contains(e) {
                 let _ = id;
@@ -1492,6 +1493,7 @@ fn collect_window_input_vars(root: &PlannerInfo<'_, '_>, e: &Expr, out: &mut Vec
                 collect_window_input_vars(root, arg, out);
             }
         }
+        Expr::SetRef(k) => collect_window_input_vars(root, &root.parse.target_srfs[*k], out),
         Expr::Column(_) | Expr::AggRef(_) | Expr::Grouping(..) => {
             if !out.contains(e) {
                 out.push(e.clone());

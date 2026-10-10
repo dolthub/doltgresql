@@ -119,6 +119,7 @@ pub fn get_relation_indexes(root: &mut PlannerInfo<'_, '_>, rel: usize, table: &
             nulls_first,
             sortable: !json && !crate::indexscan::hash_ordered(table, index),
             unique,
+            immediate: !index.map_or(table.primary.deferrable, |i| table.indexes[i].deferrable),
             indpred: index.and_then(|i| predicates.get(i).cloned()).unwrap_or_default(),
             pred_ok: false,
             indrestrictinfo: Vec::new(),

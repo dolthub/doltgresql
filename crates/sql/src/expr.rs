@@ -3483,7 +3483,7 @@ impl Expr {
             Expr::Grouping(args, _, mask) => {
                 let mask = match mask.and_then(|m| row.get(m)) {
                     Some(Value::Int8(mask)) => *mask,
-                    _ => 0,
+                    _ => return Ok(Value::Int4(0)),
                 };
                 let mut bits = 0;
                 for arg in args {
