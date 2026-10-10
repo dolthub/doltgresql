@@ -154,7 +154,7 @@ fn value_width(value: &Value, typlen: i16) -> (f64, bool) {
         Value::Bytea(b) => b.len(),
         other => other.output().map_or(0, |s| s.len()),
     };
-    let header = if typlen == -1 && len + 1 <= 127 {
+    let header = if typlen == -1 && len < 127 {
         1
     } else if typlen == -1 {
         4
