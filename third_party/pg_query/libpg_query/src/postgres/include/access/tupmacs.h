@@ -4,7 +4,7 @@
  *	  Tuple macros used by both index tuples and heap tuples.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/tupmacs.h
@@ -30,13 +30,14 @@ att_isnull(int ATT, const bits8 *BITS)
 
 #ifndef FRONTEND
 /*
- * Given a Form_pg_attribute and a pointer into a tuple's data area,
- * return the correct value or pointer.
+ * Given an attbyval and an attlen from either a Form_pg_attribute or
+ * CompactAttribute and a pointer into a tuple's data area, return the
+ * correct value or pointer.
  *
- * We return a Datum value in all cases.  If the attribute has "byval" false,
- * we return the same pointer into the tuple data area that we're passed.
- * Otherwise, we return the correct number of bytes fetched from the data
- * area and extended to Datum form.
+ * We return a Datum value in all cases.  If attbyval is false,  we return the
+ * same pointer into the tuple data area that we're passed.  Otherwise, we
+ * return the correct number of bytes fetched from the data area and extended
+ * to Datum form.
  *
  * On machines where Datum is 8 bytes, we support fetching 8-byte byval
  * attributes; otherwise, only 1, 2, and 4-byte values are supported.
@@ -91,6 +92,16 @@ fetch_att(const void *T, bool attbyval, int attlen)
 )
 
 /*
+ * Similar to att_align_datum, but accepts a number of bytes, typically from
+ * CompactAttribute.attalignby to align the Datum by.
+ */
+#define att_datum_alignby(cur_offset, attalignby, attlen, attdatum) \
+	( \
+	((attlen) == -1 && VARATT_IS_SHORT(DatumGetPointer(attdatum))) ? \
+	(uintptr_t) (cur_offset) : \
+	TYPEALIGN(attalignby, cur_offset))
+
+/*
  * att_align_pointer performs the same calculation as att_align_datum,
  * but is used when walking a tuple.  attptr is the current actual data
  * pointer; when accessing a varlena field we have to "peek" to see if we
@@ -110,6 +121,16 @@ fetch_att(const void *T, bool attbyval, int attlen)
 	(uintptr_t) (cur_offset) : \
 	att_align_nominal(cur_offset, attalign) \
 )
+
+/*
+ * Similar to att_align_pointer, but accepts a number of bytes, typically from
+ * CompactAttribute.attalignby to align the pointer by.
+ */
+#define att_pointer_alignby(cur_offset, attalignby, attlen, attptr) \
+	( \
+	((attlen) == -1 && VARATT_NOT_PAD_BYTE(attptr)) ? \
+	(uintptr_t) (cur_offset) : \
+	TYPEALIGN(attalignby, cur_offset))
 
 /*
  * att_align_nominal aligns the given offset as needed for a datum of alignment
@@ -136,6 +157,13 @@ fetch_att(const void *T, bool attbyval, int attlen)
 			SHORTALIGN(cur_offset) \
 	   ))) \
 )
+
+/*
+ * Similar to att_align_nominal, but accepts a number of bytes, typically from
+ * CompactAttribute.attalignby to align the offset by.
+ */
+#define att_nominal_alignby(cur_offset, attalignby) \
+	TYPEALIGN(attalignby, cur_offset)
 
 /*
  * att_addlength_datum increments the given offset by the space needed for

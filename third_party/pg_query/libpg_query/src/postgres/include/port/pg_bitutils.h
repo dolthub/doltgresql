@@ -4,7 +4,7 @@
  *	  Miscellaneous functions for bit-wise operations.
  *
  *
- * Copyright (c) 2019-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2019-2025, PostgreSQL Global Development Group
  *
  * src/include/port/pg_bitutils.h
  *
@@ -74,13 +74,13 @@ pg_leftmost_one_pos64(uint64 word)
 #ifdef HAVE__BUILTIN_CLZ
 	Assert(word != 0);
 
-#if defined(HAVE_LONG_INT_64)
+#if SIZEOF_LONG == 8
 	return 63 - __builtin_clzl(word);
-#elif defined(HAVE_LONG_LONG_INT_64)
+#elif SIZEOF_LONG_LONG == 8
 	return 63 - __builtin_clzll(word);
 #else
-#error must have a working 64-bit integer datatype
-#endif							/* HAVE_LONG_INT_64 */
+#error "cannot find integer type of the same size as uint64_t"
+#endif
 
 #elif defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_ARM64))
 	unsigned long result;
@@ -147,13 +147,13 @@ pg_rightmost_one_pos64(uint64 word)
 #ifdef HAVE__BUILTIN_CTZ
 	Assert(word != 0);
 
-#if defined(HAVE_LONG_INT_64)
+#if SIZEOF_LONG == 8
 	return __builtin_ctzl(word);
-#elif defined(HAVE_LONG_LONG_INT_64)
+#elif SIZEOF_LONG_LONG == 8
 	return __builtin_ctzll(word);
 #else
-#error must have a working 64-bit integer datatype
-#endif							/* HAVE_LONG_INT_64 */
+#error "cannot find integer type of the same size as uint64_t"
+#endif
 
 #elif defined(_MSC_VER) && (defined(_M_AMD64) || defined(_M_ARM64))
 	unsigned long result;
@@ -294,11 +294,20 @@ pg_ceil_log2_64(uint64 num)
  */
 #ifdef HAVE_X86_64_POPCNTQ
 #if defined(HAVE__GET_CPUID) || defined(HAVE__CPUID)
-#define TRY_POPCNT_FAST 1
+#define TRY_POPCNT_X86_64 1
 #endif
 #endif
 
-#ifdef TRY_POPCNT_FAST
+/*
+ * On AArch64, we can use Neon instructions if the compiler provides access to
+ * them (as indicated by __ARM_NEON).  As in simd.h, we assume that all
+ * available 64-bit hardware has Neon support.
+ */
+#if defined(__aarch64__) && defined(__ARM_NEON)
+#define POPCNT_AARCH64 1
+#endif
+
+#ifdef TRY_POPCNT_X86_64
 /* Attempt to use the POPCNT instruction, but perform a runtime check first */
 extern PGDLLIMPORT int (*pg_popcount32) (uint32 word);
 extern PGDLLIMPORT int (*pg_popcount64) (uint64 word);
@@ -307,14 +316,29 @@ extern PGDLLIMPORT uint64 (*pg_popcount_masked_optimized) (const char *buf, int 
 
 /*
  * We can also try to use the AVX-512 popcount instruction on some systems.
- * The implementation of that is located in its own file because it may
- * require special compiler flags that we don't want to apply to any other
- * files.
+ * The implementation of that is located in its own file.
  */
 #ifdef USE_AVX512_POPCNT_WITH_RUNTIME_CHECK
 extern bool pg_popcount_avx512_available(void);
 extern uint64 pg_popcount_avx512(const char *buf, int bytes);
 extern uint64 pg_popcount_masked_avx512(const char *buf, int bytes, bits8 mask);
+#endif
+
+#elif POPCNT_AARCH64
+/* Use the Neon version of pg_popcount{32,64} without function pointer. */
+extern int	pg_popcount32(uint32 word);
+extern int	pg_popcount64(uint64 word);
+
+/*
+ * We can try to use an SVE-optimized pg_popcount() on some systems  For that,
+ * we do use a function pointer.
+ */
+#ifdef USE_SVE_POPCNT_WITH_RUNTIME_CHECK
+extern PGDLLIMPORT uint64 (*pg_popcount_optimized) (const char *buf, int bytes);
+extern PGDLLIMPORT uint64 (*pg_popcount_masked_optimized) (const char *buf, int bytes, bits8 mask);
+#else
+extern uint64 pg_popcount_optimized(const char *buf, int bytes);
+extern uint64 pg_popcount_masked_optimized(const char *buf, int bytes, bits8 mask);
 #endif
 
 #else
@@ -324,7 +348,7 @@ extern int	pg_popcount64(uint64 word);
 extern uint64 pg_popcount_optimized(const char *buf, int bytes);
 extern uint64 pg_popcount_masked_optimized(const char *buf, int bytes, bits8 mask);
 
-#endif							/* TRY_POPCNT_FAST */
+#endif							/* TRY_POPCNT_X86_64 */
 
 /*
  * Returns the number of 1-bits in buf.

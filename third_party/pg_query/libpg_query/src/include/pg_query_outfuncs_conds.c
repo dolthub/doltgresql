@@ -201,6 +201,9 @@ case T_NextValueExpr:
 case T_InferenceElem:
   OUT_NODE(InferenceElem, InferenceElem, inference_elem, INFERENCE_ELEM, InferenceElem, inference_elem);
   break;
+case T_ReturningExpr:
+  OUT_NODE(ReturningExpr, ReturningExpr, returning_expr, RETURNING_EXPR, ReturningExpr, returning_expr);
+  break;
 case T_TargetEntry:
   OUT_NODE(TargetEntry, TargetEntry, target_entry, TARGET_ENTRY, TargetEntry, target_entry);
   break;
@@ -312,9 +315,6 @@ case T_PartitionBoundSpec:
 case T_PartitionRangeDatum:
   OUT_NODE(PartitionRangeDatum, PartitionRangeDatum, partition_range_datum, PARTITION_RANGE_DATUM, PartitionRangeDatum, partition_range_datum);
   break;
-case T_SinglePartitionSpec:
-  OUT_NODE(SinglePartitionSpec, SinglePartitionSpec, single_partition_spec, SINGLE_PARTITION_SPEC, SinglePartitionSpec, single_partition_spec);
-  break;
 case T_PartitionCmd:
   OUT_NODE(PartitionCmd, PartitionCmd, partition_cmd, PARTITION_CMD, PartitionCmd, partition_cmd);
   break;
@@ -365,6 +365,12 @@ case T_CommonTableExpr:
   break;
 case T_MergeWhenClause:
   OUT_NODE(MergeWhenClause, MergeWhenClause, merge_when_clause, MERGE_WHEN_CLAUSE, MergeWhenClause, merge_when_clause);
+  break;
+case T_ReturningOption:
+  OUT_NODE(ReturningOption, ReturningOption, returning_option, RETURNING_OPTION, ReturningOption, returning_option);
+  break;
+case T_ReturningClause:
+  OUT_NODE(ReturningClause, ReturningClause, returning_clause, RETURNING_CLAUSE, ReturningClause, returning_clause);
   break;
 case T_TriggerTransition:
   OUT_NODE(TriggerTransition, TriggerTransition, trigger_transition, TRIGGER_TRANSITION, TriggerTransition, trigger_transition);
@@ -450,11 +456,14 @@ case T_CreateSchemaStmt:
 case T_AlterTableStmt:
   OUT_NODE(AlterTableStmt, AlterTableStmt, alter_table_stmt, ALTER_TABLE_STMT, AlterTableStmt, alter_table_stmt);
   break;
-case T_ReplicaIdentityStmt:
-  OUT_NODE(ReplicaIdentityStmt, ReplicaIdentityStmt, replica_identity_stmt, REPLICA_IDENTITY_STMT, ReplicaIdentityStmt, replica_identity_stmt);
-  break;
 case T_AlterTableCmd:
   OUT_NODE(AlterTableCmd, AlterTableCmd, alter_table_cmd, ALTER_TABLE_CMD, AlterTableCmd, alter_table_cmd);
+  break;
+case T_ATAlterConstraint:
+  OUT_NODE(ATAlterConstraint, ATAlterConstraint, atalter_constraint, ATALTER_CONSTRAINT, ATAlterConstraint, atalter_constraint);
+  break;
+case T_ReplicaIdentityStmt:
+  OUT_NODE(ReplicaIdentityStmt, ReplicaIdentityStmt, replica_identity_stmt, REPLICA_IDENTITY_STMT, ReplicaIdentityStmt, replica_identity_stmt);
   break;
 case T_AlterCollationStmt:
   OUT_NODE(AlterCollationStmt, AlterCollationStmt, alter_collation_stmt, ALTER_COLLATION_STMT, AlterCollationStmt, alter_collation_stmt);

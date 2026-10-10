@@ -540,7 +540,7 @@ fn substitute(expression: &str, names: &Names) -> Result<(String, Vec<String>)> 
 /// table's columns rather than variables, as PL/pgSQL's parser hooks leave them.
 fn assignment_targets(text: &str) -> std::collections::HashSet<i32> {
     let mut targets = std::collections::HashSet::new();
-    let Ok(parsed) = pg_query::parse(text) else { return targets };
+    let Ok(parsed) = pg_query::parse(text, 0) else { return targets };
     let names = |list: &[pg_query::Node]| -> Vec<i32> {
         list.iter()
             .filter_map(|n| match n.node.as_ref() {
@@ -599,8 +599,8 @@ fn variant(json: &Json) -> Option<(&str, &Json)> {
     json.as_object().and_then(|o| o.iter().next()).map(|(k, v)| (k.as_str(), v))
 }
 
-/// Datums names each of a function's datums by its number, and knows the body's aliases and lines.
-struct Datums(Vec<String>, Aliases, Vec<String>);
+/// Datums names each of a function's datums by its number, and knows the body's aliases.
+struct Datums(Vec<String>, Aliases);
 
 impl Datums {
     /// name returns the name of a datum by its number.
@@ -629,7 +629,7 @@ pub fn compile_json(function: &Json, body: &str) -> Result<Vec<Operation>> {
 }
 
 /// convert_function converts a function's datums and body into its top-level block, where a record datum without a
-/// number or line is a parameter of a composite type.
+/// line is a parameter of a composite type when it has no number or comes before the FOUND variable.
 fn convert_function(function: &Json, body: &str) -> Result<Block> {
     let datums = list(function, "datums");
     let action = get(function, "action").and_then(|a| get(a, "PLpgSQL_stmt_block")).cloned().unwrap_or(Json::Null);
@@ -638,6 +638,10 @@ fn convert_function(function: &Json, body: &str) -> Result<Block> {
     let mut block = Block { label: text(&action, "label"), ..Block::default() };
     let lowest = datums.iter().filter_map(|d| get(d, "PLpgSQL_rec")).map(|r| int(r, "dno")).min().unwrap_or(i32::MAX);
     let offset = 0i32.wrapping_sub(lowest);
+    let parameters = datums
+        .iter()
+        .position(|d| get(d, "PLpgSQL_var").is_some_and(|v| get(v, "lineno").is_none() && text(v, "refname") == FOUND))
+        .unwrap_or(datums.len());
     let mut found = None;
     for (index, datum) in datums.iter().enumerate() {
         let Some((kind, value)) = variant(datum) else { continue };
@@ -647,13 +651,10 @@ fn convert_function(function: &Json, body: &str) -> Result<Block> {
                 if number >= block.records.len() {
                     block.records.resize(number + 1, Record::default());
                 }
-                if int(value, "dno") > 0 {
-                    block.records[number].name = text(value, "refname");
-                    block.records[number].default = query(value, "default_val");
-                    block.records[number].datum = index as i32;
-                } else if get(value, "lineno").is_none()
+                let parameter = get(value, "lineno").is_none()
                     && ![new_number, old_number].iter().any(|&n| n != 0 && n == int(value, "dno"))
-                {
+                    && (int(value, "dno") <= 0 || index < parameters);
+                if parameter {
                     block.variables.push(Variable {
                         name: text(value, "refname"),
                         type_name: String::new(),
@@ -661,6 +662,10 @@ fn convert_function(function: &Json, body: &str) -> Result<Block> {
                         default: String::new(),
                         datum: index as i32,
                     });
+                } else if int(value, "dno") > 0 {
+                    block.records[number].name = text(value, "refname");
+                    block.records[number].default = query(value, "default_val");
+                    block.records[number].datum = index as i32;
                 }
             }
             "PLpgSQL_recfield" => {
@@ -669,7 +674,7 @@ fn convert_function(function: &Json, body: &str) -> Result<Block> {
                     block.records.get_mut(parent).ok_or_else(|| PgError::internal("invalid record parent number"))?;
                 record.fields.push(text(value, "fieldname"));
             }
-            "PLpgSQL_row" => {}
+            "PLpgSQL_row" | "PLpgSQL_promise" => {}
             "PLpgSQL_var" => {
                 let name = text(value, "refname");
                 let line = int(value, "lineno");
@@ -710,7 +715,7 @@ fn convert_function(function: &Json, body: &str) -> Result<Block> {
             .iter()
             .enumerate()
             .map(|(i, datum)| match variant(datum) {
-                Some(("PLpgSQL_rec" | "PLpgSQL_row" | "PLpgSQL_var", v)) => text(v, "refname"),
+                Some(("PLpgSQL_rec" | "PLpgSQL_var" | "PLpgSQL_promise", v)) => text(v, "refname"),
                 Some(("PLpgSQL_recfield", v)) => {
                     let parent = int(v, "recparentno");
                     match datums.get(parent as usize).and_then(variant) {
@@ -724,7 +729,6 @@ fn convert_function(function: &Json, body: &str) -> Result<Block> {
             })
             .collect(),
         Aliases::with_parameters(body, &block.variables),
-        body.split('\n').map(str::to_string).collect(),
     );
     block.body = convert_statements(list(&action, "body"), &names)?;
     Ok(block)
@@ -801,7 +805,7 @@ fn into_target(target: &Json) -> Result<(String, bool)> {
 /// without an INTO clause.
 fn is_data_modifying(query: &str) -> bool {
     use pg_query::NodeEnum;
-    pg_query::parse(query).is_ok_and(|result| {
+    pg_query::parse(query, 0).is_ok_and(|result| {
         result.protobuf.stmts.iter().any(|raw| {
             matches!(
                 raw.stmt.as_ref().and_then(|s| s.node.as_ref()),
@@ -969,20 +973,20 @@ fn convert_statement(statement: &Json, datums: &Datums) -> Result<Statement> {
     })
 }
 
-/// returned_expression returns what RETURN or RETURN NEXT returns: its expression, or the whole row or record
-/// variable that the parser gives by number, or only by the statement's line, which holds it after the keywords.
+/// returned_expression returns what RETURN or RETURN NEXT returns: its expression, or the variable that the parser
+/// gives by number, which is empty for the row of OUT parameters that a bare RETURN returns.
 fn returned_expression(s: &Json, datums: &Datums) -> Result<String> {
     if get(s, "expr").is_some() {
         return Ok(query(s, "expr"));
     }
-    if let Some(number) = get(s, "retvarno").and_then(Json::as_i64).filter(|n| *n >= 0) {
-        return datums.name(number as i32);
+    match get(s, "retvarno").and_then(Json::as_i64).and_then(|n| usize::try_from(n).ok()) {
+        Some(number) => match datums.0.get(number) {
+            Some(name) if name.is_empty() => Ok(String::new()),
+            Some(name) => Ok(quote_identifier(name)),
+            None => Err(PgError::internal("invalid PL/pgSQL datum number")),
+        },
+        None => Ok(String::new()),
     }
-    let line = datums.2.get((int(s, "lineno") - 1).max(0) as usize).map(|l| l.to_lowercase()).unwrap_or_default();
-    let Some(after) = line.find("return next").map(|at| &line[at + "return next".len()..]) else {
-        return Ok(String::new());
-    };
-    Ok(after.split(';').next().unwrap_or_default().trim().to_string())
 }
 
 /// convert_case converts CASE into an assignment of its expression, when it has one, and a chain of conditions that

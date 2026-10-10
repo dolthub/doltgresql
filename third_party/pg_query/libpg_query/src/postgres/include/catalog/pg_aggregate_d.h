@@ -3,7 +3,7 @@
  * pg_aggregate_d.h
  *    Macro definitions for pg_aggregate
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -17,6 +17,8 @@
  */
 #ifndef PG_AGGREGATE_D_H
 #define PG_AGGREGATE_D_H
+
+/* Macros related to the structure of pg_aggregate */
 
 #define AggregateRelationId 2600
 #define AggregateFnoidIndexId 2650
@@ -46,6 +48,8 @@
 
 #define Natts_pg_aggregate 22
 
+/* Definitions copied from pg_aggregate.h */
+
 
 /*
  * Symbolic values for aggkind column.  We distinguish normal aggregates
@@ -73,6 +77,9 @@
 #define AGGMODIFY_READ_ONLY			'r'
 #define AGGMODIFY_SHAREABLE			's'
 #define AGGMODIFY_READ_WRITE		'w'
+
+
+/* OID symbols for objects defined in pg_aggregate.dat */
 
 
 #endif							/* PG_AGGREGATE_D_H */

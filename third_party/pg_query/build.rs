@@ -25,6 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // updating their mtimes and causing Cargo to re-run the build script every time.
     let source_paths = vec![
         build_path.join("pg_query").with_extension("h"),
+        build_path.join("pg_query_scan_tokens").with_extension("h"),
         build_path.join("postgres_deparse").with_extension("h"),
         build_path.join("Makefile"),
         build_path.join("src"),
@@ -47,16 +48,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     build
         .files(glob(out_dir.join("src/*.c").to_str().unwrap()).unwrap().map(|p| p.unwrap()))
         .files(glob(out_dir.join("src/postgres/*.c").to_str().unwrap()).unwrap().map(|p| p.unwrap()))
-        .file(out_dir.join("vendor/protobuf-c/protobuf-c.c"))
         .file(out_dir.join("vendor/xxhash/xxhash.c"))
-        .file(out_dir.join("protobuf/pg_query.pb-c.c"))
+        .file(out_dir.join("vendor/upb/upb.c"))
+        .file(out_dir.join("vendor/upb/third_party/utf8_range/utf8_range.c"))
+        .file(out_dir.join("protobuf/pg_query.upb_minitable.c"))
         .include(out_dir.join("."))
         .include(out_dir.join("./vendor"))
+        .include(out_dir.join("./vendor/upb"))
+        .include(out_dir.join("./vendor/upb/third_party/utf8_range"))
         .include(out_dir.join("./src/postgres/include"))
         .include(out_dir.join("./src/include"))
         .warnings(false); // Avoid unnecessary warnings, as they are already considered as part of libpg_query development
     if env::var("PROFILE").unwrap() == "debug" || env::var("DEBUG").unwrap() == "1" {
         build.define("USE_ASSERT_CHECKING", None);
+    }
+    if !target.contains("msvc") {
+        // Required by upb, matching libpg_query's own CFLAGS
+        build.flag("-fno-strict-aliasing").flag("-fwrapv");
     }
     if target.contains("windows") {
         build.include(out_dir.join("./src/postgres/include/port/win32"));

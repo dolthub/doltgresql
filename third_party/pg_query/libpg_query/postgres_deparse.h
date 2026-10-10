@@ -29,6 +29,6 @@ typedef struct StringInfoData *StringInfo;
 struct RawStmt;
 
 extern void deparseRawStmt(StringInfo str, struct RawStmt *raw_stmt);
-extern void deparseRawStmtOpts(StringInfo str, struct RawStmt *raw_stmt, PostgresDeparseOpts opts);
+extern void deparseRawStmtOpts(StringInfo str, struct RawStmt *raw_stmt, PostgresDeparseOpts *opts);
 
 #endif

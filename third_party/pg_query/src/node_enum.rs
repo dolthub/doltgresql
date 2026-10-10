@@ -13,11 +13,14 @@ pub enum Context {
 }
 
 impl NodeEnum {
-    pub fn deparse(&self) -> Result<String> {
-        crate::deparse(&protobuf::ParseResult {
-            version: crate::bindings::PG_VERSION_NUM as i32,
-            stmts: vec![protobuf::RawStmt { stmt: Some(Box::new(Node { node: Some(self.clone()) })), stmt_location: 0, stmt_len: 0 }],
-        })
+    pub fn deparse(&self, options: DeparseOptions) -> Result<String> {
+        crate::deparse(
+            &protobuf::ParseResult {
+                version: crate::bindings::PG_VERSION_NUM as i32,
+                stmts: vec![protobuf::RawStmt { stmt: Some(Box::new(Node { node: Some(self.clone()) })), stmt_location: 0, stmt_len: 0 }],
+            },
+            options,
+        )
     }
 
     pub fn nodes(&self) -> Vec<(NodeRef<'_>, i32, Context, bool)> {
@@ -1093,6 +1096,7 @@ impl NodeEnum {
             NodeEnum::AlterOwnerStmt(n) => NodeRef::AlterOwnerStmt(n),
             NodeEnum::AlterOperatorStmt(n) => NodeRef::AlterOperatorStmt(n),
             NodeEnum::AlterTypeStmt(n) => NodeRef::AlterTypeStmt(n),
+            NodeEnum::AtalterConstraint(n) => NodeRef::AtalterConstraint(n),
             NodeEnum::DropOwnedStmt(n) => NodeRef::DropOwnedStmt(n),
             NodeEnum::ReassignOwnedStmt(n) => NodeRef::ReassignOwnedStmt(n),
             NodeEnum::CompositeTypeStmt(n) => NodeRef::CompositeTypeStmt(n),
@@ -1200,6 +1204,9 @@ impl NodeEnum {
             NodeEnum::MergeAction(n) => NodeRef::MergeAction(n),
             NodeEnum::AlterDatabaseRefreshCollStmt(n) => NodeRef::AlterDatabaseRefreshCollStmt(n),
             NodeEnum::ReturnStmt(n) => NodeRef::ReturnStmt(n),
+            NodeEnum::ReturningClause(n) => NodeRef::ReturningClause(n),
+            NodeEnum::ReturningExpr(n) => NodeRef::ReturningExpr(n),
+            NodeEnum::ReturningOption(n) => NodeRef::ReturningOption(n),
             NodeEnum::PlassignStmt(n) => NodeRef::PlassignStmt(n),
             NodeEnum::StatsElem(n) => NodeRef::StatsElem(n),
             NodeEnum::CtesearchClause(n) => NodeRef::CtesearchClause(n),
@@ -1228,7 +1235,6 @@ impl NodeEnum {
             NodeEnum::JsonTablePath(n) => NodeRef::JsonTablePath(n),
             NodeEnum::JsonTablePathScan(n) => NodeRef::JsonTablePathScan(n),
             NodeEnum::JsonTableSiblingJoin(n) => NodeRef::JsonTableSiblingJoin(n),
-            NodeEnum::SinglePartitionSpec(n) => NodeRef::SinglePartitionSpec(n),
             NodeEnum::JsonArgument(n) => NodeRef::JsonArgument(n),
             NodeEnum::JsonFuncExpr(n) => NodeRef::JsonFuncExpr(n),
             NodeEnum::JsonTablePathSpec(n) => NodeRef::JsonTablePathSpec(n),
@@ -1366,6 +1372,7 @@ impl NodeEnum {
             NodeEnum::AlterOwnerStmt(n) => NodeMut::AlterOwnerStmt(&mut **n as *mut _),
             NodeEnum::AlterOperatorStmt(n) => NodeMut::AlterOperatorStmt(n as *mut _),
             NodeEnum::AlterTypeStmt(n) => NodeMut::AlterTypeStmt(n as *mut _),
+            NodeEnum::AtalterConstraint(n) => NodeMut::AtalterConstraint(n as *mut _),
             NodeEnum::DropOwnedStmt(n) => NodeMut::DropOwnedStmt(n as *mut _),
             NodeEnum::ReassignOwnedStmt(n) => NodeMut::ReassignOwnedStmt(n as *mut _),
             NodeEnum::CompositeTypeStmt(n) => NodeMut::CompositeTypeStmt(n as *mut _),
@@ -1473,6 +1480,9 @@ impl NodeEnum {
             NodeEnum::MergeAction(n) => NodeMut::MergeAction(&mut **n as *mut _),
             NodeEnum::AlterDatabaseRefreshCollStmt(n) => NodeMut::AlterDatabaseRefreshCollStmt(n as *mut _),
             NodeEnum::ReturnStmt(n) => NodeMut::ReturnStmt(&mut **n as *mut _),
+            NodeEnum::ReturningClause(n) => NodeMut::ReturningClause(&mut *n as *mut _),
+            NodeEnum::ReturningExpr(n) => NodeMut::ReturningExpr(&mut **n as *mut _),
+            NodeEnum::ReturningOption(n) => NodeMut::ReturningOption(&mut *n as *mut _),
             NodeEnum::PlassignStmt(n) => NodeMut::PlassignStmt(&mut **n as *mut _),
             NodeEnum::StatsElem(n) => NodeMut::StatsElem(&mut **n as *mut _),
             NodeEnum::CtesearchClause(n) => NodeMut::CtesearchClause(n as *mut _),
@@ -1501,7 +1511,6 @@ impl NodeEnum {
             NodeEnum::JsonTablePath(n) => NodeMut::JsonTablePath(&mut *n as *mut _),
             NodeEnum::JsonTablePathScan(n) => NodeMut::JsonTablePathScan(&mut **n as *mut _),
             NodeEnum::JsonTableSiblingJoin(n) => NodeMut::JsonTableSiblingJoin(&mut **n as *mut _),
-            NodeEnum::SinglePartitionSpec(n) => NodeMut::SinglePartitionSpec(&mut *n as *mut _),
             NodeEnum::JsonArgument(n) => NodeMut::JsonArgument(&mut **n as *mut _),
             NodeEnum::JsonFuncExpr(n) => NodeMut::JsonFuncExpr(&mut **n as *mut _),
             NodeEnum::JsonTablePathSpec(n) => NodeMut::JsonTablePathSpec(&mut **n as *mut _),

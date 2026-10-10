@@ -21,7 +21,7 @@ struct PossibleTruncation {
 }
 
 pub fn truncate(protobuf: &protobuf::ParseResult, max_length: usize) -> Result<String> {
-    let mut output = protobuf.deparse()?;
+    let mut output = protobuf.deparse(DeparseOptions::default())?;
     if output.len() <= max_length {
         return Ok(output);
     }
@@ -142,7 +142,7 @@ pub fn truncate(protobuf: &protobuf::ParseResult, max_length: usize) -> Result<S
                             attr: TruncationAttr::CTEQuery,
                             node,
                             depth: depth + 1,
-                            length: cte.deparse()?.len() as i32,
+                            length: cte.deparse(DeparseOptions::default())?.len() as i32,
                         });
                     }
                 }
@@ -249,7 +249,7 @@ pub fn truncate(protobuf: &protobuf::ParseResult, max_length: usize) -> Result<S
                 }
                 _ => panic!("unimplemented truncation"),
             }
-            output = protobuf.deparse()?;
+            output = protobuf.deparse(DeparseOptions::default())?;
             output = output.replace("SELECT WHERE \"…\"", "...").replace("\"…\"", "...");
             // the unwanted AS doesn't happen in the Ruby version. I'm not sure where it's coming from
             output = output.replace("SELECT ... AS ...", "SELECT ...");
@@ -272,27 +272,27 @@ fn truncate_str(string: &str, max_chars: usize) -> &str {
 }
 
 fn select_target_list_len(nodes: Vec<Node>) -> Result<i32> {
-    let fragment = dummy_select(nodes, None, vec![]).deparse()?;
+    let fragment = dummy_select(nodes, None, vec![]).deparse(DeparseOptions::default())?;
     Ok(fragment.len() as i32 - 7) // "SELECT "
 }
 
 fn select_values_lists_len(nodes: Vec<Node>) -> Result<i32> {
-    let fragment = dummy_select(vec![], None, nodes).deparse()?;
+    let fragment = dummy_select(vec![], None, nodes).deparse(DeparseOptions::default())?;
     Ok(fragment.len() as i32 - 7) // "SELECT "
 }
 
 fn update_target_list_len(nodes: Vec<Node>) -> Result<i32> {
-    let fragment = dummy_update(nodes).deparse()?;
+    let fragment = dummy_update(nodes).deparse(DeparseOptions::default())?;
     Ok(fragment.len() as i32 - 13) // "UPDATE x SET "
 }
 
 fn where_clause_len(node: Box<Node>) -> Result<i32> {
-    let fragment = dummy_select(vec![], Some(node), vec![]).deparse()?;
+    let fragment = dummy_select(vec![], Some(node), vec![]).deparse(DeparseOptions::default())?;
     Ok(fragment.len() as i32 - 13) // "SELECT WHERE "
 }
 
 fn cols_len(nodes: Vec<Node>) -> Result<i32> {
-    let fragment = dummy_insert(nodes).deparse()?;
+    let fragment = dummy_insert(nodes).deparse(DeparseOptions::default())?;
     Ok(fragment.len() as i32 - 31) // "INSERT INTO x () DEFAULT VALUES"
 }
 
@@ -358,7 +358,7 @@ fn dummy_insert(cols: Vec<Node>) -> Box<Node> {
             cols,
             select_stmt: None,
             on_conflict_clause: None,
-            returning_list: vec![],
+            returning_clause: None,
             with_clause: None,
             r#override: 1,
         }))),
@@ -380,7 +380,7 @@ fn dummy_update(target_list: Vec<Node>) -> Box<Node> {
             from_clause: vec![],
             target_list,
             where_clause: None,
-            returning_list: vec![],
+            returning_clause: None,
             with_clause: None,
         }))),
     })

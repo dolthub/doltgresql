@@ -16,7 +16,7 @@
  * and GetExtensibleNodeMethods to get information about a previously
  * registered type of extensible node.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -65,10 +65,7 @@ typedef struct
 const ExtensibleNodeMethods *
 GetExtensibleNodeMethods(const char *extnodename, bool missing_ok)
 {
-	return NULL;
-}
-
-
+return NULL;}
 
 /*
  * Get the methods for a given name of CustomScanMethods

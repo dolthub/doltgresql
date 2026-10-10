@@ -5,7 +5,7 @@
  *
  * See plancache.c for comments.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/plancache.h
@@ -23,7 +23,8 @@
 #include "utils/resowner.h"
 
 
-/* Forward declaration, to avoid including parsenodes.h here */
+/* Forward declarations, to avoid including parsenodes.h here */
+struct Query;
 struct RawStmt;
 
 /* possible values for plan_cache_mode */
@@ -37,17 +38,30 @@ typedef enum
 /* GUC parameter */
 extern PGDLLIMPORT int plan_cache_mode;
 
+/* Optional callback to editorialize on rewritten parse trees */
+typedef void (*PostRewriteHook) (List *querytree_list, void *arg);
+
 #define CACHEDPLANSOURCE_MAGIC		195726186
 #define CACHEDPLAN_MAGIC			953717834
 #define CACHEDEXPR_MAGIC			838275847
 
 /*
  * CachedPlanSource (which might better have been called CachedQuery)
- * represents a SQL query that we expect to use multiple times.  It stores
- * the query source text, the raw parse tree, and the analyzed-and-rewritten
+ * represents a SQL query that we expect to use multiple times.  It stores the
+ * query source text, the source parse tree, and the analyzed-and-rewritten
  * query tree, as well as adjunct data.  Cache invalidation can happen as a
  * result of DDL affecting objects used by the query.  In that case we discard
  * the analyzed-and-rewritten query tree, and rebuild it when next needed.
+ *
+ * There are two ways in which the source query can be represented: either
+ * as a raw parse tree, or as an analyzed-but-not-rewritten parse tree.
+ * In the latter case we expect that cache invalidation need not affect
+ * the parse-analysis results, only the rewriting and planning steps.
+ * Only one of raw_parse_tree and analyzed_parse_tree can be non-NULL.
+ * (If both are NULL, the CachedPlanSource represents an empty query.)
+ * Note that query_string is typically just an empty string when the
+ * source query is an analyzed parse tree; also, param_types, num_params,
+ * parserSetup, and parserSetupArg will not be used.
  *
  * An actual execution plan, represented by CachedPlan, is derived from the
  * CachedPlanSource when we need to execute the query.  The plan could be
@@ -76,7 +90,7 @@ extern PGDLLIMPORT int plan_cache_mode;
  * though it may be useful if the CachedPlan can be discarded early.)
  *
  * A CachedPlanSource has two associated memory contexts: one that holds the
- * struct itself, the query source text and the raw parse tree, and another
+ * struct itself, the query source text and the source parse tree, and another
  * context that holds the rewritten query tree and associated data.  This
  * allows the query tree to be discarded easily when it is invalidated.
  *
@@ -87,22 +101,20 @@ extern PGDLLIMPORT int plan_cache_mode;
  * all subsidiary data live in the caller's CurrentMemoryContext, and there
  * is no way to free memory short of clearing that entire context.  A oneshot
  * plan is always treated as unsaved.
- *
- * Note: the string referenced by commandTag is not subsidiary storage;
- * it is assumed to be a compile-time-constant string.  As with portals,
- * commandTag shall be NULL if and only if the original query string (before
- * rewriting) was an empty string.
  */
 typedef struct CachedPlanSource
 {
 	int			magic;			/* should equal CACHEDPLANSOURCE_MAGIC */
 	struct RawStmt *raw_parse_tree; /* output of raw_parser(), or NULL */
+	struct Query *analyzed_parse_tree;	/* analyzed parse tree, or NULL */
 	const char *query_string;	/* source text of query */
-	CommandTag	commandTag;		/* 'nuff said */
+	CommandTag	commandTag;		/* command tag for query */
 	Oid		   *param_types;	/* array of parameter type OIDs, or NULL */
 	int			num_params;		/* length of param_types array */
 	ParserSetupHook parserSetup;	/* alternative parameter spec method */
 	void	   *parserSetupArg;
+	PostRewriteHook postRewrite;	/* see SetPostRewriteHook */
+	void	   *postRewriteArg;
 	int			cursor_options; /* cursor options used for planning */
 	bool		fixed_result;	/* disallow change in result tupdesc? */
 	TupleDesc	resultDesc;		/* result type; NULL = doesn't return tuples */
@@ -193,6 +205,9 @@ extern void ReleaseAllPlanCacheRefsInOwner(ResourceOwner owner);
 extern CachedPlanSource *CreateCachedPlan(struct RawStmt *raw_parse_tree,
 										  const char *query_string,
 										  CommandTag commandTag);
+extern CachedPlanSource *CreateCachedPlanForQuery(struct Query *analyzed_parse_tree,
+												  const char *query_string,
+												  CommandTag commandTag);
 extern CachedPlanSource *CreateOneShotCachedPlan(struct RawStmt *raw_parse_tree,
 												 const char *query_string,
 												 CommandTag commandTag);
@@ -205,6 +220,9 @@ extern void CompleteCachedPlan(CachedPlanSource *plansource,
 							   void *parserSetupArg,
 							   int cursor_options,
 							   bool fixed_result);
+extern void SetPostRewriteHook(CachedPlanSource *plansource,
+							   PostRewriteHook postRewrite,
+							   void *postRewriteArg);
 
 extern void SaveCachedPlan(CachedPlanSource *plansource);
 extern void DropCachedPlan(CachedPlanSource *plansource);

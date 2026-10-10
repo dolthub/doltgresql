@@ -4,7 +4,7 @@
  *	  POSTGRES buffer manager definitions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/bufmgr.h
@@ -15,6 +15,7 @@
 #define BUFMGR_H
 
 #include "port/pg_iovec.h"
+#include "storage/aio_types.h"
 #include "storage/block.h"
 #include "storage/buf.h"
 #include "storage/bufpage.h"
@@ -111,17 +112,18 @@ typedef struct BufferManagerRelation
 #define READ_BUFFERS_ZERO_ON_ERROR (1 << 0)
 /* Call smgrprefetch() if I/O necessary. */
 #define READ_BUFFERS_ISSUE_ADVICE (1 << 1)
+/* Don't treat page as invalid due to checksum failures. */
+#define READ_BUFFERS_IGNORE_CHECKSUM_FAILURES (1 << 2)
+/* IO will immediately be waited for */
+#define READ_BUFFERS_SYNCHRONOUSLY (1 << 3)
+
 
 struct ReadBuffersOperation
 {
-	/*
-	 * The following members should be set by the caller.  If only smgr is
-	 * provided without rel, then smgr_persistence can be set to override the
-	 * default assumption of RELPERSISTENCE_PERMANENT.
-	 */
-	Relation	rel;
+	/* The following members should be set by the caller. */
+	Relation	rel;			/* optional */
 	struct SMgrRelationData *smgr;
-	char		smgr_persistence;
+	char		persistence;
 	ForkNumber	forknum;
 	BufferAccessStrategy strategy;
 
@@ -134,7 +136,9 @@ struct ReadBuffersOperation
 	BlockNumber blocknum;
 	int			flags;
 	int16		nblocks;
-	int16		io_buffers_len;
+	int16		nblocks_done;
+	PgAioWaitRef io_wref;
+	PgAioReturn io_return;
 };
 
 typedef struct ReadBuffersOperation ReadBuffersOperation;
@@ -154,24 +158,23 @@ extern PGDLLIMPORT int bgwriter_lru_maxpages;
 extern PGDLLIMPORT double bgwriter_lru_multiplier;
 extern PGDLLIMPORT bool track_io_timing;
 
-/* only applicable when prefetching is available */
-#ifdef USE_PREFETCH
-#define DEFAULT_EFFECTIVE_IO_CONCURRENCY 1
-#define DEFAULT_MAINTENANCE_IO_CONCURRENCY 10
-#else
-#define DEFAULT_EFFECTIVE_IO_CONCURRENCY 0
-#define DEFAULT_MAINTENANCE_IO_CONCURRENCY 0
-#endif
+#define DEFAULT_EFFECTIVE_IO_CONCURRENCY 16
+#define DEFAULT_MAINTENANCE_IO_CONCURRENCY 16
 extern PGDLLIMPORT int effective_io_concurrency;
 extern PGDLLIMPORT int maintenance_io_concurrency;
 
 #define MAX_IO_COMBINE_LIMIT PG_IOV_MAX
 #define DEFAULT_IO_COMBINE_LIMIT Min(MAX_IO_COMBINE_LIMIT, (128 * 1024) / BLCKSZ)
-extern PGDLLIMPORT int io_combine_limit;
+extern PGDLLIMPORT int io_combine_limit;	/* min of the two GUCs below */
+extern PGDLLIMPORT int io_combine_limit_guc;
+extern PGDLLIMPORT int io_max_combine_limit;
 
 extern PGDLLIMPORT int checkpoint_flush_after;
 extern PGDLLIMPORT int backend_flush_after;
 extern PGDLLIMPORT int bgwriter_flush_after;
+
+extern PGDLLIMPORT const PgAioHandleCallbacks aio_shared_buffer_readv_cb;
+extern PGDLLIMPORT const PgAioHandleCallbacks aio_local_buffer_readv_cb;
 
 /* in buf_init.c */
 extern PGDLLIMPORT char *BufferBlocks;
@@ -253,8 +256,11 @@ extern Buffer ExtendBufferedRelTo(BufferManagerRelation bmr,
 								  BlockNumber extend_to,
 								  ReadBufferMode mode);
 
-extern void InitBufferPoolAccess(void);
+extern void InitBufferManagerAccess(void);
 extern void AtEOXact_Buffers(bool isCommit);
+#ifdef USE_ASSERT_CHECKING
+extern void AssertBufferLocksPermitCatalogRead(void);
+#endif
 extern char *DebugPrintBufferRefcount(Buffer buffer);
 extern void CheckPointBuffers(int flags);
 extern BlockNumber BufferGetBlockNumber(Buffer buffer);
@@ -279,10 +285,6 @@ extern void DropDatabaseBuffers(Oid dbid);
 
 extern bool BufferIsPermanent(Buffer buffer);
 extern XLogRecPtr BufferGetLSNAtomic(Buffer buffer);
-
-#ifdef NOT_USED
-extern void PrintPinnedBufs(void);
-#endif
 extern void BufferGetTag(Buffer buffer, RelFileLocator *rlocator,
 						 ForkNumber *forknum, BlockNumber *blknum);
 
@@ -298,14 +300,25 @@ extern bool HoldingBufferPinThatDelaysRecovery(void);
 
 extern bool BgBufferSync(struct WritebackContext *wb_context);
 
+extern uint32 GetPinLimit(void);
+extern uint32 GetLocalPinLimit(void);
+extern uint32 GetAdditionalPinLimit(void);
+extern uint32 GetAdditionalLocalPinLimit(void);
 extern void LimitAdditionalPins(uint32 *additional_pins);
 extern void LimitAdditionalLocalPins(uint32 *additional_pins);
 
-extern bool EvictUnpinnedBuffer(Buffer buf);
+extern bool EvictUnpinnedBuffer(Buffer buf, bool *buffer_flushed);
+extern void EvictAllUnpinnedBuffers(int32 *buffers_evicted,
+									int32 *buffers_flushed,
+									int32 *buffers_skipped);
+extern void EvictRelUnpinnedBuffers(Relation rel,
+									int32 *buffers_evicted,
+									int32 *buffers_flushed,
+									int32 *buffers_skipped);
 
 /* in buf_init.c */
-extern void InitBufferPool(void);
-extern Size BufferShmemSize(void);
+extern void BufferManagerShmemInit(void);
+extern Size BufferManagerShmemSize(void);
 
 /* in localbuf.c */
 extern void AtProcExit_LocalBuffers(void);
@@ -392,7 +405,7 @@ BufferGetBlock(Buffer buffer)
 static inline Size
 BufferGetPageSize(Buffer buffer)
 {
-	AssertMacro(BufferIsValid(buffer));
+	Assert(BufferIsValid(buffer));
 	return (Size) BLCKSZ;
 }
 

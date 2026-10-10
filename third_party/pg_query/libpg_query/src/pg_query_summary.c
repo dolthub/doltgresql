@@ -12,7 +12,7 @@
 #include "nodes/nodeFuncs.h"
 #include "utils/builtins.h"
 
-#include "protobuf/pg_query.pb-c.h"
+#include "protobuf/pg_query.upb.h"
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -22,6 +22,7 @@
 
 static char *range_var_to_name(RangeVar *rv);
 static bool cte_names_include(WalkState * state, char *relname);
+static void handle_with_clause(WithClause *with_clause, WalkState * state);
 
 
 static PgQueryError * make_pg_query_error(const char *message)
@@ -103,6 +104,87 @@ add_range_var_list(List *clause, ContextType context, WalkState * state)
 	}
 }
 
+typedef struct
+{
+	char	   *ctename;
+	WalkState  *state;
+}			CteSelfReferenceContext;
+
+/*
+ * Records the range vars inside a CTE's own definition that carry the CTE's own
+ * name.
+ */
+static bool
+cte_self_reference_walker(Node *node, CteSelfReferenceContext * context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, RangeVar))
+	{
+		RangeVar   *rv = castNode(RangeVar, node);
+
+		/* Schema-qualified names never refer to a CTE. */
+		if (rv->schemaname == NULL && rv->relname != NULL &&
+			strcmp(rv->relname, context->ctename) == 0)
+			context->state->cte_self_reference_range_vars =
+				lappend(context->state->cte_self_reference_range_vars, rv);
+	}
+
+	if (!pg_query_raw_tree_walker_supports(node))
+		return false;
+
+	return raw_expression_tree_walker(node, cte_self_reference_walker, (void *) context);
+}
+
+/*
+ * Records the CTE names a WITH clause defines, plus the range vars inside a
+ * CTE's own definition that carry the CTE's own name: a non-recursive CTE is not
+ * visible inside its own definition, so those name a real relation, like the
+ * first "users" in
+ *
+ *   WITH users AS (SELECT * FROM users) SELECT * FROM users
+ *
+ * Runs before descending into the statement, so that the CTE names of enclosing
+ * scopes are known when a nested WITH clause is reached.
+ */
+static void
+handle_with_clause(WithClause *with_clause, WalkState * state)
+{
+	if (with_clause == NULL)
+		return;
+
+	ListCell   *lc = NULL;
+
+	foreach(lc, with_clause->ctes)
+	{
+		if (!IsA(lfirst(lc), CommonTableExpr))
+			continue;
+
+		CommonTableExpr *cte = castNode(CommonTableExpr, lfirst(lc));
+
+		if (cte->ctename == NULL)
+			continue;
+
+		/*
+		 * WITH RECURSIVE does make a CTE visible to itself, and a name that
+		 * already is a visible CTE from an enclosing scope keeps resolving to
+		 * that CTE inside this definition, like the inner "a" in
+		 *
+		 *   WITH a AS (...) SELECT * FROM (WITH a AS (SELECT * FROM a) ...) s
+		 */
+		if (!with_clause->recursive && cte->ctequery != NULL &&
+			!cte_names_include(state, cte->ctename))
+		{
+			CteSelfReferenceContext context = {cte->ctename, state};
+
+			cte_self_reference_walker(cte->ctequery, &context);
+		}
+
+		state->cte_names = lappend(state->cte_names, pstrdup(cte->ctename));
+	}
+}
+
 static void
 add_function(List *funcname, ContextType context, WalkState * state)
 {
@@ -132,14 +214,6 @@ pg_query_summary_walk_impl(Node *node, WalkState * state)
 
 	switch (nodeTag(node))
 	{
-		case T_CommonTableExpr:
-			{
-				CommonTableExpr *cte = castNode(CommonTableExpr, node);
-
-				state->cte_names = lappend(state->cte_names, pstrdup(cte->ctename));
-				break;
-			}
-
 		case T_CallStmt:
 			{
 				CallStmt   *stmt = castNode(CallStmt, node);
@@ -158,6 +232,8 @@ pg_query_summary_walk_impl(Node *node, WalkState * state)
 					return true;
 
 				SelectStmt *stmt = castNode(SelectStmt, node);
+
+				handle_with_clause(stmt->withClause, state);
 
 				if (stmt->op == SETOP_NONE)
 					add_range_var_list(stmt->fromClause, CONTEXT_SELECT, state);
@@ -191,7 +267,10 @@ pg_query_summary_walk_impl(Node *node, WalkState * state)
 
 		case T_InsertStmt:
 			{
-				add_range_var((Node *) castNode(InsertStmt, node)->relation, CONTEXT_DML, state);
+				InsertStmt *stmt = castNode(InsertStmt, node);
+
+				handle_with_clause(stmt->withClause, state);
+				add_range_var((Node *) stmt->relation, CONTEXT_DML, state);
 				break;
 			}
 
@@ -199,6 +278,7 @@ pg_query_summary_walk_impl(Node *node, WalkState * state)
 			{
 				UpdateStmt *stmt = castNode(UpdateStmt, node);
 
+				handle_with_clause(stmt->withClause, state);
 				add_range_var((Node *) stmt->relation, CONTEXT_DML, state);
 				add_range_var_list(stmt->fromClause, CONTEXT_SELECT, state);
 				break;
@@ -208,6 +288,7 @@ pg_query_summary_walk_impl(Node *node, WalkState * state)
 			{
 				MergeStmt  *stmt = castNode(MergeStmt, node);
 
+				handle_with_clause(stmt->withClause, state);
 				add_range_var((Node *) stmt->relation, CONTEXT_DML, state);
 				break;
 			}
@@ -216,6 +297,7 @@ pg_query_summary_walk_impl(Node *node, WalkState * state)
 			{
 				DeleteStmt *stmt = castNode(DeleteStmt, node);
 
+				handle_with_clause(stmt->withClause, state);
 				add_range_var((Node *) stmt->relation, CONTEXT_DML, state);
 				add_range_var_list(stmt->usingClause, CONTEXT_SELECT, state);
 				break;
@@ -599,6 +681,46 @@ cte_names_include(WalkState * state, char *relname)
 	return false;
 }
 
+/*
+ * Returns true if the given range var was recorded as a reference to the CTE it
+ * is defined in - see handle_with_clause().
+ */
+static bool
+cte_self_reference_range_vars_include(WalkState * state, RangeVar *rv)
+{
+	ListCell   *lc = NULL;
+
+	foreach(lc, state->cte_self_reference_range_vars)
+	{
+		if (lfirst(lc) == rv)
+			return true;
+	}
+	return false;
+}
+
+/*
+ * Determines whether a range var refers to a CTE rather than to a relation.
+ *
+ * Only plain (SELECT-style) references can resolve to a CTE: a CTE is not a
+ * valid target for DML (INSERT/UPDATE/DELETE/MERGE) or DDL, so those always name
+ * a real relation, even when a CTE in the same statement shares the name.
+ */
+static bool
+is_cte_reference(WalkState * state, RangeVar *rv, ContextType context)
+{
+	if (context != CONTEXT_SELECT)
+		return false;
+
+	/* Schema-qualified names always refer to a relation. */
+	if (rv->schemaname != NULL)
+		return false;
+
+	if (!cte_names_include(state, rv->relname))
+		return false;
+
+	return !cte_self_reference_range_vars_include(state, rv);
+}
+
 static void
 handle_range_var(RangeVar *node, ContextType context, WalkState * state)
 {
@@ -607,7 +729,7 @@ handle_range_var(RangeVar *node, ContextType context, WalkState * state)
 
 	RangeVar   *rv = node;
 
-	if (!cte_names_include(state, rv->relname))
+	if (!is_cte_reference(state, rv, context))
 	{
 		SummaryTable *table = palloc(sizeof(SummaryTable));
 
@@ -637,9 +759,11 @@ pg_query_summary_walk(Summary * summary, Node *tree)
 
 	/*
 	 * NOTE regarding cte_names and range_vars:
-	 * - We process cte_names as we iterate through the tree.
-	 * - We only add items to tables if they are *not* in cte_names.
-	 * - CTEs can be defined *after* they're referenced as names.
+	 * - We process cte_names as we iterate through the tree, from the WITH
+	 *   clause of a statement, before descending into that statement.
+	 * - We only add items to tables if they are *not* a CTE reference.
+	 * - CTEs can be defined *after* they're referenced as names, since
+	 *   raw_expression_tree_walker() walks the WITH clause of a statement last.
 	 * - Due to this, we store range_vars and process it after the tree walk.
 	 *
 	 * If we try to do it entirely on the initial pass, we wind up with CTEs
@@ -675,11 +799,11 @@ pg_query_summary_walk(Summary * summary, Node *tree)
 		summary->filter_columns = state.filter_columns;
 }
 
-static PgQuery__SummaryResult__Context ctx_to_protobuf_ctx(ContextType ctx)
+static int32_t ctx_to_protobuf_ctx(ContextType ctx)
 {
 	/*
-	 * We're converting from an enum we control (ContextType) to an enum which
-	 * is auto-generated by protobuf (PgQuery__SummaryResult__Context).
+	 * We're converting from an enum we control (ContextType) to the enum
+	 * generated for the protobuf SummaryResult.Context.
 	 *
 	 * While these should always be equivalent, we can't guarantee correctness
 	 * with a simple cast. (It is theoretically possible for the internal
@@ -690,149 +814,105 @@ static PgQuery__SummaryResult__Context ctx_to_protobuf_ctx(ContextType ctx)
 	switch (ctx)
 	{
 		case CONTEXT_NONE:
-			return PG_QUERY__SUMMARY_RESULT__CONTEXT__None;
+			return pg_query_SummaryResult_None;
 		case CONTEXT_SELECT:
-			return PG_QUERY__SUMMARY_RESULT__CONTEXT__Select;
+			return pg_query_SummaryResult_Select;
 		case CONTEXT_DML:
-			return PG_QUERY__SUMMARY_RESULT__CONTEXT__DML;
+			return pg_query_SummaryResult_DML;
 		case CONTEXT_DDL:
-			return PG_QUERY__SUMMARY_RESULT__CONTEXT__DDL;
+			return pg_query_SummaryResult_DDL;
 		case CONTEXT_CALL:
-			return PG_QUERY__SUMMARY_RESULT__CONTEXT__Call;
+			return pg_query_SummaryResult_Call;
 		default:
-			return PG_QUERY__SUMMARY_RESULT__CONTEXT__None;
+			return pg_query_SummaryResult_None;
 	}
+}
+
+/* upb string fields hold a (pointer, length) view; the source strings here are
+ * palloc'd and live until after we serialize, so we can reference them directly
+ * (NULL becomes the empty string, matching the previous protobuf-c behavior). */
+static inline upb_StringView sv(const char *s)
+{
+	return upb_StringView_FromString(s != NULL ? s : "");
 }
 
 /* Given the summarized query, convert it to protobuf, and store it in `result`. */
 static void
 summary_to_protobuf(PgQuerySummaryParseResult * result, Summary * summary)
 {
-	PgQueryProtobuf protobuf;
-	PgQuery__SummaryResult sr = PG_QUERY__SUMMARY_RESULT__INIT;
-
-	sr.n_tables = list_length(summary->tables);
-	sr.tables = palloc(sizeof(PgQuery__SummaryResult__Table *) * sr.n_tables);
-
+	upb_Arena  *a = upb_Arena_New();
+	pg_query_SummaryResult *sr = pg_query_SummaryResult_new(a);
 	ListCell   *lc = NULL;
+	char	   *data;
+	size_t		len;
 
 	foreach(lc, summary->tables)
 	{
-		size_t		i = foreach_current_index(lc);
 		SummaryTable *table = lfirst(lc);
+		pg_query_SummaryResult_Table *t = pg_query_SummaryResult_add_tables(sr, a);
 
-		sr.tables[i] = palloc(sizeof(PgQuery__SummaryResult__Table));
-		pg_query__summary_result__table__init(sr.tables[i]);
-		sr.tables[i]->name = table->name;
-		sr.tables[i]->schema_name = table->schema_name;
-		sr.tables[i]->table_name = table->table_name;
-		sr.tables[i]->context = ctx_to_protobuf_ctx(table->context);
+		pg_query_SummaryResult_Table_set_name(t, sv(table->name));
+		pg_query_SummaryResult_Table_set_schema_name(t, sv(table->schema_name));
+		pg_query_SummaryResult_Table_set_table_name(t, sv(table->table_name));
+		pg_query_SummaryResult_Table_set_context(t, ctx_to_protobuf_ctx(table->context));
 	}
 
-	sr.n_aliases = list_length(summary->aliases);
-	sr.aliases = palloc(sizeof(PgQuery__SummaryResult__AliasesEntry *) * sr.n_aliases);
 	foreach(lc, summary->aliases)
 	{
-		size_t		i = foreach_current_index(lc);
 		SummaryAlias *alias = lfirst(lc);
 
-		sr.aliases[i] = palloc(sizeof(PgQuery__SummaryResult__AliasesEntry));
-		pg_query__summary_result__aliases_entry__init(sr.aliases[i]);
-		sr.aliases[i]->key = alias->key;
-		sr.aliases[i]->value = alias->value;
+		pg_query_SummaryResult_aliases_set(sr, sv(alias->key), sv(alias->value), a);
 	}
 
-	sr.n_cte_names = list_length(summary->cte_names);
-	sr.cte_names = palloc(sizeof(char *) * sr.n_cte_names);
 	foreach(lc, summary->cte_names)
-	{
-		size_t		i = foreach_current_index(lc);
-		char	   *ctename = lfirst(lc);
+		pg_query_SummaryResult_add_cte_names(sr, sv(lfirst(lc)), a);
 
-		sr.cte_names[i] = ctename;
-	}
-
-	sr.n_functions = list_length(summary->functions);
-	sr.functions = palloc(sizeof(PgQuery__SummaryResult__Function *) * sr.n_functions);
 	foreach(lc, summary->functions)
 	{
-		size_t		i = foreach_current_index(lc);
 		SummaryFunction *fn = lfirst(lc);
+		pg_query_SummaryResult_Function *f = pg_query_SummaryResult_add_functions(sr, a);
 
-		sr.functions[i] = palloc(sizeof(PgQuery__SummaryResult__Function));
-		pg_query__summary_result__function__init(sr.functions[i]);
-		sr.functions[i]->name = fn->name;
-		sr.functions[i]->function_name = fn->function_name;
-		sr.functions[i]->schema_name = fn->schema_name;
-		sr.functions[i]->context = ctx_to_protobuf_ctx(fn->context);
+		pg_query_SummaryResult_Function_set_name(f, sv(fn->name));
+		pg_query_SummaryResult_Function_set_function_name(f, sv(fn->function_name));
+		pg_query_SummaryResult_Function_set_schema_name(f, sv(fn->schema_name));
+		pg_query_SummaryResult_Function_set_context(f, ctx_to_protobuf_ctx(fn->context));
 	}
 
-	sr.n_filter_columns = list_length(summary->filter_columns);
-	sr.filter_columns = palloc(sizeof(PgQuery__SummaryResult__FilterColumn *) * sr.n_filter_columns);
 	foreach(lc, summary->filter_columns)
 	{
-		size_t		i = foreach_current_index(lc);
 		FilterColumn *fc = lfirst(lc);
+		pg_query_SummaryResult_FilterColumn *c = pg_query_SummaryResult_add_filter_columns(sr, a);
 
-		sr.filter_columns[i] = palloc(sizeof(PgQuery__SummaryResult__FilterColumn));
-		pg_query__summary_result__filter_column__init(sr.filter_columns[i]);
-		sr.filter_columns[i]->schema_name = fc->schema_name;
-		sr.filter_columns[i]->table_name = fc->table_name;
-		sr.filter_columns[i]->column = fc->column;
+		pg_query_SummaryResult_FilterColumn_set_schema_name(c, sv(fc->schema_name));
+		pg_query_SummaryResult_FilterColumn_set_table_name(c, sv(fc->table_name));
+		pg_query_SummaryResult_FilterColumn_set_column(c, sv(fc->column));
 	}
 
-	sr.n_statement_types = list_length(summary->statement_types);
-	sr.statement_types = palloc(sizeof(char *) * sr.n_statement_types);
 	foreach(lc, summary->statement_types)
+		pg_query_SummaryResult_add_statement_types(sr, sv(lfirst(lc)), a);
+
+	pg_query_SummaryResult_set_truncated_query(sr, sv(summary->truncated_query));
+
+	/*
+	 * Serialization fails (returns NULL) e.g. when the arena runs out of
+	 * memory. The arena is malloc-backed, so free it before throwing.
+	 */
+	data = pg_query_SummaryResult_serialize(sr, a, &len);
+	if (data == NULL)
 	{
-		size_t		i = foreach_current_index(lc);
-		char	   *st = lfirst(lc);
-
-		sr.statement_types[i] = pstrdup(st);
+		upb_Arena_Free(a);
+		elog(ERROR, "could not serialize summary to protobuf");
 	}
-
-	if (summary->truncated_query == NULL)
-		sr.truncated_query = pstrdup("");
-	else
-		sr.truncated_query = summary->truncated_query;
-
-	size_t		len = pg_query__summary_result__get_packed_size(&sr);
 
 	/*
 	 * Note: This is intentionally malloc so exiting the memory context
 	 * doesn't free this
 	 */
-	char	   *data = malloc(sizeof(char) * len);
+	result->summary.len = len;
+	result->summary.data = malloc(len);
+	memcpy(result->summary.data, data, len);
 
-	size_t		written = pg_query__summary_result__pack(&sr, (void *) data);
-
-	if (written == len)
-	{
-		result->summary.len = len;
-		result->summary.data = data;
-	}
-	else
-	{
-		result->error = make_pg_query_error("summary_to_protobuf() wrote wrong amount of data?");
-	}
-
-	for (size_t i = 0; i < sr.n_tables; i++)
-		pfree(sr.tables[i]);
-	pfree(sr.tables);
-
-	for (size_t i = 0; i < sr.n_aliases; i++)
-		pfree(sr.aliases[i]);
-	pfree(sr.aliases);
-
-	for (size_t i = 0; i < sr.n_functions; i++)
-		pfree(sr.functions[i]);
-	pfree(sr.functions);
-
-	for (size_t i = 0; i < sr.n_filter_columns; i++)
-		pfree(sr.filter_columns[i]);
-	pfree(sr.filter_columns);
-
-	pfree(sr.truncated_query);
+	upb_Arena_Free(a);
 }
 
 /*
@@ -855,12 +935,27 @@ pg_query_summary_internal(const char *input, int parser_options, int truncate_li
 
 	if (result.error == NULL)
 	{
-		pg_query_summary_walk(&summary, (Node *) parsetree_and_error.tree);
-		pg_query_summary_statement_walk(&summary, (Node *) parsetree_and_error.tree);
-	}
+		/*
+		 * The walks may throw (e.g. "stack depth limit exceeded"), and the
+		 * malloc-ed stderr buffer is only known to this frame at that point, so
+		 * free it before passing on the error.
+		 */
+		PG_TRY();
+		{
+			pg_query_summary_walk(&summary, (Node *) parsetree_and_error.tree);
+			pg_query_summary_statement_walk(&summary, (Node *) parsetree_and_error.tree);
 
-	if (result.error == NULL && should_truncate)
-		pg_query_summary_truncate(&summary, (Node *) parsetree_and_error.tree, truncate_limit);
+			if (should_truncate)
+				pg_query_summary_truncate(&summary, (Node *) parsetree_and_error.tree, truncate_limit);
+		}
+		PG_CATCH();
+		{
+			if (result.stderr_buffer)
+				free(result.stderr_buffer);
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+	}
 
 	result.summary = summary;
 

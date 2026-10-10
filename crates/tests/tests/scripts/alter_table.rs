@@ -2568,7 +2568,6 @@ ORDER BY schema_name, table_name;"#,
                 ScriptTestAssertion {
                     query: "ALTER TABLE c ADD CONSTRAINT c_chk CHECK (x > 0) DEFERRABLE;",
                     expected: Expected::Error(Diagnostic { code: "0A000", message: "CHECK constraints cannot be marked DEFERRABLE", position: 50, ..E }),
-                    skip: Some("the position needs Postgres 18's parser, which records where constraint attributes start"),
                     ..A
                 },
                 ScriptTestAssertion {

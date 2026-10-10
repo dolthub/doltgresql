@@ -4,7 +4,7 @@
  *	  POSTGRES scan direction definitions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/sdir.h
@@ -17,9 +17,9 @@
 
 /*
  * Defines the direction for scanning a table or an index.  Scans are never
- * invoked using NoMovementScanDirectionScans.  For convenience, we use the
- * values -1 and 1 for backward and forward scans.  This allows us to perform
- * a few mathematical tricks such as what is done in ScanDirectionCombine.
+ * invoked using NoMovementScanDirection.  For convenience, we use the values
+ * -1 and 1 for backward and forward scans.  This allows us to perform a few
+ * mathematical tricks such as what is done in ScanDirectionCombine.
  */
 typedef enum ScanDirection
 {

@@ -1,6 +1,9 @@
 /*--------------------------------------------------------------------
  * Symbols referenced in this file:
  * - FunctionCall6Coll
+ * - pg_detoast_datum_packed
+ * - get_fn_expr_rettype
+ * - pg_detoast_datum
  *--------------------------------------------------------------------
  */
 
@@ -9,7 +12,7 @@
  * fmgr.c
  *	  The Postgres function manager.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -484,12 +487,26 @@ Float8GetDatum(float8 X)
  */
 
 
+struct varlena *
+pg_detoast_datum(struct varlena *datum)
+{
+if (VARATT_IS_EXTENDED(datum))
+		elog(ERROR, "TOASTed values are not supported");
+	else
+		return datum;}
 
 
 
 
 
 
+struct varlena *
+pg_detoast_datum_packed(struct varlena *datum)
+{
+if (VARATT_IS_COMPRESSED(datum) || VARATT_IS_EXTERNAL(datum))
+		elog(ERROR, "TOASTed values are not supported");
+	else
+		return datum;}
 
 /*-------------------------------------------------------------------------
  *		Support routines for extracting info from fn_expr parse tree
@@ -507,6 +524,10 @@ Float8GetDatum(float8 X)
  * Returns InvalidOid if information is not available
  */
 
+Oid
+get_fn_expr_rettype(FmgrInfo *flinfo)
+{
+return InvalidOid;}
 
 /*
  * Get the actual type OID of a specific function argument (counting from 0)

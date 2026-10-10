@@ -4,7 +4,7 @@
  *	  Routines to support inter-object dependencies.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/dependency.h
@@ -120,6 +120,10 @@ extern void recordDependencyOnSingleRelExpr(const ObjectAddress *depender,
 											DependencyType self_behavior,
 											bool reverse_self);
 
+extern void CheckUsageOnTypesInExpr(Node *expr, List *rtable, Oid roleid);
+
+extern void CheckUsageOnTypesInSingleRelExpr(Node *expr, Oid relId, Oid roleid);
+
 extern ObjectAddresses *new_object_addresses(void);
 
 extern void add_exact_object_address(const ObjectAddress *object,
@@ -174,6 +178,8 @@ extern long changeDependenciesOn(Oid refClassId, Oid oldRefObjectId,
 
 extern Oid	getExtensionOfObject(Oid classId, Oid objectId);
 extern List *getAutoExtensionsOfObject(Oid classId, Oid objectId);
+
+extern Oid	getExtensionType(Oid extensionOid, const char *typname);
 
 extern bool sequenceIsOwned(Oid seqId, char deptype, Oid *tableId, int32 *colId);
 extern List *getOwnedSequences(Oid relid);

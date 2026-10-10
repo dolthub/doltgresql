@@ -3,7 +3,7 @@
  * pg_ts_dict_d.h
  *    Macro definitions for pg_ts_dict
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,6 +18,8 @@
 #ifndef PG_TS_DICT_D_H
 #define PG_TS_DICT_D_H
 
+/* Macros related to the structure of pg_ts_dict */
+
 #define TSDictionaryRelationId 3600
 #define TSDictionaryNameNspIndexId 3604
 #define TSDictionaryOidIndexId 3605
@@ -30,6 +32,11 @@
 #define Anum_pg_ts_dict_dictinitoption 6
 
 #define Natts_pg_ts_dict 6
+
+/* Definitions copied from pg_ts_dict.h */
+
+
+/* OID symbols for objects defined in pg_ts_dict.dat */
 
 
 #endif							/* PG_TS_DICT_D_H */

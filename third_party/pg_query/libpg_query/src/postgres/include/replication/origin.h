@@ -2,7 +2,7 @@
  * origin.h
  *	   Exports from replication/logical/origin.c
  *
- * Copyright (c) 2013-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2013-2025, PostgreSQL Global Development Group
  *
  * src/include/replication/origin.h
  *-------------------------------------------------------------------------
@@ -33,9 +33,19 @@ typedef struct xl_replorigin_drop
 #define InvalidRepOriginId 0
 #define DoNotReplicateId PG_UINT16_MAX
 
+/*
+ * To avoid needing a TOAST table for pg_replication_origin, we limit
+ * replication origin names to 512 bytes.  This should be more than enough for
+ * all practical use.
+ */
+#define MAX_RONAME_LEN	512
+
 extern PGDLLIMPORT RepOriginId replorigin_session_origin;
 extern PGDLLIMPORT XLogRecPtr replorigin_session_origin_lsn;
 extern PGDLLIMPORT TimestampTz replorigin_session_origin_timestamp;
+
+/* GUCs */
+extern PGDLLIMPORT int max_active_replication_origins;
 
 /* API for querying & manipulating replication origins */
 extern RepOriginId replorigin_by_name(const char *roname, bool missing_ok);

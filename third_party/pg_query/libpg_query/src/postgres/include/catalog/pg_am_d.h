@@ -3,7 +3,7 @@
  * pg_am_d.h
  *    Macro definitions for pg_am
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,6 +18,8 @@
 #ifndef PG_AM_D_H
 #define PG_AM_D_H
 
+/* Macros related to the structure of pg_am */
+
 #define AccessMethodRelationId 2601
 #define AmNameIndexId 2651
 #define AmOidIndexId 2652
@@ -29,12 +31,17 @@
 
 #define Natts_pg_am 4
 
+/* Definitions copied from pg_am.h */
+
 
 /*
  * Allowed values for amtype
  */
 #define AMTYPE_INDEX					'i' /* index access method */
 #define AMTYPE_TABLE					't' /* table access method */
+
+
+/* OID symbols for objects defined in pg_am.dat */
 
 #define HEAP_TABLE_AM_OID 2
 #define BTREE_AM_OID 403

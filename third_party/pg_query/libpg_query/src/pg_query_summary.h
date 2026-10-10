@@ -68,6 +68,7 @@ typedef struct
 	List	   *functions;		/* List of Function * */
 	List	   *range_vars;		/* List of RangeVarWithContext * */
 	List	   *cte_names;		/* list of CommonTableExpr */
+	List	   *cte_self_reference_range_vars;	/* List of RangeVar * */
 	List	   *filter_columns; /* List of FilterColumn * */
 	bool		save_filter_columns;	/* If true, we should be adding to
 										 * filter columns. */

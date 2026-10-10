@@ -4,7 +4,7 @@
 #include "gramparse.h"
 #include "lib/stringinfo.h"
 
-#include "protobuf/pg_query.pb-c.h"
+#include "protobuf/pg_query.upb.h"
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -23,18 +23,73 @@ struct yyguts_t
   size_t yyleng_r;
 };
 
-PgQueryScanResult pg_query_scan(const char* input)
+/*
+ * Runs the scanner over the input and returns the tokens as a palloc'd array
+ * in the current memory context. Scanner errors are thrown (via elog), so this
+ * must be called inside PG_TRY.
+ */
+static PgQueryScanToken *
+scan_tokens(const char *input, int *n_tokens_out)
 {
-  MemoryContext ctx = NULL;
-  PgQueryScanResult result = {0};
   core_yyscan_t yyscanner;
   core_yy_extra_type yyextra;
   core_YYSTYPE yylval;
   YYLTYPE    yylloc;
-  PgQuery__ScanResult scan_result = PG_QUERY__SCAN_RESULT__INIT;
-  PgQuery__ScanToken **output_tokens;
-  size_t token_count = 0;
-  size_t i;
+  int capacity = 64;
+  int n_tokens = 0;
+  PgQueryScanToken *tokens = palloc(sizeof(PgQueryScanToken) * capacity);
+
+  /* initialize the flex scanner --- should match raw_parser() */
+  yyscanner = scanner_init(input, &yyextra, &ScanKeywords, ScanKeywordTokens);
+
+  /* return comments as tokens, unlike raw_parser() */
+  yyextra.return_comments = true;
+
+  /* Lex tokens  */
+  for (;;)
+  {
+    int tok;
+    PgQueryScanToken *token;
+
+    tok = core_yylex(&yylval, &yylloc, yyscanner);
+    if (tok == 0) break;
+
+    if (n_tokens == capacity)
+    {
+      capacity *= 2;
+      tokens = repalloc(tokens, sizeof(PgQueryScanToken) * capacity);
+    }
+    token = &tokens[n_tokens++];
+
+    token->start = yylloc;
+    if (tok == SCONST || tok == USCONST || tok == BCONST || tok == XCONST || tok == IDENT || tok == UIDENT || tok == C_COMMENT) {
+      token->end = yyextra.yyllocend;
+    } else {
+      token->end = yylloc + ((struct yyguts_t*) yyscanner)->yyleng_r;
+    }
+    token->token = tok;
+
+    switch (tok) {
+    #define PG_KEYWORD(a,b,c,d) case b: token->keyword_kind = c + 1; break;
+    #include "parser/kwlist.h"
+    #undef PG_KEYWORD
+    default: token->keyword_kind = 0;
+    }
+  }
+
+  scanner_finish(yyscanner);
+
+  *n_tokens_out = n_tokens;
+  return tokens;
+}
+
+PgQueryScanResult pg_query_scan(const char* input)
+{
+  MemoryContext ctx = NULL;
+  PgQueryScanResult result = {0};
+  /* volatile: assigned inside PG_TRY and read in PG_CATCH (after longjmp) */
+  upb_Arena *volatile arena = NULL;
+  pg_query_ScanResult *scan_result;
 
   ctx = pg_query_enter_memory_context();
 
@@ -68,59 +123,39 @@ PgQueryScanResult pg_query_scan(const char* input)
 
   PG_TRY();
   {
-    // Really this is stupid, we only run twice so we can pre-allocate the output array correctly
-    yyscanner = scanner_init(input, &yyextra, &ScanKeywords, ScanKeywordTokens);
-    for (;; token_count++)
+    size_t packed_len;
+    char *packed_data;
+    int n_tokens;
+    PgQueryScanToken *tokens = scan_tokens(input, &n_tokens);
+
+    arena = upb_Arena_New();
+    scan_result = pg_query_ScanResult_new(arena);
+    pg_query_ScanResult_set_version(scan_result, PG_VERSION_NUM);
+
+    for (int i = 0; i < n_tokens; i++)
     {
-      if (core_yylex(&yylval, &yylloc, yyscanner) == 0) break;
-    }
-    scanner_finish(yyscanner);
+      pg_query_ScanToken *scan_token = pg_query_ScanResult_add_tokens(scan_result, arena);
 
-    output_tokens = malloc(sizeof(PgQuery__ScanToken *) * token_count);
-
-    /* initialize the flex scanner --- should match raw_parser() */
-    yyscanner = scanner_init(input, &yyextra, &ScanKeywords, ScanKeywordTokens);
-
-    /* Lex tokens  */
-    for (i = 0; ; i++)
-    {
-      int tok;
-      int keyword;
-
-      tok = core_yylex(&yylval, &yylloc, yyscanner);
-      if (tok == 0) break;
-
-      output_tokens[i] = malloc(sizeof(PgQuery__ScanToken));
-      pg_query__scan_token__init(output_tokens[i]);
-      output_tokens[i]->start = yylloc;
-      if (tok == SCONST || tok == USCONST || tok == BCONST || tok == XCONST || tok == IDENT || tok == UIDENT || tok == C_COMMENT) {
-        output_tokens[i]->end = yyextra.yyllocend;
-      } else {
-        output_tokens[i]->end = yylloc + ((struct yyguts_t*) yyscanner)->yyleng_r;
-      }
-      output_tokens[i]->token = tok;
-
-      switch (tok) {
-      #define PG_KEYWORD(a,b,c,d) case b: output_tokens[i]->keyword_kind = c + 1; break;
-      #include "parser/kwlist.h"
-      #undef PG_KEYWORD
-      default: output_tokens[i]->keyword_kind = 0;
-      }
+      pg_query_ScanToken_set_start(scan_token, tokens[i].start);
+      pg_query_ScanToken_set_end(scan_token, tokens[i].end);
+      pg_query_ScanToken_set_token(scan_token, tokens[i].token);
+      pg_query_ScanToken_set_keyword_kind(scan_token, tokens[i].keyword_kind);
     }
 
-    scanner_finish(yyscanner);
+    /* Serialize into the arena, then copy out into a malloc'd buffer that
+     * survives exiting the memory context (freed in pg_query_free_scan_result).
+     * Serialization fails (returns NULL) e.g. when the arena runs out of memory;
+     * PG_CATCH below frees the arena. */
+    packed_data = pg_query_ScanResult_serialize(scan_result, arena, &packed_len);
+    if (packed_data == NULL)
+      elog(ERROR, "could not serialize scan result to protobuf");
 
-    scan_result.version = PG_VERSION_NUM;
-    scan_result.n_tokens = token_count;
-    scan_result.tokens = output_tokens;
-    result.pbuf.len = pg_query__scan_result__get_packed_size(&scan_result);
-    result.pbuf.data = malloc(result.pbuf.len);
-    pg_query__scan_result__pack(&scan_result, (void*) result.pbuf.data);
+    result.pbuf.len = packed_len;
+    result.pbuf.data = malloc(packed_len);
+    memcpy(result.pbuf.data, packed_data, packed_len);
 
-    for (i = 0; i < token_count; i++) {
-      free(output_tokens[i]);
-    }
-    free(output_tokens);
+    upb_Arena_Free(arena);
+    arena = NULL;
 
 #ifndef DEBUG
     // Save stderr for result
@@ -136,6 +171,12 @@ PgQueryScanResult pg_query_scan(const char* input)
 
     MemoryContextSwitchTo(parse_context);
     error_data = CopyErrorData();
+
+    // The arena is malloc-backed, so it is not freed with the memory context
+    if (arena != NULL) {
+      upb_Arena_Free(arena);
+      arena = NULL;
+    }
 
     // Note: This is intentionally malloc so exiting the memory context doesn't free this
     error = malloc(sizeof(PgQueryError));
@@ -172,3 +213,65 @@ void pg_query_free_scan_result(PgQueryScanResult result)
   free(result.pbuf.data);
   free(result.stderr_buffer);
 }
+
+/*
+ * Like pg_query_scan, but returns the tokens as a plain C array instead of a
+ * serialized protobuf, so C callers don't need to decode the result themselves.
+ */
+PgQueryScanTokensResult pg_query_scan_tokens(const char* input)
+{
+  MemoryContext ctx = NULL;
+  PgQueryScanTokensResult result = {0};
+
+  ctx = pg_query_enter_memory_context();
+
+  PG_TRY();
+  {
+    int n_tokens;
+    PgQueryScanToken *tokens = scan_tokens(input, &n_tokens);
+
+    result.n_tokens = n_tokens;
+    if (n_tokens > 0)
+    {
+      // Note: This is intentionally malloc so exiting the memory context doesn't free this
+      result.tokens = malloc(sizeof(PgQueryScanToken) * n_tokens);
+      memcpy(result.tokens, tokens, sizeof(PgQueryScanToken) * n_tokens);
+    }
+  }
+  PG_CATCH();
+  {
+    ErrorData* error_data;
+    PgQueryError* error;
+
+    MemoryContextSwitchTo(ctx);
+    error_data = CopyErrorData();
+
+    // Note: This is intentionally malloc so exiting the memory context doesn't free this
+    error = malloc(sizeof(PgQueryError));
+    error->message   = strdup(error_data->message);
+    error->filename  = strdup(error_data->filename);
+    error->funcname  = strdup(error_data->funcname);
+    error->context   = NULL;
+    error->lineno    = error_data->lineno;
+    error->cursorpos = error_data->cursorpos;
+
+    result.error = error;
+    FlushErrorState();
+  }
+  PG_END_TRY();
+
+  pg_query_exit_memory_context(ctx);
+
+  return result;
+}
+
+void pg_query_free_scan_tokens_result(PgQueryScanTokensResult result)
+{
+  if (result.error) {
+    pg_query_free_error(result.error);
+  }
+
+  free(result.tokens);
+}
+
+#include "pg_query_scan_defs.c"

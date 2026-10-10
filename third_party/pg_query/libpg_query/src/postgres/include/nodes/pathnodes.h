@@ -6,7 +6,7 @@
  * We don't support copying RelOptInfo, IndexOptInfo, or Path nodes.
  * There are some subsidiary structs that are useful to copy, though.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/pathnodes.h
@@ -116,6 +116,19 @@ typedef struct PlannerGlobal
 	/* "flat" rangetable for executor */
 	List	   *finalrtable;
 
+	/*
+	 * RT indexes of all relation RTEs in finalrtable (RTE_RELATION and
+	 * RTE_SUBQUERY RTEs of views)
+	 */
+	Bitmapset  *allRelids;
+
+	/*
+	 * RT indexes of all leaf partitions in nodes that support pruning and are
+	 * subject to runtime pruning at plan initialization time ("initial"
+	 * pruning).
+	 */
+	Bitmapset  *prunableRelids;
+
 	/* "flat" list of RTEPermissionInfos */
 	List	   *finalrteperminfos;
 
@@ -127,6 +140,9 @@ typedef struct PlannerGlobal
 
 	/* "flat" list of AppendRelInfos */
 	List	   *appendRelations;
+
+	/* "flat" list of PartitionPruneInfos */
+	List	   *partPruneInfos;
 
 	/* OIDs of relations the plan depends on */
 	List	   *relationOids;
@@ -185,6 +201,11 @@ typedef struct PlannerGlobal
  * Not all fields are printed.  (In some cases, there is no print support for
  * the field type; in others, doing so would lead to infinite recursion or
  * bloat dump output more than seems useful.)
+ *
+ * NOTE: When adding new entries containing relids and relid bitmapsets,
+ * remember to check that they will be correctly processed by
+ * the remove_self_join_rel function - relid of removing relation will be
+ * correctly replaced with the keeping one.
  *----------
  */
 #ifndef HAVE_PLANNERINFO_TYPEDEF
@@ -510,6 +531,12 @@ struct PlannerInfo
 	bool		hasRecursion;
 
 	/*
+	 * The rangetable index for the RTE_GROUP RTE, or 0 if there is no
+	 * RTE_GROUP RTE.
+	 */
+	int			group_rtindex;
+
+	/*
 	 * Information about aggregates. Filled by preprocess_aggrefs().
 	 */
 	/* AggInfo structs */
@@ -553,6 +580,9 @@ struct PlannerInfo
 
 	/* Does this query modify any partition key columns? */
 	bool		partColsUpdated;
+
+	/* PartitionPruneInfos added in this query's plan. */
+	List	   *partPruneInfos;
 };
 
 
@@ -728,7 +758,7 @@ typedef struct PartitionSchemeData *PartitionScheme;
  * populate these fields, for base rels; but someday they might be used for
  * join rels too:
  *
- *		unique_for_rels - list of Relid sets, each one being a set of other
+ *		unique_for_rels - list of UniqueRelInfo, each one being a set of other
  *					rels for which this one has been proven unique
  *		non_unique_for_rels - list of Relid sets, each one being a set of
  *					other rels for which we have tried and failed to prove
@@ -967,7 +997,7 @@ typedef struct RelOptInfo
 	/*
 	 * cache space for remembering if we have proven this relation unique
 	 */
-	/* known unique for these other relid set(s) */
+	/* known unique for these other relid set(s) given in UniqueRelInfo(s) */
 	List	   *unique_for_rels;
 	/* known not unique for these set(s) */
 	List	   *non_unique_for_rels;
@@ -1069,9 +1099,10 @@ typedef struct RelOptInfo
  * IndexOptInfo
  *		Per-index information for planning/optimization
  *
- *		indexkeys[], indexcollations[] each have ncolumns entries.
- *		opfamily[], and opcintype[]	each have nkeycolumns entries. They do
- *		not contain any information about included attributes.
+ *		indexkeys[] and canreturn[] each have ncolumns entries.
+ *
+ *		indexcollations[], opfamily[], and opcintype[] each have nkeycolumns
+ *		entries.  These don't contain any information about INCLUDE columns.
  *
  *		sortopfamily[], reverse_sort[], and nulls_first[] have
  *		nkeycolumns entries, if the index is ordered; but if it is unordered,
@@ -1180,6 +1211,8 @@ struct IndexOptInfo
 	bool		predOK;
 	/* true if a unique index */
 	bool		unique;
+	/* true if the index was defined with NULLS NOT DISTINCT */
+	bool		nullsnotdistinct;
 	/* is uniqueness enforced immediately? */
 	bool		immediate;
 	/* true if index doesn't really exist */
@@ -1367,6 +1400,36 @@ typedef struct JoinDomain
  * entry: consider SELECT random() AS a, random() AS b ... ORDER BY b,a.
  * So we record the SortGroupRef of the originating sort clause.
  *
+ * Derived equality clauses are stored in ec_derives_list. For small queries,
+ * this list is scanned directly during lookup. For larger queries -- e.g.,
+ * with many partitions or joins -- a hash table (ec_derives_hash) is built
+ * when the list grows beyond a threshold, for faster lookup. When present,
+ * the hash table contains the same RestrictInfos and is maintained alongside
+ * the list. We retain the list even when the hash is used to simplify
+ * serialization (e.g., in _outEquivalenceClass()) and support
+ * EquivalenceClass merging.
+ *
+ * In contrast, ec_sources holds equality clauses that appear directly in the
+ * query. These are typically few and do not require a hash table for lookup.
+ *
+ * 'ec_members' is a List of all !em_is_child EquivalenceMembers in the class.
+ * EquivalenceMembers for any RELOPT_OTHER_MEMBER_REL and RELOPT_OTHER_JOINREL
+ * relations are stored in the 'ec_childmembers' array in the index
+ * corresponding to the relid, or first component relid in the case of
+ * RELOPT_OTHER_JOINRELs.  'ec_childmembers' is NULL if the class has no child
+ * EquivalenceMembers.
+ *
+ * For code wishing to look at EquivalenceMembers, if only parent-level
+ * members are needed, then a simple foreach loop over ec_members is
+ * sufficient.  When child members are also required, it is best to use the
+ * functionality provided by EquivalenceMemberIterator.  This visits all
+ * parent members and only the relevant child members.  The reason for this
+ * is that large numbers of child EquivalenceMembers can exist in queries to
+ * partitioned tables with many partitions.  The functionality provided by
+ * EquivalenceMemberIterator allows efficient access to EquivalenceMembers
+ * which belong to specific child relids.  See the header comments for
+ * EquivalenceMemberIterator below for further details.
+ *
  * NB: if ec_merged isn't NULL, this class has been merged into another, and
  * should be ignored in favor of using the pointed-to class.
  *
@@ -1384,9 +1447,14 @@ typedef struct EquivalenceClass
 
 	List	   *ec_opfamilies;	/* btree operator family OIDs */
 	Oid			ec_collation;	/* collation, if datatypes are collatable */
+	int			ec_childmembers_size;	/* # elements in ec_childmembers */
 	List	   *ec_members;		/* list of EquivalenceMembers */
+	List	  **ec_childmembers;	/* array of Lists of child members */
 	List	   *ec_sources;		/* list of generating RestrictInfos */
-	List	   *ec_derives;		/* list of derived RestrictInfos */
+	List	   *ec_derives_list;	/* list of derived RestrictInfos */
+	struct derives_hash *ec_derives_hash;	/* optional hash table for fast
+											 * lookup; contains same
+											 * RestrictInfos as list */
 	Relids		ec_relids;		/* all relids appearing in ec_members, except
 								 * for child members (see below) */
 	bool		ec_has_const;	/* any pseudoconstants in ec_members? */
@@ -1415,12 +1483,17 @@ typedef struct EquivalenceClass
  * child when necessary to build a MergeAppend path for the whole appendrel
  * tree.  An em_is_child member has no impact on the properties of the EC as a
  * whole; in particular the EC's ec_relids field does NOT include the child
- * relation.  An em_is_child member should never be marked em_is_const nor
- * cause ec_has_const or ec_has_volatile to be set, either.  Thus, em_is_child
- * members are not really full-fledged members of the EC, but just reflections
- * or doppelgangers of real members.  Most operations on EquivalenceClasses
- * should ignore em_is_child members, and those that don't should test
- * em_relids to make sure they only consider relevant members.
+ * relation.  em_is_child members aren't stored in the ec_members List of the
+ * EC and instead they're stored and indexed by the relids of the child
+ * relation they represent in ec_childmembers.  An em_is_child member
+ * should never be marked em_is_const nor cause ec_has_const or
+ * ec_has_volatile to be set, either.  Thus, em_is_child members are not
+ * really full-fledged members of the EC, but just reflections or
+ * doppelgangers of real members.  Most operations on EquivalenceClasses
+ * should ignore em_is_child members by only inspecting members in the
+ * ec_members list.  Callers that require inspecting child members should do
+ * so using an EquivalenceMemberIterator and should test em_relids to make
+ * sure they only consider relevant members.
  *
  * em_datatype is usually the same as exprType(em_expr), but can be
  * different when dealing with a binary-compatible opfamily; in particular
@@ -1444,6 +1517,67 @@ typedef struct EquivalenceMember
 } EquivalenceMember;
 
 /*
+ * EquivalenceMemberIterator
+ *
+ * EquivalenceMemberIterator allows efficient access to sets of
+ * EquivalenceMembers for callers which require access to child members.
+ * Because partitioning workloads can result in large numbers of child
+ * members, the child members are not stored in the EquivalenceClass's
+ * ec_members List.  Instead, these are stored in the EquivalenceClass's
+ * ec_childmembers array of Lists.  The functionality provided by
+ * EquivalenceMemberIterator aims to provide efficient access to parent
+ * members and child members belonging to specific child relids.
+ *
+ * Currently, there is only one way to initialize and iterate over an
+ * EquivalenceMemberIterator and that is via the setup_eclass_member_iterator
+ * and eclass_member_iterator_next functions.  The iterator object is
+ * generally a local variable which is passed by address to
+ * setup_eclass_member_iterator.  The calling function defines which
+ * EquivalenceClass the iterator should be looking at and which child
+ * relids to also return members for.  child_relids can be passed as NULL, but
+ * the caller may as well just perform a foreach loop over ec_members as only
+ * parent-level members will be returned in that case.
+ *
+ * When calling the next function on an EquivalenceMemberIterator, all
+ * parent-level EquivalenceMembers are returned first, followed by all child
+ * members for the specified 'child_relids' for all child members which were
+ * indexed by any of the specified 'child_relids' in add_child_eq_member().
+ *
+ * Code using the iterator method of finding EquivalenceMembers will generally
+ * always want to ensure the returned member matches their search criteria
+ * rather than relying on the filtering to be done for them as all parent
+ * members are returned and for members belonging to RELOPT_OTHER_JOINREL
+ * rels, the member's em_relids may be a superset of the specified
+ * 'child_relids', which might not be what the caller wants.
+ *
+ * The most common way to use this iterator is as follows:
+ * -----
+ * EquivalenceMemberIterator		it;
+ * EquivalenceMember			   *em;
+ *
+ * setup_eclass_member_iterator(&it, ec, child_relids);
+ * while ((em = eclass_member_iterator_next(&it)) != NULL)
+ * {
+ *		...
+ * }
+ * -----
+ * It is not valid to call eclass_member_iterator_next() after it has returned
+ * NULL for any given EquivalenceMemberIterator.  Individual fields within
+ * the EquivalenceMemberIterator struct must not be accessed by callers.
+ */
+typedef struct
+{
+	EquivalenceClass *ec;		/* The EquivalenceClass to iterate over */
+	int			current_relid;	/* Current relid position within 'relids'. -1
+								 * when still looping over ec_members and -2
+								 * at the end of iteration */
+	Relids		child_relids;	/* Relids of child relations of interest.
+								 * Non-child rels are ignored */
+	ListCell   *current_cell;	/* Next cell to return within current_list */
+	List	   *current_list;	/* Current list of members being returned */
+} EquivalenceMemberIterator;
+
+/*
  * PathKeys
  *
  * The sort ordering of a path is represented by a list of PathKey nodes.
@@ -1456,9 +1590,7 @@ typedef struct EquivalenceMember
  * equivalent and closely-related orderings. (See optimizer/README for more
  * information.)
  *
- * Note: pk_strategy is either BTLessStrategyNumber (for ASC) or
- * BTGreaterStrategyNumber (for DESC).  We assume that all ordering-capable
- * index types will use btree-compatible strategy numbers.
+ * Note: pk_cmptype is either COMPARE_LT (for ASC) or COMPARE_GT (for DESC).
  */
 typedef struct PathKey
 {
@@ -1468,8 +1600,8 @@ typedef struct PathKey
 
 	/* the value that is ordered */
 	EquivalenceClass *pk_eclass pg_node_attr(copy_as_scalar, equal_as_scalar);
-	Oid			pk_opfamily;	/* btree opfamily defining the ordering */
-	int			pk_strategy;	/* sort direction (ASC or DESC) */
+	Oid			pk_opfamily;	/* index opfamily defining the ordering */
+	CompareType pk_cmptype;		/* sort direction (ASC or DESC) */
 	bool		pk_nulls_first; /* do NULLs come before normal values? */
 } PathKey;
 
@@ -1660,6 +1792,7 @@ typedef struct Path
 
 	/* estimated size/costs for path (see costsize.c for more info) */
 	Cardinality rows;			/* estimated number of result tuples */
+	int			disabled_nodes; /* count of disabled nodes */
 	Cost		startup_cost;	/* cost expended before fetching any tuples */
 	Cost		total_cost;		/* total cost (assuming all tuples fetched) */
 
@@ -2118,6 +2251,12 @@ typedef struct NestPath
  * mergejoin.  If it is not NIL then it is a PathKeys list describing
  * the ordering that must be created by an explicit Sort node.
  *
+ * outer_presorted_keys is the number of presorted keys of the outer
+ * path that match outersortkeys.  It is used to determine whether
+ * explicit incremental sort can be applied when outersortkeys is not
+ * NIL.  We do not track the number of presorted keys of the inner
+ * path, as incremental sort currently does not support mark/restore.
+ *
  * skip_mark_restore is true if the executor need not do mark/restore calls.
  * Mark/restore overhead is usually required, but can be skipped if we know
  * that the executor need find only one match per outer tuple, and that the
@@ -2135,6 +2274,8 @@ typedef struct MergePath
 	List	   *path_mergeclauses;	/* join clauses to be used for merge */
 	List	   *outersortkeys;	/* keys for explicit sort, if any */
 	List	   *innersortkeys;	/* keys for explicit sort, if any */
+	int			outer_presorted_keys;	/* number of presorted keys of the
+										 * outer path */
 	bool		skip_mark_restore;	/* can executor skip mark/restore? */
 	bool		materialize_inner;	/* add Materialize to inner? */
 } MergePath;
@@ -2332,13 +2473,12 @@ typedef struct WindowAggPath
 typedef struct SetOpPath
 {
 	Path		path;
-	Path	   *subpath;		/* path representing input source */
+	Path	   *leftpath;		/* paths representing input sources */
+	Path	   *rightpath;
 	SetOpCmd	cmd;			/* what to do, see nodes.h */
 	SetOpStrategy strategy;		/* how to do it, see nodes.h */
-	List	   *distinctList;	/* SortGroupClauses identifying target cols */
-	AttrNumber	flagColIdx;		/* where is the flag column, if any */
-	int			firstFlag;		/* flag value for first input relation */
-	Cardinality numGroups;		/* estimated number of groups in input */
+	List	   *groupList;		/* SortGroupClauses identifying target cols */
+	Cardinality numGroups;		/* estimated number of groups in left input */
 } SetOpPath;
 
 /*
@@ -2734,9 +2874,9 @@ typedef struct RestrictInfo
 typedef struct MergeScanSelCache
 {
 	/* Ordering details (cache lookup key) */
-	Oid			opfamily;		/* btree opfamily defining the ordering */
+	Oid			opfamily;		/* index opfamily defining the ordering */
 	Oid			collation;		/* collation for the ordering */
-	int			strategy;		/* sort direction (ASC or DESC) */
+	CompareType cmptype;		/* sort direction (ASC or DESC) */
 	bool		nulls_first;	/* do NULLs come before normal values? */
 	/* Results */
 	Selectivity leftstartsel;	/* first-join fraction for clause left side */
@@ -2825,9 +2965,9 @@ typedef struct PlaceHolderVar
  * min_lefthand and min_righthand for higher joins.)
  *
  * jointype is never JOIN_RIGHT; a RIGHT JOIN is handled by switching
- * the inputs to make it a LEFT JOIN.  It's never JOIN_RIGHT_ANTI either.
- * So the allowed values of jointype in a join_info_list member are only
- * LEFT, FULL, SEMI, or ANTI.
+ * the inputs to make it a LEFT JOIN.  It's never JOIN_RIGHT_SEMI or
+ * JOIN_RIGHT_ANTI either.  So the allowed values of jointype in a
+ * join_info_list member are only LEFT, FULL, SEMI, or ANTI.
  *
  * ojrelid is the RT index of the join RTE representing this outer join,
  * if there is one.  It is zero when jointype is INNER or SEMI, and can be
@@ -3335,6 +3475,7 @@ typedef struct
 typedef struct JoinCostWorkspace
 {
 	/* Preliminary cost estimates --- must not be larger than final ones! */
+	int			disabled_nodes;
 	Cost		startup_cost;	/* cost expended before fetching any tuples */
 	Cost		total_cost;		/* total cost (assuming all tuples fetched) */
 
@@ -3433,5 +3574,36 @@ typedef struct AggTransInfo
 	Datum		initValue pg_node_attr(read_write_ignore);
 	bool		initValueIsNull;
 } AggTransInfo;
+
+/*
+ * UniqueRelInfo caches a fact that a relation is unique when being joined
+ * to other relation(s).
+ */
+typedef struct UniqueRelInfo
+{
+	pg_node_attr(no_copy_equal, no_read, no_query_jumble)
+
+	NodeTag		type;
+
+	/*
+	 * The relation in consideration is unique when being joined with this set
+	 * of other relation(s).
+	 */
+	Relids		outerrelids;
+
+	/*
+	 * The relation in consideration is unique when considering only clauses
+	 * suitable for self-join (passed split_selfjoin_quals()).
+	 */
+	bool		self_join;
+
+	/*
+	 * Additional clauses from a baserestrictinfo list that were used to prove
+	 * the uniqueness.   We cache it for the self-join checking procedure: a
+	 * self-join can be removed if the outer relation contains strictly the
+	 * same set of clauses.
+	 */
+	List	   *extra_clauses;
+} UniqueRelInfo;
 
 #endif							/* PATHNODES_H */

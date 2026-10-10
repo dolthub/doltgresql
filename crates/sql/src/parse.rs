@@ -55,7 +55,7 @@ pub struct Extras {
 
 /// parse parses the statements of a query.
 pub fn parse(query: &str) -> Result<Vec<Statement>> {
-    match pg_query::parse_with_cursor(query) {
+    match pg_query::parse_with_cursor(query, 0) {
         Ok(result) => Ok(postgres_statements(query, result, Extras::default())),
         Err((err, cursor, state)) => extended(query).ok_or_else(|| syntax_error(err, cursor, &state)),
     }
@@ -124,7 +124,7 @@ fn extended(query: &str) -> Option<Vec<Statement>> {
 fn extended_statement(query: &str, tokens: &[ScanToken]) -> Option<Vec<Statement>> {
     let range = tokens[0].start as usize..tokens[tokens.len() - 1].end as usize;
     let isolated = isolate(query, range.clone());
-    if let Ok(result) = pg_query::parse(&isolated) {
+    if let Ok(result) = pg_query::parse(&isolated, 0) {
         return Some(postgres_statements(&isolated, result, Extras::default()));
     }
     let words = Words { query, tokens };
@@ -176,7 +176,7 @@ fn legacy_copy(query: &str, range: Range<usize>, words: &Words<'_>) -> Option<Ve
         }
     }
     let text = String::from_utf8(text).ok()?;
-    let result = pg_query::parse(&text).ok()?;
+    let result = pg_query::parse(&text, 0).ok()?;
     Some(postgres_statements(&text, result, Extras::default()))
 }
 
@@ -303,7 +303,7 @@ fn expression(query: &str, range: Range<usize>) -> Option<Node> {
     let mut text = " ".repeat(range.start.checked_sub(7)?);
     text.push_str("SELECT ");
     text.push_str(&query[range]);
-    let mut result = pg_query::parse(&text).ok()?;
+    let mut result = pg_query::parse(&text, 0).ok()?;
     if result.protobuf.stmts.len() != 1 {
         return None;
     }
@@ -376,7 +376,7 @@ fn cut_statement(query: &str, range: Range<usize>, words: &Words<'_>) -> Option<
     if !extras.if_not_exists && !hinted && cuts.is_empty() {
         return None;
     }
-    let result = pg_query::parse(&text).ok()?;
+    let result = pg_query::parse(&text, 0).ok()?;
     let tables: Vec<i32> = result
         .protobuf
         .nodes()
@@ -450,7 +450,7 @@ mod tests {
             assert_eq!((err.code, err.message.as_str(), err.position), (code::SYNTAX_ERROR, message, Some(position)));
         }
         let err = error("CREATE TABLE b6 (x INTEGER, CHECK (x > 0) DEFERRABLE);");
-        assert_eq!((err.message.as_str(), err.position), ("CHECK constraints cannot be marked DEFERRABLE", None));
+        assert_eq!((err.message.as_str(), err.position), ("CHECK constraints cannot be marked DEFERRABLE", Some(43)));
     }
 
     #[test]

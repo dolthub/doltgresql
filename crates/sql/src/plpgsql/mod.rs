@@ -189,13 +189,13 @@ pub fn compile(ctx: &mut Ctx<'_>, text: &str, body: &str) -> Result<Vec<Operatio
     let locate = |err: PgError| {
         let keyword = if err.message.starts_with("EXIT") { "exit" } else { "continue" };
         match err.message.contains("cannot be used outside a loop") {
-            true => PgError { position: statement_position(text, body, keyword, false), ..err },
+            true => PgError { position: statement_position(text, body, keyword), ..err },
             false => err,
         }
     };
     let (text, body) = &with_row_records(ctx, text, body);
-    let json = pg_query::parse_plpgsql(text).map_err(|err| match err {
-        pg_query::Error::Parse(message) => locate(PgError::new(code::SYNTAX_ERROR, message)),
+    let json = pg_query::parse_plpgsql_with_cursor(text).map_err(|(err, cursor, state)| match err {
+        pg_query::Error::Parse(_) => locate(crate::parse::syntax_error(err, cursor, &state)),
         other => PgError::internal(other),
     })?;
     let functions = json.as_array().map_or(&[][..], Vec::as_slice);
@@ -265,14 +265,13 @@ fn with_row_records(ctx: &mut Ctx<'_>, text: &str, body: &str) -> (String, Strin
 }
 
 /// statement_position returns the position in a statement of the first PL/pgSQL statement in its body that starts with
-/// the keyword, or of the token after the keyword when asked, which compilation errors point at.
-pub fn statement_position(text: &str, body: &str, keyword: &str, after: bool) -> Option<u32> {
+/// the keyword, which compilation errors point at.
+fn statement_position(text: &str, body: &str, keyword: &str) -> Option<u32> {
     let offset = text.find(body)?;
     let tokens = pg_query::scan(body).ok()?.tokens;
     let piece = |t: &pg_query::protobuf::ScanToken| &body[t.start as usize..t.end as usize];
     let i = tokens.iter().position(|t| piece(t).eq_ignore_ascii_case(keyword))?;
-    let token = if after { tokens.get(i + 1)? } else { &tokens[i] };
-    Some((offset + token.start as usize + 1) as u32)
+    Some((offset + tokens[i].start as usize + 1) as u32)
 }
 
 /// check_declarations checks that the type of each declared variable parses and exists, as Postgres does when it
@@ -335,7 +334,7 @@ const PREFIX: &str = "SELECT NULL::";
 /// check_type checks that a declaration's type text parses and names a type or table, failing with errors at the
 /// position the text starts at.
 fn check_type(ctx: &mut Ctx<'_>, text: &str, position: u32) -> Result<()> {
-    let result = match pg_query::parse_with_cursor(&format!("{PREFIX}{text}")) {
+    let result = match pg_query::parse_with_cursor(&format!("{PREFIX}{text}"), 0) {
         Ok(result) => result,
         Err((err, cursor, state)) => {
             let at = (cursor as u32).saturating_sub(1 + PREFIX.len() as u32);
@@ -532,7 +531,7 @@ fn option(op: &Operation, key: &str) -> Option<String> {
 
 /// parse parses the one statement of an embedded query.
 fn parse(sql: &str) -> Result<NodeEnum> {
-    let result = pg_query::parse(sql).map_err(|err| PgError::new(code::SYNTAX_ERROR, err.to_string()))?;
+    let result = pg_query::parse(sql, 0).map_err(|err| PgError::new(code::SYNTAX_ERROR, err.to_string()))?;
     let mut statements = result.protobuf.stmts.into_iter().filter_map(|raw| raw.stmt.and_then(|s| s.node));
     match (statements.next(), statements.next()) {
         (Some(statement), None) => Ok(statement),
@@ -1514,9 +1513,9 @@ fn perform_query(text: &str) -> String {
 fn returns_rows(statement: &NodeEnum) -> bool {
     match statement {
         NodeEnum::SelectStmt(select) => select.into_clause.is_none(),
-        NodeEnum::InsertStmt(insert) => !insert.returning_list.is_empty(),
-        NodeEnum::UpdateStmt(update) => !update.returning_list.is_empty(),
-        NodeEnum::DeleteStmt(delete) => !delete.returning_list.is_empty(),
+        NodeEnum::InsertStmt(insert) => insert.returning_clause.is_some(),
+        NodeEnum::UpdateStmt(update) => update.returning_clause.is_some(),
+        NodeEnum::DeleteStmt(delete) => delete.returning_clause.is_some(),
         _ => false,
     }
 }

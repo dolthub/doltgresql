@@ -3,7 +3,7 @@
  * pg_publication_d.h
  *    Macro definitions for pg_publication
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,6 +18,8 @@
 #ifndef PG_PUBLICATION_D_H
 #define PG_PUBLICATION_D_H
 
+/* Macros related to the structure of pg_publication */
+
 #define PublicationRelationId 6104
 #define PublicationObjectIndexId 6110
 #define PublicationNameIndexId 6111
@@ -31,8 +33,25 @@
 #define Anum_pg_publication_pubdelete 7
 #define Anum_pg_publication_pubtruncate 8
 #define Anum_pg_publication_pubviaroot 9
+#define Anum_pg_publication_pubgencols 10
 
-#define Natts_pg_publication 9
+#define Natts_pg_publication 10
+
+/* Definitions copied from pg_publication.h */
+
+
+typedef enum PublishGencolsType
+{
+	/* Generated columns present should not be replicated. */
+	PUBLISH_GENCOLS_NONE = 'n',
+
+	/* Generated columns present should be replicated. */
+	PUBLISH_GENCOLS_STORED = 's',
+
+} PublishGencolsType;
+
+
+/* OID symbols for objects defined in pg_publication.dat */
 
 
 #endif							/* PG_PUBLICATION_D_H */

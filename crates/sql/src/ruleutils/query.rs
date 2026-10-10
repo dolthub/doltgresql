@@ -689,7 +689,7 @@ impl Analyzer<'_, '_> {
             "" => quote_identifier(&relation.relname),
             schema => format!("{}.{}", quote_identifier(schema), quote_identifier(&relation.relname)),
         };
-        let parsed = pg_query::parse(&format!("SELECT * FROM {name}")).map_err(PgError::internal)?;
+        let parsed = pg_query::parse(&format!("SELECT * FROM {name}"), 0).map_err(PgError::internal)?;
         let statement = parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node);
         let Some(NodeEnum::SelectStmt(select)) = statement else { return Ok(Vec::new()) };
         let query = crate::plan::Planner { ctx: self.ctx, outer: Vec::new() }.plan_query(&select)?;

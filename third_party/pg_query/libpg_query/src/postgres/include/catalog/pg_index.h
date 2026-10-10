@@ -4,7 +4,7 @@
  *	  definition of the "index" system catalog (pg_index)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_index.h
@@ -19,7 +19,7 @@
 #define PG_INDEX_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_index_d.h"
+#include "catalog/pg_index_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_index definition.  cpp turns this into
@@ -68,6 +68,8 @@ CATALOG(pg_index,2610,IndexRelationId) BKI_SCHEMA_MACRO
  * ----------------
  */
 typedef FormData_pg_index *Form_pg_index;
+
+DECLARE_TOAST_WITH_MACRO(pg_index, 6351, 6352, PgIndexToastTable, PgIndexToastIndex);
 
 DECLARE_INDEX(pg_index_indrelid_index, 2678, IndexIndrelidIndexId, pg_index, btree(indrelid oid_ops));
 DECLARE_UNIQUE_INDEX_PKEY(pg_index_indexrelid_index, 2679, IndexRelidIndexId, pg_index, btree(indexrelid oid_ops));

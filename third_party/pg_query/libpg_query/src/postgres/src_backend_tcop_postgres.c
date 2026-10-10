@@ -1,13 +1,8 @@
 /*--------------------------------------------------------------------
  * Symbols referenced in this file:
  * - debug_query_string
- * - stack_is_too_deep
- * - stack_base_ptr
- * - max_stack_depth_bytes
  * - whereToSendOutput
  * - ProcessInterrupts
- * - check_stack_depth
- * - max_stack_depth
  *--------------------------------------------------------------------
  */
 
@@ -16,7 +11,7 @@
  * postgres.c
  *	  POSTGRES C Backend Interface
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -66,11 +61,11 @@
 #include "pg_getopt.h"
 #include "pg_trace.h"
 #include "pgstat.h"
-#include "postmaster/autovacuum.h"
 #include "postmaster/interrupt.h"
 #include "postmaster/postmaster.h"
 #include "replication/logicallauncher.h"
 #include "replication/logicalworker.h"
+#include "replication/slotsync.h"
 #include "replication/slot.h"
 #include "replication/walsender.h"
 #include "rewrite/rewriteHandler.h"
@@ -80,6 +75,7 @@
 #include "storage/proc.h"
 #include "storage/procsignal.h"
 #include "storage/sinval.h"
+#include "tcop/backend_startup.h"
 #include "tcop/fastpath.h"
 #include "tcop/pquery.h"
 #include "tcop/tcopprot.h"
@@ -110,10 +106,6 @@ __thread CommandDest whereToSendOutput = DestDebug;
 
 
 
-/* GUC variable for maximum stack depth (measured in kilobytes) */
-__thread int			max_stack_depth = 100;
-
-
 /* wait N seconds to allow attach from a debugger */
 
 
@@ -140,17 +132,6 @@ typedef struct BindParamCbData
  *		private variables
  * ----------------
  */
-
-/* max_stack_depth converted to bytes for speed of checking */
-static __thread long max_stack_depth_bytes = 100 * 1024L;
-
-
-/*
- * Stack base pointer -- initialized by PostmasterMain and inherited by
- * subprocesses (but see also InitPostmasterChild).
- */
-static __thread char *stack_base_ptr = NULL;
-
 
 /*
  * Flag to keep track of whether we have started a transaction.
@@ -326,10 +307,8 @@ valgrind_report_error_query(const char *query)
  * we've seen a COMMIT or ABORT command; when we are in abort state, other
  * commands are not processed any further than the raw parse stage.
  */
-#ifdef COPY_PARSE_PLAN_TREES
-#endif
-#ifdef WRITE_READ_PARSE_PLAN_TREES
-#endif
+#ifdef DEBUG_NODE_TESTS_ENABLED
+#endif							/* DEBUG_NODE_TESTS_ENABLED */
 
 /*
  * Given a raw parsetree (gram.y output), and optionally information about
@@ -363,24 +342,20 @@ valgrind_report_error_query(const char *query)
  * Note: query must just have come from the parser, because we do not do
  * AcquireRewriteLocks() on it.
  */
-#ifdef COPY_PARSE_PLAN_TREES
-#endif
-#ifdef WRITE_READ_PARSE_PLAN_TREES
-#endif
+#ifdef DEBUG_NODE_TESTS_ENABLED
+#endif							/* DEBUG_NODE_TESTS_ENABLED */
 
 
 /*
  * Generate a plan for a single already-rewritten query.
  * This is a thin wrapper around planner() and takes the same parameters.
  */
-#ifdef COPY_PARSE_PLAN_TREES
+#ifdef DEBUG_NODE_TESTS_ENABLED
 #ifdef NOT_USED
 #endif
-#endif
-#ifdef WRITE_READ_PARSE_PLAN_TREES
 #ifdef NOT_USED
 #endif
-#endif
+#endif							/* DEBUG_NODE_TESTS_ENABLED */
 
 /*
  * Generate plans for a list of already-rewritten queries.
@@ -588,93 +563,12 @@ valgrind_report_error_query(const char *query)
  * return; another interrupt could have arrived.  But we promise that
  * any pre-existing one will have been serviced.)
  */
-void ProcessInterrupts(void) {}
 
-
-/*
- * set_stack_base: set up reference point for stack depth checking
- *
- * Returns the old reference point, if any.
- */
-#ifndef HAVE__BUILTIN_FRAME_ADDRESS
-#endif
-#ifdef HAVE__BUILTIN_FRAME_ADDRESS
-#else
-#endif
-
-/*
- * restore_stack_base: restore reference point for stack depth checking
- *
- * This can be used after set_stack_base() to restore the old value. This
- * is currently only used in PL/Java. When PL/Java calls a backend function
- * from different thread, the thread's stack is at a different location than
- * the main thread's stack, so it sets the base pointer before the call, and
- * restores it afterwards.
- */
-
-
-/*
- * check_stack_depth/stack_is_too_deep: check for excessively deep recursion
- *
- * This should be called someplace in any recursive routine that might possibly
- * recurse deep enough to overflow the stack.  Most Unixen treat stack
- * overflow as an unrecoverable SIGSEGV, so we want to error out ourselves
- * before hitting the hardware limit.
- *
- * check_stack_depth() just throws an error summarily.  stack_is_too_deep()
- * can be used by code that wants to handle the error condition itself.
- */
 void
-check_stack_depth(void)
+ProcessInterrupts(void)
 {
-	if (stack_is_too_deep())
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_STATEMENT_TOO_COMPLEX),
-				 errmsg("stack depth limit exceeded"),
-				 errhint("Increase the configuration parameter \"max_stack_depth\" (currently %dkB), "
-						 "after ensuring the platform's stack depth limit is adequate.",
-						 max_stack_depth)));
-	}
+	/* Do nothing */
 }
-
-bool
-stack_is_too_deep(void)
-{
-	char		stack_top_loc;
-	long		stack_depth;
-
-	/*
-	 * Compute distance from reference point to my local variables
-	 */
-	stack_depth = (long) (stack_base_ptr - &stack_top_loc);
-
-	/*
-	 * Take abs value, since stacks grow up on some machines, down on others
-	 */
-	if (stack_depth < 0)
-		stack_depth = -stack_depth;
-
-	/*
-	 * Trouble?
-	 *
-	 * The test on stack_base_ptr prevents us from erroring out if called
-	 * during process setup or in a non-backend process.  Logically it should
-	 * be done first, but putting it here avoids wasting cycles during normal
-	 * cases.
-	 */
-	if (stack_depth > max_stack_depth_bytes &&
-		stack_base_ptr != NULL)
-		return true;
-
-	return false;
-}
-
-/* GUC check hook for max_stack_depth */
-
-
-/* GUC assign hook for max_stack_depth */
-
 
 /*
  * GUC check_hook for client_connection_check_interval
@@ -785,16 +679,6 @@ stack_is_too_deep(void)
  * message was received, and is used to construct the error message.
  */
 
-
-
-/*
- * Obtain platform stack depth limit (in bytes)
- *
- * Return -1 if unknown
- */
-#if defined(HAVE_GETRLIMIT)
-#else
-#endif
 
 
 

@@ -3,7 +3,7 @@
  *
  * External declarations pertaining to Grand Unified Configuration.
  *
- * Copyright (c) 2000-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2025, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * src/include/utils/guc.h
@@ -17,9 +17,13 @@
 #include "utils/array.h"
 
 
-/* upper limit for GUC variables measured in kilobytes of memory */
-/* note that various places assume the byte size fits in a "long" variable */
-#if SIZEOF_SIZE_T > 4 && SIZEOF_LONG > 4
+/*
+ * Maximum for integer GUC variables that are measured in kilobytes of memory.
+ * This value is chosen to ensure that the corresponding number of bytes fits
+ * into a variable of type size_t or ssize_t.  Be sure to compute the number
+ * of bytes like "guc_var * (Size) 1024" to avoid int-width overflow.
+ */
+#if SIZEOF_SIZE_T > 4
 #define MAX_KILOBYTES	INT_MAX
 #else
 #define MAX_KILOBYTES	(INT_MAX / 1024)
@@ -246,11 +250,18 @@ extern PGDLLIMPORT bool Debug_print_parse;
 extern PGDLLIMPORT bool Debug_print_rewritten;
 extern PGDLLIMPORT bool Debug_pretty_print;
 
+#ifdef DEBUG_NODE_TESTS_ENABLED
+extern PGDLLIMPORT bool Debug_copy_parse_plan_trees;
+extern PGDLLIMPORT bool Debug_write_read_parse_plan_trees;
+extern PGDLLIMPORT bool Debug_raw_expression_coverage_test;
+#endif
+
 extern PGDLLIMPORT bool log_parser_stats;
 extern PGDLLIMPORT bool log_planner_stats;
 extern PGDLLIMPORT bool log_executor_stats;
 extern PGDLLIMPORT bool log_statement_stats;
 extern PGDLLIMPORT bool log_btree_build_stats;
+extern PGDLLIMPORT char *event_source;
 
 extern PGDLLIMPORT __thread bool check_function_bodies;
 extern PGDLLIMPORT bool current_role_is_superuser;
@@ -286,9 +297,31 @@ extern PGDLLIMPORT int tcp_keepalives_interval;
 extern PGDLLIMPORT int tcp_keepalives_count;
 extern PGDLLIMPORT int tcp_user_timeout;
 
-#ifdef TRACE_SORT
+extern PGDLLIMPORT char *role_string;
+extern PGDLLIMPORT bool in_hot_standby_guc;
 extern PGDLLIMPORT bool trace_sort;
+
+#ifdef DEBUG_BOUNDED_SORT
+extern PGDLLIMPORT bool optimize_bounded_sort;
 #endif
+
+/*
+ * Declarations for options for enum values
+ *
+ * For most parameters, these are defined statically inside guc_tables.c.  But
+ * for some parameters, the definitions require symbols that are not easily
+ * available inside guc_tables.c, so they are instead defined in their home
+ * modules.  For those, we keep the extern declarations here.  (An alternative
+ * would be to put the extern declarations in the modules' header files, but
+ * that would then require including the definition of struct
+ * config_enum_entry into those header files.)
+ */
+extern PGDLLIMPORT const struct config_enum_entry archive_mode_options[];
+extern PGDLLIMPORT const struct config_enum_entry dynamic_shared_memory_options[];
+extern PGDLLIMPORT const struct config_enum_entry io_method_options[];
+extern PGDLLIMPORT const struct config_enum_entry recovery_target_action_options[];
+extern PGDLLIMPORT const struct config_enum_entry wal_level_options[];
+extern PGDLLIMPORT const struct config_enum_entry wal_sync_method_options[];
 
 /*
  * Functions exported by guc.c
@@ -412,7 +445,7 @@ extern ArrayType *GUCArrayDelete(ArrayType *array, const char *name);
 extern ArrayType *GUCArrayReset(ArrayType *array);
 
 extern void *guc_malloc(int elevel, size_t size);
-extern pg_nodiscard void *guc_realloc(int elevel, void *old, size_t size);
+pg_nodiscard extern void *guc_realloc(int elevel, void *old, size_t size);
 extern char *guc_strdup(int elevel, const char *src);
 extern void guc_free(void *ptr);
 

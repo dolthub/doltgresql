@@ -126,6 +126,7 @@ pub enum NodeRef<'a> {
     AlterOwnerStmt(&'a protobuf::AlterOwnerStmt),
     AlterOperatorStmt(&'a protobuf::AlterOperatorStmt),
     AlterTypeStmt(&'a protobuf::AlterTypeStmt),
+    AtalterConstraint(&'a protobuf::AtAlterConstraint),
     DropOwnedStmt(&'a protobuf::DropOwnedStmt),
     ReassignOwnedStmt(&'a protobuf::ReassignOwnedStmt),
     CompositeTypeStmt(&'a protobuf::CompositeTypeStmt),
@@ -233,6 +234,9 @@ pub enum NodeRef<'a> {
     MergeAction(&'a protobuf::MergeAction),
     AlterDatabaseRefreshCollStmt(&'a protobuf::AlterDatabaseRefreshCollStmt),
     ReturnStmt(&'a protobuf::ReturnStmt),
+    ReturningClause(&'a protobuf::ReturningClause),
+    ReturningExpr(&'a protobuf::ReturningExpr),
+    ReturningOption(&'a protobuf::ReturningOption),
     PlassignStmt(&'a protobuf::PlAssignStmt),
     StatsElem(&'a protobuf::StatsElem),
     CtesearchClause(&'a protobuf::CteSearchClause),
@@ -261,7 +265,6 @@ pub enum NodeRef<'a> {
     JsonTablePath(&'a protobuf::JsonTablePath),
     JsonTablePathScan(&'a protobuf::JsonTablePathScan),
     JsonTableSiblingJoin(&'a protobuf::JsonTableSiblingJoin),
-    SinglePartitionSpec(&'a protobuf::SinglePartitionSpec),
     JsonArgument(&'a protobuf::JsonArgument),
     JsonFuncExpr(&'a protobuf::JsonFuncExpr),
     JsonTablePathSpec(&'a protobuf::JsonTablePathSpec),
@@ -274,11 +277,14 @@ pub enum NodeRef<'a> {
 
 impl<'a> NodeRef<'a> {
     // TODO: `deparseStmt` in pg_query_deparse.c panics on unexpected nodes. instead, return a Rust error
-    pub fn deparse(&self) -> Result<String> {
-        crate::deparse(&protobuf::ParseResult {
-            version: crate::bindings::PG_VERSION_NUM as i32,
-            stmts: vec![protobuf::RawStmt { stmt: Some(Box::new(Node { node: Some(self.to_enum()) })), stmt_location: 0, stmt_len: 0 }],
-        })
+    pub fn deparse(&self, options: DeparseOptions) -> Result<String> {
+        crate::deparse(
+            &protobuf::ParseResult {
+                version: crate::bindings::PG_VERSION_NUM as i32,
+                stmts: vec![protobuf::RawStmt { stmt: Some(Box::new(Node { node: Some(self.to_enum()) })), stmt_location: 0, stmt_len: 0 }],
+            },
+            options,
+        )
     }
 
     pub fn to_enum(&self) -> NodeEnum {
@@ -407,6 +413,7 @@ impl<'a> NodeRef<'a> {
             NodeRef::AlterOwnerStmt(n) => NodeEnum::AlterOwnerStmt(Box::new((*n).clone())),
             NodeRef::AlterOperatorStmt(n) => NodeEnum::AlterOperatorStmt((*n).clone()),
             NodeRef::AlterTypeStmt(n) => NodeEnum::AlterTypeStmt((*n).clone()),
+            NodeRef::AtalterConstraint(n) => NodeEnum::AtalterConstraint((*n).clone()),
             NodeRef::DropOwnedStmt(n) => NodeEnum::DropOwnedStmt((*n).clone()),
             NodeRef::ReassignOwnedStmt(n) => NodeEnum::ReassignOwnedStmt((*n).clone()),
             NodeRef::CompositeTypeStmt(n) => NodeEnum::CompositeTypeStmt((*n).clone()),
@@ -514,6 +521,9 @@ impl<'a> NodeRef<'a> {
             NodeRef::MergeAction(n) => NodeEnum::MergeAction(Box::new((*n).clone())),
             NodeRef::AlterDatabaseRefreshCollStmt(n) => NodeEnum::AlterDatabaseRefreshCollStmt((*n).clone()),
             NodeRef::ReturnStmt(n) => NodeEnum::ReturnStmt(Box::new((*n).clone())),
+            NodeRef::ReturningClause(n) => NodeEnum::ReturningClause((*n).clone()),
+            NodeRef::ReturningExpr(n) => NodeEnum::ReturningExpr(Box::new((*n).clone())),
+            NodeRef::ReturningOption(n) => NodeEnum::ReturningOption((*n).clone()),
             NodeRef::PlassignStmt(n) => NodeEnum::PlassignStmt(Box::new((*n).clone())),
             NodeRef::StatsElem(n) => NodeEnum::StatsElem(Box::new((*n).clone())),
             NodeRef::CtesearchClause(n) => NodeEnum::CtesearchClause((*n).clone()),
@@ -542,7 +552,6 @@ impl<'a> NodeRef<'a> {
             NodeRef::JsonTablePath(n) => NodeEnum::JsonTablePath((*n).clone()),
             NodeRef::JsonTablePathScan(n) => NodeEnum::JsonTablePathScan(Box::new((*n).clone())),
             NodeRef::JsonTableSiblingJoin(n) => NodeEnum::JsonTableSiblingJoin(Box::new((*n).clone())),
-            NodeRef::SinglePartitionSpec(n) => NodeEnum::SinglePartitionSpec((*n).clone()),
             NodeRef::JsonArgument(n) => NodeEnum::JsonArgument(Box::new((*n).clone())),
             NodeRef::JsonFuncExpr(n) => NodeEnum::JsonFuncExpr(Box::new((*n).clone())),
             NodeRef::JsonTablePathSpec(n) => NodeEnum::JsonTablePathSpec(Box::new((*n).clone())),

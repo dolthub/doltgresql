@@ -506,7 +506,9 @@ dump_return(StringInfo out, PLpgSQL_stmt_return *node)
 
 	WRITE_INT_FIELD(lineno, lineno, lineno);
 	WRITE_EXPR_FIELD(expr);
-	//WRITE_INT_FIELD(retvarno);
+	/* the variable returned, written even when it is datum 0 (added for Doltgres) */
+	if (node->expr == NULL)
+		appendStringInfo(out, "\"retvarno\":%d,", node->retvarno);
 }
 
 static void
@@ -516,7 +518,9 @@ dump_return_next(StringInfo out, PLpgSQL_stmt_return_next *node)
 
 	WRITE_INT_FIELD(lineno, lineno, lineno);
 	WRITE_EXPR_FIELD(expr);
-	//WRITE_INT_FIELD(retvarno);
+	/* the variable returned, written even when it is datum 0 (added for Doltgres) */
+	if (node->expr == NULL)
+		appendStringInfo(out, "\"retvarno\":%d,", node->retvarno);
 }
 
 static void
@@ -659,6 +663,10 @@ dump_function(StringInfo out, PLpgSQL_function *node)
 				break;
 			case PLPGSQL_DTYPE_RECFIELD:
 				dump_record_field(out, (PLpgSQL_recfield *) d);
+				break;
+			case PLPGSQL_DTYPE_PROMISE:
+				/* a trigger variable such as tg_name (added for Doltgres) */
+				appendStringInfo(out, "\"PLpgSQL_promise\":{\"refname\":\"%s\",", ((PLpgSQL_var *) d)->refname);
 				break;
 			default:
 				elog(WARNING, "could not dump unrecognized dtype: %d",

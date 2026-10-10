@@ -3,7 +3,7 @@
  * amapi.h
  *	  API for Postgres index access methods.
  *
- * Copyright (c) 2015-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2015-2025, PostgreSQL Global Development Group
  *
  * src/include/access/amapi.h
  *
@@ -12,7 +12,9 @@
 #ifndef AMAPI_H
 #define AMAPI_H
 
+#include "access/cmptype.h"
 #include "access/genam.h"
+#include "access/stratnum.h"
 
 /*
  * We don't wish to include planner header files here, since most of an index
@@ -99,6 +101,12 @@ typedef struct OpFamilyMember
  * Callback function signatures --- see indexam.sgml for more info.
  */
 
+/* translate AM-specific strategies to general operator types */
+typedef CompareType (*amtranslate_strategy_function) (StrategyNumber strategy, Oid opfamily);
+
+/* translate general operator types to AM-specific strategies */
+typedef StrategyNumber (*amtranslate_cmptype_function) (CompareType cmptype, Oid opfamily);
+
 /* build new index */
 typedef IndexBuildResult *(*ambuild_function) (Relation heapRelation,
 											   Relation indexRelation,
@@ -143,6 +151,13 @@ typedef void (*amcostestimate_function) (struct PlannerInfo *root,
 										 Selectivity *indexSelectivity,
 										 double *indexCorrelation,
 										 double *indexPages);
+
+/* estimate height of a tree-structured index
+ *
+ * XXX This just computes a value that is later used by amcostestimate.  This
+ * API could be expanded to support passing more values if the need arises.
+ */
+typedef int (*amgettreeheight_function) (Relation rel);
 
 /* parse index reloptions */
 typedef bytea *(*amoptions_function) (Datum reloptions,
@@ -199,7 +214,8 @@ typedef void (*amrestrpos_function) (IndexScanDesc scan);
  */
 
 /* estimate size of parallel scan descriptor */
-typedef Size (*amestimateparallelscan_function) (int nkeys, int norderbys);
+typedef Size (*amestimateparallelscan_function) (Relation indexRelation,
+												 int nkeys, int norderbys);
 
 /* prepare for parallel index scan */
 typedef void (*aminitparallelscan_function) (void *target);
@@ -228,6 +244,12 @@ typedef struct IndexAmRoutine
 	bool		amcanorder;
 	/* does AM support ORDER BY result of an operator on indexed column? */
 	bool		amcanorderbyop;
+	/* does AM support hashing using API consistent with the hash AM? */
+	bool		amcanhash;
+	/* do operators within an opfamily have consistent equality semantics? */
+	bool		amconsistentequality;
+	/* do operators within an opfamily have consistent ordering semantics? */
+	bool		amconsistentordering;
 	/* does AM support backward scanning? */
 	bool		amcanbackward;
 	/* does AM support UNIQUE indexes? */
@@ -276,6 +298,7 @@ typedef struct IndexAmRoutine
 	amvacuumcleanup_function amvacuumcleanup;
 	amcanreturn_function amcanreturn;	/* can be NULL */
 	amcostestimate_function amcostestimate;
+	amgettreeheight_function amgettreeheight;	/* can be NULL */
 	amoptions_function amoptions;
 	amproperty_function amproperty; /* can be NULL */
 	ambuildphasename_function ambuildphasename; /* can be NULL */
@@ -293,11 +316,17 @@ typedef struct IndexAmRoutine
 	amestimateparallelscan_function amestimateparallelscan; /* can be NULL */
 	aminitparallelscan_function aminitparallelscan; /* can be NULL */
 	amparallelrescan_function amparallelrescan; /* can be NULL */
+
+	/* interface functions to support planning */
+	amtranslate_strategy_function amtranslatestrategy;	/* can be NULL */
+	amtranslate_cmptype_function amtranslatecmptype;	/* can be NULL */
 } IndexAmRoutine;
 
 
 /* Functions in access/index/amapi.c */
 extern IndexAmRoutine *GetIndexAmRoutine(Oid amhandler);
 extern IndexAmRoutine *GetIndexAmRoutineByAmId(Oid amoid, bool noerror);
+extern CompareType IndexAmTranslateStrategy(StrategyNumber strategy, Oid amoid, Oid opfamily, bool missing_ok);
+extern StrategyNumber IndexAmTranslateCompareType(CompareType cmptype, Oid amoid, Oid opfamily, bool missing_ok);
 
 #endif							/* AMAPI_H */

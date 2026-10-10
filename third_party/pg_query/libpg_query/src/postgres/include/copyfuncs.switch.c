@@ -3,7 +3,7 @@
  * copyfuncs.switch.c
  *    Generated node infrastructure code
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -192,6 +192,9 @@
 		case T_InferenceElem:
 			retval = _copyInferenceElem(from);
 			break;
+		case T_ReturningExpr:
+			retval = _copyReturningExpr(from);
+			break;
 		case T_TargetEntry:
 			retval = _copyTargetEntry(from);
 			break;
@@ -306,9 +309,6 @@
 		case T_PartitionRangeDatum:
 			retval = _copyPartitionRangeDatum(from);
 			break;
-		case T_SinglePartitionSpec:
-			retval = _copySinglePartitionSpec(from);
-			break;
 		case T_PartitionCmd:
 			retval = _copyPartitionCmd(from);
 			break;
@@ -359,6 +359,12 @@
 			break;
 		case T_MergeWhenClause:
 			retval = _copyMergeWhenClause(from);
+			break;
+		case T_ReturningOption:
+			retval = _copyReturningOption(from);
+			break;
+		case T_ReturningClause:
+			retval = _copyReturningClause(from);
 			break;
 		case T_TriggerTransition:
 			retval = _copyTriggerTransition(from);
@@ -444,11 +450,14 @@
 		case T_AlterTableStmt:
 			retval = _copyAlterTableStmt(from);
 			break;
-		case T_ReplicaIdentityStmt:
-			retval = _copyReplicaIdentityStmt(from);
-			break;
 		case T_AlterTableCmd:
 			retval = _copyAlterTableCmd(from);
+			break;
+		case T_ATAlterConstraint:
+			retval = _copyATAlterConstraint(from);
+			break;
+		case T_ReplicaIdentityStmt:
+			retval = _copyReplicaIdentityStmt(from);
 			break;
 		case T_AlterCollationStmt:
 			retval = _copyAlterCollationStmt(from);

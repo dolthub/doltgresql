@@ -2666,7 +2666,7 @@ fn test_json_table() {
                 },
                 ScriptTestAssertion {
                     query: r#"SELECT * FROM JSON_TABLE('[{"a":1}]'::jsonb, '$[*]' COLUMNS (a BYTEA FORMAT JSON ENCODING FOO)) AS jt;"#,
-                    expected: Expected::Error(Diagnostic { code: "22023", message: "unrecognized JSON encoding: foo", ..E }),
+                    expected: Expected::Error(Diagnostic { code: "22023", message: "unrecognized JSON encoding: foo", position: 91, ..E }),
                     ..A
                 },
                 ScriptTestAssertion {

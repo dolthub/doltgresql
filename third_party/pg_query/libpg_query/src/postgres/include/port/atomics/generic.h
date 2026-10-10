@@ -4,7 +4,7 @@
  *	  Implement higher level operations based on some lower level atomic
  *	  operations.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port/atomics/generic.h
@@ -135,19 +135,9 @@ pg_atomic_unlocked_test_flag_impl(volatile pg_atomic_flag *ptr)
 static inline void
 pg_atomic_clear_flag_impl(volatile pg_atomic_flag *ptr)
 {
-	/*
-	 * Use a memory barrier + plain write if we have a native memory
-	 * barrier. But don't do so if memory barriers use spinlocks - that'd lead
-	 * to circularity if flags are used to implement spinlocks.
-	 */
-#ifndef PG_HAVE_MEMORY_BARRIER_EMULATION
 	/* XXX: release semantics suffice? */
 	pg_memory_barrier_impl();
 	pg_atomic_write_u32_impl(ptr, 0);
-#else
-	uint32 value = 1;
-	pg_atomic_compare_exchange_u32_impl(ptr, &value, 0);
-#endif
 }
 
 #elif !defined(PG_HAVE_ATOMIC_TEST_SET_FLAG)

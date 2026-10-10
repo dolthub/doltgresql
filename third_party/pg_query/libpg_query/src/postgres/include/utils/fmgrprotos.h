@@ -3,7 +3,7 @@
  * fmgrprotos.h
  *    Prototypes for built-in functions.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -1512,7 +1512,7 @@ extern Datum gist_circle_compress(PG_FUNCTION_ARGS);
 extern Datum numeric_stddev_pop(PG_FUNCTION_ARGS);
 extern Datum domain_in(PG_FUNCTION_ARGS);
 extern Datum domain_recv(PG_FUNCTION_ARGS);
-extern Datum pg_timezone_abbrevs(PG_FUNCTION_ARGS);
+extern Datum pg_timezone_abbrevs_abbrevs(PG_FUNCTION_ARGS);
 extern Datum xmlexists(PG_FUNCTION_ARGS);
 extern Datum pg_reload_conf(PG_FUNCTION_ARGS);
 extern Datum pg_rotate_logfile(PG_FUNCTION_ARGS);
@@ -2490,6 +2490,8 @@ extern Datum to_regrole(PG_FUNCTION_ARGS);
 extern Datum regrolerecv(PG_FUNCTION_ARGS);
 extern Datum regrolesend(PG_FUNCTION_ARGS);
 extern Datum regrolein(PG_FUNCTION_ARGS);
+extern Datum pg_numa_available(PG_FUNCTION_ARGS);
+extern Datum pg_get_shmem_allocations_numa(PG_FUNCTION_ARGS);
 extern Datum binary_upgrade_set_missing_value(PG_FUNCTION_ARGS);
 extern Datum brin_inclusion_opcinfo(PG_FUNCTION_ARGS);
 extern Datum brin_inclusion_add_value(PG_FUNCTION_ARGS);
@@ -2868,6 +2870,7 @@ extern Datum pg_stat_get_db_conflict_logicalslot(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_lastscan(PG_FUNCTION_ARGS);
 extern Datum system_user(PG_FUNCTION_ARGS);
 extern Datum binary_upgrade_logical_slot_has_caught_up(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_backend_wal(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_checkpointer_stat_reset_time(PG_FUNCTION_ARGS);
 extern Datum pg_basetype(PG_FUNCTION_ARGS);
 extern Datum pg_column_toast_chunk_id(PG_FUNCTION_ARGS);
@@ -2900,5 +2903,80 @@ extern Datum uuid_extract_version(PG_FUNCTION_ARGS);
 extern Datum pg_sync_replication_slots(PG_FUNCTION_ARGS);
 extern Datum range_contains_elem_support(PG_FUNCTION_ARGS);
 extern Datum elem_contained_by_range_support(PG_FUNCTION_ARGS);
+extern Datum gist_translate_cmptype_common(PG_FUNCTION_ARGS);
+extern Datum has_largeobject_privilege_name_id(PG_FUNCTION_ARGS);
+extern Datum has_largeobject_privilege_id(PG_FUNCTION_ARGS);
+extern Datum has_largeobject_privilege_id_id(PG_FUNCTION_ARGS);
+extern Datum pg_get_loaded_modules(PG_FUNCTION_ARGS);
+extern Datum generate_series_timestamp_support(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_db_parallel_workers_to_launch(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_db_parallel_workers_launched(PG_FUNCTION_ARGS);
+extern Datum generate_series_numeric_support(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_total_vacuum_time(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_total_autovacuum_time(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_total_analyze_time(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_total_autoanalyze_time(PG_FUNCTION_ARGS);
+extern Datum pg_restore_relation_stats(PG_FUNCTION_ARGS);
+extern Datum pg_restore_attribute_stats(PG_FUNCTION_ARGS);
+extern Datum crc32_bytea(PG_FUNCTION_ARGS);
+extern Datum crc32c_bytea(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_checkpointer_slru_written(PG_FUNCTION_ARGS);
+extern Datum int2_bytea(PG_FUNCTION_ARGS);
+extern Datum int4_bytea(PG_FUNCTION_ARGS);
+extern Datum int8_bytea(PG_FUNCTION_ARGS);
+extern Datum bytea_int2(PG_FUNCTION_ARGS);
+extern Datum bytea_int4(PG_FUNCTION_ARGS);
+extern Datum bytea_int8(PG_FUNCTION_ARGS);
+extern Datum record_larger(PG_FUNCTION_ARGS);
+extern Datum record_smaller(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_checkpointer_num_performed(PG_FUNCTION_ARGS);
+extern Datum array_append_support(PG_FUNCTION_ARGS);
+extern Datum array_prepend_support(PG_FUNCTION_ARGS);
+extern Datum array_subscript_handler_support(PG_FUNCTION_ARGS);
+extern Datum array_reverse(PG_FUNCTION_ARGS);
+extern Datum bytea_reverse(PG_FUNCTION_ARGS);
+extern Datum dgamma(PG_FUNCTION_ARGS);
+extern Datum dlgamma(PG_FUNCTION_ARGS);
+extern Datum pg_get_acl(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_backend_io(PG_FUNCTION_ARGS);
+extern Datum pg_stat_reset_backend_stats(PG_FUNCTION_ARGS);
+extern Datum array_sort(PG_FUNCTION_ARGS);
+extern Datum array_sort_order(PG_FUNCTION_ARGS);
+extern Datum array_sort_order_nulls_first(PG_FUNCTION_ARGS);
+extern Datum range_sortsupport(PG_FUNCTION_ARGS);
+extern Datum bytea_larger(PG_FUNCTION_ARGS);
+extern Datum bytea_smaller(PG_FUNCTION_ARGS);
+extern Datum pg_clear_relation_stats(PG_FUNCTION_ARGS);
+extern Datum pg_clear_attribute_stats(PG_FUNCTION_ARGS);
+extern Datum pg_get_aios(PG_FUNCTION_ARGS);
+extern Datum pg_ls_summariesdir(PG_FUNCTION_ARGS);
+extern Datum pg_timezone_abbrevs_zone(PG_FUNCTION_ARGS);
+extern Datum btint2skipsupport(PG_FUNCTION_ARGS);
+extern Datum btint4skipsupport(PG_FUNCTION_ARGS);
+extern Datum btint8skipsupport(PG_FUNCTION_ARGS);
+extern Datum btoidskipsupport(PG_FUNCTION_ARGS);
+extern Datum btcharskipsupport(PG_FUNCTION_ARGS);
+extern Datum date_skipsupport(PG_FUNCTION_ARGS);
+extern Datum btboolskipsupport(PG_FUNCTION_ARGS);
+extern Datum timestamp_skipsupport(PG_FUNCTION_ARGS);
+extern Datum uuid_skipsupport(PG_FUNCTION_ARGS);
+extern Datum casefold(PG_FUNCTION_ARGS);
+extern Datum hashbytea(PG_FUNCTION_ARGS);
+extern Datum hashbyteaextended(PG_FUNCTION_ARGS);
+extern Datum hashdate(PG_FUNCTION_ARGS);
+extern Datum hashdateextended(PG_FUNCTION_ARGS);
+extern Datum hashbool(PG_FUNCTION_ARGS);
+extern Datum hashboolextended(PG_FUNCTION_ARGS);
+extern Datum hashxid(PG_FUNCTION_ARGS);
+extern Datum hashxidextended(PG_FUNCTION_ARGS);
+extern Datum hashxid8(PG_FUNCTION_ARGS);
+extern Datum hashxid8extended(PG_FUNCTION_ARGS);
+extern Datum hashcid(PG_FUNCTION_ARGS);
+extern Datum hashcidextended(PG_FUNCTION_ARGS);
+extern Datum timestamptz_hash(PG_FUNCTION_ARGS);
+extern Datum timestamptz_hash_extended(PG_FUNCTION_ARGS);
+extern Datum pg_get_sequence_data(PG_FUNCTION_ARGS);
+extern Datum uuidv7(PG_FUNCTION_ARGS);
+extern Datum uuidv7_interval(PG_FUNCTION_ARGS);
 
 #endif							/* FMGRPROTOS_H */

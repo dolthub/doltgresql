@@ -18,7 +18,7 @@
  * everything that should be freed.  See utils/mmgr/README for more info.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/palloc.h
@@ -79,11 +79,23 @@ extern void *palloc(Size size);
 extern void *palloc0(Size size);
 extern void *palloc_extended(Size size, int flags);
 extern void *palloc_aligned(Size size, Size alignto, int flags);
-extern pg_nodiscard void *repalloc(void *pointer, Size size);
-extern pg_nodiscard void *repalloc_extended(void *pointer,
+pg_nodiscard extern void *repalloc(void *pointer, Size size);
+pg_nodiscard extern void *repalloc_extended(void *pointer,
 											Size size, int flags);
-extern pg_nodiscard void *repalloc0(void *pointer, Size oldsize, Size size);
+pg_nodiscard extern void *repalloc0(void *pointer, Size oldsize, Size size);
 extern void pfree(void *pointer);
+
+/*
+ * Support for safe calculation of memory request sizes
+ */
+extern Size add_size(Size s1, Size s2);
+extern Size mul_size(Size s1, Size s2);
+extern void *palloc_mul(Size s1, Size s2);
+extern void *palloc0_mul(Size s1, Size s2);
+extern void *palloc_mul_extended(Size s1, Size s2, int flags);
+pg_nodiscard extern void *repalloc_mul(void *p, Size s1, Size s2);
+pg_nodiscard extern void *repalloc_mul_extended(void *p, Size s1, Size s2,
+												int flags);
 
 /*
  * Variants with easier notation and more type safety
@@ -98,19 +110,21 @@ extern void pfree(void *pointer);
 /*
  * Allocate space for "count" objects of type "type"
  */
-#define palloc_array(type, count) ((type *) palloc(sizeof(type) * (count)))
-#define palloc0_array(type, count) ((type *) palloc0(sizeof(type) * (count)))
+#define palloc_array(type, count) ((type *) palloc_mul(sizeof(type), count))
+#define palloc0_array(type, count) ((type *) palloc0_mul(sizeof(type), count))
+#define palloc_array_extended(type, count, flags) ((type *) palloc_mul_extended(sizeof(type), count, flags))
 
 /*
  * Change size of allocation pointed to by "pointer" to have space for "count"
  * objects of type "type"
  */
-#define repalloc_array(pointer, type, count) ((type *) repalloc(pointer, sizeof(type) * (count)))
-#define repalloc0_array(pointer, type, oldcount, count) ((type *) repalloc0(pointer, sizeof(type) * (oldcount), sizeof(type) * (count)))
+#define repalloc_array(pointer, type, count) ((type *) repalloc_mul(pointer, sizeof(type), count))
+#define repalloc0_array(pointer, type, oldcount, count) ((type *) repalloc0(pointer, mul_size(sizeof(type), oldcount), mul_size(sizeof(type), count)))
+#define repalloc_array_extended(pointer, type, count, flags) ((type *) repalloc_mul_extended(pointer, sizeof(type), count, flags))
 
 /* Higher-limit allocators. */
 extern void *MemoryContextAllocHuge(MemoryContext context, Size size);
-extern pg_nodiscard void *repalloc_huge(void *pointer, Size size);
+pg_nodiscard extern void *repalloc_huge(void *pointer, Size size);
 
 /*
  * Although this header file is nominally backend-only, certain frontend

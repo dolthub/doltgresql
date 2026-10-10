@@ -3,7 +3,7 @@
  * pg_constraint_d.h
  *    Macro definitions for pg_constraint
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,6 +18,8 @@
 #ifndef PG_CONSTRAINT_D_H
 #define PG_CONSTRAINT_D_H
 
+/* Macros related to the structure of pg_constraint */
+
 #define ConstraintRelationId 2606
 #define ConstraintNameNspIndexId 2664
 #define ConstraintRelidTypidNameIndexId 2665
@@ -31,28 +33,32 @@
 #define Anum_pg_constraint_contype 4
 #define Anum_pg_constraint_condeferrable 5
 #define Anum_pg_constraint_condeferred 6
-#define Anum_pg_constraint_convalidated 7
-#define Anum_pg_constraint_conrelid 8
-#define Anum_pg_constraint_contypid 9
-#define Anum_pg_constraint_conindid 10
-#define Anum_pg_constraint_conparentid 11
-#define Anum_pg_constraint_confrelid 12
-#define Anum_pg_constraint_confupdtype 13
-#define Anum_pg_constraint_confdeltype 14
-#define Anum_pg_constraint_confmatchtype 15
-#define Anum_pg_constraint_conislocal 16
-#define Anum_pg_constraint_coninhcount 17
-#define Anum_pg_constraint_connoinherit 18
-#define Anum_pg_constraint_conkey 19
-#define Anum_pg_constraint_confkey 20
-#define Anum_pg_constraint_conpfeqop 21
-#define Anum_pg_constraint_conppeqop 22
-#define Anum_pg_constraint_conffeqop 23
-#define Anum_pg_constraint_confdelsetcols 24
-#define Anum_pg_constraint_conexclop 25
-#define Anum_pg_constraint_conbin 26
+#define Anum_pg_constraint_conenforced 7
+#define Anum_pg_constraint_convalidated 8
+#define Anum_pg_constraint_conrelid 9
+#define Anum_pg_constraint_contypid 10
+#define Anum_pg_constraint_conindid 11
+#define Anum_pg_constraint_conparentid 12
+#define Anum_pg_constraint_confrelid 13
+#define Anum_pg_constraint_confupdtype 14
+#define Anum_pg_constraint_confdeltype 15
+#define Anum_pg_constraint_confmatchtype 16
+#define Anum_pg_constraint_conislocal 17
+#define Anum_pg_constraint_coninhcount 18
+#define Anum_pg_constraint_connoinherit 19
+#define Anum_pg_constraint_conperiod 20
+#define Anum_pg_constraint_conkey 21
+#define Anum_pg_constraint_confkey 22
+#define Anum_pg_constraint_conpfeqop 23
+#define Anum_pg_constraint_conppeqop 24
+#define Anum_pg_constraint_conffeqop 25
+#define Anum_pg_constraint_confdelsetcols 26
+#define Anum_pg_constraint_conexclop 27
+#define Anum_pg_constraint_conbin 28
 
-#define Natts_pg_constraint 26
+#define Natts_pg_constraint 28
+
+/* Definitions copied from pg_constraint.h */
 
 
 /* Valid values for contype */
@@ -69,6 +75,9 @@
  * constants defined in parsenodes.h.  Valid values for confmatchtype are
  * the FKCONSTR_MATCH_xxx constants defined in parsenodes.h.
  */
+
+
+/* OID symbols for objects defined in pg_constraint.dat */
 
 
 #endif							/* PG_CONSTRAINT_D_H */

@@ -3,7 +3,7 @@
  * pg_class_d.h
  *    Macro definitions for pg_class
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -17,6 +17,8 @@
  */
 #ifndef PG_CLASS_D_H
 #define PG_CLASS_D_H
+
+/* Macros related to the structure of pg_class */
 
 #define RelationRelationId 1259
 #define RelationRelation_Rowtype_Id 83
@@ -36,29 +38,32 @@
 #define Anum_pg_class_relpages 10
 #define Anum_pg_class_reltuples 11
 #define Anum_pg_class_relallvisible 12
-#define Anum_pg_class_reltoastrelid 13
-#define Anum_pg_class_relhasindex 14
-#define Anum_pg_class_relisshared 15
-#define Anum_pg_class_relpersistence 16
-#define Anum_pg_class_relkind 17
-#define Anum_pg_class_relnatts 18
-#define Anum_pg_class_relchecks 19
-#define Anum_pg_class_relhasrules 20
-#define Anum_pg_class_relhastriggers 21
-#define Anum_pg_class_relhassubclass 22
-#define Anum_pg_class_relrowsecurity 23
-#define Anum_pg_class_relforcerowsecurity 24
-#define Anum_pg_class_relispopulated 25
-#define Anum_pg_class_relreplident 26
-#define Anum_pg_class_relispartition 27
-#define Anum_pg_class_relrewrite 28
-#define Anum_pg_class_relfrozenxid 29
-#define Anum_pg_class_relminmxid 30
-#define Anum_pg_class_relacl 31
-#define Anum_pg_class_reloptions 32
-#define Anum_pg_class_relpartbound 33
+#define Anum_pg_class_relallfrozen 13
+#define Anum_pg_class_reltoastrelid 14
+#define Anum_pg_class_relhasindex 15
+#define Anum_pg_class_relisshared 16
+#define Anum_pg_class_relpersistence 17
+#define Anum_pg_class_relkind 18
+#define Anum_pg_class_relnatts 19
+#define Anum_pg_class_relchecks 20
+#define Anum_pg_class_relhasrules 21
+#define Anum_pg_class_relhastriggers 22
+#define Anum_pg_class_relhassubclass 23
+#define Anum_pg_class_relrowsecurity 24
+#define Anum_pg_class_relforcerowsecurity 25
+#define Anum_pg_class_relispopulated 26
+#define Anum_pg_class_relreplident 27
+#define Anum_pg_class_relispartition 28
+#define Anum_pg_class_relrewrite 29
+#define Anum_pg_class_relfrozenxid 30
+#define Anum_pg_class_relminmxid 31
+#define Anum_pg_class_relacl 32
+#define Anum_pg_class_reloptions 33
+#define Anum_pg_class_relpartbound 34
 
-#define Natts_pg_class 33
+#define Natts_pg_class 34
+
+/* Definitions copied from pg_class.h */
 
 
 #define		  RELKIND_RELATION		  'r'	/* ordinary table */
@@ -128,7 +133,8 @@
 	 (relkind) == RELKIND_TOASTVALUE || \
 	 (relkind) == RELKIND_MATVIEW)
 
-extern int	errdetail_relkind_not_supported(char relkind);
+
+/* OID symbols for objects defined in pg_class.dat */
 
 
 #endif							/* PG_CLASS_D_H */

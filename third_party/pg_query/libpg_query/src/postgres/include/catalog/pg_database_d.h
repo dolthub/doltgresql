@@ -3,7 +3,7 @@
  * pg_database_d.h
  *    Macro definitions for pg_database
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -17,6 +17,8 @@
  */
 #ifndef PG_DATABASE_D_H
 #define PG_DATABASE_D_H
+
+/* Macros related to the structure of pg_database */
 
 #define DatabaseRelationId 1262
 #define DatabaseRelation_Rowtype_Id 1248
@@ -47,6 +49,11 @@
 #define Anum_pg_database_datacl 18
 
 #define Natts_pg_database 18
+
+/* Definitions copied from pg_database.h */
+
+
+/* OID symbols for objects defined in pg_database.dat */
 
 #define Template1DbOid 1
 

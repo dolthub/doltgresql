@@ -3,7 +3,7 @@
  * pg_collation_d.h
  *    Macro definitions for pg_collation
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -17,6 +17,8 @@
  */
 #ifndef PG_COLLATION_D_H
 #define PG_COLLATION_D_H
+
+/* Macros related to the structure of pg_collation */
 
 #define CollationRelationId 3456
 #define CollationNameEncNspIndexId 3164
@@ -36,6 +38,8 @@
 #define Anum_pg_collation_collversion 12
 
 #define Natts_pg_collation 12
+
+/* Definitions copied from pg_collation.h */
 
 
 #define COLLPROVIDER_DEFAULT	'd'
@@ -59,8 +63,10 @@ collprovider_name(char c)
 	}
 }
 
+
+/* OID symbols for objects defined in pg_collation.dat */
+
 #define DEFAULT_COLLATION_OID 100
 #define C_COLLATION_OID 950
-#define POSIX_COLLATION_OID 951
 
 #endif							/* PG_COLLATION_D_H */

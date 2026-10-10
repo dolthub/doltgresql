@@ -122,7 +122,7 @@ Status as of 2026-10-08. The untracked `HANDOFF.md` holds the exact position and
 2. (Done) Storage write path: Go reads everything Rust writes and the reverse. Bytes and hashes matched Go's at
    first, and now may differ wherever readers cannot tell.
 3. (Done) Wire protocol, parser, catalog, and a minimal engine. The parser is `pg_query` (libpg_query, Postgres' own
-   grammar, currently 17.7), and the engine is our own row engine built for OLTP over prolly trees. Syntax newer than
+   grammar, currently 18.6), and the engine is our own row engine built for OLTP over prolly trees. Syntax newer than
    Postgres 15 is accepted; a statement fails only when what it needs is unsupported.
 4. (Done) Breadth: types, functions, operators, DDL, DML, pg_catalog, PL/pgSQL, triggers, sequences, auth.
 5. (Done) Version control: branches, commits, merge, conflicts, diff, remotes, backups, GC, archives, cluster

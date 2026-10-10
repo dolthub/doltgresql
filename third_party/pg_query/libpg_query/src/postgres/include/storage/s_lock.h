@@ -1,10 +1,10 @@
 /*-------------------------------------------------------------------------
  *
  * s_lock.h
- *	   Hardware-dependent implementation of spinlocks.
+ *	   Implementation of spinlocks.
  *
  *	NOTE: none of the macros in this file are intended to be called directly.
- *	Call them through the hardware-independent macros in spin.h.
+ *	Call them through the macros in spin.h.
  *
  *	The following hardware-dependent macros must be provided for each
  *	supported platform:
@@ -78,15 +78,8 @@
  *	in assembly language to execute a hardware atomic-test-and-set
  *	instruction.  Equivalent OS-supplied mutex routines could be used too.
  *
- *	If no system-specific TAS() is available (ie, HAVE_SPINLOCKS is not
- *	defined), then we fall back on an emulation that uses SysV semaphores
- *	(see spin.c).  This emulation will be MUCH MUCH slower than a proper TAS()
- *	implementation, because of the cost of a kernel call per lock or unlock.
- *	An old report is that Postgres spends around 40% of its time in semop(2)
- *	when using the SysV semaphore code.
  *
- *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	  src/include/storage/s_lock.h
@@ -99,8 +92,6 @@
 #ifdef FRONTEND
 #error "s_lock.h may not be included from frontend code"
 #endif
-
-#ifdef HAVE_SPINLOCKS	/* skip spinlocks if requested */
 
 #if defined(__GNUC__) || defined(__INTEL_COMPILER)
 /*************************************************************************
@@ -272,18 +263,24 @@ tas(volatile slock_t *lock)
 
 #define S_UNLOCK(lock) __sync_lock_release(lock)
 
-/*
- * Using an ISB instruction to delay in spinlock loops appears beneficial on
- * high-core-count ARM64 processors.  It seems mostly a wash for smaller gear,
- * and ISB doesn't exist at all on pre-v7 ARM chips.
- */
 #if defined(__aarch64__)
+
+/*
+ * On ARM64, it's a win to use a non-locking test before the TAS proper.  It
+ * may be a win on 32-bit ARM, too, but nobody's tested it yet.
+ */
+#define TAS_SPIN(lock)	(*(lock) ? 1 : TAS(lock))
 
 #define SPIN_DELAY() spin_delay()
 
 static __inline__ void
 spin_delay(void)
 {
+	/*
+	 * Using an ISB instruction to delay in spinlock loops appears beneficial
+	 * on high-core-count ARM64 processors.  It seems mostly a wash for smaller
+	 * gear, and ISB doesn't exist at all on pre-v7 ARM chips.
+	 */
 	__asm__ __volatile__(
 		" isb;				\n");
 }
@@ -526,71 +523,6 @@ do \
 #endif /* __mips__ && !__sgi */
 
 
-#if defined(__hppa) || defined(__hppa__)	/* HP PA-RISC */
-/*
- * HP's PA-RISC
- *
- * Because LDCWX requires a 16-byte-aligned address, we declare slock_t as a
- * 16-byte struct.  The active word in the struct is whichever has the aligned
- * address; the other three words just sit at -1.
- */
-#define HAS_TEST_AND_SET
-
-typedef struct
-{
-	int			sema[4];
-} slock_t;
-
-#define TAS_ACTIVE_WORD(lock)	((volatile int *) (((uintptr_t) (lock) + 15) & ~15))
-
-static __inline__ int
-tas(volatile slock_t *lock)
-{
-	volatile int *lockword = TAS_ACTIVE_WORD(lock);
-	int			lockval;
-
-	/*
-	 * The LDCWX instruction atomically clears the target word and
-	 * returns the previous value.  Hence, if the instruction returns
-	 * 0, someone else has already acquired the lock before we tested
-	 * it (i.e., we have failed).
-	 *
-	 * Notice that this means that we actually clear the word to set
-	 * the lock and set the word to clear the lock.  This is the
-	 * opposite behavior from the SPARC LDSTUB instruction.  For some
-	 * reason everything that H-P does is rather baroque...
-	 *
-	 * For details about the LDCWX instruction, see the "Precision
-	 * Architecture and Instruction Reference Manual" (09740-90014 of June
-	 * 1987), p. 5-38.
-	 */
-	__asm__ __volatile__(
-		"	ldcwx	0(0,%2),%0	\n"
-:		"=r"(lockval), "+m"(*lockword)
-:		"r"(lockword)
-:		"memory");
-	return (lockval == 0);
-}
-
-#define S_UNLOCK(lock)	\
-	do { \
-		__asm__ __volatile__("" : : : "memory"); \
-		*TAS_ACTIVE_WORD(lock) = -1; \
-	} while (0)
-
-#define S_INIT_LOCK(lock) \
-	do { \
-		volatile slock_t *lock_ = (lock); \
-		lock_->sema[0] = -1; \
-		lock_->sema[1] = -1; \
-		lock_->sema[2] = -1; \
-		lock_->sema[3] = -1; \
-	} while (0)
-
-#define S_LOCK_FREE(lock)	(*TAS_ACTIVE_WORD(lock) != 0)
-
-#endif	 /* __hppa || __hppa__ */
-
 
 /*
  * If we have no platform-specific knowledge, but we found that the compiler
@@ -720,32 +652,8 @@ spin_delay(void)
 
 /* Blow up if we didn't have any way to do spinlocks */
 #ifndef HAS_TEST_AND_SET
-#error PostgreSQL does not have native spinlock support on this platform.  To continue the compilation, rerun configure using --disable-spinlocks.  However, performance will be poor.  Please report this to pgsql-bugs@lists.postgresql.org.
+#error PostgreSQL does not have spinlock support on this platform.  Please report this to pgsql-bugs@lists.postgresql.org.
 #endif
-
-
-#else	/* !HAVE_SPINLOCKS */
-
-
-/*
- * Fake spinlock implementation using semaphores --- slow and prone
- * to fall foul of kernel limits on number of semaphores, so don't use this
- * unless you must!  The subroutines appear in spin.c.
- */
-typedef int slock_t;
-
-extern bool s_lock_free_sema(volatile slock_t *lock);
-extern void s_unlock_sema(volatile slock_t *lock);
-extern void s_init_lock_sema(volatile slock_t *lock, bool nested);
-extern int	tas_sema(volatile slock_t *lock);
-
-#define S_LOCK_FREE(lock)	s_lock_free_sema(lock)
-#define S_UNLOCK(lock)	 s_unlock_sema(lock)
-#define S_INIT_LOCK(lock)	s_init_lock_sema(lock, false)
-#define TAS(lock)	tas_sema(lock)
-
-
-#endif	/* HAVE_SPINLOCKS */
 
 
 /*

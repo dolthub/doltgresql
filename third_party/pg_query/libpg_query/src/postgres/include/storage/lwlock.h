@@ -4,7 +4,7 @@
  *	  Lightweight lock manager
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/lwlock.h
@@ -129,6 +129,10 @@ extern bool LWLockAcquireOrWait(LWLock *lock, LWLockMode mode);
 extern void LWLockRelease(LWLock *lock);
 extern void LWLockReleaseClearVar(LWLock *lock, pg_atomic_uint64 *valptr, uint64 val);
 extern void LWLockReleaseAll(void);
+extern void LWLockDisown(LWLock *lock);
+extern void LWLockReleaseDisowned(LWLock *lock, LWLockMode mode);
+extern void ForEachLWLockHeldByMe(void (*callback) (LWLock *, LWLockMode, void *),
+								  void *context);
 extern bool LWLockHeldByMe(LWLock *lock);
 extern bool LWLockAnyHeldByMe(LWLock *lock, int nlocks, size_t stride);
 extern bool LWLockHeldByMeInMode(LWLock *lock, LWLockMode mode);
@@ -192,6 +196,7 @@ typedef enum BuiltinTrancheIds
 	LWTRANCHE_LOCK_MANAGER,
 	LWTRANCHE_PREDICATE_LOCK_MANAGER,
 	LWTRANCHE_PARALLEL_HASH_JOIN,
+	LWTRANCHE_PARALLEL_BTREE_SCAN,
 	LWTRANCHE_PARALLEL_QUERY_DSA,
 	LWTRANCHE_PER_SESSION_DSA,
 	LWTRANCHE_PER_SESSION_RECORD_TYPE,
@@ -215,6 +220,7 @@ typedef enum BuiltinTrancheIds
 	LWTRANCHE_SUBTRANS_SLRU,
 	LWTRANCHE_XACT_SLRU,
 	LWTRANCHE_PARALLEL_VACUUM_DSA,
+	LWTRANCHE_AIO_URING_COMPLETION,
 	LWTRANCHE_FIRST_USER_DEFINED,
 }			BuiltinTrancheIds;
 

@@ -13,7 +13,7 @@
  * globals.c
  *	  global variable declarations
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -32,7 +32,9 @@
 #include "libpq/libpq-be.h"
 #include "libpq/pqcomm.h"
 #include "miscadmin.h"
+#include "postmaster/postmaster.h"
 #include "storage/procnumber.h"
+#include "storage/procsignal.h"
 
 
 
@@ -54,6 +56,7 @@ __thread volatile uint32 InterruptHoldoffCount = 0;
 __thread volatile uint32 QueryCancelHoldoffCount = 0;
 
 __thread volatile uint32 CritSectionCount = 0;
+
 
 
 
@@ -158,10 +161,6 @@ __thread bool		ExitOnAnyError = false;
 
 
 /* GUC parameters for vacuum */
-
-
-
-
 
 
 

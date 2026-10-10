@@ -3,7 +3,7 @@
  * walreceiver.h
  *	  Exports from replication/walreceiverfuncs.c.
  *
- * Portions Copyright (c) 2010-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2010-2025, PostgreSQL Global Development Group
  *
  * src/include/replication/walreceiver.h
  *
@@ -21,7 +21,6 @@
 #include "replication/logicalproto.h"
 #include "replication/walsender.h"
 #include "storage/condition_variable.h"
-#include "storage/latch.h"
 #include "storage/spin.h"
 #include "utils/tuplestore.h"
 
@@ -58,13 +57,24 @@ typedef enum
 typedef struct
 {
 	/*
-	 * PID of currently active walreceiver process, its current state and
-	 * start time (actually, the time at which it was requested to be
-	 * started).
+	 * Currently active walreceiver process's proc number and PID.
+	 *
+	 * The startup process uses the proc number to wake it up after telling it
+	 * where to start streaming (after setting receiveStart and
+	 * receiveStartTLI), and also to tell it to send apply feedback to the
+	 * primary whenever specially marked commit records are applied.
 	 */
+	ProcNumber	procno;
 	pid_t		pid;
+
+	/* Its current state */
 	WalRcvState walRcvState;
 	ConditionVariable walRcvStoppedCV;
+
+	/*
+	 * Its start time (actually, the time at which it was requested to be
+	 * started).
+	 */
 	pg_time_t	startTime;
 
 	/*
@@ -134,15 +144,6 @@ typedef struct
 	/* set true once conninfo is ready to display (obfuscated pwds etc) */
 	bool		ready_to_display;
 
-	/*
-	 * Latch used by startup process to wake up walreceiver after telling it
-	 * where to start streaming (after setting receiveStart and
-	 * receiveStartTLI), and also to tell it to send apply feedback to the
-	 * primary whenever specially marked commit records are applied. This is
-	 * normally mapped to procLatch when walreceiver is running.
-	 */
-	Latch	   *latch;
-
 	slock_t		mutex;			/* locks shared variables shown above */
 
 	/*
@@ -162,6 +163,13 @@ typedef struct
 } WalRcvData;
 
 extern PGDLLIMPORT WalRcvData *WalRcv;
+
+/*
+ * Server's WAL flush position as reported by the last IDENTIFY_SYSTEM call.
+ * Set by walrcv_identify_system(), used by the walreceiver to avoid
+ * requesting streaming from a point ahead of the upstream's flush position.
+ */
+extern PGDLLIMPORT XLogRecPtr WalRcvIdentifySystemLsn;
 
 typedef struct
 {
@@ -372,12 +380,14 @@ typedef char *(*walrcv_create_slot_fn) (WalReceiverConn *conn,
 /*
  * walrcv_alter_slot_fn
  *
- * Change the definition of a replication slot. Currently, it only supports
- * changing the failover property of the slot.
+ * Change the definition of a replication slot. Currently, it supports
+ * changing the failover and two_phase properties of the slot.
  */
 typedef void (*walrcv_alter_slot_fn) (WalReceiverConn *conn,
 									  const char *slotname,
-									  bool failover);
+									  const bool *failover,
+									  const bool *two_phase);
+
 
 /*
  * walrcv_get_backend_pid_fn
@@ -455,8 +465,8 @@ extern PGDLLIMPORT WalReceiverFunctionsType *WalReceiverFunctions;
 	WalReceiverFunctions->walrcv_send(conn, buffer, nbytes)
 #define walrcv_create_slot(conn, slotname, temporary, two_phase, failover, snapshot_action, lsn) \
 	WalReceiverFunctions->walrcv_create_slot(conn, slotname, temporary, two_phase, failover, snapshot_action, lsn)
-#define walrcv_alter_slot(conn, slotname, failover) \
-	WalReceiverFunctions->walrcv_alter_slot(conn, slotname, failover)
+#define walrcv_alter_slot(conn, slotname, failover, two_phase) \
+	WalReceiverFunctions->walrcv_alter_slot(conn, slotname, failover, two_phase)
 #define walrcv_get_backend_pid(conn) \
 	WalReceiverFunctions->walrcv_get_backend_pid(conn)
 #define walrcv_exec(conn, exec, nRetTypes, retTypes) \
@@ -483,8 +493,7 @@ walrcv_clear_result(WalRcvExecResult *walres)
 }
 
 /* prototypes for functions in walreceiver.c */
-extern void WalReceiverMain(char *startup_data, size_t startup_data_len) pg_attribute_noreturn();
-extern void ProcessWalRcvInterrupts(void);
+pg_noreturn extern void WalReceiverMain(const void *startup_data, size_t startup_data_len);
 extern void WalRcvForceReply(void);
 
 /* prototypes for functions in walreceiverfuncs.c */

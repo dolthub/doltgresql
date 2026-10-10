@@ -3,7 +3,7 @@
  * pg_replication_origin_d.h
  *    Macro definitions for pg_replication_origin
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,9 +18,9 @@
 #ifndef PG_REPLICATION_ORIGIN_D_H
 #define PG_REPLICATION_ORIGIN_D_H
 
+/* Macros related to the structure of pg_replication_origin */
+
 #define ReplicationOriginRelationId 6000
-#define PgReplicationOriginToastTable 4181
-#define PgReplicationOriginToastIndex 4182
 #define ReplicationOriginIdentIndex 6001
 #define ReplicationOriginNameIndex 6002
 
@@ -28,6 +28,11 @@
 #define Anum_pg_replication_origin_roname 2
 
 #define Natts_pg_replication_origin 2
+
+/* Definitions copied from pg_replication_origin.h */
+
+
+/* OID symbols for objects defined in pg_replication_origin.dat */
 
 
 #endif							/* PG_REPLICATION_ORIGIN_D_H */

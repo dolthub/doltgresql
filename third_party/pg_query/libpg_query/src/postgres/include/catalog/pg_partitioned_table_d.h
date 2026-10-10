@@ -3,7 +3,7 @@
  * pg_partitioned_table_d.h
  *    Macro definitions for pg_partitioned_table
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,6 +18,8 @@
 #ifndef PG_PARTITIONED_TABLE_D_H
 #define PG_PARTITIONED_TABLE_D_H
 
+/* Macros related to the structure of pg_partitioned_table */
+
 #define PartitionedRelationId 3350
 #define PartitionedRelidIndexId 3351
 
@@ -31,6 +33,11 @@
 #define Anum_pg_partitioned_table_partexprs 8
 
 #define Natts_pg_partitioned_table 8
+
+/* Definitions copied from pg_partitioned_table.h */
+
+
+/* OID symbols for objects defined in pg_partitioned_table.dat */
 
 
 #endif							/* PG_PARTITIONED_TABLE_D_H */

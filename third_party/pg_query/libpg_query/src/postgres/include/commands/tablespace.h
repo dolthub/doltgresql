@@ -4,7 +4,7 @@
  *		Tablespace management commands (create/drop tablespace).
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/tablespace.h
@@ -19,6 +19,8 @@
 #include "lib/stringinfo.h"
 #include "nodes/parsenodes.h"
 
+extern PGDLLIMPORT char *default_tablespace;
+extern PGDLLIMPORT char *temp_tablespaces;
 extern PGDLLIMPORT bool allow_in_place_tablespaces;
 
 /* XLOG stuff */

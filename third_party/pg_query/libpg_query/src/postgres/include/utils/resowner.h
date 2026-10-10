@@ -9,7 +9,7 @@
  * See utils/resowner/README for more info.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/resowner.h
@@ -163,5 +163,10 @@ extern void ReleaseAuxProcessResources(bool isCommit);
 struct LOCALLOCK;
 extern void ResourceOwnerRememberLock(ResourceOwner owner, struct LOCALLOCK *locallock);
 extern void ResourceOwnerForgetLock(ResourceOwner owner, struct LOCALLOCK *locallock);
+
+/* special support for AIO */
+struct dlist_node;
+extern void ResourceOwnerRememberAioHandle(ResourceOwner owner, struct dlist_node *ioh_node);
+extern void ResourceOwnerForgetAioHandle(ResourceOwner owner, struct dlist_node *ioh_node);
 
 #endif							/* RESOWNER_H */

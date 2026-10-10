@@ -34,17 +34,17 @@
  * - backtrace_function_list
  * - set_backtrace
  * - FreeErrorDataContents
- * - geterrcode
  * - errsave_start
  * - errsave_finish
+ * - geterrcode
  * - errhint
  * - errposition
  * - internalerrposition
  * - internalerrquery
- * - geterrposition
- * - getinternalerrposition
  * - set_errcontext_domain
  * - errcontext_msg
+ * - geterrposition
+ * - getinternalerrposition
  * - CopyErrorData
  * - FlushErrorState
  * - pg_signal_queue
@@ -98,7 +98,7 @@
  * overflow.)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -122,6 +122,7 @@
 #endif
 
 #include "access/xact.h"
+#include "common/ip.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "mb/pg_wchar.h"
@@ -151,8 +152,6 @@ __thread ErrorContextCallback *error_context_stack = NULL;
 
 __thread sigjmp_buf *PG_exception_stack = NULL;
 
-
-extern bool redirection_done;
 
 /*
  * Hook for intercepting messages before they are sent to the server log.
@@ -197,8 +196,6 @@ static void write_syslog(int level, const char *line);
 #endif
 
 #ifdef WIN32
-extern char *event_source;
-
 static void write_eventlog(int level, const char *line, int len);
 #endif
 
@@ -308,8 +305,11 @@ should_output_to_server(int elevel)
 /*
  * should_output_to_client --- should message of given elevel go to the client?
  */
-static inline bool should_output_to_client(int elevel) { return false; }
 
+static inline bool
+should_output_to_client(int elevel)
+{
+return false;}
 
 
 /*
@@ -1180,6 +1180,12 @@ errhint(const char *fmt,...)
 	return 0;					/* return value does not matter */
 }
 
+/*
+ * errhint_internal --- add a hint error message text to the current error
+ *
+ * Non-translated version of errhint(), see also errmsg_internal().
+ */
+
 
 /*
  * errhint_plural --- add a hint error message text to the current error,
@@ -1365,14 +1371,6 @@ geterrcode(void)
 
 	return edata->sqlerrcode;
 }
-
-/*
- * geterrlevel --- return the currently set error level
- *
- * This is only intended for use in error callback subroutines, since there
- * is no other place outside elog.c where the concept is meaningful.
- */
-
 
 /*
  * geterrposition --- return the currently set error position (0 if none)
@@ -1635,12 +1633,15 @@ FlushErrorState(void)
 /*
  * ThrowErrorData --- report an error described by an ErrorData structure
  *
- * This is somewhat like ReThrowError, but it allows elevels besides ERROR,
- * and the boolean flags such as output_to_server are computed via the
- * default rules rather than being copied from the given ErrorData.
- * This is primarily used to re-report errors originally reported by
- * background worker processes and then propagated (with or without
- * modification) to the backend responsible for them.
+ * This function should be called on an ErrorData structure that isn't stored
+ * on the errordata stack and hasn't been processed yet. It will call
+ * errstart() and errfinish() as needed, so those should not have already been
+ * called.
+ *
+ * ThrowErrorData() is useful for handling soft errors. It's also useful for
+ * re-reporting errors originally reported by background worker processes and
+ * then propagated (with or without modification) to the backend responsible
+ * for them.
  */
 
 
@@ -1853,8 +1854,12 @@ pg_re_throw(void)
 /*
  * Write error report to server's log
  */
-static void send_message_to_server_log(ErrorData *edata) {}
 
+static void
+send_message_to_server_log(ErrorData *edata)
+{
+	/* Do nothing */
+}
 
 /*
  * Send data to the syslogger using the chunked protocol
@@ -1895,8 +1900,12 @@ static void send_message_to_server_log(ErrorData *edata) {}
 /*
  * Write error report to client
  */
-static void send_message_to_frontend(ErrorData *edata) {}
 
+static void
+send_message_to_frontend(ErrorData *edata)
+{
+	/* Do nothing */
+}
 
 
 /*
@@ -1927,7 +1936,6 @@ static void send_message_to_frontend(ErrorData *edata) {}
  * not available). Used before ereport/elog can be used
  * safely (memory context, GUC load etc)
  */
-
 void
 write_stderr(const char *fmt,...)
 {
@@ -1937,7 +1945,6 @@ write_stderr(const char *fmt,...)
 	fflush(stderr);
 	va_end(ap);
 }
-
 
 
 

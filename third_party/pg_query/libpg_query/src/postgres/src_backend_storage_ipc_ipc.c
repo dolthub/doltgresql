@@ -15,7 +15,7 @@
  * exit-time cleanup for either a postmaster or a backend.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -36,6 +36,7 @@
 #endif
 #include "storage/dsm.h"
 #include "storage/ipc.h"
+#include "storage/lwlock.h"
 #include "tcop/tcopprot.h"
 
 
@@ -108,8 +109,11 @@ struct ONEXIT
  *		an atexit callback that will make sure cleanup happens.
  * ----------------------------------------------------------------
  */
-void proc_exit(int code) { printf("Terminating process due to FATAL error\n"); exit(1); }
 
+void
+proc_exit(int code)
+{
+printf("Terminating process due to FATAL error\n"); exit(1);}
 
 /*
  * Code shared between proc_exit and the atexit handler.  Note that in

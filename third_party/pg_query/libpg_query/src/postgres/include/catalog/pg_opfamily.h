@@ -4,7 +4,7 @@
  *	  definition of the "operator family" system catalog (pg_opfamily)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_opfamily.h
@@ -19,7 +19,7 @@
 #define PG_OPFAMILY_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_opfamily_d.h"
+#include "catalog/pg_opfamily_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_opfamily definition. cpp turns this into

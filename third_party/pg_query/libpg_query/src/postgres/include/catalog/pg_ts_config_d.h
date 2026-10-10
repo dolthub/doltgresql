@@ -3,7 +3,7 @@
  * pg_ts_config_d.h
  *    Macro definitions for pg_ts_config
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,6 +18,8 @@
 #ifndef PG_TS_CONFIG_D_H
 #define PG_TS_CONFIG_D_H
 
+/* Macros related to the structure of pg_ts_config */
+
 #define TSConfigRelationId 3602
 #define TSConfigNameNspIndexId 3608
 #define TSConfigOidIndexId 3712
@@ -29,6 +31,11 @@
 #define Anum_pg_ts_config_cfgparser 5
 
 #define Natts_pg_ts_config 5
+
+/* Definitions copied from pg_ts_config.h */
+
+
+/* OID symbols for objects defined in pg_ts_config.dat */
 
 
 #endif							/* PG_TS_CONFIG_D_H */

@@ -4,7 +4,7 @@
  *	  POSTGRES index tuple definitions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/access/itup.h
@@ -68,9 +68,23 @@ typedef IndexAttributeBitMapData * IndexAttributeBitMap;
 #define INDEX_VAR_MASK	0x4000
 #define INDEX_NULL_MASK 0x8000
 
-#define IndexTupleSize(itup)		((Size) ((itup)->t_info & INDEX_SIZE_MASK))
-#define IndexTupleHasNulls(itup)	((((IndexTuple) (itup))->t_info & INDEX_NULL_MASK))
-#define IndexTupleHasVarwidths(itup) ((((IndexTuple) (itup))->t_info & INDEX_VAR_MASK))
+static inline Size
+IndexTupleSize(const IndexTupleData *itup)
+{
+	return (itup->t_info & INDEX_SIZE_MASK);
+}
+
+static inline bool
+IndexTupleHasNulls(const IndexTupleData *itup)
+{
+	return itup->t_info & INDEX_NULL_MASK;
+}
+
+static inline bool
+IndexTupleHasVarwidths(const IndexTupleData *itup)
+{
+	return itup->t_info & INDEX_VAR_MASK;
+}
 
 
 /* routines in indextuple.c */
@@ -124,11 +138,13 @@ index_getattr(IndexTuple tup, int attnum, TupleDesc tupleDesc, bool *isnull)
 
 	if (!IndexTupleHasNulls(tup))
 	{
-		if (TupleDescAttr(tupleDesc, attnum - 1)->attcacheoff >= 0)
+		CompactAttribute *attr = TupleDescCompactAttr(tupleDesc, attnum - 1);
+
+		if (attr->attcacheoff >= 0)
 		{
-			return fetchatt(TupleDescAttr(tupleDesc, attnum - 1),
-							(char *) tup + IndexInfoFindDataOffset(tup->t_info)
-							+ TupleDescAttr(tupleDesc, attnum - 1)->attcacheoff);
+			return fetchatt(attr,
+							(char *) tup + IndexInfoFindDataOffset(tup->t_info) +
+							attr->attcacheoff);
 		}
 		else
 			return nocache_index_getattr(tup, attnum, tupleDesc);

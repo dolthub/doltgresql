@@ -6,7 +6,7 @@
  * NOTE: for historical reasons, this does not correspond to pqcomm.c.
  * pqcomm.c's routines are declared in libpq.h.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/libpq/pqcomm.h
@@ -86,15 +86,15 @@ is_unixsock_path(const char *path)
 
 #define PG_PROTOCOL_MAJOR(v)	((v) >> 16)
 #define PG_PROTOCOL_MINOR(v)	((v) & 0x0000ffff)
+#define PG_PROTOCOL_FULL(v)	(PG_PROTOCOL_MAJOR(v) * 10000 + PG_PROTOCOL_MINOR(v))
 #define PG_PROTOCOL(m,n)	(((m) << 16) | (n))
 
 /*
  * The earliest and latest frontend/backend protocol version supported.
- * (Only protocol version 3 is currently supported)
  */
 
 #define PG_PROTOCOL_EARLIEST	PG_PROTOCOL(3,0)
-#define PG_PROTOCOL_LATEST		PG_PROTOCOL(3,0)
+#define PG_PROTOCOL_LATEST		PG_PROTOCOL(3,2)
 
 typedef uint32 ProtocolVersion; /* FE/BE protocol version number */
 
@@ -128,7 +128,12 @@ typedef uint32 AuthRequest;
  *
  * The cancel request code must not match any protocol version number
  * we're ever likely to use.  This random choice should do.
+ *
+ * Before PostgreSQL v18 and the protocol version bump from 3.0 to 3.2, the
+ * cancel key was always 4 bytes.  With protocol version 3.2, it's variable
+ * length.
  */
+
 #define CANCEL_REQUEST_CODE PG_PROTOCOL(1234,5678)
 
 typedef struct CancelRequestPacket
@@ -136,7 +141,8 @@ typedef struct CancelRequestPacket
 	/* Note that each field is stored in network byte order! */
 	MsgType		cancelRequestCode;	/* code to identify a cancel request */
 	uint32		backendPID;		/* PID of client's backend */
-	uint32		cancelAuthCode; /* secret key to authorize cancel */
+	uint8		cancelAuthCode[FLEXIBLE_ARRAY_MEMBER];	/* secret key to
+														 * authorize cancel */
 } CancelRequestPacket;
 
 /* Application-Layer Protocol Negotiation is required for direct connections

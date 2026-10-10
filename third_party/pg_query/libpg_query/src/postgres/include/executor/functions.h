@@ -4,7 +4,7 @@
  *		Declarations for execution of SQL-language functions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/executor/functions.h
@@ -48,8 +48,7 @@ extern void check_sql_fn_statements(List *queryTreeLists);
 extern bool check_sql_fn_retval(List *queryTreeLists,
 								Oid rettype, TupleDesc rettupdesc,
 								char prokind,
-								bool insertDroppedCols,
-								List **resultTargetList);
+								bool insertDroppedCols);
 
 extern DestReceiver *CreateSQLFunctionDestReceiver(void);
 

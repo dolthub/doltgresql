@@ -2614,9 +2614,9 @@ fn rewrite_search_and_cycle(
         let columns: Vec<String> = (1..=first.items.len()).map(|i| format!("column{i}")).collect();
         let shown: Vec<String> =
             columns.iter().enumerate().map(|(i, c)| format!("{c} AS {}", q(aliases.get(i).unwrap_or(c)))).collect();
-        let values = pg_query::NodeRef::SelectStmt(&left).deparse().map_err(PgError::internal)?;
+        let values = pg_query::NodeRef::SelectStmt(&left).deparse(Default::default()).map_err(PgError::internal)?;
         let text = format!("SELECT {} FROM ({values}) AS anchor({})", shown.join(", "), columns.join(", "));
-        let parsed = pg_query::parse(&text).map_err(PgError::internal)?;
+        let parsed = pg_query::parse(&text, 0).map_err(PgError::internal)?;
         let Some(NodeEnum::SelectStmt(select)) =
             parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node)
         else {

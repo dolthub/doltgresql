@@ -5,7 +5,7 @@
  *
  * See src/backend/utils/misc/README for design notes.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  *	  src/include/utils/guc_tables.h
  *
@@ -63,9 +63,9 @@ enum config_group
 	RESOURCES_MEM,
 	RESOURCES_DISK,
 	RESOURCES_KERNEL,
-	RESOURCES_VACUUM_DELAY,
 	RESOURCES_BGWRITER,
-	RESOURCES_ASYNCHRONOUS,
+	RESOURCES_IO,
+	RESOURCES_WORKER_PROCESSES,
 	WAL_SETTINGS,
 	WAL_CHECKPOINTS,
 	WAL_ARCHIVING,
@@ -87,7 +87,10 @@ enum config_group
 	PROCESS_TITLE,
 	STATS_MONITORING,
 	STATS_CUMULATIVE,
-	AUTOVACUUM,
+	VACUUM_AUTOVACUUM,
+	VACUUM_COST_DELAY,
+	VACUUM_DEFAULT,
+	VACUUM_FREEZING,
 	CLIENT_CONN_STATEMENT,
 	CLIENT_CONN_LOCALE,
 	CLIENT_CONN_PRELOAD,
@@ -135,6 +138,21 @@ typedef struct guc_stack
  * The short description should be less than 80 chars in length. Some
  * applications may use the long description as well, and will append
  * it to the short description. (separated by a newline or '. ')
+ *
+ * If the GUC accepts a special value like -1 to disable the feature, use a
+ * system default, etc., it should be mentioned in the long description with
+ * the following style:
+ *
+ *  - Special values should be listed at the end of the long description.
+ *  - Descriptions should use numerals (e.g., "0") instead of words (e.g.,
+ *    "zero").
+ *  - Special value mentions should be concise and direct (e.g., "0 disables
+ *    the timeout.", "An empty string means use the operating system
+ *    setting.").
+ *  - Multiple special values should be listed in ascending order.
+ *
+ * As an exception, special values should _not_ be mentioned if the description
+ * would be too complex or if the meaning is sufficiently obvious.
  *
  * srole is the role that set the current value, or BOOTSTRAP_SUPERUSERID
  * if the value came from an internal source or the config file.  Similarly

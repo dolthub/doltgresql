@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use doltdb::database::Database;
 use pg_query::NodeEnum;
-use pg_query::protobuf::{DeleteStmt, InsertStmt, UpdateStmt};
+use pg_query::protobuf::{DeleteStmt, InsertStmt, ReturningClause, UpdateStmt};
 use prolly::{NodeStore, Tuple, get};
 
 use crate::auth::Object;
@@ -282,7 +282,7 @@ pub fn parse_expressions(text: &str) -> Result<Vec<pg_query::Node>> {
 
 /// parse_expressions_uncached parses the SQL text of a comma-separated list of stored expressions.
 fn parse_expressions_uncached(text: &str) -> Result<Vec<pg_query::Node>> {
-    let result = pg_query::parse(&format!("SELECT {text}")).map_err(PgError::internal)?;
+    let result = pg_query::parse(&format!("SELECT {text}"), 0).map_err(PgError::internal)?;
     let statement = result.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node);
     let Some(NodeEnum::SelectStmt(select)) = statement else {
         return Err(PgError::internal(format!("a stored expression that is not one: {text}")));
@@ -861,7 +861,7 @@ impl Ctx<'_> {
         if insert.on_conflict_clause.as_ref().is_some_and(|c| !c.target_list.is_empty()) {
             self.require(&object, "w", relation.location)?;
         }
-        if !insert.returning_list.is_empty() || insert.on_conflict_clause.is_some() {
+        if insert.returning_clause.is_some() || insert.on_conflict_clause.is_some() {
             self.require(&object, "r", relation.location)?;
         }
         let alias = relation.alias.as_ref().map(|a| a.aliasname.clone());
@@ -1036,7 +1036,7 @@ impl Ctx<'_> {
             None => None,
         };
         let scope = table_scope(&table, alias.as_deref());
-        let returning = self.plan_returning(scope, &insert.returning_list)?;
+        let returning = self.plan_returning(scope, &insert.returning_clause)?;
         Ok(InsertPlan { table, rules, targets, source, on_conflict, returning })
     }
 
@@ -1110,11 +1110,17 @@ impl Ctx<'_> {
         Ok(InsertPlan { table, rules, targets, source: InsertSource::Values(rows), on_conflict: None, returning: None })
     }
 
-    /// plan_returning binds a RETURNING list over a scope.
-    fn plan_returning(&mut self, scope: Scope, list: &[pg_query::Node]) -> Result<Option<Returning>> {
-        if list.is_empty() {
-            return Ok(None);
+    /// plan_returning binds a RETURNING clause over a scope.
+    fn plan_returning(&mut self, scope: Scope, clause: &Option<ReturningClause>) -> Result<Option<Returning>> {
+        let Some(clause) = clause else { return Ok(None) };
+        if let Some(NodeEnum::ReturningOption(option)) = clause.options.first().and_then(|o| o.node.as_ref()) {
+            //TODO: PG18 lets RETURNING name the rows before and after the change with OLD and NEW
+            return Err(PgError {
+                position: position(option.location),
+                ..PgError::unsupported("RETURNING OLD and NEW")
+            });
         }
+        let list = &clause.exprs;
         let mut binder = Binder::new(self, scope.clone());
         binder.clause = "RETURNING";
         let mut exprs = Vec::new();
@@ -1238,7 +1244,7 @@ impl Ctx<'_> {
         let table = self.resolve_target(relation, "w")?;
         let object = Object::Table(table.schema.clone(), table.name.clone());
         self.require(&object, "w", relation.location)?;
-        if update.where_clause.is_some() || !update.returning_list.is_empty() {
+        if update.where_clause.is_some() || update.returning_clause.is_some() {
             self.require(&object, "r", relation.location)?;
         }
         let alias = relation.alias.as_ref().map(|a| a.aliasname.clone());
@@ -1258,7 +1264,7 @@ impl Ctx<'_> {
         };
         let assignments = bind_assignments(&mut binder, &table, &update.target_list)?;
         let rules = self.row_rules(&table)?;
-        let returning = self.plan_returning(scope, &update.returning_list)?;
+        let returning = self.plan_returning(scope, &update.returning_clause)?;
         Ok(UpdatePlan { table, rules, filter, assignments, from, returning })
     }
 
@@ -1273,7 +1279,7 @@ impl Ctx<'_> {
         let table = self.resolve_target(relation, "d")?;
         let object = Object::Table(table.schema.clone(), table.name.clone());
         self.require(&object, "d", relation.location)?;
-        if delete.where_clause.is_some() || !delete.returning_list.is_empty() {
+        if delete.where_clause.is_some() || delete.returning_clause.is_some() {
             self.require(&object, "r", relation.location)?;
         }
         let mut scope = table_scope(&table, relation.alias.as_ref().map(|a| a.aliasname.as_str()));
@@ -1290,7 +1296,7 @@ impl Ctx<'_> {
             Some(node) => Some(crate::expr::condition(binder.bind(node)?, "WHERE", arg_location(node))?),
             None => None,
         };
-        let returning = self.plan_returning(scope, &delete.returning_list)?;
+        let returning = self.plan_returning(scope, &delete.returning_clause)?;
         Ok(DeletePlan { table, filter, using, returning })
     }
 }

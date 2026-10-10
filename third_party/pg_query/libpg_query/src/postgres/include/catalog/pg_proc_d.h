@@ -3,7 +3,7 @@
  * pg_proc_d.h
  *    Macro definitions for pg_proc
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -17,6 +17,8 @@
  */
 #ifndef PG_PROC_D_H
 #define PG_PROC_D_H
+
+/* Macros related to the structure of pg_proc */
 
 #define ProcedureRelationId 1255
 #define ProcedureRelation_Rowtype_Id 81
@@ -55,6 +57,8 @@
 #define Anum_pg_proc_proacl 30
 
 #define Natts_pg_proc 30
+
+/* Definitions copied from pg_proc.h */
 
 
 /*
@@ -96,6 +100,9 @@
 #define PROARGMODE_INOUT	'b'
 #define PROARGMODE_VARIADIC 'v'
 #define PROARGMODE_TABLE	't'
+
+
+/* OID symbols for objects defined in pg_proc.dat */
 
 
 #endif							/* PG_PROC_D_H */

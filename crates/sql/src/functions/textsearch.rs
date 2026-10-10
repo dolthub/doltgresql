@@ -1408,7 +1408,7 @@ fn rewrite(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 fn rewrite_by_query(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let Some(start) = query(&args[0])? else { return Ok(args[0].clone()) };
     let text = text_argument(&args[1]);
-    let parsed = pg_query::parse(&text).map_err(|err| PgError::new(code::SYNTAX_ERROR, err.to_string()))?;
+    let parsed = pg_query::parse(&text, 0).map_err(|err| PgError::new(code::SYNTAX_ERROR, err.to_string()))?;
     let statement = parsed.protobuf.stmts.into_iter().find_map(|raw| raw.stmt.and_then(|stmt| stmt.node));
     let Some(statement) = statement else { return Err(PgError::internal(format!("SPI_prepare(\"{text}\") failed"))) };
     let outcome = ctx.nested(&mut Vec::new(), &[], None, |ctx| ctx.run(&statement))?;

@@ -3,7 +3,7 @@
  * pg_statistic_d.h
  *    Macro definitions for pg_statistic
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -17,6 +17,8 @@
  */
 #ifndef PG_STATISTIC_D_H
 #define PG_STATISTIC_D_H
+
+/* Macros related to the structure of pg_statistic */
 
 #define StatisticRelationId 2619
 #define StatisticRelidAttnumInhIndexId 2696
@@ -54,6 +56,8 @@
 #define Anum_pg_statistic_stavalues5 31
 
 #define Natts_pg_statistic 31
+
+/* Definitions copied from pg_statistic.h */
 
 
 /*
@@ -95,9 +99,9 @@
  * the K most common non-null values appearing in the column, and stanumbers
  * contains their frequencies (fractions of total row count).  The values
  * shall be ordered in decreasing frequency.  Note that since the arrays are
- * variable-size, K may be chosen may be chosen at ANALYZE time.  Values should
- * not appear in MCV unless they have been observed to occur more than once;
- * a unique column will have no MCV slot.
+ * variable-size, K may be chosen at ANALYZE time.  Values should not appear
+ * in MCV unless they have been observed to occur more than once; a unique
+ * column will have no MCV slot.
  */
 #define STATISTIC_KIND_MCV	1
 
@@ -194,6 +198,9 @@
  * bounds.  Only non-NULL, non-empty ranges are included.
  */
 #define STATISTIC_KIND_BOUNDS_HISTOGRAM  7
+
+
+/* OID symbols for objects defined in pg_statistic.dat */
 
 
 #endif							/* PG_STATISTIC_D_H */

@@ -15,6 +15,8 @@ pub enum Error {
     InvalidPointer,
     #[error("Error scanning: {0}")]
     Scan(String),
+    #[error("Error determining utility statements: {0}")]
+    IsUtility(String),
     #[error("Error splitting: {0}")]
     Split(String),
 }

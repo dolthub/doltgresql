@@ -8,6 +8,23 @@
 #define STDERR_BUFFER_LEN 4096
 #define DEBUG
 
+/*
+ * Maximum protobuf message nesting depth, used for both encoding
+ * (pg_query_nodes_to_protobuf) and decoding (pg_query_protobuf_to_nodes).
+ *
+ * Every expression level costs two message levels (the Node wrapper plus the
+ * node message itself), so this allows roughly 5,000 levels of nested
+ * expressions (e.g. "a || b || c ..."), far more than upb's default of 100.
+ *
+ * This is only a sanity cap: what actually prevents stack overflows is the
+ * stack depth limit (max_stack_depth, sized per call to the available stack),
+ * which upb's encoder and decoder also check (see
+ * vendor/upb/patches/0003-stack-depth-check.patch), just like our recursive
+ * tree walkers do via check_stack_depth(). Depending on the available stack
+ * and the stack used per level, that limit may be reached first.
+ */
+#define PG_QUERY_PROTOBUF_MAX_DEPTH 10000
+
 typedef struct
 {
 	List	   *tree;

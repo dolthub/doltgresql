@@ -3,7 +3,7 @@
  * Assorted utility functions to work on files.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/common/file_utils.h
@@ -33,9 +33,10 @@ typedef enum DataDirSyncMethod
 struct iovec;					/* avoid including port/pg_iovec.h here */
 
 #ifdef FRONTEND
+extern int	pre_sync_fname(const char *fname, bool isdir);
 extern int	fsync_fname(const char *fname, bool isdir);
 extern void sync_pgdata(const char *pg_data, int serverVersion,
-						DataDirSyncMethod sync_method);
+						DataDirSyncMethod sync_method, bool sync_data_files);
 extern void sync_dir_recurse(const char *dir, DataDirSyncMethod sync_method);
 extern int	durable_rename(const char *oldfile, const char *newfile);
 extern int	fsync_parent_path(const char *fname);

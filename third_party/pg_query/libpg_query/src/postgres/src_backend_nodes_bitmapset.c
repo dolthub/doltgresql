@@ -3,11 +3,14 @@
  * - bms_copy
  * - bms_is_valid_set
  * - bms_equal
+ * - bms_add_member
+ * - bms_make_singleton
+ * - bms_free
+ * - bms_is_member
  * - bms_free
  * - bms_next_member
  * - bms_num_members
  * - bms_add_member
- * - bms_make_singleton
  * - bms_is_member
  *--------------------------------------------------------------------
  */
@@ -43,7 +46,7 @@
  * any users of the old set will be accessing pfree'd memory.  This option is
  * only intended to be used for debugging.
  *
- * Copyright (c) 2003-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2003-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/nodes/bitmapset.c

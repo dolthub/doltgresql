@@ -12,17 +12,20 @@
 [package]
 edition = "2021"
 name = "pg_query"
-version = "6.2.1"
+version = "18.0.0"
 build = "build.rs"
 include = [
     "README.md",
     "build.rs",
     "src/**/*.rs",
     "Makefile",
+    "pg_query.h",
     "libpg_query/*.h",
     "libpg_query/{src,vendor}/**/*.{c,h}",
-    "libpg_query/protobuf/pg_query.pb-c.{c,h}",
+    "libpg_query/vendor/**/*.inc",
     "libpg_query/protobuf/pg_query.proto",
+    "libpg_query/protobuf/pg_query.upb.{h,c}",
+    "libpg_query/protobuf/pg_query.upb_minitable.{c,h}",
 ]
 autolib = false
 autobins = false

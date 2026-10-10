@@ -4,7 +4,7 @@
  *	  definition of the "event trigger" system catalog (pg_event_trigger)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_event_trigger.h
@@ -19,7 +19,7 @@
 #define PG_EVENT_TRIGGER_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_event_trigger_d.h"
+#include "catalog/pg_event_trigger_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_event_trigger definition.    cpp turns this into

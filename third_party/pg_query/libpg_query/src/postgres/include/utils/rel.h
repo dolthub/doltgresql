@@ -4,7 +4,7 @@
  *	  POSTGRES relation descriptor (a/k/a relcache entry) definitions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/rel.h
@@ -284,6 +284,9 @@ typedef struct ForeignKeyCacheInfo
 	/* number of columns in the foreign key */
 	int			nkeys;
 
+	/* Is enforced ? */
+	bool		conenforced;
+
 	/*
 	 * these arrays each have nkeys valid entries:
 	 */
@@ -309,6 +312,7 @@ typedef struct AutoVacOpts
 {
 	bool		enabled;
 	int			vacuum_threshold;
+	int			vacuum_max_threshold;
 	int			vacuum_ins_threshold;
 	int			analyze_threshold;
 	int			vacuum_cost_limit;
@@ -343,6 +347,13 @@ typedef struct StdRdOptions
 	int			parallel_workers;	/* max number of parallel workers */
 	StdRdOptIndexCleanup vacuum_index_cleanup;	/* controls index vacuuming */
 	bool		vacuum_truncate;	/* enables vacuum to truncate a relation */
+	bool		vacuum_truncate_set;	/* whether vacuum_truncate is set */
+
+	/*
+	 * Fraction of pages in a relation that vacuum can eagerly scan and fail
+	 * to freeze. 0 if disabled, -1 if unspecified.
+	 */
+	double		vacuum_max_eager_freeze_failure_rate;
 } StdRdOptions;
 
 #define HEAP_MIN_FILLFACTOR			10
@@ -652,6 +663,15 @@ RelationCloseSmgr(Relation relation)
 /*
  * RELATION_IS_OTHER_TEMP
  *		Test for a temporary relation that belongs to some other session.
+ *
+ * Reading another session's temp-table data through never works right:
+ * the owning session keeps the data in its private local buffer pool,
+ * which we cannot access.  Existing buffer-manager entry points
+ * (ReadBuffer_common(), StartReadBuffersImpl(), read_stream_begin_impl(),
+ * PrefetchBuffer() and ExtendBufferedRelCommon()) already enforce this; any
+ * new buffer-access entry points must do the same.  Command-level code
+ * (TRUNCATE, ALTER TABLE, VACUUM, CLUSTER, REINDEX, ...) additionally uses
+ * this macro for command-specific error messages.
  *
  * Beware of multiple eval of argument
  */

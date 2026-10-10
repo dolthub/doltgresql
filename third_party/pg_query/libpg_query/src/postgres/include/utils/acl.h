@@ -4,7 +4,7 @@
  *	  Definition of (and support for) access control list data structures.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/acl.h
@@ -226,6 +226,9 @@ extern char *get_rolespec_name(const RoleSpec *role);
 extern void select_best_grantor(Oid roleId, AclMode privileges,
 								const Acl *acl, Oid ownerId,
 								Oid *grantorId, AclMode *grantOptions);
+
+/* DATABASEOID syscache hash value for our own database, set by initialize_acl */
+extern uint32 cached_db_hash;
 
 extern void initialize_acl(void);
 

@@ -24,7 +24,7 @@
  * AMs support this.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_opclass.h
@@ -39,7 +39,7 @@
 #define PG_OPCLASS_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_opclass_d.h"
+#include "catalog/pg_opclass_d.h"	/* IWYU pragma: export */
 
 /* ----------------
  *		pg_opclass definition.  cpp turns this into

@@ -1,42 +1,4 @@
-//! Rust pg_query &emsp; [![Build Status]][actions] [![Latest Version]][crates.io] [![Docs Badge]][docs]
-//! ===========
-//!
-//! [Build Status]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Factions-badge.atrox.dev%2Fpganalyze%2Fpg_query.rs%2Fbadge%3Fref%3Dmain&style=flat&label=build&logo=none
-//! [actions]: https://actions-badge.atrox.dev/pganalyze/pg_query.rs/goto?ref=main
-//! [Latest Version]: https://img.shields.io/crates/v/pg_query.svg
-//! [crates.io]: https://crates.io/crates/pg_query
-//! [Docs Badge]: https://docs.rs/pg_query/badge.svg
-//! [docs]: https://docs.rs/pg_query
-//!
-//! This Rust library uses the actual PostgreSQL server source to parse SQL queries and return the internal PostgreSQL parse tree.
-//!
-//! It also allows you to normalize queries (replacing constant values with $1, etc.) and parse these normalized queries into a parse tree again.
-//!
-//! When you build this library, it builds parts of the PostgreSQL server source (see [libpg_query](https://github.com/pganalyze/libpg_query)), and then statically links it into this library.
-//!
-//! You can find further examples and a longer rationale for the original Ruby implementation [here](https://pganalyze.com/blog/parse-postgresql-queries-in-ruby.html). The Rust version tries to have a very similar API.
-//!
-//! ## Getting started
-//!
-//! Add the following to your `Cargo.toml`
-//!
-//! ```toml
-//! [dependencies]
-//! pg_query = "6.2"
-//! ```
-//!
-//! # Example: Parsing a query
-//!
-//! ```rust
-//! use pg_query::NodeRef;
-//!
-//! let result = pg_query::parse("SELECT * FROM contacts");
-//! assert!(result.is_ok());
-//! let result = result.unwrap();
-//! assert_eq!(result.tables(), vec!["contacts"]);
-//! assert!(matches!(result.protobuf.nodes()[0].0, NodeRef::SelectStmt(_)));
-//! ```
-//!
+#![doc = include_str!("../README.md")]
 
 mod bindings;
 mod error;
@@ -44,6 +6,7 @@ mod node_enum;
 mod node_mut;
 mod node_ref;
 mod node_structs;
+mod options;
 mod parse_result;
 #[rustfmt::skip]
 pub mod protobuf;
@@ -56,6 +19,7 @@ pub use error::*;
 pub use node_enum::*;
 pub use node_mut::*;
 pub use node_ref::*;
+pub use options::*;
 pub use parse_result::*;
 pub use query::*;
 pub use summary::*;

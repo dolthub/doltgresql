@@ -3,7 +3,7 @@
  * pg_opclass_d.h
  *    Macro definitions for pg_opclass
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -17,6 +17,8 @@
  */
 #ifndef PG_OPCLASS_D_H
 #define PG_OPCLASS_D_H
+
+/* Macros related to the structure of pg_opclass */
 
 #define OperatorClassRelationId 2616
 #define OpclassAmNameNspIndexId 2686
@@ -33,6 +35,11 @@
 #define Anum_pg_opclass_opckeytype 9
 
 #define Natts_pg_opclass 9
+
+/* Definitions copied from pg_opclass.h */
+
+
+/* OID symbols for objects defined in pg_opclass.dat */
 
 #define DATE_BTREE_OPS_OID 3122
 #define FLOAT8_BTREE_OPS_OID 3123

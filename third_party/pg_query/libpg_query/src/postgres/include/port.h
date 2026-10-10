@@ -3,7 +3,7 @@
  * port.h
  *	  Header for src/port/ compatibility functions.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port.h
@@ -58,6 +58,7 @@ extern void make_native_path(char *filename);
 extern void cleanup_path(char *path);
 extern bool path_contains_parent_reference(const char *path);
 extern bool path_is_relative_and_below_cwd(const char *path);
+extern bool path_is_safe_for_extraction(const char *path);
 extern bool path_is_prefix_of_path(const char *path1, const char *path2);
 extern char *make_absolute_path(const char *path);
 extern const char *get_progname(const char *argv0);
@@ -338,7 +339,6 @@ extern bool rmtree(const char *path, bool rmtopdir);
  * open() and fopen() replacements to allow deletion of open files and
  * passing of other special options.
  */
-#define		O_DIRECT	0x80000000
 extern HANDLE pgwin32_open_handle(const char *, int, bool);
 extern int	pgwin32_open(const char *, int,...);
 extern FILE *pgwin32_fopen(const char *, const char *);
@@ -460,10 +460,12 @@ extern size_t strlcpy(char *dst, const char *src, size_t siz);
 extern size_t strnlen(const char *str, size_t maxlen);
 #endif
 
-/* port/user.c */
-#ifndef WIN32
-extern bool pg_get_user_name(uid_t user_id, char *buffer, size_t buflen);
-extern bool pg_get_user_home_dir(uid_t user_id, char *buffer, size_t buflen);
+#if !HAVE_DECL_STRSEP
+extern char *strsep(char **stringp, const char *delim);
+#endif
+
+#if !HAVE_DECL_TIMINGSAFE_BCMP
+extern int	timingsafe_bcmp(const void *b1, const void *b2, size_t len);
 #endif
 
 /*
@@ -488,6 +490,12 @@ extern void *bsearch_arg(const void *key, const void *base0,
 						 size_t nmemb, size_t size,
 						 int (*compar) (const void *, const void *, void *),
 						 void *arg);
+
+/* port/pg_localeconv_r.c */
+extern int	pg_localeconv_r(const char *lc_monetary,
+							const char *lc_numeric,
+							struct lconv *output);
+extern void pg_localeconv_free(struct lconv *lconv);
 
 /* port/chklocale.c */
 extern int	pg_get_encoding_from_locale(const char *ctype, bool write_message);
@@ -519,9 +527,11 @@ extern int	pg_mkdir_p(char *path, int omode);
 /* port/pqsignal.c (see also interfaces/libpq/legacy-pqsignal.c) */
 #ifdef FRONTEND
 #define pqsignal pqsignal_fe
+#else
+#define pqsignal pqsignal_be
 #endif
 typedef void (*pqsigfunc) (SIGNAL_ARGS);
-extern pqsigfunc pqsignal(int signo, pqsigfunc func);
+extern void pqsignal(int signo, pqsigfunc func);
 
 /* port/quotes.c */
 extern char *escape_single_quotes_ascii(const char *src);

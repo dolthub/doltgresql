@@ -5,7 +5,7 @@
  *	  functions for internal use.
  *
  *
- * Portions Copyright (c) 2022-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2022-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/memutils_internal.h
@@ -160,8 +160,8 @@ extern void MemoryContextCreate(MemoryContext node,
 extern void *MemoryContextAllocationFailure(MemoryContext context, Size size,
 											int flags);
 
-extern void MemoryContextSizeFailure(MemoryContext context, Size size,
-									 int flags) pg_attribute_noreturn();
+pg_noreturn extern void MemoryContextSizeFailure(MemoryContext context, Size size,
+												 int flags);
 
 static inline void
 MemoryContextCheckSize(MemoryContext context, Size size, int flags)

@@ -8,7 +8,7 @@
  * objects, created by CREATE STATISTICS, but not the actual statistical data,
  * created by running ANALYZE.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_statistic_ext.h
@@ -23,7 +23,7 @@
 #define PG_STATISTIC_EXT_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_statistic_ext_d.h"
+#include "catalog/pg_statistic_ext_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_statistic_ext definition.  cpp turns this into

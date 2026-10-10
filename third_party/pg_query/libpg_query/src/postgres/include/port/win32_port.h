@@ -6,7 +6,7 @@
  * Note this is read in MinGW as well as native Windows builds,
  * but not in Cygwin builds.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/port/win32_port.h
@@ -153,14 +153,6 @@
 #define WTERMSIG(w)		(w)
 
 #define sigmask(sig) ( 1 << ((sig)-1) )
-
-/* Signal function return values */
-#undef SIG_DFL
-#undef SIG_ERR
-#undef SIG_IGN
-#define SIG_DFL ((pqsigfunc)0)
-#define SIG_ERR ((pqsigfunc)-1)
-#define SIG_IGN ((pqsigfunc)1)
 
 /* Some extra signals */
 #define SIGHUP				1
@@ -343,18 +335,15 @@ extern int	_pglstat64(const char *name, struct stat *buf);
 
 /*
  * Supplement to <fcntl.h>.
- * This is the same value as _O_NOINHERIT in the MS header file. This is
- * to ensure that we don't collide with a future definition. It means
- * we cannot use _O_NOINHERIT ourselves.
+ *
+ * We borrow bits from the high end when we have to, to avoid colliding with
+ * the system-defined values.  Our open() replacement in src/port/open.c
+ * converts these to the equivalent CreateFile() flags, along with the ones
+ * from fcntl.h.
  */
-#define O_DSYNC 0x0080
-
-/*
- * Our open() replacement does not create inheritable handles, so it is safe to
- * ignore O_CLOEXEC.  (If we were using Windows' own open(), it might be
- * necessary to convert this to _O_NOINHERIT.)
- */
-#define O_CLOEXEC 0
+#define	O_CLOEXEC	0x04000000
+#define	O_DIRECT	0x80000000
+#define	O_DSYNC		_O_NOINHERIT
 
 /*
  * Supplement to <errno.h>.
@@ -412,6 +401,24 @@ extern int	_pglstat64(const char *name, struct stat *buf);
 #define ENOTCONN WSAENOTCONN
 #undef ETIMEDOUT
 #define ETIMEDOUT WSAETIMEDOUT
+
+/*
+ * Supplement to <string.h>.
+ */
+#define strtok_r strtok_s
+
+/*
+ * Supplement to <time.h>.
+ */
+#ifdef _MSC_VER
+/*
+ * MinGW has these functions if _POSIX_C_SOURCE is defined.  Third-party
+ * libraries might do that, so to avoid clashes we get ahead of it and define
+ * it ourselves and use the system functions provided by MinGW.
+ */
+#define gmtime_r(clock, result) (gmtime_s(result, clock) ? NULL : (result))
+#define localtime_r(clock, result) (localtime_s(result, clock) ? NULL : (result))
+#endif
 
 /*
  * Locale stuff.

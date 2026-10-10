@@ -189,7 +189,7 @@ keys chunks by 16 of their 20 address bytes (see `GO_FINDINGS.md`).
 
 ### Phase 3: server, parser, minimal engine (day 2)
 
-1. Parser: `pg_query` (libpg_query, Postgres' own grammar, currently 17.7). The Rust run vendored it to expose
+1. Parser: `pg_query` (libpg_query, Postgres' own grammar, currently 18.6). The Rust run vendored it to expose
    syntax error cursor positions (`third_party/pg_query`). *In Go:* `pganalyze/pg_query_go` is the same library
    through cgo. Accept newer syntax, and fail a statement only when what it needs is unsupported.
 2. A small extension parser, tried when pg_query fails, for the Doltgres-only syntax (`USE db/branch`, `AS OF`,
@@ -345,8 +345,9 @@ costs were CPU: binding a table's defaults re-parsed their stored text on every 
 SHA-512 chunk addresses (the ARMv8 instructions need `sha2`'s `asm` feature), prolly tree edits, and pg_query's
 protobuf round trip for every statement. That round trip was most of a point select, and the C parser itself little
 of it: protobuf-c sized and packed every `Node` (a oneof over several hundred node types) by walking all of its
-fields. A patch to the vendored protobuf-c finds a Node's one set field by id instead. pg_query_go parses through the
-same protobuf path, so a Go rewrite that uses it needs the same patch.
+fields. A patch to the vendored protobuf-c found a Node's one set field by id instead. libpg_query 18 replaced
+protobuf-c with upb, whose encoder has the same cost (41% of a parse) and takes the same patch. pg_query_go parses
+through the same protobuf path, so a Go rewrite that uses it needs the same patch.
 
 The planner then moved toward Postgres' own (the user asked to port as much of Postgres' analyzer as is reasonable).
 A first round hand-wrote Postgres' rules onto the existing planner: subquery pull-up, reduce_outer_joins, eqjoinsel,

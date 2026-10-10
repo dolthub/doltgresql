@@ -330,7 +330,7 @@ fn parse_body(text: &str) -> Result<Vec<NodeEnum>> {
         Some(word) if word.eq_ignore_ascii_case("return") => format!("SELECT{}", &trimmed[6..]),
         _ => text.to_string(),
     };
-    let result = pg_query::parse(&text).map_err(|err| PgError::new(code::SYNTAX_ERROR, err.to_string()))?;
+    let result = pg_query::parse(&text, 0).map_err(|err| PgError::new(code::SYNTAX_ERROR, err.to_string()))?;
     Ok(result.protobuf.stmts.into_iter().filter_map(|raw| raw.stmt.and_then(|stmt| stmt.node)).collect())
 }
 
@@ -510,6 +510,11 @@ fn invalid_definition(message: impl Into<String>) -> PgError {
     PgError::new(code::INVALID_FUNCTION_DEFINITION, message)
 }
 
+/// parameter_error returns Postgres' error for a function definition it rejects because of one parameter.
+fn parameter_error(param: &FunctionParameter, message: &str) -> PgError {
+    PgError { position: position(param.location), ..invalid_definition(message) }
+}
+
 /// Options are the options of CREATE FUNCTION.
 #[derive(Default)]
 struct Options {
@@ -636,18 +641,18 @@ impl Ctx<'_> {
                 _ => Mode::In,
             };
             if mode.is_input() && seen_variadic {
-                return Err(invalid_definition("VARIADIC parameter must be the last input parameter"));
+                return Err(parameter_error(param, "VARIADIC parameter must be the last input parameter"));
             }
             if mode == Mode::Variadic {
                 if !crate::array::is_array_type(ty.oid) {
-                    return Err(invalid_definition("VARIADIC parameter must be an array"));
+                    return Err(parameter_error(param, "VARIADIC parameter must be an array"));
                 }
                 seen_variadic = true;
             }
             let default = match &param.defexpr {
                 Some(expr) => {
                     if !mode.is_input() {
-                        return Err(invalid_definition("only input parameters can have default values"));
+                        return Err(parameter_error(param, "only input parameters can have default values"));
                     }
                     let mut binder = Binder::new(self, Scope::default());
                     binder.clause = "DEFAULT expressions";
@@ -658,7 +663,8 @@ impl Ctx<'_> {
                     Some(crate::ddl::expression_text(expr)?)
                 }
                 None if mode.is_input() && seen_default => {
-                    return Err(invalid_definition(
+                    return Err(parameter_error(
+                        param,
                         "input parameters after one with a default value must also have defaults",
                     ));
                 }
@@ -785,14 +791,6 @@ impl Ctx<'_> {
             "plpgsql" => {
                 let body = options.body.as_deref().ok_or_else(|| invalid_definition("no function body specified"))?;
                 function.operations = crate::plpgsql::compile(self, text, body)?;
-                let returns_value =
-                    |op: &Operation| op.op_code == crate::plpgsql::OpCode::Return as u16 && !op.primary_data.is_empty();
-                if stmt.is_procedure && function.operations.iter().any(returns_value) {
-                    return Err(PgError {
-                        position: crate::plpgsql::statement_position(text, body, "return", true),
-                        ..PgError::new(code::SYNTAX_ERROR, "RETURN cannot have a parameter in a procedure")
-                    });
-                }
             }
             "c" | "internal" => return Err(PgError::unsupported(format!("LANGUAGE {language}"))),
             other => return Err(PgError::new(code::UNDEFINED_OBJECT, format!("language \"{other}\" does not exist"))),
@@ -1176,7 +1174,7 @@ fn atomic_body(body: &Node) -> Result<String> {
                 let value = ret.returnval.as_deref().ok_or_else(|| PgError::internal("RETURN without a value"))?;
                 format!("SELECT {}", crate::ddl::expression_text(value)?)
             }
-            _ => node.to_ref().deparse().map_err(PgError::internal)?,
+            _ => node.to_ref().deparse(Default::default()).map_err(PgError::internal)?,
         });
     }
     Ok(texts.join(";"))

@@ -1,5 +1,6 @@
 /*--------------------------------------------------------------------
  * Symbols referenced in this file:
+ * - quote_qualified_identifier
  * - quote_identifier
  * - quote_all_identifiers
  * - quote_qualified_identifier
@@ -12,7 +13,7 @@
  *	  Functions to convert stored expressions/querytrees back to
  *	  source text
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -175,6 +176,8 @@ typedef struct
 	List	   *subplans;		/* List of Plan trees for SubPlans */
 	List	   *ctes;			/* List of CommonTableExpr nodes */
 	AppendRelInfo **appendrels; /* Array of AppendRelInfo nodes, or NULL */
+	char	   *ret_old_alias;	/* alias for OLD in RETURNING list */
+	char	   *ret_new_alias;	/* alias for NEW in RETURNING list */
 	/* Workspace for column alias assignment: */
 	bool		unique_using;	/* Are we making USING names globally unique */
 	List	   *using_names;	/* List of assigned names for USING columns */
@@ -232,6 +235,10 @@ typedef struct
  * of aliases to columns of the right input.  Thus, positions in the printable
  * column alias list are not necessarily one-for-one with varattnos of the
  * JOIN, so we need a separate new_colnames[] array for printing purposes.
+ *
+ * Finally, when dealing with wide tables we risk O(N^2) costs in assigning
+ * non-duplicate column names.  We ameliorate that by using a hash table that
+ * holds all the strings appearing in colnames, new_colnames, and parentUsing.
  */
 typedef struct
 {
@@ -299,6 +306,15 @@ typedef struct
 	int		   *leftattnos;		/* left-child varattnos of join cols, or 0 */
 	int		   *rightattnos;	/* right-child varattnos of join cols, or 0 */
 	List	   *usingNames;		/* names assigned to merged columns */
+
+	/*
+	 * Hash table holding copies of all the strings appearing in this struct's
+	 * colnames, new_colnames, and parentUsing.  We use a hash table only for
+	 * sufficiently wide relations, and only during the colname-assignment
+	 * functions set_relation_column_names and set_join_column_names;
+	 * otherwise, names_hash is NULL.
+	 */
+	HTAB	   *names_hash;		/* entries are just strings */
 } deparse_columns;
 
 /* This macro is analogous to rt_fetch(), but for deparse_columns structs */
@@ -348,7 +364,7 @@ static char *pg_get_viewdef_worker(Oid viewoid,
 								   int prettyFlags, int wrapColumn);
 static char *pg_get_triggerdef_worker(Oid trigid, bool pretty);
 static int	decompile_column_index_array(Datum column_index_array, Oid relId,
-										 StringInfo buf);
+										 bool withPeriod, StringInfo buf);
 static char *pg_get_ruledef_worker(Oid ruleoid, int prettyFlags);
 static char *pg_get_indexdef_worker(Oid indexrelid, int colno,
 									const Oid *excludeOps,
@@ -385,6 +401,9 @@ static bool colname_is_unique(const char *colname, deparse_namespace *dpns,
 static char *make_colname_unique(char *colname, deparse_namespace *dpns,
 								 deparse_columns *colinfo);
 static void expand_colnames_array_to(deparse_columns *colinfo, int n);
+static void build_colinfo_names_hash(deparse_columns *colinfo);
+static void add_to_names_hash(deparse_columns *colinfo, const char *name);
+static void destroy_colinfo_names_hash(deparse_columns *colinfo);
 static void identify_join_columns(JoinExpr *j, RangeTblEntry *jrte,
 								  deparse_columns *colinfo);
 static char *get_rtable_name(int rtindex, deparse_context *context);
@@ -419,6 +438,7 @@ static void get_merge_query_def(Query *query, deparse_context *context);
 static void get_utility_query_def(Query *query, deparse_context *context);
 static void get_basic_select_query(Query *query, deparse_context *context);
 static void get_target_list(List *targetList, deparse_context *context);
+static void get_returning_clause(Query *query, deparse_context *context);
 static void get_setop_query(Node *setOp, Query *query,
 							deparse_context *context);
 static Node *get_rule_sortgroupclause(Index ref, List *tlist,
@@ -431,6 +451,9 @@ static void get_rule_orderby(List *orderList, List *targetList,
 static void get_rule_windowclause(Query *query, deparse_context *context);
 static void get_rule_windowspec(WindowClause *wc, List *targetList,
 								deparse_context *context);
+static void get_window_frame_options(int frameOptions,
+									 Node *startOffset, Node *endOffset,
+									 deparse_context *context);
 static char *get_variable(Var *var, int levelsup, bool istoplevel,
 						  deparse_context *context);
 static void get_special_variable(Node *node, deparse_context *context,
@@ -490,6 +513,8 @@ static void get_json_agg_constructor(JsonConstructorExpr *ctor,
 									 deparse_context *context,
 									 const char *funcname,
 									 bool is_json_objectagg);
+static void get_json_agg_constructor_expr(Node *node, deparse_context *context,
+										  void *callback_arg);
 static void simple_quote_literal(StringInfo buf, const char *val);
 static void get_sublink_expr(SubLink *sublink, deparse_context *context);
 static void get_tablefunc(TableFunc *tf, deparse_context *context,
@@ -912,6 +937,10 @@ static void get_json_table_nested_columns(TableFunc *tf, JsonTablePlan *plan,
  * the most-closely-nested first.  This is needed to resolve PARAM_EXEC
  * Params.  Note we assume that all the Plan nodes share the same rtable.
  *
+ * For a ModifyTable plan, we might also need to resolve references to OLD/NEW
+ * variables in the RETURNING list, so we copy the alias names of the OLD and
+ * NEW rows from the ModifyTable plan node.
+ *
  * Once this function has been called, deparse_expression() can be called on
  * subsidiary expression(s) of the specified Plan node.  To deparse
  * expressions of a different Plan node in the same Plan tree, re-call this
@@ -958,8 +987,10 @@ static void get_json_table_nested_columns(TableFunc *tf, JsonTablePlan *plan,
  *
  * This handles EXPLAIN and cases where we only have relation RTEs.  Without
  * a join tree, we can't do anything smart about join RTEs, but we don't
- * need to (note that EXPLAIN should never see join alias Vars anyway).
- * If we do hit a join RTE we'll just process it like a non-table base RTE.
+ * need to, because EXPLAIN should never see join alias Vars anyway.
+ * If we find a join RTE we'll just skip it, leaving its deparse_columns
+ * struct all-zero.  If somehow we try to deparse a join alias Var, we'll
+ * error out cleanly because the struct's num_cols will be zero.
  */
 
 
@@ -995,6 +1026,10 @@ static void get_json_table_nested_columns(TableFunc *tf, JsonTablePlan *plan,
  *
  * parentUsing is a list of all USING aliases assigned in parent joins of
  * the current jointree node.  (The passed-in list must not be modified.)
+ *
+ * Note that we do not use per-deparse_columns hash tables in this function.
+ * The number of names that need to be assigned should be small enough that
+ * we don't need to trouble with that.
  */
 
 
@@ -1037,6 +1072,21 @@ static void get_json_table_nested_columns(TableFunc *tf, JsonTablePlan *plan,
  * expand_colnames_array_to: make colinfo->colnames at least n items long
  *
  * Any added array entries are initialized to zero.
+ */
+
+
+/*
+ * build_colinfo_names_hash: optionally construct a hash table for colinfo
+ */
+
+
+/*
+ * add_to_names_hash: add a string to the names_hash, if we're using one
+ */
+
+
+/*
+ * destroy_colinfo_names_hash: destroy hash table when done with it
  */
 
 
@@ -1188,6 +1238,8 @@ static void get_json_table_nested_columns(TableFunc *tf, JsonTablePlan *plan,
 
 
 
+
+
 /*
  * Display a sort/group clause.
  *
@@ -1215,6 +1267,16 @@ static void get_json_table_nested_columns(TableFunc *tf, JsonTablePlan *plan,
 
 /*
  * Display a window definition
+ */
+
+
+/*
+ * Append the description of a window's framing options to context->buf
+ */
+
+
+/*
+ * Return the description of a window's framing options as a palloc'd string
  */
 
 
@@ -1565,6 +1627,12 @@ static void get_json_table_nested_columns(TableFunc *tf, JsonTablePlan *plan,
 
 /*
  * get_json_agg_constructor - Parse back an aggregate JsonConstructorExpr node
+ */
+
+
+/*
+ * Deparse a JsonConstructorExpr whose aggregate is computed by a lower plan
+ * node; resolve_special_varno has located the underlying Aggref/WindowFunc.
  */
 
 

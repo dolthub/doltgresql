@@ -3,7 +3,7 @@
  * equalfuncs.switch.c
  *    Generated node infrastructure code
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -192,6 +192,9 @@
 		case T_InferenceElem:
 			retval = _equalInferenceElem(a, b);
 			break;
+		case T_ReturningExpr:
+			retval = _equalReturningExpr(a, b);
+			break;
 		case T_TargetEntry:
 			retval = _equalTargetEntry(a, b);
 			break;
@@ -306,9 +309,6 @@
 		case T_PartitionRangeDatum:
 			retval = _equalPartitionRangeDatum(a, b);
 			break;
-		case T_SinglePartitionSpec:
-			retval = _equalSinglePartitionSpec(a, b);
-			break;
 		case T_PartitionCmd:
 			retval = _equalPartitionCmd(a, b);
 			break;
@@ -359,6 +359,12 @@
 			break;
 		case T_MergeWhenClause:
 			retval = _equalMergeWhenClause(a, b);
+			break;
+		case T_ReturningOption:
+			retval = _equalReturningOption(a, b);
+			break;
+		case T_ReturningClause:
+			retval = _equalReturningClause(a, b);
 			break;
 		case T_TriggerTransition:
 			retval = _equalTriggerTransition(a, b);
@@ -444,11 +450,14 @@
 		case T_AlterTableStmt:
 			retval = _equalAlterTableStmt(a, b);
 			break;
-		case T_ReplicaIdentityStmt:
-			retval = _equalReplicaIdentityStmt(a, b);
-			break;
 		case T_AlterTableCmd:
 			retval = _equalAlterTableCmd(a, b);
+			break;
+		case T_ATAlterConstraint:
+			retval = _equalATAlterConstraint(a, b);
+			break;
+		case T_ReplicaIdentityStmt:
+			retval = _equalReplicaIdentityStmt(a, b);
 			break;
 		case T_AlterCollationStmt:
 			retval = _equalAlterCollationStmt(a, b);

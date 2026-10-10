@@ -58,6 +58,7 @@
   READ_COND(CurrentOfExpr, CurrentOfExpr, current_of_expr, CURRENT_OF_EXPR, CurrentOfExpr, current_of_expr);
   READ_COND(NextValueExpr, NextValueExpr, next_value_expr, NEXT_VALUE_EXPR, NextValueExpr, next_value_expr);
   READ_COND(InferenceElem, InferenceElem, inference_elem, INFERENCE_ELEM, InferenceElem, inference_elem);
+  READ_COND(ReturningExpr, ReturningExpr, returning_expr, RETURNING_EXPR, ReturningExpr, returning_expr);
   READ_COND(TargetEntry, TargetEntry, target_entry, TARGET_ENTRY, TargetEntry, target_entry);
   READ_COND(RangeTblRef, RangeTblRef, range_tbl_ref, RANGE_TBL_REF, RangeTblRef, range_tbl_ref);
   READ_COND(JoinExpr, JoinExpr, join_expr, JOIN_EXPR, JoinExpr, join_expr);
@@ -95,7 +96,6 @@
   READ_COND(PartitionSpec, PartitionSpec, partition_spec, PARTITION_SPEC, PartitionSpec, partition_spec);
   READ_COND(PartitionBoundSpec, PartitionBoundSpec, partition_bound_spec, PARTITION_BOUND_SPEC, PartitionBoundSpec, partition_bound_spec);
   READ_COND(PartitionRangeDatum, PartitionRangeDatum, partition_range_datum, PARTITION_RANGE_DATUM, PartitionRangeDatum, partition_range_datum);
-  READ_COND(SinglePartitionSpec, SinglePartitionSpec, single_partition_spec, SINGLE_PARTITION_SPEC, SinglePartitionSpec, single_partition_spec);
   READ_COND(PartitionCmd, PartitionCmd, partition_cmd, PARTITION_CMD, PartitionCmd, partition_cmd);
   READ_COND(RangeTblEntry, RangeTblEntry, range_tbl_entry, RANGE_TBL_ENTRY, RangeTblEntry, range_tbl_entry);
   READ_COND(RTEPermissionInfo, RTEPermissionInfo, rtepermission_info, RTEPERMISSION_INFO, RTEPermissionInfo, rtepermission_info);
@@ -113,6 +113,8 @@
   READ_COND(CTECycleClause, CTECycleClause, ctecycle_clause, CTECYCLE_CLAUSE, CTECycleClause, ctecycle_clause);
   READ_COND(CommonTableExpr, CommonTableExpr, common_table_expr, COMMON_TABLE_EXPR, CommonTableExpr, common_table_expr);
   READ_COND(MergeWhenClause, MergeWhenClause, merge_when_clause, MERGE_WHEN_CLAUSE, MergeWhenClause, merge_when_clause);
+  READ_COND(ReturningOption, ReturningOption, returning_option, RETURNING_OPTION, ReturningOption, returning_option);
+  READ_COND(ReturningClause, ReturningClause, returning_clause, RETURNING_CLAUSE, ReturningClause, returning_clause);
   READ_COND(TriggerTransition, TriggerTransition, trigger_transition, TRIGGER_TRANSITION, TriggerTransition, trigger_transition);
   READ_COND(JsonOutput, JsonOutput, json_output, JSON_OUTPUT, JsonOutput, json_output);
   READ_COND(JsonArgument, JsonArgument, json_argument, JSON_ARGUMENT, JsonArgument, json_argument);
@@ -141,8 +143,9 @@
   READ_COND(PLAssignStmt, PLAssignStmt, plassign_stmt, PLASSIGN_STMT, PLAssignStmt, plassign_stmt);
   READ_COND(CreateSchemaStmt, CreateSchemaStmt, create_schema_stmt, CREATE_SCHEMA_STMT, CreateSchemaStmt, create_schema_stmt);
   READ_COND(AlterTableStmt, AlterTableStmt, alter_table_stmt, ALTER_TABLE_STMT, AlterTableStmt, alter_table_stmt);
-  READ_COND(ReplicaIdentityStmt, ReplicaIdentityStmt, replica_identity_stmt, REPLICA_IDENTITY_STMT, ReplicaIdentityStmt, replica_identity_stmt);
   READ_COND(AlterTableCmd, AlterTableCmd, alter_table_cmd, ALTER_TABLE_CMD, AlterTableCmd, alter_table_cmd);
+  READ_COND(ATAlterConstraint, ATAlterConstraint, atalter_constraint, ATALTER_CONSTRAINT, ATAlterConstraint, atalter_constraint);
+  READ_COND(ReplicaIdentityStmt, ReplicaIdentityStmt, replica_identity_stmt, REPLICA_IDENTITY_STMT, ReplicaIdentityStmt, replica_identity_stmt);
   READ_COND(AlterCollationStmt, AlterCollationStmt, alter_collation_stmt, ALTER_COLLATION_STMT, AlterCollationStmt, alter_collation_stmt);
   READ_COND(AlterDomainStmt, AlterDomainStmt, alter_domain_stmt, ALTER_DOMAIN_STMT, AlterDomainStmt, alter_domain_stmt);
   READ_COND(GrantStmt, GrantStmt, grant_stmt, GRANT_STMT, GrantStmt, grant_stmt);

@@ -3,7 +3,7 @@
  * generic-sunpro.h
  *	  Atomic operations for solaris' CC
  *
- * Portions Copyright (c) 2013-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013-2025, PostgreSQL Global Development Group
  *
  * NOTES:
  *
@@ -16,8 +16,6 @@
  *
  * -------------------------------------------------------------------------
  */
-
-#if defined(HAVE_ATOMICS)
 
 #ifdef HAVE_MBARRIER_H
 #include <mbarrier.h>
@@ -66,10 +64,6 @@ typedef struct pg_atomic_uint64
 
 #endif /* HAVE_ATOMIC_H */
 
-#endif /* defined(HAVE_ATOMICS) */
-
-
-#if defined(HAVE_ATOMICS)
 
 #ifdef HAVE_ATOMIC_H
 
@@ -117,5 +111,3 @@ pg_atomic_exchange_u64_impl(volatile pg_atomic_uint64 *ptr, uint64 newval)
 }
 
 #endif /* HAVE_ATOMIC_H */
-
-#endif /* defined(HAVE_ATOMICS) */

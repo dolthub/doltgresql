@@ -6,6 +6,7 @@
 #include "parser/scanner.h"
 #include "parser/scansup.h"
 #include "mb/pg_wchar.h"
+#include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 
 #include "pg_query_outfuncs.h"
@@ -289,7 +290,7 @@ generate_normalized_query(pgssConstLocations *jstate, int query_loc, int* query_
 		param_id = (jstate->clocations[i].param_id < 0) ?
 					(int64_t) jstate->highest_extern_param_id + abs(jstate->clocations[i].param_id) :
 					jstate->clocations[i].param_id;
-		n_quer_loc += sprintf(norm_query + n_quer_loc, "$" INT64_FORMAT, (int64) param_id);
+		n_quer_loc += sprintf(norm_query + n_quer_loc, "$" INT64_FORMAT, param_id);
 
 		quer_loc = off + tok_len;
 		last_off = off;
@@ -352,6 +353,13 @@ static bool const_record_walker(Node *node, pgssConstLocations *jstate)
 	MemoryContext normalize_context = CurrentMemoryContext;
 
 	if (node == NULL) return false;
+
+	/*
+	 * Most node types recurse via raw_expression_tree_walker(), which checks
+	 * the stack depth itself, but e.g. SelectStmt recurses into this function
+	 * directly for each clause, so a long UNION chain never hits that check.
+	 */
+	check_stack_depth();
 
 	switch (nodeTag(node))
 	{
@@ -582,16 +590,37 @@ static bool const_record_walker(Node *node, pgssConstLocations *jstate)
 			}
 		default:
 			{
+				/*
+				 * Note we must not return from inside PG_TRY, since that skips
+				 * PG_END_TRY and leaves PG_exception_stack pointing at this
+				 * frame after it is gone.
+				 */
+				result = false;
 				PG_TRY();
 				{
-					return raw_expression_tree_walker(node, const_record_walker, (void*) jstate);
+					result = raw_expression_tree_walker(node, const_record_walker, (void*) jstate);
 				}
 				PG_CATCH();
 				{
+					ErrorData  *edata;
+
 					MemoryContextSwitchTo(normalize_context);
+					edata = CopyErrorData();
+
+					/*
+					 * The walker raises for node types it doesn't know, which we
+					 * ignore. But if we ran out of stack, the rest of the tree
+					 * was not walked, and swallowing that would return a partially
+					 * normalized query as if it was complete - pass it on instead.
+					 */
+					if (edata->sqlerrcode == ERRCODE_STATEMENT_TOO_COMPLEX)
+						PG_RE_THROW();
+
+					/* edata is released together with the per-call memory context */
 					FlushErrorState();
 				}
 				PG_END_TRY();
+				return result;
 			}
 	}
 

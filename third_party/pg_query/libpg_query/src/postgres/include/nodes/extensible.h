@@ -4,7 +4,7 @@
  *	  Definitions for extensible nodes and custom scans
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/nodes/extensible.h
@@ -15,7 +15,7 @@
 #define EXTENSIBLE_H
 
 #include "access/parallel.h"
-#include "commands/explain.h"
+#include "commands/explain_state.h"
 #include "nodes/execnodes.h"
 #include "nodes/pathnodes.h"
 #include "nodes/plannodes.h"

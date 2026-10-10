@@ -17,7 +17,7 @@
 use doltdb::table::Table;
 use doltdb::tags::{EXTENDED_KIND, auto_generate_tag};
 use pg_query::protobuf::{
-    AlterTableCmd, AlterTableStmt, AlterTableType, ConstrType, DropBehavior, ObjectType, RenameStmt,
+    AlterTableCmd, AlterTableStmt, AlterTableType, AtAlterConstraint, ConstrType, DropBehavior, ObjectType, RenameStmt,
 };
 use pg_query::{Node, NodeEnum};
 
@@ -268,7 +268,8 @@ impl Ctx<'_> {
                 self.add_constraint(alteration, constraint)
             }
             AlterTableType::AtAlterConstraint => {
-                let Some(NodeEnum::Constraint(constraint)) = cmd.def.as_deref().and_then(|d| d.node.as_ref()) else {
+                let Some(NodeEnum::AtalterConstraint(constraint)) = cmd.def.as_deref().and_then(|d| d.node.as_ref())
+                else {
                     return Err(PgError::internal("ALTER CONSTRAINT without a constraint"));
                 };
                 self.alter_constraint(alteration, constraint)
@@ -664,10 +665,15 @@ impl Ctx<'_> {
     }
 
     /// alter_constraint runs ALTER CONSTRAINT, which changes a foreign key's deferral.
-    fn alter_constraint(&mut self, alteration: &Alteration, constraint: &pg_query::protobuf::Constraint) -> Result<()> {
+    fn alter_constraint(&mut self, alteration: &Alteration, constraint: &AtAlterConstraint) -> Result<()> {
+        if !constraint.alter_deferrability {
+            //TODO: PG18 also alters whether a foreign key is enforced and whether a NOT NULL constraint is inherited
+            return Err(PgError::unsupported("ALTER CONSTRAINT with ENFORCED or INHERIT"));
+        }
         let table = &alteration.table;
         let name = &constraint.conname;
-        if self.set_foreign_key_deferral(table, name, crate::ddl::deferral(constraint))? {
+        let deferral = (constraint.deferrable || constraint.initdeferred, constraint.initdeferred);
+        if self.set_foreign_key_deferral(table, name, deferral)? {
             return Ok(());
         }
         let exists = table.checks.iter().any(|c| c.name == *name)

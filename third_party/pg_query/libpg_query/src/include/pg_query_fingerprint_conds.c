@@ -224,6 +224,10 @@ case T_InferenceElem:
   _fingerprintString(ctx, "InferenceElem");
   _fingerprintInferenceElem(ctx, obj, parent, field_name, depth);
   break;
+case T_ReturningExpr:
+  _fingerprintString(ctx, "ReturningExpr");
+  _fingerprintReturningExpr(ctx, obj, parent, field_name, depth);
+  break;
 case T_TargetEntry:
   _fingerprintString(ctx, "TargetEntry");
   _fingerprintTargetEntry(ctx, obj, parent, field_name, depth);
@@ -374,10 +378,6 @@ case T_PartitionRangeDatum:
   _fingerprintString(ctx, "PartitionRangeDatum");
   _fingerprintPartitionRangeDatum(ctx, obj, parent, field_name, depth);
   break;
-case T_SinglePartitionSpec:
-  _fingerprintString(ctx, "SinglePartitionSpec");
-  _fingerprintSinglePartitionSpec(ctx, obj, parent, field_name, depth);
-  break;
 case T_PartitionCmd:
   _fingerprintString(ctx, "PartitionCmd");
   _fingerprintPartitionCmd(ctx, obj, parent, field_name, depth);
@@ -445,6 +445,14 @@ case T_CommonTableExpr:
 case T_MergeWhenClause:
   _fingerprintString(ctx, "MergeWhenClause");
   _fingerprintMergeWhenClause(ctx, obj, parent, field_name, depth);
+  break;
+case T_ReturningOption:
+  _fingerprintString(ctx, "ReturningOption");
+  _fingerprintReturningOption(ctx, obj, parent, field_name, depth);
+  break;
+case T_ReturningClause:
+  _fingerprintString(ctx, "ReturningClause");
+  _fingerprintReturningClause(ctx, obj, parent, field_name, depth);
   break;
 case T_TriggerTransition:
   _fingerprintString(ctx, "TriggerTransition");
@@ -558,13 +566,17 @@ case T_AlterTableStmt:
   _fingerprintString(ctx, "AlterTableStmt");
   _fingerprintAlterTableStmt(ctx, obj, parent, field_name, depth);
   break;
-case T_ReplicaIdentityStmt:
-  _fingerprintString(ctx, "ReplicaIdentityStmt");
-  _fingerprintReplicaIdentityStmt(ctx, obj, parent, field_name, depth);
-  break;
 case T_AlterTableCmd:
   _fingerprintString(ctx, "AlterTableCmd");
   _fingerprintAlterTableCmd(ctx, obj, parent, field_name, depth);
+  break;
+case T_ATAlterConstraint:
+  _fingerprintString(ctx, "ATAlterConstraint");
+  _fingerprintATAlterConstraint(ctx, obj, parent, field_name, depth);
+  break;
+case T_ReplicaIdentityStmt:
+  _fingerprintString(ctx, "ReplicaIdentityStmt");
+  _fingerprintReplicaIdentityStmt(ctx, obj, parent, field_name, depth);
   break;
 case T_AlterCollationStmt:
   _fingerprintString(ctx, "AlterCollationStmt");

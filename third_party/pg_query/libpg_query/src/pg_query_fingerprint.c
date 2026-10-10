@@ -28,6 +28,8 @@ typedef struct FingerprintContext
 
 	struct listsort_cache_hash *listsort_cache;
 
+	int fingerprint_options;
+
 	bool write_tokens;
 	dlist_head tokens;
 } FingerprintContext;
@@ -69,7 +71,7 @@ typedef struct FingerprintToken
 } FingerprintToken;
 
 static void _fingerprintNode(FingerprintContext *ctx, const void *obj, const void *parent, char *parent_field_name, unsigned int depth);
-static void _fingerprintInitContext(FingerprintContext *ctx, FingerprintContext *parent, bool write_tokens);
+static void _fingerprintInitContext(FingerprintContext *ctx, FingerprintContext *parent, int fingerprint_options, bool write_tokens);
 static void _fingerprintFreeContext(FingerprintContext *ctx);
 
 #define PG_QUERY_FINGERPRINT_VERSION 3
@@ -185,7 +187,7 @@ _fingerprintList(FingerprintContext *ctx, const List *node, const void *parent, 
 				FingerprintContext fctx;
 				FingerprintListsortItem* lctx = palloc0(sizeof(FingerprintListsortItem));
 
-				_fingerprintInitContext(&fctx, ctx, false);
+				_fingerprintInitContext(&fctx, ctx, ctx->fingerprint_options, false);
 				_fingerprintNode(&fctx, lfirst(lc), parent, field_name, depth + 1);
 				lctx->hash = XXH3_64bits_digest(fctx.xxh_state);
 				lctx->list_pos = listsort_items_size;
@@ -225,8 +227,10 @@ _fingerprintList(FingerprintContext *ctx, const List *node, const void *parent, 
 	}
 }
 
+// Note: fingerprint_options only takes effect for root contexts (parent is
+// NULL), child contexts always inherit the options of their parent
 static void
-_fingerprintInitContext(FingerprintContext *ctx, FingerprintContext *parent, bool write_tokens)
+_fingerprintInitContext(FingerprintContext *ctx, FingerprintContext *parent, int fingerprint_options, bool write_tokens)
 {
 	ctx->xxh_state = XXH3_createState();
 	if (ctx->xxh_state == NULL) abort();
@@ -235,10 +239,12 @@ _fingerprintInitContext(FingerprintContext *ctx, FingerprintContext *parent, boo
 	if (parent != NULL)
 	{
 		ctx->listsort_cache = parent->listsort_cache;
+		ctx->fingerprint_options = parent->fingerprint_options;
 	}
 	else
 	{
 		ctx->listsort_cache = listsort_cache_create(CurrentMemoryContext, 128, NULL);
+		ctx->fingerprint_options = fingerprint_options;
 	}
 
 	if (write_tokens)
@@ -259,6 +265,137 @@ _fingerprintFreeContext(FingerprintContext *ctx) {
 
 #include "pg_query_enum_defs.c"
 #include "pg_query_fingerprint_defs.c"
+
+/*
+ * Fingerprint the relation name.
+ *
+ * By default, sequences of 2 or more digits are ignored, so that queries
+ * on date/number-suffixed tables (e.g. partitions like "orders_2024_01")
+ * get the same fingerprint. With PG_QUERY_FINGERPRINT_FULL_RELNAME set,
+ * the relation name is fingerprinted as-is.
+ */
+static void
+_fingerprintRelname(FingerprintContext *ctx, const char *relname)
+{
+	if (ctx->fingerprint_options & PG_QUERY_FINGERPRINT_FULL_RELNAME)
+	{
+		_fingerprintString(ctx, "relname");
+		_fingerprintString(ctx, relname);
+	}
+	else
+	{
+		int len = strlen(relname);
+		char *r = palloc0((len + 1) * sizeof(char));
+		char *p = r;
+		for (int i = 0; i < len; i++)
+		{
+			if (relname[i] >= '0' && relname[i] <= '9' &&
+				((i + 1 < len && relname[i + 1] >= '0' && relname[i + 1] <= '9') ||
+				 (i > 0 && relname[i - 1] >= '0' && relname[i - 1] <= '9')))
+			{
+				// Skip
+			}
+			else
+			{
+				*p = relname[i];
+				p++;
+			}
+		}
+		*p = 0;
+		_fingerprintString(ctx, "relname");
+		_fingerprintString(ctx, r);
+		pfree(r);
+	}
+}
+
+/*
+ * Fingerprint a RangeVar (relation reference).
+ *
+ * This is a custom implementation (the generator only emits the declaration
+ * and the dispatch case) since the behavior depends on the parent node
+ * context and is controlled by fingerprint options.
+ *
+ * By default, this mirrors Postgres 18+ query jumbling for relation
+ * references after parse analysis (RangeTblEntry.eref custom_query_jumble,
+ * RangeTblEntry.relid query_jumble_ignore, see Postgres commit 787514b30bb),
+ * narrowly: in SELECT/DML contexts we add the user alias name when present,
+ * skip the relation name when an alias is present (matches eref.aliasname),
+ * and drop the schema name (Postgres jumbles only the eref string;
+ * schema-qualified and unqualified references that resolve to the same table
+ * share a query ID). catalogname/inh/relpersistence are kept in all contexts
+ * to minimize diff against pre-existing fingerprints; their values rarely
+ * diverge from defaults in DML parse trees.
+ *
+ * Two fingerprint options adjust this behavior:
+ * PG_QUERY_FINGERPRINT_RANGEVAR_IGNORE_ALIASES always fingerprints the
+ * relation name and ignores aliases, and
+ * PG_QUERY_FINGERPRINT_RANGEVAR_INCLUDE_SCHEMA also fingerprints schema
+ * names in SELECT/DML contexts. Setting both mirrors the Postgres 17 and
+ * earlier query jumble, and the fingerprints of earlier libpg_query
+ * releases (see PG_QUERY_FINGERPRINT_RANGEVAR_PG17_COMPAT).
+ */
+static void
+_fingerprintRangeVar(FingerprintContext *ctx, const RangeVar *node, const void *parent, const char *field_name, unsigned int depth)
+{
+	bool ignore_aliases = (ctx->fingerprint_options & PG_QUERY_FINGERPRINT_RANGEVAR_IGNORE_ALIASES) != 0;
+	bool include_schema = (ctx->fingerprint_options & PG_QUERY_FINGERPRINT_RANGEVAR_INCLUDE_SCHEMA) != 0;
+
+	bool is_dml_context = false;
+	if (parent != NULL && field_name != NULL)
+	{
+		if (IsA(parent, SelectStmt) && strcmp(field_name, "fromClause") == 0)
+			is_dml_context = true;
+		else if (IsA(parent, InsertStmt) && strcmp(field_name, "relation") == 0)
+			is_dml_context = true;
+		else if (IsA(parent, UpdateStmt) && (strcmp(field_name, "relation") == 0 || strcmp(field_name, "fromClause") == 0))
+			is_dml_context = true;
+		else if (IsA(parent, DeleteStmt) && (strcmp(field_name, "relation") == 0 || strcmp(field_name, "usingClause") == 0))
+			is_dml_context = true;
+		else if (IsA(parent, MergeStmt) && (strcmp(field_name, "relation") == 0 || strcmp(field_name, "sourceRelation") == 0))
+			is_dml_context = true;
+		else if (IsA(parent, JoinExpr) || IsA(parent, RangeTableSample) || IsA(parent, LockingClause))
+			is_dml_context = true;
+	}
+
+	if (!ignore_aliases && node->alias != NULL && node->alias->aliasname != NULL)
+	{
+		_fingerprintString(ctx, "aliasname");
+		_fingerprintString(ctx, node->alias->aliasname);
+	}
+
+	if (node->catalogname != NULL)
+	{
+		_fingerprintString(ctx, "catalogname");
+		_fingerprintString(ctx, node->catalogname);
+	}
+
+	if (node->inh)
+	{
+		_fingerprintString(ctx, "inh");
+		_fingerprintString(ctx, "true");
+	}
+
+	// Intentionally ignoring node->location for fingerprinting
+
+	// In DML/SELECT context, the relation name only contributes to the jumble
+	// when there is no user alias (matches eref.aliasname). In utility context,
+	// the relation name is always part of the jumble.
+	if (node->relname != NULL && node->relpersistence != 't' && !(is_dml_context && !ignore_aliases && node->alias != NULL))
+		_fingerprintRelname(ctx, node->relname);
+
+	if (node->relpersistence != 0)
+	{
+		char buffer[2] = {node->relpersistence, '\0'};
+		_fingerprintString(ctx, "relpersistence");
+		_fingerprintString(ctx, buffer);
+	}
+
+	if (node->schemaname != NULL && (!is_dml_context || include_schema))
+	{
+		_fingerprintString(ctx, "schemaname");
+		_fingerprintString(ctx, node->schemaname);
+	}
+}
 
 void
 _fingerprintNode(FingerprintContext *ctx, const void *obj, const void *parent, char *field_name, unsigned int depth)
@@ -314,7 +451,7 @@ uint64_t pg_query_fingerprint_node(const void *node)
 	FingerprintContext ctx;
 	uint64 result;
 
-	_fingerprintInitContext(&ctx, NULL, false);
+	_fingerprintInitContext(&ctx, NULL, PG_QUERY_FINGERPRINT_DEFAULT, false);
 	_fingerprintNode(&ctx, node, NULL, NULL, 0);
 
 	result = XXH3_64bits_digest(ctx.xxh_state);
@@ -324,7 +461,7 @@ uint64_t pg_query_fingerprint_node(const void *node)
 	return result;
 }
 
-PgQueryFingerprintResult pg_query_fingerprint_with_opts(const char* input, int parser_options, bool printTokens)
+PgQueryFingerprintResult pg_query_fingerprint_with_opts(const char* input, int parser_options, int fingerprint_options, bool printTokens)
 {
 	MemoryContext ctx = NULL;
 	PgQueryInternalParsetreeAndError parsetree_and_error;
@@ -342,7 +479,7 @@ PgQueryFingerprintResult pg_query_fingerprint_with_opts(const char* input, int p
 		FingerprintContext ctx;
 		XXH64_canonical_t chash;
 
-		_fingerprintInitContext(&ctx, NULL, printTokens);
+		_fingerprintInitContext(&ctx, NULL, fingerprint_options, printTokens);
 
 		if (parsetree_and_error.tree != NULL) {
 			_fingerprintNode(&ctx, parsetree_and_error.tree, NULL, NULL, 0);
@@ -385,12 +522,12 @@ PgQueryFingerprintResult pg_query_fingerprint_with_opts(const char* input, int p
 
 PgQueryFingerprintResult pg_query_fingerprint(const char* input)
 {
-	return pg_query_fingerprint_with_opts(input, PG_QUERY_PARSE_DEFAULT, false);
+	return pg_query_fingerprint_with_opts(input, PG_QUERY_PARSE_DEFAULT, PG_QUERY_FINGERPRINT_DEFAULT, false);
 }
 
-PgQueryFingerprintResult pg_query_fingerprint_opts(const char* input, int parser_options)
+PgQueryFingerprintResult pg_query_fingerprint_opts(const char* input, int parser_options, int fingerprint_options)
 {
-	return pg_query_fingerprint_with_opts(input, parser_options, false);
+	return pg_query_fingerprint_with_opts(input, parser_options, fingerprint_options, false);
 }
 
 void pg_query_free_fingerprint_result(PgQueryFingerprintResult result)

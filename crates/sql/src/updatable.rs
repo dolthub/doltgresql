@@ -16,8 +16,8 @@
 //! the view's base relation, as Postgres' rewriter does.
 
 use pg_query::protobuf::{
-    AExpr, BoolExpr, BoolExprType, ColumnRef, DeleteStmt, InsertStmt, RangeVar, ResTarget, SelectStmt, UpdateStmt,
-    ViewCheckOption,
+    AExpr, BoolExpr, BoolExprType, ColumnRef, DeleteStmt, InsertStmt, RangeVar, ResTarget, ReturningClause, SelectStmt,
+    UpdateStmt, ViewCheckOption,
 };
 use pg_query::{Node, NodeEnum};
 
@@ -201,7 +201,7 @@ impl Ctx<'_> {
     /// updatable_view reads a view and checks that it is automatically updatable for a command, failing as Postgres
     /// does when it is not.
     fn updatable_view(&mut self, schema: &str, name: &str, fragment: &str, command: Command) -> Result<View> {
-        let parsed = pg_query::parse(fragment).map_err(PgError::internal)?;
+        let parsed = pg_query::parse(fragment, 0).map_err(PgError::internal)?;
         let statement = parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node);
         let Some(NodeEnum::ViewStmt(stmt)) = statement else {
             return Err(PgError::internal(format!("a stored view that is not one: {fragment}")));
@@ -484,22 +484,24 @@ fn target_relation(statement: &NodeEnum) -> Option<&RangeVar> {
 
 /// returning_list returns a change's RETURNING list.
 fn returning_list(statement: &NodeEnum) -> &[Node] {
-    match statement {
-        NodeEnum::InsertStmt(s) => &s.returning_list,
-        NodeEnum::UpdateStmt(s) => &s.returning_list,
-        NodeEnum::DeleteStmt(s) => &s.returning_list,
-        _ => &[],
-    }
+    let clause = match statement {
+        NodeEnum::InsertStmt(s) => &s.returning_clause,
+        NodeEnum::UpdateStmt(s) => &s.returning_clause,
+        NodeEnum::DeleteStmt(s) => &s.returning_clause,
+        _ => &None,
+    };
+    clause.as_ref().map_or(&[], |c| &c.exprs)
 }
 
 /// returning_list_mut returns a change's RETURNING list for changing.
 fn returning_list_mut(statement: &mut NodeEnum) -> &mut Vec<Node> {
-    match statement {
-        NodeEnum::InsertStmt(s) => &mut s.returning_list,
-        NodeEnum::UpdateStmt(s) => &mut s.returning_list,
-        NodeEnum::DeleteStmt(s) => &mut s.returning_list,
+    let clause = match statement {
+        NodeEnum::InsertStmt(s) => &mut s.returning_clause,
+        NodeEnum::UpdateStmt(s) => &mut s.returning_clause,
+        NodeEnum::DeleteStmt(s) => &mut s.returning_clause,
         _ => unreachable!("only changes have RETURNING lists"),
-    }
+    };
+    &mut clause.get_or_insert_default().exprs
 }
 
 /// rewrite_once rewrites a change of a view onto the relation the view selects from, replacing references to the
@@ -571,14 +573,20 @@ fn rewrite_once(statement: &NodeEnum, view: &View, qualifiers: &[String], comman
                 relation: Some(view.base.clone()),
                 target_list: targets,
                 where_clause: condition(update.where_clause.clone()),
-                returning_list: returning(&update.returning_list),
+                returning_clause: update
+                    .returning_clause
+                    .as_ref()
+                    .map(|c| ReturningClause { exprs: returning(&c.exprs), ..c.clone() }),
                 ..*update.clone()
             }))
         }
         NodeEnum::DeleteStmt(delete) => NodeEnum::DeleteStmt(Box::new(DeleteStmt {
             relation: Some(view.base.clone()),
             where_clause: condition(delete.where_clause.clone()),
-            returning_list: returning(&delete.returning_list),
+            returning_clause: delete
+                .returning_clause
+                .as_ref()
+                .map(|c| ReturningClause { exprs: returning(&c.exprs), ..c.clone() }),
             ..*delete.clone()
         })),
         NodeEnum::InsertStmt(insert) => {
@@ -643,7 +651,10 @@ fn rewrite_once(statement: &NodeEnum, view: &View, qualifiers: &[String], comman
                 relation: Some(view.base.clone()),
                 cols,
                 on_conflict_clause: on_conflict,
-                returning_list: returning(&insert.returning_list),
+                returning_clause: insert
+                    .returning_clause
+                    .as_ref()
+                    .map(|c| ReturningClause { exprs: returning(&c.exprs), ..c.clone() }),
                 ..*insert.clone()
             }))
         }

@@ -1,7 +1,7 @@
 [package]
 name = "pg_query"
 description = "PostgreSQL parser that uses the actual PostgreSQL server source to parse SQL queries and return the internal PostgreSQL parse tree."
-version = "6.2.1"
+version = "18.0.0"
 edition = "2021"
 documentation = "https://docs.rs/pg_query"
 license = "MIT"
@@ -10,11 +10,13 @@ include = [
     # pg_query.rs
     "README.md", "build.rs", "src/**/*.rs",
     # libpg_query
-    "Makefile",
+    "Makefile", "pg_query.h",
     "libpg_query/*.h",
     "libpg_query/{src,vendor}/**/*.{c,h}",
-    "libpg_query/protobuf/pg_query.pb-c.{c,h}",
+    "libpg_query/vendor/**/*.inc",
     "libpg_query/protobuf/pg_query.proto",
+    "libpg_query/protobuf/pg_query.upb.{h,c}",
+    "libpg_query/protobuf/pg_query.upb_minitable.{c,h}",
 ]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

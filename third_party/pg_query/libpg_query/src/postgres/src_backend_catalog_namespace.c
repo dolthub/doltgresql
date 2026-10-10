@@ -1,7 +1,13 @@
 /*--------------------------------------------------------------------
  * Symbols referenced in this file:
  * - NameListToString
+ * - TypeIsVisible
+ * - isTempNamespace
+ * - myTempNamespace
  * - get_collation_oid
+ * - TypenameGetTypidExtended
+ * - recomputeNamespacePath
+ * - activeSearchPath
  * - makeRangeVarFromNameList
  *--------------------------------------------------------------------
  */
@@ -17,7 +23,7 @@
  * and implementing search-path-controlled searches.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
@@ -141,6 +147,7 @@
 
 /* These variables define the actually active state: */
 
+static __thread List *activeSearchPath = NIL;
 
 
 /* default place to create stuff; if InvalidOid, no default */
@@ -206,6 +213,7 @@ typedef struct SearchPathCacheEntry
  * we either haven't made the TEMP namespace yet, or have successfully
  * committed its creation, depending on whether myTempNamespace is valid.
  */
+static __thread Oid	myTempNamespace = InvalidOid;
 
 
 
@@ -411,7 +419,31 @@ static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
  *
  * This is essentially the same as RelnameGetRelid.
  */
+Oid
+TypenameGetTypidExtended(const char *typname, bool temp_ok)
+{
+	Oid			typid;
+	ListCell   *l;
 
+	recomputeNamespacePath();
+
+	foreach(l, activeSearchPath)
+	{
+		Oid			namespaceId = lfirst_oid(l);
+
+		if (!temp_ok && namespaceId == myTempNamespace)
+			continue;			/* do not look in temp namespace */
+
+		typid = GetSysCacheOid2(TYPENAMENSP, Anum_pg_type_oid,
+								PointerGetDatum(typname),
+								ObjectIdGetDatum(namespaceId));
+		if (OidIsValid(typid))
+			return typid;
+	}
+
+	/* Not found in path */
+	return InvalidOid;
+}
 
 /*
  * TypeIsVisible
@@ -420,6 +452,10 @@ static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
  *		for the unqualified type name".
  */
 
+bool
+TypeIsVisible(Oid typid)
+{
+return true;}
 
 /*
  * TypeIsVisibleExt
@@ -831,6 +867,51 @@ static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
  *
  * *nspname_p is set to NULL if there is no explicit schema name.
  */
+void
+DeconstructQualifiedName(const List *names,
+						 char **nspname_p,
+						 char **objname_p)
+{
+	// CHANGED: catalogname not needed
+	//char	   *catalogname;
+	char	   *schemaname = NULL;
+	char	   *objname = NULL;
+
+	switch (list_length(names))
+	{
+		case 1:
+			objname = strVal(linitial(names));
+			break;
+		case 2:
+			schemaname = strVal(linitial(names));
+			objname = strVal(lsecond(names));
+			break;
+		case 3:
+			//catalogname = strVal(linitial(names));
+			schemaname = strVal(lsecond(names));
+			objname = strVal(lthird(names));
+
+			/*
+			 * We check the catalog name and then ignore it.
+			 */
+            // CHANGED: Ignore without checking to avoid dependency
+			/*if (strcmp(catalogname, get_database_name(MyDatabaseId)) != 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("cross-database references are not implemented: %s",
+								NameListToString(names))));*/
+			break;
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("improper qualified name (too many dotted names): %s",
+							NameListToString(names))));
+			break;
+	}
+
+	*nspname_p = schemaname;
+	*objname_p = objname;
+}
 
 
 /*
@@ -852,6 +933,49 @@ static bool MatchNamedCall(HeapTuple proctup, int nargs, List *argnames,
  *
  * Returns the namespace OID
  */
+Oid
+LookupExplicitNamespace(const char *nspname, bool missing_ok)
+{
+	//Oid			namespaceId;
+	//AclResult	aclresult;
+
+	/* check for pg_temp alias */
+	if (strcmp(nspname, "pg_temp") == 0)
+	{
+		if (OidIsValid(myTempNamespace))
+			return myTempNamespace;
+
+		/*
+		 * Since this is used only for looking up existing objects, there is
+		 * no point in trying to initialize the temp namespace here; and doing
+		 * so might create problems for some callers --- just fall through.
+		 */
+	}
+
+	// CHANGED: Only support pg_catalog and public namespace
+    if (strcmp(nspname, "pg_catalog") == 0)
+        return PG_CATALOG_NAMESPACE;
+
+    if (strcmp(nspname, "public") == 0)
+        return PG_PUBLIC_NAMESPACE;
+
+    /* other schemas' types are unknown, as they are in public (added for Doltgres) */
+    return PG_PUBLIC_NAMESPACE;
+
+	/*namespaceId = get_namespace_oid(nspname, missing_ok);
+	if (missing_ok && !OidIsValid(namespaceId))
+		return InvalidOid;
+
+	aclresult = object_aclcheck(NamespaceRelationId, namespaceId, GetUserId(), ACL_USAGE);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, OBJECT_SCHEMA,
+					   nspname);*/
+	/* Schema search hook for this lookup */
+	//InvokeNamespaceSearchHook(namespaceId, true);
+
+	//return namespaceId;
+}
+
 
 
 /*
@@ -980,7 +1104,13 @@ NameListToString(const List *names)
 /*
  * isTempNamespace - is the given namespace my temporary-table namespace?
  */
-
+bool
+isTempNamespace(Oid namespaceId)
+{
+	if (OidIsValid(myTempNamespace) && myTempNamespace == namespaceId)
+		return true;
+	return false;
+}
 
 /*
  * isTempToastNamespace - is the given namespace my temporary-toast-table
@@ -1088,8 +1218,11 @@ NameListToString(const List *names)
  * Note that this will only find collations that work with the current
  * database's encoding.
  */
-Oid get_collation_oid(List *name, bool missing_ok) { return DEFAULT_COLLATION_OID; }
 
+Oid
+get_collation_oid(List *collname, bool missing_ok)
+{
+return DEFAULT_COLLATION_OID;}
 
 /*
  * get_conversion_oid - find a conversion by possibly qualified name
@@ -1128,6 +1261,10 @@ Oid get_collation_oid(List *name, bool missing_ok) { return DEFAULT_COLLATION_OI
  * recomputeNamespacePath - recompute path derived variables if needed.
  */
 
+static void
+recomputeNamespacePath(void)
+{
+activeSearchPath = list_make2_oid(PG_CATALOG_NAMESPACE, PG_PUBLIC_NAMESPACE);}
 
 /*
  * AccessTempTableNamespace

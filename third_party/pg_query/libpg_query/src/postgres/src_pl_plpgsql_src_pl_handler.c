@@ -2,6 +2,10 @@
  * Symbols referenced in this file:
  * - plpgsql_variable_conflict
  * - plpgsql_print_strict_params
+ * - plpgsql_extra_warnings
+ * - plpgsql_extra_errors
+ * - plpgsql_extra_errors
+ * - plpgsql_extra_warnings
  *--------------------------------------------------------------------
  */
 
@@ -10,7 +14,7 @@
  * pl_handler.c		- Handler for the PL/pgSQL
  *			  procedural language
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -53,7 +57,9 @@ __thread bool		plpgsql_print_strict_params = false;
 
 
 
+__thread int			plpgsql_extra_warnings;
 
+__thread int			plpgsql_extra_errors;
 
 
 /* Hook for plugins */

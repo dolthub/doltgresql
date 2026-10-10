@@ -3,7 +3,7 @@
  * pg_operator_d.h
  *    Macro definitions for pg_operator
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -17,6 +17,8 @@
  */
 #ifndef PG_OPERATOR_D_H
 #define PG_OPERATOR_D_H
+
+/* Macros related to the structure of pg_operator */
 
 #define OperatorRelationId 2617
 #define OperatorOidIndexId 2688
@@ -39,6 +41,11 @@
 #define Anum_pg_operator_oprjoin 15
 
 #define Natts_pg_operator 15
+
+/* Definitions copied from pg_operator.h */
+
+
+/* OID symbols for objects defined in pg_operator.dat */
 
 #define BooleanNotEqualOperator 85
 #define BooleanEqualOperator 91
@@ -95,6 +102,7 @@
 #define RECORD_EQ_OP 2988
 #define RECORD_LT_OP 2990
 #define RECORD_GT_OP 2991
+#define RANGE_EQ_OP 3882
 #define OID_RANGE_LESS_OP 3884
 #define OID_RANGE_LESS_EQUAL_OP 3885
 #define OID_RANGE_GREATER_EQUAL_OP 3886
@@ -108,6 +116,8 @@
 #define OID_RANGE_RIGHT_OP 3894
 #define OID_RANGE_OVERLAPS_LEFT_OP 3895
 #define OID_RANGE_OVERLAPS_RIGHT_OP 3896
+#define OID_RANGE_INTERSECT_RANGE_OP 3900
+#define MULTIRANGE_EQ_OP 2860
 #define OID_MULTIRANGE_LESS_OP 2862
 #define OID_MULTIRANGE_LESS_EQUAL_OP 2863
 #define OID_MULTIRANGE_GREATER_EQUAL_OP 2864
@@ -132,6 +142,7 @@
 #define OID_RANGE_ADJACENT_MULTIRANGE_OP 4179
 #define OID_MULTIRANGE_ADJACENT_RANGE_OP 4180
 #define OID_MULTIRANGE_ADJACENT_MULTIRANGE_OP 4198
+#define OID_MULTIRANGE_INTERSECT_MULTIRANGE_OP 4394
 #define OID_RANGE_LEFT_MULTIRANGE_OP 4395
 #define OID_MULTIRANGE_LEFT_RANGE_OP 4396
 #define OID_MULTIRANGE_LEFT_MULTIRANGE_OP 4397

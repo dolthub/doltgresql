@@ -57,7 +57,7 @@ fn array(element: u32, values: Vec<Value>) -> Value {
 /// create_statement returns the CREATE FUNCTION or CREATE PROCEDURE statement a routine was defined by.
 pub(super) fn create_statement(routine: &Routine) -> Option<pg_query::protobuf::CreateFunctionStmt> {
     let definition = String::from_utf8_lossy(&routine.object.definition);
-    let raw = pg_query::parse(&definition).ok()?.protobuf.stmts.into_iter().next()?;
+    let raw = pg_query::parse(&definition, 0).ok()?.protobuf.stmts.into_iter().next()?;
     match raw.stmt?.node? {
         NodeEnum::CreateFunctionStmt(create) => Some(*create),
         _ => None,
@@ -390,7 +390,7 @@ fn bytes_text(bytes: &[u8]) -> String {
 /// them, from the CREATE TRIGGER statement that defined it.
 fn trigger_clauses(trigger: &objects::Trigger) -> (Option<String>, String) {
     let definition = String::from_utf8_lossy(&trigger.definition);
-    let create = pg_query::parse(&definition).ok().and_then(|result| {
+    let create = pg_query::parse(&definition, 0).ok().and_then(|result| {
         let raw = result.protobuf.stmts.into_iter().next()?;
         match raw.stmt?.node? {
             NodeEnum::CreateTrigStmt(create) => Some(create),

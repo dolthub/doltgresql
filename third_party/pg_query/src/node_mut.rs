@@ -126,6 +126,7 @@ pub enum NodeMut {
     AlterOwnerStmt(*mut protobuf::AlterOwnerStmt),
     AlterOperatorStmt(*mut protobuf::AlterOperatorStmt),
     AlterTypeStmt(*mut protobuf::AlterTypeStmt),
+    AtalterConstraint(*mut protobuf::AtAlterConstraint),
     DropOwnedStmt(*mut protobuf::DropOwnedStmt),
     ReassignOwnedStmt(*mut protobuf::ReassignOwnedStmt),
     CompositeTypeStmt(*mut protobuf::CompositeTypeStmt),
@@ -233,6 +234,9 @@ pub enum NodeMut {
     MergeAction(*mut protobuf::MergeAction),
     AlterDatabaseRefreshCollStmt(*mut protobuf::AlterDatabaseRefreshCollStmt),
     ReturnStmt(*mut protobuf::ReturnStmt),
+    ReturningClause(*mut protobuf::ReturningClause),
+    ReturningExpr(*mut protobuf::ReturningExpr),
+    ReturningOption(*mut protobuf::ReturningOption),
     PlassignStmt(*mut protobuf::PlAssignStmt),
     StatsElem(*mut protobuf::StatsElem),
     CtesearchClause(*mut protobuf::CteSearchClause),
@@ -261,7 +265,6 @@ pub enum NodeMut {
     JsonTablePath(*mut protobuf::JsonTablePath),
     JsonTablePathScan(*mut protobuf::JsonTablePathScan),
     JsonTableSiblingJoin(*mut protobuf::JsonTableSiblingJoin),
-    SinglePartitionSpec(*mut protobuf::SinglePartitionSpec),
     JsonArgument(*mut protobuf::JsonArgument),
     JsonFuncExpr(*mut protobuf::JsonFuncExpr),
     JsonTablePathSpec(*mut protobuf::JsonTablePathSpec),
@@ -273,11 +276,14 @@ pub enum NodeMut {
 }
 
 impl NodeMut {
-    pub fn deparse(&self) -> Result<String> {
-        crate::deparse(&protobuf::ParseResult {
-            version: crate::bindings::PG_VERSION_NUM as i32,
-            stmts: vec![protobuf::RawStmt { stmt: Some(Box::new(Node { node: Some(self.to_enum()?) })), stmt_location: 0, stmt_len: 0 }],
-        })
+    pub fn deparse(&self, options: DeparseOptions) -> Result<String> {
+        crate::deparse(
+            &protobuf::ParseResult {
+                version: crate::bindings::PG_VERSION_NUM as i32,
+                stmts: vec![protobuf::RawStmt { stmt: Some(Box::new(Node { node: Some(self.to_enum()?) })), stmt_location: 0, stmt_len: 0 }],
+            },
+            options,
+        )
     }
 
     pub fn to_enum(&self) -> Result<NodeEnum> {
@@ -408,6 +414,7 @@ impl NodeMut {
                 NodeMut::AlterOwnerStmt(n) => Ok(NodeEnum::AlterOwnerStmt(Box::new(n.as_ref().ok_or(err)?.clone()))),
                 NodeMut::AlterOperatorStmt(n) => Ok(NodeEnum::AlterOperatorStmt(n.as_ref().ok_or(err)?.clone())),
                 NodeMut::AlterTypeStmt(n) => Ok(NodeEnum::AlterTypeStmt(n.as_ref().ok_or(err)?.clone())),
+                NodeMut::AtalterConstraint(n) => Ok(NodeEnum::AtalterConstraint(n.as_ref().ok_or(err)?.clone())),
                 NodeMut::DropOwnedStmt(n) => Ok(NodeEnum::DropOwnedStmt(n.as_ref().ok_or(err)?.clone())),
                 NodeMut::ReassignOwnedStmt(n) => Ok(NodeEnum::ReassignOwnedStmt(n.as_ref().ok_or(err)?.clone())),
                 NodeMut::CompositeTypeStmt(n) => Ok(NodeEnum::CompositeTypeStmt(n.as_ref().ok_or(err)?.clone())),
@@ -515,6 +522,9 @@ impl NodeMut {
                 NodeMut::MergeAction(n) => Ok(NodeEnum::MergeAction(Box::new(n.as_ref().ok_or(err)?.clone()))),
                 NodeMut::AlterDatabaseRefreshCollStmt(n) => Ok(NodeEnum::AlterDatabaseRefreshCollStmt(n.as_ref().ok_or(err)?.clone())),
                 NodeMut::ReturnStmt(n) => Ok(NodeEnum::ReturnStmt(Box::new(n.as_ref().ok_or(err)?.clone()))),
+                NodeMut::ReturningClause(n) => Ok(NodeEnum::ReturningClause(n.as_ref().ok_or(err)?.clone())),
+                NodeMut::ReturningExpr(n) => Ok(NodeEnum::ReturningExpr(Box::new(n.as_ref().ok_or(err)?.clone()))),
+                NodeMut::ReturningOption(n) => Ok(NodeEnum::ReturningOption(n.as_ref().ok_or(err)?.clone())),
                 NodeMut::PlassignStmt(n) => Ok(NodeEnum::PlassignStmt(Box::new(n.as_ref().ok_or(err)?.clone()))),
                 NodeMut::StatsElem(n) => Ok(NodeEnum::StatsElem(Box::new(n.as_ref().ok_or(err)?.clone()))),
                 NodeMut::CtesearchClause(n) => Ok(NodeEnum::CtesearchClause(n.as_ref().ok_or(err)?.clone())),
@@ -543,7 +553,6 @@ impl NodeMut {
                 NodeMut::JsonTablePath(n) => Ok(NodeEnum::JsonTablePath(n.as_ref().ok_or(err)?.clone())),
                 NodeMut::JsonTablePathScan(n) => Ok(NodeEnum::JsonTablePathScan(Box::new(n.as_ref().ok_or(err)?.clone()))),
                 NodeMut::JsonTableSiblingJoin(n) => Ok(NodeEnum::JsonTableSiblingJoin(Box::new(n.as_ref().ok_or(err)?.clone()))),
-                NodeMut::SinglePartitionSpec(n) => Ok(NodeEnum::SinglePartitionSpec(n.as_ref().ok_or(err)?.clone())),
                 NodeMut::JsonArgument(n) => Ok(NodeEnum::JsonArgument(Box::new(n.as_ref().ok_or(err)?.clone()))),
                 NodeMut::JsonFuncExpr(n) => Ok(NodeEnum::JsonFuncExpr(Box::new(n.as_ref().ok_or(err)?.clone()))),
                 NodeMut::JsonTablePathSpec(n) => Ok(NodeEnum::JsonTablePathSpec(Box::new(n.as_ref().ok_or(err)?.clone()))),

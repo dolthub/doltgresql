@@ -1422,7 +1422,7 @@ impl Session {
             ));
         }
         let query = stmt.query.as_deref().and_then(|q| q.node.as_ref()).ok_or_else(|| PgError::internal("no query"))?;
-        let text = query.deparse().map_err(PgError::internal)?;
+        let text = query.deparse(Default::default()).map_err(PgError::internal)?;
         let mut types = Vec::new();
         for node in &stmt.argtypes {
             let Some(NodeEnum::TypeName(type_name)) = node.node.as_ref() else { continue };
@@ -2702,11 +2702,11 @@ impl Ctx<'_> {
             NodeEnum::AlterTableStmt(stmt) => self.alter_table(stmt),
             NodeEnum::RenameStmt(stmt) => self.rename(stmt),
             NodeEnum::ViewStmt(stmt) => {
-                let text = pg_query::NodeRef::ViewStmt(stmt).deparse().map_err(PgError::internal)?;
+                let text = pg_query::NodeRef::ViewStmt(stmt).deparse(Default::default()).map_err(PgError::internal)?;
                 self.create_view(stmt, &text)
             }
             NodeEnum::DoStmt(stmt) => {
-                let text = pg_query::NodeRef::DoStmt(stmt).deparse().map_err(PgError::internal)?;
+                let text = pg_query::NodeRef::DoStmt(stmt).deparse(Default::default()).map_err(PgError::internal)?;
                 self.do_block(stmt, &text)
             }
             NodeEnum::DeclareCursorStmt(stmt) => self.declare_cursor(stmt),

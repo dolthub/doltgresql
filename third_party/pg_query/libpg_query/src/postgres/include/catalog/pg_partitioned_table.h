@@ -5,7 +5,7 @@
  *	  (pg_partitioned_table)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_partitioned_table.h
@@ -20,7 +20,7 @@
 #define PG_PARTITIONED_TABLE_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_partitioned_table_d.h"
+#include "catalog/pg_partitioned_table_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_partitioned_table definition.  cpp turns this into

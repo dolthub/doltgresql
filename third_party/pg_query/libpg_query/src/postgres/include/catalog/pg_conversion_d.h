@@ -3,7 +3,7 @@
  * pg_conversion_d.h
  *    Macro definitions for pg_conversion
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -17,6 +17,8 @@
  */
 #ifndef PG_CONVERSION_D_H
 #define PG_CONVERSION_D_H
+
+/* Macros related to the structure of pg_conversion */
 
 #define ConversionRelationId 2607
 #define ConversionDefaultIndexId 2668
@@ -33,6 +35,11 @@
 #define Anum_pg_conversion_condefault 8
 
 #define Natts_pg_conversion 8
+
+/* Definitions copied from pg_conversion.h */
+
+
+/* OID symbols for objects defined in pg_conversion.dat */
 
 
 #endif							/* PG_CONVERSION_D_H */

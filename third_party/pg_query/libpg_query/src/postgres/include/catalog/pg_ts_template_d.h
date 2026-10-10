@@ -3,7 +3,7 @@
  * pg_ts_template_d.h
  *    Macro definitions for pg_ts_template
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,6 +18,8 @@
 #ifndef PG_TS_TEMPLATE_D_H
 #define PG_TS_TEMPLATE_D_H
 
+/* Macros related to the structure of pg_ts_template */
+
 #define TSTemplateRelationId 3764
 #define TSTemplateNameNspIndexId 3766
 #define TSTemplateOidIndexId 3767
@@ -29,6 +31,11 @@
 #define Anum_pg_ts_template_tmpllexize 5
 
 #define Natts_pg_ts_template 5
+
+/* Definitions copied from pg_ts_template.h */
+
+
+/* OID symbols for objects defined in pg_ts_template.dat */
 
 
 #endif							/* PG_TS_TEMPLATE_D_H */

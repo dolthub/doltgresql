@@ -14,7 +14,7 @@
  * storage implementation and the details about individual types of
  * statistics.
  *
- * Copyright (c) 2001-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2025, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
  *	  src/backend/utils/activity/pgstat_database.c
@@ -67,12 +67,21 @@ __thread SessionEndType pgStatSessionEndCause = DISCONNECT_NORMAL;
 
 
 /*
- * Report one or more checksum failures.
+ * Allow this backend to later report checksum failures for dboid, even if in
+ * a critical section at the time of the report.
+ *
+ * Without this function having been called first, the backend might need to
+ * allocate an EntryRef or might need to map in DSM segments. Neither should
+ * happen in a critical section.
  */
 
 
 /*
- * Report one checksum failure in the current database.
+ * Report one or more checksum failures.
+ *
+ * To be allowed to report checksum failures in critical sections, we require
+ * pgstat_prepare_report_checksum_failure() to have been called before this
+ * function is called.
  */
 
 
@@ -99,6 +108,11 @@ __thread SessionEndType pgStatSessionEndCause = DISCONNECT_NORMAL;
  */
 
 
+
+
+/*
+ * Notify the stats system about parallel worker information.
+ */
 
 
 /*

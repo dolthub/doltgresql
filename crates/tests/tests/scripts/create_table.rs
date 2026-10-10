@@ -1047,13 +1047,11 @@ fn test_create_table() {
                 ScriptTestAssertion {
                     query: "CREATE TABLE b6 (x INTEGER, CHECK (x > 0) DEFERRABLE);",
                     expected: Expected::Error(Diagnostic { code: "0A000", message: "CHECK constraints cannot be marked DEFERRABLE", position: 43, ..E }),
-                    skip: Some("the position needs Postgres 18's parser, which records where constraint attributes start"),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "CREATE TABLE b7 (x INTEGER, CHECK (x > 0) INITIALLY DEFERRED);",
                     expected: Expected::Error(Diagnostic { code: "0A000", message: "CHECK constraints cannot be marked DEFERRABLE", position: 43, ..E }),
-                    skip: Some("the position needs Postgres 18's parser, which records where constraint attributes start"),
                     ..A
                 },
                 ScriptTestAssertion {

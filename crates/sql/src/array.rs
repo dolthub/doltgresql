@@ -940,14 +940,13 @@ mod tests {
     fn malformed_literals_report_postgres_details() {
         for (text, detail) in [
             ("{{1,2},{3}}", "Multidimensional arrays must have sub-arrays with matching dimensions."),
-            ("{{}}", "Unexpected \"}\" character."),
             ("{a,}", "Unexpected \"}\" character."),
-            ("{a,b,c\"}", "Unexpected array element."),
+            ("{a,b,c\"}", "Incorrectly quoted array element."),
             ("{a,b,c", "Unexpected end of input."),
             ("{a,b,\"c}", "Unexpected end of input."),
-            ("{a\",b,c}", "Unexpected array element."),
-            ("{1,{2}}", "Unexpected \"{\" character."),
-            ("{\"abc\"\"\",\"def\"}", "Unexpected array element."),
+            ("{a\",b,c}", "Incorrectly quoted array element."),
+            ("{1,{2}}", "Multidimensional arrays must have sub-arrays with matching dimensions."),
+            ("{\"abc\"\"\",\"def\"}", "Incorrectly quoted array element."),
             ("a,b,c}", "Array value must start with \"{\" or dimension information."),
             ("{a} b", "Junk after closing right brace."),
         ] {
@@ -975,5 +974,12 @@ mod tests {
         assert!(concat(square, ints(&[5])).is_err());
         assert_eq!(compare(&ints(&[1, 2]), &ints(&[1, 2, 0])), Ordering::Less);
         assert_eq!(compare(&ints(&[1, 3]), &ints(&[1, 2, 0])), Ordering::Greater);
+    }
+
+    #[test]
+    fn empty_sub_arrays_make_an_empty_array() {
+        for text in ["{{}}", "{{},{}}", "{{{}}}"] {
+            assert!(text_array(text).unwrap().dims.is_empty(), "{text}");
+        }
     }
 }

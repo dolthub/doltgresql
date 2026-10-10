@@ -3,7 +3,7 @@
  * pg_authid_d.h
  *    Macro definitions for pg_authid
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,10 +18,10 @@
 #ifndef PG_AUTHID_D_H
 #define PG_AUTHID_D_H
 
+/* Macros related to the structure of pg_authid */
+
 #define AuthIdRelationId 1260
 #define AuthIdRelation_Rowtype_Id 2842
-#define PgAuthidToastTable 4175
-#define PgAuthidToastIndex 4176
 #define AuthIdRolnameIndexId 2676
 #define AuthIdOidIndexId 2677
 
@@ -40,6 +40,11 @@
 
 #define Natts_pg_authid 12
 
+/* Definitions copied from pg_authid.h */
+
+
+/* OID symbols for objects defined in pg_authid.dat */
+
 #define BOOTSTRAP_SUPERUSERID 10
 #define ROLE_PG_DATABASE_OWNER 6171
 #define ROLE_PG_READ_ALL_DATA 6181
@@ -56,5 +61,6 @@
 #define ROLE_PG_MAINTAIN 6337
 #define ROLE_PG_USE_RESERVED_CONNECTIONS 4550
 #define ROLE_PG_CREATE_SUBSCRIPTION 6304
+#define ROLE_PG_SIGNAL_AUTOVACUUM_WORKER 6392
 
 #endif							/* PG_AUTHID_D_H */

@@ -11,10 +11,10 @@ use crate::*;
 ///
 /// The main distinction is that `summary` does truncation on the C side,
 /// whereas `parse` does it on the Rust side. This requires passing the
-/// maximum length ahead of time to `summary(query, max_length)`.
+/// maximum length ahead of time to `summary(query, 0, max_length)`.
 ///
-/// This means that `summary(query, max_length).truncated_query` is equivalent
-/// to `parse(query).truncate(max_length)`
+/// This means that `summary(query, 0, max_length).truncated_query` is
+/// equivalent to `parse(query, 0).truncate(max_length)`
 ///
 /// For `tables`, `functions`, and `filter_columns`, `SummaryResult` stores
 /// more details than `ParseResult`, so the signatures have changed.

@@ -5,7 +5,7 @@
  *	  (pg_ts_config)
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/catalog/pg_ts_config.h
@@ -20,7 +20,7 @@
 #define PG_TS_CONFIG_H
 
 #include "catalog/genbki.h"
-#include "catalog/pg_ts_config_d.h"
+#include "catalog/pg_ts_config_d.h" /* IWYU pragma: export */
 
 /* ----------------
  *		pg_ts_config definition.  cpp turns this into

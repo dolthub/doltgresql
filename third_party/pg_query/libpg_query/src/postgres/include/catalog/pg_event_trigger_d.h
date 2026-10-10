@@ -3,7 +3,7 @@
  * pg_event_trigger_d.h
  *    Macro definitions for pg_event_trigger
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,6 +18,8 @@
 #ifndef PG_EVENT_TRIGGER_D_H
 #define PG_EVENT_TRIGGER_D_H
 
+/* Macros related to the structure of pg_event_trigger */
+
 #define EventTriggerRelationId 3466
 #define EventTriggerNameIndexId 3467
 #define EventTriggerOidIndexId 3468
@@ -31,6 +33,11 @@
 #define Anum_pg_event_trigger_evttags 7
 
 #define Natts_pg_event_trigger 7
+
+/* Definitions copied from pg_event_trigger.h */
+
+
+/* OID symbols for objects defined in pg_event_trigger.dat */
 
 
 #endif							/* PG_EVENT_TRIGGER_D_H */

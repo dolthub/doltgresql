@@ -515,7 +515,7 @@ impl Ctx<'_> {
         }
         out.push_str(if trigger.for_each_row { "FOR EACH ROW " } else { "FOR EACH STATEMENT " });
         let definition = String::from_utf8_lossy(&trigger.definition);
-        let condition = pg_query::parse(&definition).ok().and_then(|result| {
+        let condition = pg_query::parse(&definition, 0).ok().and_then(|result| {
             match result.protobuf.stmts.into_iter().next()?.stmt?.node? {
                 NodeEnum::CreateTrigStmt(create) => create.when_clause,
                 _ => None,

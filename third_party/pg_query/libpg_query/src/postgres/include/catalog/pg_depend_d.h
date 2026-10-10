@@ -3,7 +3,7 @@
  * pg_depend_d.h
  *    Macro definitions for pg_depend
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,6 +18,8 @@
 #ifndef PG_DEPEND_D_H
 #define PG_DEPEND_D_H
 
+/* Macros related to the structure of pg_depend */
+
 #define DependRelationId 2608
 #define DependDependerIndexId 2673
 #define DependReferenceIndexId 2674
@@ -31,6 +33,11 @@
 #define Anum_pg_depend_deptype 7
 
 #define Natts_pg_depend 7
+
+/* Definitions copied from pg_depend.h */
+
+
+/* OID symbols for objects defined in pg_depend.dat */
 
 
 #endif							/* PG_DEPEND_D_H */

@@ -6,7 +6,7 @@
  * See also lsyscache.h, which provides convenience routines for
  * common cache-lookup operations.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/syscache.h
@@ -20,7 +20,7 @@
 #include "access/htup.h"
 /* we intentionally do not include utils/catcache.h here */
 
-#include "catalog/syscache_ids.h"
+#include "catalog/syscache_ids.h"	/* IWYU pragma: export */
 
 extern void InitCatalogCache(void);
 extern void InitCatalogCachePhase2(void);

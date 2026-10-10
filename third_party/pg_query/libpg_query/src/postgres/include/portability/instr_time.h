@@ -32,9 +32,9 @@
  *
  * INSTR_TIME_GET_MILLISEC(t)		convert t to double (in milliseconds)
  *
- * INSTR_TIME_GET_MICROSEC(t)		convert t to uint64 (in microseconds)
+ * INSTR_TIME_GET_MICROSEC(t)		convert t to int64 (in microseconds)
  *
- * INSTR_TIME_GET_NANOSEC(t)		convert t to uint64 (in nanoseconds)
+ * INSTR_TIME_GET_NANOSEC(t)		convert t to int64 (in nanoseconds)
  *
  * Note that INSTR_TIME_SUBTRACT and INSTR_TIME_ACCUM_DIFF convert
  * absolute times to intervals.  The INSTR_TIME_GET_xxx operations are
@@ -47,7 +47,7 @@
  * Beware of multiple evaluations of the macro arguments.
  *
  *
- * Copyright (c) 2001-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2001-2025, PostgreSQL Global Development Group
  *
  * src/include/portability/instr_time.h
  *

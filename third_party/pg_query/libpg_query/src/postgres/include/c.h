@@ -9,13 +9,14 @@
  *	  polluting the namespace with lots of stuff...
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/c.h
  *
  *-------------------------------------------------------------------------
  */
+/* IWYU pragma: always_keep */
 /*
  *----------------------------------------------------------------
  *	 TABLE OF CONTENTS
@@ -46,16 +47,19 @@
 #ifndef C_H
 #define C_H
 
-#include "postgres_ext.h"
+/* IWYU pragma: begin_exports */
 
-/* Must undef pg_config_ext.h symbols before including pg_config.h */
-#undef PG_INT64_TYPE
-
+/*
+ * These headers must be included before any system headers, because on some
+ * platforms they affect the behavior of the system headers (for example, by
+ * defining _FILE_OFFSET_BITS).
+ */
 #include "pg_config.h"
 #include "pg_config_manual.h"	/* must be after pg_config.h */
-#include "pg_config_os.h"		/* must be before any system header files */
+#include "pg_config_os.h"		/* config from include/port/PORTNAME.h */
 
 /* System header files that should be available everywhere in Postgres */
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,9 +75,15 @@
 #include <fcntl.h>				/* ensure O_BINARY is available */
 #endif
 #include <locale.h>
+#ifdef HAVE_XLOCALE_H
+#include <xlocale.h>
+#endif
 #ifdef ENABLE_NLS
 #include <libintl.h>
 #endif
+
+ /* Pull in fundamental symbols that we also expose to applications */
+#include "postgres_ext.h"
 
 /* Define before including zlib.h to add const decorations to zlib API. */
 #ifdef HAVE_LIBZ
@@ -125,14 +135,34 @@
 
 /*
  * pg_nodiscard means the compiler should warn if the result of a function
- * call is ignored.  The name "nodiscard" is chosen in alignment with
- * (possibly future) C and C++ standards.  For maximum compatibility, use it
- * as a function declaration specifier, so it goes before the return type.
+ * call is ignored.  The name "nodiscard" is chosen in alignment with the C23
+ * standard attribute with the same name.  For maximum forward compatibility,
+ * place it before the declaration.
  */
 #ifdef __GNUC__
 #define pg_nodiscard __attribute__((warn_unused_result))
 #else
 #define pg_nodiscard
+#endif
+
+/*
+ * pg_noreturn corresponds to the C11 noreturn/_Noreturn function specifier.
+ * We can't use the standard name "noreturn" because some third-party code
+ * uses __attribute__((noreturn)) in headers, which would get confused if
+ * "noreturn" is defined to "_Noreturn", as is done by <stdnoreturn.h>.
+ *
+ * In a declaration, function specifiers go before the function name.  The
+ * common style is to put them before the return type.  (The MSVC fallback has
+ * the same requirement.  The GCC fallback is more flexible.)
+ */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#define pg_noreturn _Noreturn
+#elif defined(__GNUC__) || defined(__SUNPRO_C)
+#define pg_noreturn __attribute__((noreturn))
+#elif defined(_MSC_VER)
+#define pg_noreturn __declspec(noreturn)
+#else
+#define pg_noreturn
 #endif
 
 /*
@@ -172,6 +202,18 @@
 #endif
 
 /*
+ * pg_attribute_target allows specifying different target options that the
+ * function should be compiled with (e.g., for using special CPU instructions).
+ * Note that there still needs to be a configure-time check to verify that a
+ * specific target is understood by the compiler.
+ */
+#if __has_attribute (target)
+#define pg_attribute_target(...) __attribute__((target(__VA_ARGS__)))
+#else
+#define pg_attribute_target(...)
+#endif
+
+/*
  * Append PG_USED_FOR_ASSERTS_ONLY to definitions of variables that are only
  * used in assert-enabled builds, to avoid compiler warnings about unused
  * variables in assert-disabled builds.
@@ -180,6 +222,16 @@
 #define PG_USED_FOR_ASSERTS_ONLY
 #else
 #define PG_USED_FOR_ASSERTS_ONLY pg_attribute_unused()
+#endif
+
+/*
+ * Our C and C++ compilers may have different ideas about which printf
+ * archetype best represents what src/port/snprintf.c can do.
+ */
+#ifndef __cplusplus
+#define PG_PRINTF_ATTRIBUTE PG_C_PRINTF_ATTRIBUTE
+#else
+#define PG_PRINTF_ATTRIBUTE PG_CXX_PRINTF_ATTRIBUTE
 #endif
 
 /* GCC supports format attributes */
@@ -191,46 +243,47 @@
 #define pg_attribute_printf(f,a)
 #endif
 
-/* GCC and Sunpro support aligned, packed and noreturn */
+/* GCC and Sunpro support aligned and packed */
 #if defined(__GNUC__) || defined(__SUNPRO_C)
 #define pg_attribute_aligned(a) __attribute__((aligned(a)))
-#define pg_attribute_noreturn() __attribute__((noreturn))
 #define pg_attribute_packed() __attribute__((packed))
-#define HAVE_PG_ATTRIBUTE_NORETURN 1
 #elif defined(_MSC_VER)
 /*
- * MSVC supports aligned.  noreturn is also possible but in MSVC it is
- * declared before the definition while pg_attribute_noreturn() macro
- * is currently used after the definition.
+ * MSVC supports aligned.
  *
  * Packing is also possible but only by wrapping the entire struct definition
  * which doesn't fit into our current macro declarations.
  */
 #define pg_attribute_aligned(a) __declspec(align(a))
-#define pg_attribute_noreturn()
 #else
 /*
  * NB: aligned and packed are not given default definitions because they
  * affect code functionality; they *must* be implemented by the compiler
  * if they are to be used.
  */
-#define pg_attribute_noreturn()
 #endif
 
 /*
- * Use "pg_attribute_always_inline" in place of "inline" for functions that
+ * Use "pg_always_inline" in place of "inline" for functions that
  * we wish to force inlining of, even when the compiler's heuristics would
  * choose not to.  But, if possible, don't force inlining in unoptimized
  * debug builds.
+ *
+ * XXX The "pg_attribute_always_inline" variant is kept for backwards
+ * compatibility with existing code. All new code should use the shorter
+ * variant "pg_always_inline."
  */
 #if (defined(__GNUC__) && __GNUC__ > 3 && defined(__OPTIMIZE__)) || defined(__SUNPRO_C)
 /* GCC > 3 and Sunpro support always_inline via __attribute__ */
+#define pg_always_inline __attribute__((always_inline)) inline
 #define pg_attribute_always_inline __attribute__((always_inline)) inline
 #elif defined(_MSC_VER)
 /* MSVC has a special keyword for this */
+#define pg_always_inline __forceinline
 #define pg_attribute_always_inline __forceinline
 #else
 /* Otherwise, the best we can do is to say "inline" */
+#define pg_always_inline inline
 #define pg_attribute_always_inline inline
 #endif
 
@@ -435,37 +488,11 @@ typedef void (*pg_funcptr_t) (void);
  * bool
  *		Boolean value, either true or false.
  *
- * We use stdbool.h if bool has size 1 after including it.  That's useful for
- * better compiler and debugger output and for compatibility with third-party
- * libraries.  But PostgreSQL currently cannot deal with bool of other sizes;
- * there are static assertions around the code to prevent that.
- *
- * For C++ compilers, we assume the compiler has a compatible built-in
- * definition of bool.
- *
- * See also the version of this code in src/interfaces/ecpg/include/ecpglib.h.
+ * PostgreSQL currently cannot deal with bool of size other than 1; there are
+ * static assertions around the code to prevent that.
  */
 
-#ifndef __cplusplus
-
-#ifdef PG_USE_STDBOOL
 #include <stdbool.h>
-#else
-
-#ifndef bool
-typedef unsigned char bool;
-#endif
-
-#ifndef true
-#define true	((bool) 1)
-#endif
-
-#ifndef false
-#define false	((bool) 0)
-#endif
-
-#endif							/* not PG_USE_STDBOOL */
-#endif							/* not C++ */
 
 
 /* ----------------------------------------------------------------
@@ -482,29 +509,15 @@ typedef unsigned char bool;
  */
 typedef char *Pointer;
 
-/*
- * intN
- *		Signed integer, EXACTLY N BITS IN SIZE,
- *		used for numerical computations and the
- *		frontend/backend protocol.
- */
-#ifndef HAVE_INT8
-typedef signed char int8;		/* == 8 bits */
-typedef signed short int16;		/* == 16 bits */
-typedef signed int int32;		/* == 32 bits */
-#endif							/* not HAVE_INT8 */
-
-/*
- * uintN
- *		Unsigned integer, EXACTLY N BITS IN SIZE,
- *		used for numerical computations and the
- *		frontend/backend protocol.
- */
-#ifndef HAVE_UINT8
-typedef unsigned char uint8;	/* == 8 bits */
-typedef unsigned short uint16;	/* == 16 bits */
-typedef unsigned int uint32;	/* == 32 bits */
-#endif							/* not HAVE_UINT8 */
+/* Historical names for types in <stdint.h>. */
+typedef int8_t int8;
+typedef int16_t int16;
+typedef int32_t int32;
+typedef int64_t int64;
+typedef uint8_t uint8;
+typedef uint16_t uint16;
+typedef uint32_t uint32;
+typedef uint64_t uint64;
 
 /*
  * bitsN
@@ -517,36 +530,12 @@ typedef uint32 bits32;			/* >= 32 bits */
 /*
  * 64-bit integers
  */
-#ifdef HAVE_LONG_INT_64
-/* Plain "long int" fits, use it */
-
-#ifndef HAVE_INT64
-typedef long int int64;
-#endif
-#ifndef HAVE_UINT64
-typedef unsigned long int uint64;
-#endif
-#define INT64CONST(x)  (x##L)
-#define UINT64CONST(x) (x##UL)
-#elif defined(HAVE_LONG_LONG_INT_64)
-/* We have working support for "long long int", use that */
-
-#ifndef HAVE_INT64
-typedef long long int int64;
-#endif
-#ifndef HAVE_UINT64
-typedef unsigned long long int uint64;
-#endif
-#define INT64CONST(x)  (x##LL)
-#define UINT64CONST(x) (x##ULL)
-#else
-/* neither HAVE_LONG_INT_64 nor HAVE_LONG_LONG_INT_64 */
-#error must have a working 64-bit integer datatype
-#endif
+#define INT64CONST(x)  INT64_C(x)
+#define UINT64CONST(x) UINT64_C(x)
 
 /* snprintf format strings to use for 64-bit integers */
-#define INT64_FORMAT "%" INT64_MODIFIER "d"
-#define UINT64_FORMAT "%" INT64_MODIFIER "u"
+#define INT64_FORMAT "%" PRId64
+#define UINT64_FORMAT "%" PRIu64
 
 /*
  * 128-bit signed and unsigned integers
@@ -575,22 +564,19 @@ typedef unsigned PG_INT128_TYPE uint128
 #endif
 #endif
 
-/*
- * stdint.h limits aren't guaranteed to have compatible types with our fixed
- * width types. So just define our own.
- */
-#define PG_INT8_MIN		(-0x7F-1)
-#define PG_INT8_MAX		(0x7F)
-#define PG_UINT8_MAX	(0xFF)
-#define PG_INT16_MIN	(-0x7FFF-1)
-#define PG_INT16_MAX	(0x7FFF)
-#define PG_UINT16_MAX	(0xFFFF)
-#define PG_INT32_MIN	(-0x7FFFFFFF-1)
-#define PG_INT32_MAX	(0x7FFFFFFF)
-#define PG_UINT32_MAX	(0xFFFFFFFFU)
-#define PG_INT64_MIN	(-INT64CONST(0x7FFFFFFFFFFFFFFF) - 1)
-#define PG_INT64_MAX	INT64CONST(0x7FFFFFFFFFFFFFFF)
-#define PG_UINT64_MAX	UINT64CONST(0xFFFFFFFFFFFFFFFF)
+/* Historical names for limits in <stdint.h>. */
+#define PG_INT8_MIN		INT8_MIN
+#define PG_INT8_MAX		INT8_MAX
+#define PG_UINT8_MAX	UINT8_MAX
+#define PG_INT16_MIN	INT16_MIN
+#define PG_INT16_MAX	INT16_MAX
+#define PG_UINT16_MAX	UINT16_MAX
+#define PG_INT32_MIN	INT32_MIN
+#define PG_INT32_MAX	INT32_MAX
+#define PG_UINT32_MAX	UINT32_MAX
+#define PG_INT64_MIN	INT64_MIN
+#define PG_INT64_MAX	INT64_MAX
+#define PG_UINT64_MAX	UINT64_MAX
 
 /*
  * We now always use int64 timestamps, but keep this symbol defined for the
@@ -901,8 +887,8 @@ typedef NameData *Name;
  * we should declare it as long as !FRONTEND.
  */
 #ifndef FRONTEND
-extern void ExceptionalCondition(const char *conditionName,
-								 const char *fileName, int lineNumber) pg_attribute_noreturn();
+pg_noreturn extern void ExceptionalCondition(const char *conditionName,
+											 const char *fileName, int lineNumber);
 #endif
 
 /*
@@ -1293,21 +1279,25 @@ extern int	fdatasync(int fildes);
  * definition of int64.  (For the naming, compare that POSIX has
  * strtoimax()/strtoumax() which return intmax_t/uintmax_t.)
  */
-#ifdef HAVE_LONG_INT_64
+#if SIZEOF_LONG == 8
 #define strtoi64(str, endptr, base) ((int64) strtol(str, endptr, base))
 #define strtou64(str, endptr, base) ((uint64) strtoul(str, endptr, base))
-#else
+#elif SIZEOF_LONG_LONG == 8
 #define strtoi64(str, endptr, base) ((int64) strtoll(str, endptr, base))
 #define strtou64(str, endptr, base) ((uint64) strtoull(str, endptr, base))
+#else
+#error "cannot find integer type of the same size as int64_t"
 #endif
 
 /*
  * Similarly, wrappers around labs()/llabs() matching our int64.
  */
-#ifdef HAVE_LONG_INT_64
-#define i64abs(i) labs(i)
+#if SIZEOF_LONG == 8
+#define i64abs(i) ((int64) labs(i))
+#elif SIZEOF_LONG_LONG == 8
+#define i64abs(i) ((int64) llabs(i))
 #else
-#define i64abs(i) llabs(i)
+#error "cannot find integer type of the same size as int64_t"
 #endif
 
 /*
@@ -1368,6 +1358,8 @@ typedef intptr_t sigjmp_buf[5];
 
 /* /port compatibility functions */
 #include "port.h"
+
+/* IWYU pragma: end_exports */
 
 #endif							/* C_H */
 #undef StaticAssertDecl

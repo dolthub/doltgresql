@@ -4,7 +4,7 @@
  *		parse analysis for optimizable statements
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/parser/analyze.h
@@ -44,13 +44,15 @@ extern List *transformInsertRow(ParseState *pstate, List *exprlist,
 								bool strip_indirection);
 extern List *transformUpdateTargetList(ParseState *pstate,
 									   List *origTlist);
-extern List *transformReturningList(ParseState *pstate, List *returningList,
-									ParseExprKind exprKind);
+extern void transformReturningClause(ParseState *pstate, Query *qry,
+									 ReturningClause *returningClause,
+									 ParseExprKind exprKind);
 extern Query *transformTopLevelStmt(ParseState *pstate, RawStmt *parseTree);
 extern Query *transformStmt(ParseState *pstate, Node *parseTree);
 
 extern bool stmt_requires_parse_analysis(RawStmt *parseTree);
 extern bool analyze_requires_snapshot(RawStmt *parseTree);
+extern bool query_requires_rewrite_plan(Query *query);
 
 extern const char *LCS_asString(LockClauseStrength strength);
 extern void CheckSelectLocking(Query *qry, LockClauseStrength strength);

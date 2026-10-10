@@ -11,7 +11,7 @@
  * datum.c
  *	  POSTGRES Datum (abstract data type) manipulation routines.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -157,7 +157,7 @@ datumCopy(Datum value, bool typByVal, int typLen)
 
 			resultsize = EOH_get_flat_size(eoh);
 			resultptr = (char *) palloc(resultsize);
-			EOH_flatten_into(eoh, (void *) resultptr, resultsize);
+			EOH_flatten_into(eoh, resultptr, resultsize);
 			res = PointerGetDatum(resultptr);
 		}
 		else
@@ -257,8 +257,13 @@ datumIsEqual(Datum value1, Datum value2, bool typByVal, int typLen)
 /*-------------------------------------------------------------------------
  * datum_image_eq
  *
- * Compares two datums for identical contents, based on byte images.  Return
- * true if the two datums are equal, false otherwise.
+ * Compares two datums for identical contents when coerced to a signed integer
+ * of typLen bytes.  Return true if the two datums are equal, false otherwise.
+ *
+ * The coercion is required as we're not always careful to use the correct
+ * PG_RETURN_* macro.  If we didn't do this, a Datum that's been formed and
+ * deformed into a tuple may not have the same signed representation as the
+ * other datum value.
  *-------------------------------------------------------------------------
  */
 
@@ -266,10 +271,11 @@ datumIsEqual(Datum value1, Datum value2, bool typByVal, int typLen)
 /*-------------------------------------------------------------------------
  * datum_image_hash
  *
- * Generate a hash value based on the binary representation of 'value'.  Most
- * use cases will want to use the hash function specific to the Datum's type,
- * however, some corner cases require generating a hash value based on the
- * actual bits rather than the logical value.
+ * Generate a hash value based on the binary representation of 'value' when
+ * represented as a signed integer of typLen bytes.  Most use cases will want
+ * to use the hash function specific to the Datum's type, however, some corner
+ * cases require generating a hash value based on the actual bits rather than
+ * the logical value.
  *-------------------------------------------------------------------------
  */
 

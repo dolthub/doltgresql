@@ -28,7 +28,7 @@
  *	  creator functions for various nodes. The functions here are for the
  *	  most frequently created nodes.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -75,7 +75,7 @@ makeSimpleA_Expr(A_Expr_Kind kind, char *name,
 	A_Expr	   *a = makeNode(A_Expr);
 
 	a->kind = kind;
-	a->name = list_make1(makeString((char *) name));
+	a->name = list_make1(makeString(name));
 	a->lexpr = lexpr;
 	a->rexpr = rexpr;
 	a->location = location;
@@ -215,6 +215,12 @@ makeRangeVar(char *schemaname, char *relname, int location)
 
 	return r;
 }
+
+/*
+ * makeNotNullConstraint -
+ *		creates a Constraint node for NOT NULL constraints
+ */
+
 
 /*
  * makeTypeName -
@@ -515,6 +521,8 @@ makeJsonIsPredicate(Node *expr, JsonFormat *format, JsonValueType item_type,
 					bool unique_keys, int location)
 {
 	JsonIsPredicate *n = makeNode(JsonIsPredicate);
+
+	Assert(expr != NULL);
 
 	n->expr = expr;
 	n->format = format;

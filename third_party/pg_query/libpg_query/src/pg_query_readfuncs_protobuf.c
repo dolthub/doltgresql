@@ -1,140 +1,183 @@
 #include "pg_query_readfuncs.h"
+#include "pg_query_internal.h"
 
+#include "postgres.h"
+#include "miscadmin.h"
 #include "nodes/nodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/pg_list.h"
+#include "nodes/value.h"
 
-#include "protobuf/pg_query.pb-c.h"
+#include "protobuf/pg_query.upb.h"
 
-#define OUT_TYPE(typename, typename_c) PgQuery__##typename_c*
+#define OUT_TYPE(typename, typename_c) pg_query_##typename*
 
+/*
+ * upb appends "_" to a field whose name collides with another field's accessor:
+ * AlterForeignServerStmt.has_version collides with the presence accessor of its
+ * `version` field, so upb names the getter has_version_. Alias the plain
+ * accessor the shared READ_BOOL_FIELD emits to upb's real one. (See the
+ * matching setter alias in pg_query_outfuncs_protobuf.c.)
+ */
+#define pg_query_AlterForeignServerStmt_has_version pg_query_AlterForeignServerStmt_has_version_
+
+/* upb returns string fields as a (pointer, length) view into the parse arena;
+ * copy them into palloc'd, NUL-terminated C strings for the Postgres nodes. */
+static char *
+_strview_to_cstring(upb_StringView sv)
+{
+	char	   *s = palloc(sv.size + 1);
+
+	memcpy(s, sv.data, sv.size);
+	s[sv.size] = '\0';
+	return s;
+}
+
+/*
+ * As in the outfuncs, every READ_ and READ_COND macro takes the enclosing upb
+ * message type first so it can name the accessor pg_query_<MsgType>_<field>().
+ * The message pointer is always `msg`.
+ */
 #define READ_COND(typename, typename_c, typename_underscore, typename_underscore_upcase, typename_cast, outname) \
-	case PG_QUERY__NODE__NODE_##typename_underscore_upcase: \
-		return (Node *) _read##typename_c(msg->outname);
+	case pg_query_Node_node_##outname: \
+		return (Node *) _read##typename_c(pg_query_Node_##outname(msg));
 
-#define READ_INT_FIELD(outname, outname_json, fldname) node->fldname = msg->outname;
-#define READ_UINT_FIELD(outname, outname_json, fldname) node->fldname = msg->outname;
-#define READ_UINT64_FIELD(outname, outname_json, fldname) node->fldname = msg->outname;
-#define READ_LONG_FIELD(outname, outname_json, fldname) node->fldname = msg->outname;
-#define READ_FLOAT_FIELD(outname, outname_json, fldname) node->fldname = msg->outname;
-#define READ_BOOL_FIELD(outname, outname_json, fldname) node->fldname = msg->outname;
+#define READ_INT_FIELD(msgtype, outname, outname_json, fldname)    node->fldname = pg_query_##msgtype##_##outname(msg);
+#define READ_UINT_FIELD(msgtype, outname, outname_json, fldname)   node->fldname = pg_query_##msgtype##_##outname(msg);
+#define READ_UINT64_FIELD(msgtype, outname, outname_json, fldname) node->fldname = pg_query_##msgtype##_##outname(msg);
+#define READ_LONG_FIELD(msgtype, outname, outname_json, fldname)   node->fldname = pg_query_##msgtype##_##outname(msg);
+#define READ_FLOAT_FIELD(msgtype, outname, outname_json, fldname)  node->fldname = pg_query_##msgtype##_##outname(msg);
+#define READ_BOOL_FIELD(msgtype, outname, outname_json, fldname)   node->fldname = pg_query_##msgtype##_##outname(msg);
 
-#define READ_CHAR_FIELD(outname, outname_json, fldname) \
-	if (msg->outname != NULL && strlen(msg->outname) > 0) { \
-		node->fldname = msg->outname[0]; \
-	}
-
-#define READ_STRING_FIELD(outname, outname_json, fldname) \
-	if (msg->outname != NULL && strlen(msg->outname) > 0) { \
-		node->fldname = pstrdup(msg->outname); \
-	}
-
-#define READ_ENUM_FIELD(typename, outname, outname_json, fldname) \
-	node->fldname = _intToEnum##typename(msg->outname);
-
-#define READ_LIST_FIELD(outname, outname_json, fldname) \
+#define READ_CHAR_FIELD(msgtype, outname, outname_json, fldname) \
 	{ \
-		if (msg->n_##outname > 0) \
-			node->fldname = list_make1(_readNode(msg->outname[0])); \
-	    for (int i = 1; i < msg->n_##outname; i++) \
-			node->fldname = lappend(node->fldname, _readNode(msg->outname[i])); \
+		upb_StringView __sv = pg_query_##msgtype##_##outname(msg); \
+		if (__sv.size > 0) \
+			node->fldname = __sv.data[0]; \
 	}
 
-#define READ_BITMAPSET_FIELD(outname, outname_json, fldname) // FIXME
-
-#define READ_NODE_FIELD(outname, outname_json, fldname) \
-	node->fldname = *_readNode(msg->outname);
-
-#define READ_NODE_PTR_FIELD(outname, outname_json, fldname) \
-	if (msg->outname != NULL) { \
-		node->fldname = _readNode(msg->outname); \
+#define READ_STRING_FIELD(msgtype, outname, outname_json, fldname) \
+	{ \
+		upb_StringView __sv = pg_query_##msgtype##_##outname(msg); \
+		if (__sv.size > 0) \
+			node->fldname = _strview_to_cstring(__sv); \
 	}
 
-#define READ_ABSTRACT_PTR_FIELD(outname, outname_json, fldname, fldtype) \
-	if (msg->outname != NULL) { \
-		node->fldname = (fldtype) _readNode(msg->outname); \
+#define READ_ENUM_FIELD(msgtype, enumtype, outname, outname_json, fldname) \
+	node->fldname = _intToEnum##enumtype(pg_query_##msgtype##_##outname(msg));
+
+#define READ_LIST_FIELD(msgtype, outname, outname_json, fldname) \
+	{ \
+		size_t __n; \
+		const pg_query_Node *const *__items = pg_query_##msgtype##_##outname(msg, &__n); \
+		for (size_t __i = 0; __i < __n; __i++) \
+			node->fldname = lappend(node->fldname, _readNode(__items[__i])); \
 	}
 
-#define READ_VALUE_FIELD(outname, outname_json, fldname) \
-	if (msg->outname != NULL) { \
-		node->fldname = *((Value *) _readNode(msg->outname)); \
+#define READ_BITMAPSET_FIELD(msgtype, outname, outname_json, fldname) // FIXME
+
+#define READ_NODE_FIELD(msgtype, outname, outname_json, fldname) \
+	if (pg_query_##msgtype##_has_##outname(msg)) \
+		node->fldname = *_readNode(pg_query_##msgtype##_##outname(msg));
+
+#define READ_NODE_PTR_FIELD(msgtype, outname, outname_json, fldname) \
+	if (pg_query_##msgtype##_has_##outname(msg)) \
+		node->fldname = _readNode(pg_query_##msgtype##_##outname(msg));
+
+#define READ_ABSTRACT_PTR_FIELD(msgtype, outname, outname_json, fldname, fldtype) \
+	if (pg_query_##msgtype##_has_##outname(msg)) \
+		node->fldname = (fldtype) _readNode(pg_query_##msgtype##_##outname(msg));
+
+#define READ_VALUE_FIELD(msgtype, outname, outname_json, fldname) \
+	if (pg_query_##msgtype##_has_##outname(msg)) \
+		node->fldname = *((Value *) _readNode(pg_query_##msgtype##_##outname(msg)));
+
+#define READ_VALUE_PTR_FIELD(msgtype, outname, outname_json, fldname) \
+	if (pg_query_##msgtype##_has_##outname(msg)) \
+		node->fldname = (Value *) _readNode(pg_query_##msgtype##_##outname(msg));
+
+#define READ_SPECIFIC_NODE_FIELD(msgtype, typename, typename_underscore, outname, outname_json, fldname) \
+	if (pg_query_##msgtype##_has_##outname(msg)) \
+		node->fldname = *_read##typename(pg_query_##msgtype##_##outname(msg));
+
+/*
+ * This recurses into _read##typename directly, bypassing the stack depth check
+ * in _readNode, so check here (e.g. a long UNION chain nests SelectStmt in
+ * SelectStmt without ever going through _readNode).
+ */
+#define READ_SPECIFIC_NODE_PTR_FIELD(msgtype, typename, typename_underscore, outname, outname_json, fldname) \
+	if (pg_query_##msgtype##_has_##outname(msg)) { \
+		check_stack_depth(); \
+		node->fldname = _read##typename(pg_query_##msgtype##_##outname(msg)); \
 	}
 
-#define READ_VALUE_PTR_FIELD(outname, outname_json, fldname) \
-	if (msg->outname != NULL) { \
-		node->fldname = (Value *) _readNode(msg->outname); \
-	}
-
-#define READ_SPECIFIC_NODE_FIELD(typename, typename_underscore, outname, outname_json, fldname) \
-	node->fldname = *_read##typename(msg->outname);
-
-#define READ_SPECIFIC_NODE_PTR_FIELD(typename, typename_underscore, outname, outname_json, fldname) \
-	if (msg->outname != NULL) { \
-		node->fldname = _read##typename(msg->outname); \
-	}
-
-static Node * _readNode(PgQuery__Node *msg);
+static Node * _readNode(const pg_query_Node *msg);
 
 static String *
-_readString(PgQuery__String* msg)
+_readString(const pg_query_String* msg)
 {
-	return makeString(pstrdup(msg->sval));
+	return makeString(_strview_to_cstring(pg_query_String_sval(msg)));
 }
 
 #include "pg_query_enum_defs.c"
 #include "pg_query_readfuncs_defs.c"
 
-static List * _readList(PgQuery__List *msg)
+static List *
+_readList(const pg_query_List *msg)
 {
-	List *node = NULL;
-	if (msg->n_items > 0)
-		node = list_make1(_readNode(msg->items[0]));
-	for (int i = 1; i < msg->n_items; i++)
-		node = lappend(node, _readNode(msg->items[i]));
+	List	   *node = NULL;
+	size_t		n;
+	const pg_query_Node *const *items = pg_query_List_items(msg, &n);
+
+	for (size_t i = 0; i < n; i++)
+		node = lappend(node, _readNode(items[i]));
 	return node;
 }
 
-static Node * _readNode(PgQuery__Node *msg)
+static Node *
+_readNode(const pg_query_Node *msg)
 {
-	switch (msg->node_case)
+	check_stack_depth();
+
+	switch (pg_query_Node_node_case(msg))
 	{
 		#include "pg_query_readfuncs_conds.c"
 
-		case PG_QUERY__NODE__NODE_INTEGER:
-			return (Node *) makeInteger(msg->integer->ival);
-		case PG_QUERY__NODE__NODE_FLOAT:
-			return (Node *) makeFloat(pstrdup(msg->float_->fval));
-		case PG_QUERY__NODE__NODE_BOOLEAN:
-			return (Node *) makeBoolean(msg->boolean->boolval);
-		case PG_QUERY__NODE__NODE_STRING:
-			return (Node *) makeString(pstrdup(msg->string->sval));
-		case PG_QUERY__NODE__NODE_BIT_STRING:
-			return (Node *) makeBitString(pstrdup(msg->bit_string->bsval));
-		case PG_QUERY__NODE__NODE_A_CONST: {
+		case pg_query_Node_node_integer:
+			return (Node *) makeInteger(pg_query_Integer_ival(pg_query_Node_integer(msg)));
+		case pg_query_Node_node_float:
+			return (Node *) makeFloat(_strview_to_cstring(pg_query_Float_fval(pg_query_Node_float(msg))));
+		case pg_query_Node_node_boolean:
+			return (Node *) makeBoolean(pg_query_Boolean_boolval(pg_query_Node_boolean(msg)));
+		case pg_query_Node_node_string:
+			return (Node *) makeString(_strview_to_cstring(pg_query_String_sval(pg_query_Node_string(msg))));
+		case pg_query_Node_node_bit_string:
+			return (Node *) makeBitString(_strview_to_cstring(pg_query_BitString_bsval(pg_query_Node_bit_string(msg))));
+		case pg_query_Node_node_a_const: {
+			const pg_query_A_Const *ac_msg = pg_query_Node_a_const(msg);
 			A_Const *ac = makeNode(A_Const);
-			ac->location = msg->a_const->location;
+			ac->location = pg_query_A_Const_location(ac_msg);
 
-			if (msg->a_const->isnull) {
+			if (pg_query_A_Const_isnull(ac_msg)) {
 				ac->isnull = true;
 			} else {
-				switch (msg->a_const->val_case) {
-					case PG_QUERY__A__CONST__VAL_IVAL:
-						ac->val.ival = *makeInteger(msg->a_const->ival->ival);
+				switch (pg_query_A_Const_val_case(ac_msg)) {
+					case pg_query_A_Const_val_ival:
+						ac->val.ival = *makeInteger(pg_query_Integer_ival(pg_query_A_Const_ival(ac_msg)));
 						break;
-					case PG_QUERY__A__CONST__VAL_FVAL:
-						ac->val.fval = *makeFloat(pstrdup(msg->a_const->fval->fval));
+					case pg_query_A_Const_val_fval:
+						ac->val.fval = *makeFloat(_strview_to_cstring(pg_query_Float_fval(pg_query_A_Const_fval(ac_msg))));
 						break;
-					case PG_QUERY__A__CONST__VAL_BOOLVAL:
-						ac->val.boolval = *makeBoolean(msg->a_const->boolval->boolval);
+					case pg_query_A_Const_val_boolval:
+						ac->val.boolval = *makeBoolean(pg_query_Boolean_boolval(pg_query_A_Const_boolval(ac_msg)));
 						break;
-					case PG_QUERY__A__CONST__VAL_SVAL:
-						ac->val.sval = *makeString(pstrdup(msg->a_const->sval->sval));
+					case pg_query_A_Const_val_sval:
+						ac->val.sval = *makeString(_strview_to_cstring(pg_query_String_sval(pg_query_A_Const_sval(ac_msg))));
 						break;
-					case PG_QUERY__A__CONST__VAL_BSVAL:
-						ac->val.bsval = *makeBitString(pstrdup(msg->a_const->bsval->bsval));
+					case pg_query_A_Const_val_bsval:
+						ac->val.bsval = *makeBitString(_strview_to_cstring(pg_query_BitString_bsval(pg_query_A_Const_bsval(ac_msg))));
 						break;
-					case PG_QUERY__A__CONST__VAL__NOT_SET:
-					case _PG_QUERY__A__CONST__VAL__CASE_IS_INT_SIZE:
+					case pg_query_A_Const_val_NOT_SET:
 						Assert(false);
 						break;
 				}
@@ -142,39 +185,66 @@ static Node * _readNode(PgQuery__Node *msg)
 
 			return (Node *) ac;
 		}
-		case PG_QUERY__NODE__NODE_LIST:
-			return (Node *) _readList(msg->list);
-		case PG_QUERY__NODE__NODE__NOT_SET:
+		case pg_query_Node_node_list:
+			return (Node *) _readList(pg_query_Node_list(msg));
+		case pg_query_Node_node_NOT_SET:
 			return NULL;
 		default:
 			elog(ERROR, "unsupported protobuf node type: %d",
-				 (int) msg->node_case);
+				 (int) pg_query_Node_node_case(msg));
 	}
 }
 
 List * pg_query_protobuf_to_nodes(PgQueryProtobuf protobuf)
 {
-	PgQuery__ParseResult *result = NULL;
-	List * list = NULL;
-	size_t i = 0;
+	upb_Arena  *arena = upb_Arena_New();
+	pg_query_ParseResult *result;
+	List	   *list = NULL;
+	size_t		n_stmts = 0;
+	const pg_query_RawStmt *const *stmts;
+	size_t		i;
 
-	result = pg_query__parse_result__unpack(NULL, protobuf.len, (const uint8_t *) protobuf.data);
+	/*
+	 * upb's default depth limit (100) is far too low for real queries, use the
+	 * same limit as the encoder so we accept any tree we produce ourselves.
+	 * Decoding also fails once the stack depth limit is reached (see
+	 * vendor/upb/patches/0003-stack-depth-check.patch).
+	 */
+	result = pg_query_ParseResult_parse_ex(protobuf.data, protobuf.len, NULL,
+										   upb_DecodeOptions_MaxDepth(PG_QUERY_PROTOBUF_MAX_DEPTH),
+										   arena);
 
 	if (result == NULL)
-		elog(ERROR, "could not unpack protobuf parse tree");
-
-	if (result->version != PG_VERSION_NUM)
 	{
-		pg_query__parse_result__free_unpacked(result, NULL);
-		elog(ERROR, "protobuf parse tree version mismatch: %d (expected %d)", result->version, PG_VERSION_NUM);
+		upb_Arena_Free(arena);
+		elog(ERROR, "could not parse protobuf");
 	}
 
-	if (result->n_stmts > 0)
-		list = list_make1(_readRawStmt(result->stmts[0]));
-	for (i = 1; i < result->n_stmts; i++)
-		list = lappend(list, _readRawStmt(result->stmts[i]));
+	/*
+	 * Note: The version field is not checked. The protobuf format is only
+	 * expected to be read by the same libpg_query version, and mismatches show
+	 * up as unknown fields (ignored) or missing ones (zero values).
+	 */
 
-	pg_query__parse_result__free_unpacked(result, NULL);
+	/*
+	 * Reading the nodes may throw (e.g. "stack depth limit exceeded" from
+	 * _readNode), and the arena is malloc-backed, so it needs to be freed here
+	 * before passing on the error.
+	 */
+	PG_TRY();
+	{
+		stmts = pg_query_ParseResult_stmts(result, &n_stmts);
+		for (i = 0; i < n_stmts; i++)
+			list = lappend(list, _readRawStmt(stmts[i]));
+	}
+	PG_CATCH();
+	{
+		upb_Arena_Free(arena);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	upb_Arena_Free(arena);
 
 	return list;
 }

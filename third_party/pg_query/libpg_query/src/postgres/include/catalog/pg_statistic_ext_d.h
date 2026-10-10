@@ -3,7 +3,7 @@
  * pg_statistic_ext_d.h
  *    Macro definitions for pg_statistic_ext
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -17,6 +17,8 @@
  */
 #ifndef PG_STATISTIC_EXT_D_H
 #define PG_STATISTIC_EXT_D_H
+
+/* Macros related to the structure of pg_statistic_ext */
 
 #define StatisticExtRelationId 3381
 #define StatisticExtOidIndexId 3380
@@ -35,11 +37,16 @@
 
 #define Natts_pg_statistic_ext 9
 
+/* Definitions copied from pg_statistic_ext.h */
+
 
 #define STATS_EXT_NDISTINCT			'd'
 #define STATS_EXT_DEPENDENCIES		'f'
 #define STATS_EXT_MCV				'm'
 #define STATS_EXT_EXPRESSIONS		'e'
+
+
+/* OID symbols for objects defined in pg_statistic_ext.dat */
 
 
 #endif							/* PG_STATISTIC_EXT_D_H */

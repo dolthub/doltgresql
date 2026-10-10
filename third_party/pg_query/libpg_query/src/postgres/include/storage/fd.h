@@ -4,7 +4,7 @@
  *	  Virtual file descriptor definitions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/storage/fd.h
@@ -55,12 +55,23 @@ typedef int File;
 #define IO_DIRECT_WAL			0x02
 #define IO_DIRECT_WAL_INIT		0x04
 
+enum FileExtendMethod
+{
+#ifdef HAVE_POSIX_FALLOCATE
+	FILE_EXTEND_METHOD_POSIX_FALLOCATE,
+#endif
+	FILE_EXTEND_METHOD_WRITE_ZEROS,
+};
+
+/* Default to the first available file_extend_method. */
+#define DEFAULT_FILE_EXTEND_METHOD 0
 
 /* GUC parameter */
 extern PGDLLIMPORT int max_files_per_process;
 extern PGDLLIMPORT bool data_sync_retry;
 extern PGDLLIMPORT int recovery_init_sync_method;
 extern PGDLLIMPORT int io_direct_flags;
+extern PGDLLIMPORT int file_extend_method;
 
 /*
  * This is private to fd.c, but exported for save/restore_backend_variables()
@@ -101,6 +112,8 @@ extern PGDLLIMPORT int max_safe_fds;
  * prototypes for functions in fd.c
  */
 
+struct PgAioHandle;
+
 /* Operations on virtual Files --- equivalent to Unix kernel file ops */
 extern File PathNameOpenFile(const char *fileName, int fileFlags);
 extern File PathNameOpenFilePerm(const char *fileName, int fileFlags, mode_t fileMode);
@@ -109,6 +122,7 @@ extern void FileClose(File file);
 extern int	FilePrefetch(File file, off_t offset, off_t amount, uint32 wait_event_info);
 extern ssize_t FileReadV(File file, const struct iovec *iov, int iovcnt, off_t offset, uint32 wait_event_info);
 extern ssize_t FileWriteV(File file, const struct iovec *iov, int iovcnt, off_t offset, uint32 wait_event_info);
+extern int	FileStartReadV(struct PgAioHandle *ioh, File file, int iovcnt, off_t offset, uint32 wait_event_info);
 extern int	FileSync(File file, uint32 wait_event_info);
 extern int	FileZero(File file, off_t offset, off_t amount, uint32 wait_event_info);
 extern int	FileFallocate(File file, off_t offset, off_t amount, uint32 wait_event_info);

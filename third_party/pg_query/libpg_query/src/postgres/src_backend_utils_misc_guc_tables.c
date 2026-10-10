@@ -18,7 +18,7 @@
  * their fields are intended to be constant, some fields change at runtime.
  *
  *
- * Copyright (c) 2000-2024, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2025, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
@@ -28,6 +28,9 @@
  */
 #include "postgres.h"
 
+#ifdef HAVE_COPYFILE_H
+#include <copyfile.h>
+#endif
 #include <float.h>
 #include <limits.h>
 #ifdef HAVE_SYSLOG
@@ -42,10 +45,12 @@
 #include "access/xlog_internal.h"
 #include "access/xlogprefetcher.h"
 #include "access/xlogrecovery.h"
+#include "access/xlogutils.h"
 #include "archive/archive_module.h"
 #include "catalog/namespace.h"
 #include "catalog/storage.h"
 #include "commands/async.h"
+#include "commands/extension.h"
 #include "commands/event_trigger.h"
 #include "commands/tablespace.h"
 #include "commands/trigger.h"
@@ -56,6 +61,7 @@
 #include "jit/jit.h"
 #include "libpq/auth.h"
 #include "libpq/libpq.h"
+#include "libpq/oauth.h"
 #include "libpq/scram.h"
 #include "nodes/queryjumble.h"
 #include "optimizer/cost.h"
@@ -74,15 +80,23 @@
 #include "postmaster/syslogger.h"
 #include "postmaster/walsummarizer.h"
 #include "postmaster/walwriter.h"
+#include "replication/logical.h"
 #include "replication/logicallauncher.h"
 #include "replication/slot.h"
 #include "replication/slotsync.h"
 #include "replication/syncrep.h"
+#include "storage/aio.h"
 #include "storage/bufmgr.h"
+#include "storage/bufpage.h"
+#include "storage/copydir.h"
+#include "storage/fd.h"
+#include "storage/io_worker.h"
 #include "storage/large_object.h"
 #include "storage/pg_shmem.h"
 #include "storage/predicate.h"
+#include "storage/procnumber.h"
 #include "storage/standby.h"
+#include "tcop/backend_startup.h"
 #include "tcop/tcopprot.h"
 #include "tsearch/ts_cache.h"
 #include "utils/builtins.h"
@@ -95,28 +109,16 @@
 #include "utils/pg_locale.h"
 #include "utils/plancache.h"
 #include "utils/ps_status.h"
+#include "utils/rls.h"
 #include "utils/xml.h"
+
+#ifdef TRACE_SYNCSCAN
+#include "access/syncscan.h"
+#endif
 
 /* This value is normally passed in from the Makefile */
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
-#endif
-
-/* XXX these should appear in other modules' header files */
-extern bool Log_disconnections;
-extern bool Trace_connection_negotiation;
-extern int	CommitDelay;
-extern int	CommitSiblings;
-extern char *default_tablespace;
-extern char *temp_tablespaces;
-extern bool ignore_checksum_failure;
-extern bool ignore_invalid_pages;
-
-#ifdef TRACE_SYNCSCAN
-extern bool trace_syncscan;
-#endif
-#ifdef DEBUG_BOUNDED_SORT
-extern bool optimize_bounded_sort;
 #endif
 
 /*
@@ -252,6 +254,12 @@ StaticAssertDecl(lengthof(ssl_protocol_versions_info) == (PG_TLS1_3_VERSION + 2)
 #ifdef USE_ZSTD
 #endif
 
+#if defined(HAVE_COPYFILE) && defined(COPYFILE_CLONE_FORCE) || defined(HAVE_COPY_FILE_RANGE)
+#endif
+
+#ifdef HAVE_POSIX_FALLOCATE
+#endif
+
 /*
  * Options for enum values stored in other modules
  */
@@ -271,6 +279,12 @@ extern const struct config_enum_entry dynamic_shared_memory_options[];
 
 
 
+#ifdef DEBUG_NODE_TESTS_ENABLED
+
+
+
+#endif
+
 
 
 
@@ -287,6 +301,7 @@ __thread bool		check_function_bodies = true;
  * This GUC exists solely for backward compatibility, check its definition for
  * details.
  */
+
 
 
 
@@ -357,6 +372,7 @@ __thread char	   *backtrace_functions;
 #else
 #define	DEFAULT_SYSLOG_FACILITY 0
 #endif
+
 
 
 
@@ -461,11 +477,20 @@ StaticAssertDecl(lengthof(config_type_names) == (PGC_ENUM + 1),
  *	  variable_is_guc_list_quote() in src/bin/pg_dump/dumputils.c.
  */
 
+#ifdef DEBUG_NODE_TESTS_ENABLED
+#ifdef COPY_PARSE_PLAN_TREES
+#else
+#endif
+#ifdef WRITE_READ_PARSE_PLAN_TREES
+#else
+#endif
+#ifdef RAW_EXPRESSION_COVERAGE_TEST
+#else
+#endif
+#endif							/* DEBUG_NODE_TESTS_ENABLED */
 #ifdef BTREE_BUILD_STATS
 #endif
 #ifdef LOCK_DEBUG
-#endif
-#ifdef TRACE_SORT
 #endif
 #ifdef TRACE_SYNCSCAN
 #endif

@@ -4,7 +4,7 @@
  *	  POSTGRES define and remove utility definitions.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/commands/defrem.h
@@ -14,6 +14,7 @@
 #ifndef DEFREM_H
 #define DEFREM_H
 
+#include "access/stratnum.h"
 #include "catalog/objectaddress.h"
 #include "nodes/params.h"
 #include "parser/parse_node.h"
@@ -44,10 +45,13 @@ extern char *ChooseRelationName(const char *name1, const char *name2,
 extern bool CheckIndexCompatible(Oid oldId,
 								 const char *accessMethodName,
 								 const List *attributeList,
-								 const List *exclusionOpNames);
+								 const List *exclusionOpNames,
+								 bool isWithoutOverlaps);
 extern Oid	GetDefaultOpClass(Oid type_id, Oid am_id);
 extern Oid	ResolveOpClass(const List *opclass, Oid attrType,
 						   const char *accessMethodName, Oid accessMethodId);
+extern void GetOperatorFromCompareType(Oid opclass, Oid rhstype, CompareType cmptype,
+									   Oid *opid, StrategyNumber *strat);
 
 /* commands/functioncmds.c */
 extern ObjectAddress CreateFunction(ParseState *pstate, CreateFunctionStmt *stmt);
@@ -81,7 +85,7 @@ extern void RemoveOperatorById(Oid operOid);
 extern ObjectAddress AlterOperator(AlterOperatorStmt *stmt);
 
 /* commands/statscmds.c */
-extern ObjectAddress CreateStatistics(CreateStatsStmt *stmt, bool check_rights);
+extern ObjectAddress CreateStatistics(List *relids, CreateStatsStmt *stmt, bool check_rights);
 extern ObjectAddress AlterStatistics(AlterStatsStmt *stmt);
 extern void RemoveStatisticsById(Oid statsOid);
 extern void RemoveStatisticsDataById(Oid statsOid, bool inh);
@@ -156,6 +160,6 @@ extern List *defGetQualifiedName(DefElem *def);
 extern TypeName *defGetTypeName(DefElem *def);
 extern int	defGetTypeLength(DefElem *def);
 extern List *defGetStringList(DefElem *def);
-extern void errorConflictingDefElem(DefElem *defel, ParseState *pstate) pg_attribute_noreturn();
+pg_noreturn extern void errorConflictingDefElem(DefElem *defel, ParseState *pstate);
 
 #endif							/* DEFREM_H */

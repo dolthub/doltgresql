@@ -42,7 +42,7 @@ enum Member {
 /// references returns the positions of the extension's members that a statement names, with whether each type that
 /// it casts to is that type's array type.
 fn references(members: &[Member], statement: &str) -> Vec<(usize, Option<bool>)> {
-    let Ok(parsed) = pg_query::parse(statement) else { return Vec::new() };
+    let Ok(parsed) = pg_query::parse(statement, 0) else { return Vec::new() };
     let mut found = Vec::new();
     for (node, ..) in parsed.protobuf.nodes() {
         match node {

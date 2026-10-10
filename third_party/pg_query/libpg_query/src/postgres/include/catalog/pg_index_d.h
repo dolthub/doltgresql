@@ -3,7 +3,7 @@
  * pg_index_d.h
  *    Macro definitions for pg_index
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,7 +18,11 @@
 #ifndef PG_INDEX_D_H
 #define PG_INDEX_D_H
 
+/* Macros related to the structure of pg_index */
+
 #define IndexRelationId 2610
+#define PgIndexToastTable 6351
+#define PgIndexToastIndex 6352
 #define IndexIndrelidIndexId 2678
 #define IndexRelidIndexId 2679
 
@@ -46,6 +50,8 @@
 
 #define Natts_pg_index 21
 
+/* Definitions copied from pg_index.h */
+
 
 /*
  * Index AMs that support ordered scans must support these two indoption
@@ -54,6 +60,9 @@
  */
 #define INDOPTION_DESC			0x0001	/* values are in reverse order */
 #define INDOPTION_NULLS_FIRST	0x0002	/* NULLs are first instead of last */
+
+
+/* OID symbols for objects defined in pg_index.dat */
 
 
 #endif							/* PG_INDEX_D_H */

@@ -488,6 +488,7 @@ pg_query_summary_stmt_walk_impl(Node *node, Summary * summary)
 		case T_CurrentOfExpr:
 		case T_NextValueExpr:
 		case T_InferenceElem:
+		case T_ReturningExpr:
 		case T_TargetEntry:
 		case T_RangeTblRef:
 		case T_JoinExpr:
@@ -526,7 +527,6 @@ pg_query_summary_stmt_walk_impl(Node *node, Summary * summary)
 		case T_PartitionSpec:
 		case T_PartitionBoundSpec:
 		case T_PartitionRangeDatum:
-		case T_SinglePartitionSpec:
 		case T_PartitionCmd:
 		case T_RangeTblEntry:
 		case T_RTEPermissionInfo:
@@ -544,6 +544,8 @@ pg_query_summary_stmt_walk_impl(Node *node, Summary * summary)
 		case T_CTECycleClause:
 		case T_CommonTableExpr:
 		case T_MergeWhenClause:
+		case T_ReturningOption:
+		case T_ReturningClause:
 		case T_TriggerTransition:
 		case T_JsonOutput:
 		case T_JsonArgument:
@@ -563,6 +565,7 @@ pg_query_summary_stmt_walk_impl(Node *node, Summary * summary)
 		case T_JsonArrayAgg:
 		case T_ReturnStmt:
 		case T_PLAssignStmt:
+		case T_ATAlterConstraint:
 		case T_ObjectWithArgs:
 		case T_AccessPriv:
 		case T_Constraint:
@@ -638,6 +641,7 @@ pg_query_summary_stmt_walk_impl(Node *node, Summary * summary)
 		case T_PlannerParamItem:
 		case T_AggInfo:
 		case T_AggTransInfo:
+		case T_UniqueRelInfo:
 		case T_PlannedStmt:
 		case T_Result:
 		case T_ProjectSet:
@@ -772,6 +776,7 @@ pg_query_summary_stmt_walk_impl(Node *node, Summary * summary)
 		case T_SupportRequestIndexCondition:
 		case T_SupportRequestWFuncMonotonic:
 		case T_SupportRequestOptimizeWindowClause:
+		case T_SupportRequestModifyInPlace:
 		case T_Integer:
 		case T_Float:
 		case T_Boolean:

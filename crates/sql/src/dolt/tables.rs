@@ -118,7 +118,7 @@ pub fn lookup(schema: &str, name: &str) -> Option<SystemTable> {
 /// definitions of a CREATE TABLE statement.
 pub fn create_backing(ctx: &mut Ctx<'_>, schema: &str, name: &str, definition: &str) -> Result<TableDef> {
     let sql = format!("CREATE TABLE {} {definition}", crate::engine::quote_identifier(name));
-    let parsed = pg_query::parse(&sql).map_err(PgError::internal)?;
+    let parsed = pg_query::parse(&sql, 0).map_err(PgError::internal)?;
     let Some(pg_query::NodeEnum::CreateStmt(create)) =
         parsed.protobuf.stmts.first().and_then(|s| s.stmt.as_ref()).and_then(|s| s.node.as_ref())
     else {

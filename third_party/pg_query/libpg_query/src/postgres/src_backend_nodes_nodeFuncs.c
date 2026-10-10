@@ -11,7 +11,7 @@
  * nodeFuncs.c
  *		Various general-purpose manipulations of Node trees
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -140,7 +140,7 @@ static bool planstate_walk_members(PlanState **planstates, int nplans,
  *	  Assign collation information to an expression tree node.
  *
  * Note: since this is only used during parse analysis, we don't need to
- * worry about subplans or PlaceHolderVars.
+ * worry about subplans, PlaceHolderVars, or ReturningExprs.
  */
 #ifdef USE_ASSERT_CHECKING
 #endif							/* USE_ASSERT_CHECKING */
@@ -192,6 +192,10 @@ exprLocation(const Node *expr)
 
 	if (expr == NULL)
 		return -1;
+
+	/* Guard against stack overflow due to overly complex expressions */
+	check_stack_depth();
+
 	switch (nodeTag(expr))
 	{
 		case T_RangeVar:
@@ -433,6 +437,9 @@ exprLocation(const Node *expr)
 		case T_SetToDefault:
 			loc = ((const SetToDefault *) expr)->location;
 			break;
+		case T_ReturningExpr:
+			loc = exprLocation((Node *) ((const ReturningExpr *) expr)->retexpr);
+			break;
 		case T_TargetEntry:
 			/* just use argument's location */
 			loc = exprLocation((Node *) ((const TargetEntry *) expr)->expr);
@@ -532,8 +539,7 @@ exprLocation(const Node *expr)
 			loc = ((const Constraint *) expr)->location;
 			break;
 		case T_FunctionParameter:
-			/* just use typename's location */
-			loc = exprLocation((Node *) ((const FunctionParameter *) expr)->argType);
+			loc = ((const FunctionParameter *) expr)->location;
 			break;
 		case T_XmlSerialize:
 			/* XMLSERIALIZE keyword should always be the first thing */
@@ -713,7 +719,7 @@ leftmostLoc(int loc1, int loc2)
  *			... do special actions for other node types
  *		}
  *		// for any node type not specially processed, do:
- *		return expression_tree_walker(node, my_walker, (void *) context);
+ *		return expression_tree_walker(node, my_walker, context);
  * }
  *
  * The "context" argument points to a struct that holds whatever context
@@ -827,7 +833,7 @@ leftmostLoc(int loc1, int loc2)
  *			... do special transformations of other node types
  *		}
  *		// for any node type not specially processed, do:
- *		return expression_tree_mutator(node, my_mutator, (void *) context);
+ *		return expression_tree_mutator(node, my_mutator, context);
  * }
  *
  * The "context" argument points to a struct that holds whatever context
@@ -970,6 +976,7 @@ raw_expression_tree_walker_impl(Node *node,
 		case T_A_Const:
 		case T_A_Star:
 		case T_MergeSupportFunc:
+		case T_ReturningOption:
 			/* primitive node types with no subnodes */
 			break;
 		case T_Alias:
@@ -1198,7 +1205,7 @@ raw_expression_tree_walker_impl(Node *node,
 					return true;
 				if (WALK(stmt->onConflictClause))
 					return true;
-				if (WALK(stmt->returningList))
+				if (WALK(stmt->returningClause))
 					return true;
 				if (WALK(stmt->withClause))
 					return true;
@@ -1214,7 +1221,7 @@ raw_expression_tree_walker_impl(Node *node,
 					return true;
 				if (WALK(stmt->whereClause))
 					return true;
-				if (WALK(stmt->returningList))
+				if (WALK(stmt->returningClause))
 					return true;
 				if (WALK(stmt->withClause))
 					return true;
@@ -1232,7 +1239,7 @@ raw_expression_tree_walker_impl(Node *node,
 					return true;
 				if (WALK(stmt->fromClause))
 					return true;
-				if (WALK(stmt->returningList))
+				if (WALK(stmt->returningClause))
 					return true;
 				if (WALK(stmt->withClause))
 					return true;
@@ -1250,7 +1257,7 @@ raw_expression_tree_walker_impl(Node *node,
 					return true;
 				if (WALK(stmt->mergeWhenClauses))
 					return true;
-				if (WALK(stmt->returningList))
+				if (WALK(stmt->returningClause))
 					return true;
 				if (WALK(stmt->withClause))
 					return true;
@@ -1265,6 +1272,16 @@ raw_expression_tree_walker_impl(Node *node,
 				if (WALK(mergeWhenClause->targetList))
 					return true;
 				if (WALK(mergeWhenClause->values))
+					return true;
+			}
+			break;
+		case T_ReturningClause:
+			{
+				ReturningClause *returning = (ReturningClause *) node;
+
+				if (WALK(returning->options))
+					return true;
+				if (WALK(returning->exprs))
 					return true;
 			}
 			break;

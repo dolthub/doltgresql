@@ -35,6 +35,8 @@
  * - palloc
  * - palloc0
  * - MemoryContextCreate
+ * - MemoryContextSetIdentifier
+ * - CacheMemoryContext
  * - MemoryContextInit
  * - MemoryContextAllowInCriticalSection
  * - CurrentMemoryContext
@@ -57,7 +59,7 @@
  * context's MemoryContextMethods struct.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -69,6 +71,7 @@
 
 #include "postgres.h"
 
+#include "common/int.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "utils/memdebug.h"
@@ -200,12 +203,16 @@ __thread MemoryContext TopMemoryContext = NULL;
 __thread MemoryContext ErrorContext = NULL;
 
 
+__thread MemoryContext CacheMemoryContext = NULL;
 
 
 
 
 
 /* This is a transient link to the active portal's memory context: */
+
+
+/* Is memory context logging currently in progress? */
 
 
 static void MemoryContextDeleteOnly(MemoryContext context);
@@ -217,6 +224,8 @@ static void MemoryContextStatsInternal(MemoryContext context, int level,
 static void MemoryContextStatsPrint(MemoryContext context, void *passthru,
 									const char *stats_string,
 									bool print_to_stderr);
+pg_noreturn static pg_noinline void add_size_error(Size s1, Size s2);
+pg_noreturn static pg_noinline void mul_size_error(Size s1, Size s2);
 
 /*
  * You should not do memory allocations within a critical section, because
@@ -336,31 +345,31 @@ MemoryContextTraverseNext(MemoryContext curr, MemoryContext top)
 static void
 BogusFree(void *pointer)
 {
-	elog(ERROR, "pfree called with invalid pointer %p (header 0x%016llx)",
-		 pointer, (unsigned long long) GetMemoryChunkHeader(pointer));
+	elog(ERROR, "pfree called with invalid pointer %p (header 0x%016" PRIx64 ")",
+		 pointer, GetMemoryChunkHeader(pointer));
 }
 
 static void *
 BogusRealloc(void *pointer, Size size, int flags)
 {
-	elog(ERROR, "repalloc called with invalid pointer %p (header 0x%016llx)",
-		 pointer, (unsigned long long) GetMemoryChunkHeader(pointer));
+	elog(ERROR, "repalloc called with invalid pointer %p (header 0x%016" PRIx64 ")",
+		 pointer, GetMemoryChunkHeader(pointer));
 	return NULL;				/* keep compiler quiet */
 }
 
 static MemoryContext
 BogusGetChunkContext(void *pointer)
 {
-	elog(ERROR, "GetMemoryChunkContext called with invalid pointer %p (header 0x%016llx)",
-		 pointer, (unsigned long long) GetMemoryChunkHeader(pointer));
+	elog(ERROR, "GetMemoryChunkContext called with invalid pointer %p (header 0x%016" PRIx64 ")",
+		 pointer, GetMemoryChunkHeader(pointer));
 	return NULL;				/* keep compiler quiet */
 }
 
 static Size
 BogusGetChunkSpace(void *pointer)
 {
-	elog(ERROR, "GetMemoryChunkSpace called with invalid pointer %p (header 0x%016llx)",
-		 pointer, (unsigned long long) GetMemoryChunkHeader(pointer));
+	elog(ERROR, "GetMemoryChunkSpace called with invalid pointer %p (header 0x%016" PRIx64 ")",
+		 pointer, GetMemoryChunkHeader(pointer));
 	return 0;					/* keep compiler quiet */
 }
 
@@ -638,6 +647,11 @@ MemoryContextCallResetCallbacks(MemoryContext context)
  * context deletion.  Pass id = NULL to forget any old identifier.
  */
 
+void
+MemoryContextSetIdentifier(MemoryContext context, const char *id)
+{
+	/* Do nothing */
+}
 
 /*
  * MemoryContextSetParent
@@ -803,7 +817,7 @@ MemoryContextStatsDetail(MemoryContext context,
 
 	memset(&grand_totals, 0, sizeof(grand_totals));
 
-	MemoryContextStatsInternal(context, 0, max_level, max_children,
+	MemoryContextStatsInternal(context, 1, max_level, max_children,
 							   &grand_totals, print_to_stderr);
 
 	if (print_to_stderr)
@@ -855,7 +869,7 @@ MemoryContextStatsInternal(MemoryContext context, int level,
 	/* Examine the context itself */
 	context->methods->stats(context,
 							MemoryContextStatsPrint,
-							(void *) &level,
+							&level,
 							totals, print_to_stderr);
 
 	/*
@@ -868,7 +882,7 @@ MemoryContextStatsInternal(MemoryContext context, int level,
 	 */
 	child = context->firstchild;
 	ichild = 0;
-	if (level < max_level && !stack_is_too_deep())
+	if (level <= max_level && !stack_is_too_deep())
 	{
 		for (; child != NULL && ichild < max_children;
 			 child = child->nextchild, ichild++)
@@ -897,7 +911,7 @@ MemoryContextStatsInternal(MemoryContext context, int level,
 
 		if (print_to_stderr)
 		{
-			for (int i = 0; i <= level; i++)
+			for (int i = 0; i < level; i++)
 				fprintf(stderr, "  ");
 			fprintf(stderr,
 					"%d more child contexts containing %zu total in %zu blocks; %zu free (%zu chunks); %zu used\n",
@@ -998,7 +1012,7 @@ MemoryContextStatsPrint(MemoryContext context, void *passthru,
 
 	if (print_to_stderr)
 	{
-		for (i = 0; i < level; i++)
+		for (i = 1; i < level; i++)
 			fprintf(stderr, "  ");
 		fprintf(stderr, "%s: %s%s\n", name, stats_string, truncated_ident);
 	}
@@ -1062,6 +1076,10 @@ MemoryContextCreate(MemoryContext node,
 	/* Creating new memory contexts is not allowed in a critical section */
 	Assert(CritSectionCount == 0);
 
+	/* Validate parent, to help prevent crazy context linkages */
+	Assert(parent == NULL || MemoryContextIsValid(parent));
+	Assert(node != parent);
+
 	/* Initialize all standard fields of memory context header */
 	node->type = tag;
 	node->isReset = true;
@@ -1104,7 +1122,8 @@ MemoryContextAllocationFailure(MemoryContext context, Size size, int flags)
 {
 	if ((flags & MCXT_ALLOC_NO_OOM) == 0)
 	{
-		MemoryContextStats(TopMemoryContext);
+		if (TopMemoryContext)
+			MemoryContextStats(TopMemoryContext);
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory"),
@@ -1279,7 +1298,8 @@ palloc0(Size size)
 	context->isReset = false;
 
 	ret = context->methods->alloc(context, size, 0);
-
+	/* We expect OOM to be handled by the alloc function */
+	Assert(ret != NULL);
 	VALGRIND_MEMPOOL_ALLOC(context, ret, size);
 
 	MemSetAligned(ret, 0, size);
@@ -1352,6 +1372,13 @@ MemoryContextAllocAligned(MemoryContext context,
 
 	/* perform the actual allocation */
 	unaligned = MemoryContextAllocExtended(context, alloc_size, flags);
+
+	if (unlikely(unaligned == NULL))
+	{
+		/* NULL can be returned only when using MCXT_ALLOC_NO_OOM */
+		Assert(flags & MCXT_ALLOC_NO_OOM);
+		return NULL;
+	}
 
 	/* set the aligned pointer */
 	aligned = (void *) TYPEALIGN(alignto, (char *) unaligned +
@@ -1480,6 +1507,57 @@ repalloc(void *pointer, Size size)
  * repalloc0
  *		Adjust the size of a previously allocated chunk and zero out the added
  *		space.
+ */
+
+
+/*
+ * Support for safe calculation of memory request sizes
+ *
+ * These functions perform the requested calculation, but throw error if the
+ * result overflows.
+ *
+ * An important property of these functions is that if an argument was a
+ * negative signed int before promotion (implying overflow in calculating it)
+ * we will detect that as an error.  That happens because we reject results
+ * larger than SIZE_MAX / 2 later on, in the actual allocation step.
+ */
+
+
+
+
+
+
+
+
+/*
+ * palloc_mul
+ *		Equivalent to palloc(mul_size(s1, s2)).
+ */
+
+
+/*
+ * palloc0_mul
+ *		Equivalent to palloc0(mul_size(s1, s2)).
+ *
+ * This is comparable to standard calloc's behavior.
+ */
+
+
+/*
+ * palloc_mul_extended
+ *		Equivalent to palloc_extended(mul_size(s1, s2), flags).
+ */
+
+
+/*
+ * repalloc_mul
+ *		Equivalent to repalloc(p, mul_size(s1, s2)).
+ */
+
+
+/*
+ * repalloc_mul_extended
+ *		Equivalent to repalloc_extended(p, mul_size(s1, s2), flags).
  */
 
 

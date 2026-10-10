@@ -3,7 +3,7 @@
  * pg_opfamily_d.h
  *    Macro definitions for pg_opfamily
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES
@@ -18,6 +18,8 @@
 #ifndef PG_OPFAMILY_D_H
 #define PG_OPFAMILY_D_H
 
+/* Macros related to the structure of pg_opfamily */
+
 #define OperatorFamilyRelationId 2753
 #define OpfamilyAmNameNspIndexId 2754
 #define OpfamilyOidIndexId 2755
@@ -30,10 +32,15 @@
 
 #define Natts_pg_opfamily 5
 
+/* Definitions copied from pg_opfamily.h */
+
 
 /* This does not account for non-core opfamilies that might accept boolean */
 #define IsBuiltinBooleanOpfamily(opfamily) \
 	((opfamily) == BOOL_BTREE_FAM_OID || (opfamily) == BOOL_HASH_FAM_OID)
+
+
+/* OID symbols for objects defined in pg_opfamily.dat */
 
 #define BOOL_BTREE_FAM_OID 424
 #define BPCHAR_BTREE_FAM_OID 426

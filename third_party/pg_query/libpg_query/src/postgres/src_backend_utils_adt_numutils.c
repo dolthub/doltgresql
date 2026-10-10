@@ -10,7 +10,7 @@
  * numutils.c
  *	  utility functions for I/O of built-in numeric types.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
@@ -25,6 +25,7 @@
 #include <limits.h>
 #include <ctype.h>
 
+#include "common/int.h"
 #include "port/pg_bitutils.h"
 #include "utils/builtins.h"
 
@@ -110,6 +111,7 @@ pg_strtoint32_safe(const char *s, Node *escontext)
 	uint32		tmp = 0;
 	bool		neg = false;
 	unsigned char digit;
+	int32		result;
 
 	/*
 	 * The majority of cases are likely to be base-10 digits without any
@@ -169,10 +171,9 @@ pg_strtoint32_safe(const char *s, Node *escontext)
 
 	if (neg)
 	{
-		/* check the negative equivalent will fit without overflowing */
-		if (unlikely(tmp > (uint32) (-(PG_INT32_MIN + 1)) + 1))
+		if (unlikely(pg_neg_u32_overflow(tmp, &result)))
 			goto out_of_range;
-		return -((int32) tmp);
+		return result;
 	}
 
 	if (unlikely(tmp > PG_INT32_MAX))
@@ -312,10 +313,9 @@ slow:
 
 	if (neg)
 	{
-		/* check the negative equivalent will fit without overflowing */
-		if (tmp > (uint32) (-(PG_INT32_MIN + 1)) + 1)
+		if (unlikely(pg_neg_u32_overflow(tmp, &result)))
 			goto out_of_range;
-		return -((int32) tmp);
+		return result;
 	}
 
 	if (tmp > PG_INT32_MAX)

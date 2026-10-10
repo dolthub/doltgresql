@@ -4,7 +4,7 @@
  *	  Declarations for operations on built-in types.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/builtins.h
@@ -68,6 +68,7 @@ extern char *pg_ultostr(char *str, uint32 value);
 
 /* oid.c */
 extern oidvector *buildoidvector(const Oid *oids, int n);
+extern void check_valid_oidvector(const oidvector *oidArray);
 extern Oid	oidparse(Node *node);
 extern int	oid_cmp(const void *p1, const void *p2);
 

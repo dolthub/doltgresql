@@ -7,7 +7,7 @@
  *	  of the API of the memory management subsystem.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/memutils.h
@@ -41,7 +41,7 @@
 
 #define AllocSizeIsValid(size)	((Size) (size) <= MaxAllocSize)
 
-/* Must be less than SIZE_MAX */
+/* Do not make this any bigger; see add_size() and mul_size() */
 #define MaxAllocHugeSize	(SIZE_MAX / 2)
 
 #define InvalidAllocSize	SIZE_MAX
@@ -58,7 +58,7 @@
 extern PGDLLIMPORT __thread MemoryContext TopMemoryContext;
 extern PGDLLIMPORT __thread MemoryContext ErrorContext;
 extern PGDLLIMPORT MemoryContext PostmasterContext;
-extern PGDLLIMPORT MemoryContext CacheMemoryContext;
+extern PGDLLIMPORT __thread MemoryContext CacheMemoryContext;
 extern PGDLLIMPORT MemoryContext MessageContext;
 extern PGDLLIMPORT MemoryContext TopTransactionContext;
 extern PGDLLIMPORT MemoryContext CurTransactionContext;
@@ -114,7 +114,7 @@ extern MemoryContext AllocSetContextCreateInternal(MemoryContext parent,
 												   Size minContextSize,
 												   Size initBlockSize,
 												   Size maxBlockSize);
-extern void AllocSetDeleteFreeList(MemoryContext context);
+extern void AllocSetDeleteFreeList(void);
 
 /*
  * This wrapper macro exists to check for non-constant strings used as context
@@ -189,5 +189,135 @@ extern MemoryContext BumpContextCreate(MemoryContext parent,
 
 #define SLAB_DEFAULT_BLOCK_SIZE		(8 * 1024)
 #define SLAB_LARGE_BLOCK_SIZE		(8 * 1024 * 1024)
+
+/*
+ * pg_memory_is_all_zeros
+ *
+ * Test if a memory region starting at "ptr" and of size "len" is full of
+ * zeroes.
+ *
+ * The test is divided into multiple cases for safety reason and multiple
+ * phases for efficiency.
+ *
+ * Case 1: len < sizeof(size_t) bytes, then byte-by-byte comparison.
+ * Case 2: len < (sizeof(size_t) * 8 - 1) bytes:
+ *       - Phase 1: byte-by-byte comparison, until the pointer is aligned.
+ *       - Phase 2: size_t comparisons, with aligned pointers, up to the last
+ *                  location possible.
+ *       - Phase 3: byte-by-byte comparison, until the end location.
+ * Case 3: len >= (sizeof(size_t) * 8) bytes, same as case 2 except that an
+ *         additional phase is placed between Phase 1 and Phase 2, with
+ *         (8 * sizeof(size_t)) comparisons using bitwise OR to encourage
+ *         compilers to use SIMD instructions if available, up to the last
+ *         aligned location possible.
+ *
+ * Case 1 and Case 2 are mandatory to ensure that we won't read beyond the
+ * memory area.  This is portable for 32-bit and 64-bit architectures.
+ *
+ * Caller must ensure that "ptr" is not NULL.
+ */
+static inline bool
+pg_memory_is_all_zeros(const void *ptr, size_t len)
+{
+	const unsigned char *p = (const unsigned char *) ptr;
+	const unsigned char *end = &p[len];
+	const unsigned char *aligned_end = (const unsigned char *)
+		((uintptr_t) end & (~(sizeof(size_t) - 1)));
+
+	if (len < sizeof(size_t))
+	{
+		while (p < end)
+		{
+			if (*p++ != 0)
+				return false;
+		}
+		return true;
+	}
+
+	/* "len" in the [sizeof(size_t), sizeof(size_t) * 8 - 1] range */
+	if (len < sizeof(size_t) * 8)
+	{
+		/* Compare bytes until the pointer "p" is aligned */
+		while (((uintptr_t) p & (sizeof(size_t) - 1)) != 0)
+		{
+			if (p == end)
+				return true;
+			if (*p++ != 0)
+				return false;
+		}
+
+		/*
+		 * Compare remaining size_t-aligned chunks.
+		 *
+		 * There is no risk to read beyond the memory area, as "aligned_end"
+		 * cannot be higher than "end".
+		 */
+		for (; p < aligned_end; p += sizeof(size_t))
+		{
+			if (*(size_t *) p != 0)
+				return false;
+		}
+
+		/* Compare remaining bytes until the end */
+		while (p < end)
+		{
+			if (*p++ != 0)
+				return false;
+		}
+		return true;
+	}
+
+	/* "len" in the [sizeof(size_t) * 8, inf) range */
+
+	/* Compare bytes until the pointer "p" is aligned */
+	while (((uintptr_t) p & (sizeof(size_t) - 1)) != 0)
+	{
+		if (p == end)
+			return true;
+
+		if (*p++ != 0)
+			return false;
+	}
+
+	/*
+	 * Compare 8 * sizeof(size_t) chunks at once.
+	 *
+	 * For performance reasons, we manually unroll this loop and purposefully
+	 * use bitwise-ORs to combine each comparison.  This prevents boolean
+	 * short-circuiting and lets the compiler know that it's safe to access
+	 * all 8 elements regardless of the result of the other comparisons.  This
+	 * seems to be enough to coax a few compilers into using SIMD
+	 * instructions.
+	 */
+	for (; p < aligned_end - (sizeof(size_t) * 7); p += sizeof(size_t) * 8)
+	{
+		if ((((size_t *) p)[0] != 0) | (((size_t *) p)[1] != 0) |
+			(((size_t *) p)[2] != 0) | (((size_t *) p)[3] != 0) |
+			(((size_t *) p)[4] != 0) | (((size_t *) p)[5] != 0) |
+			(((size_t *) p)[6] != 0) | (((size_t *) p)[7] != 0))
+			return false;
+	}
+
+	/*
+	 * Compare remaining size_t-aligned chunks.
+	 *
+	 * There is no risk to read beyond the memory area, as "aligned_end"
+	 * cannot be higher than "end".
+	 */
+	for (; p < aligned_end; p += sizeof(size_t))
+	{
+		if (*(size_t *) p != 0)
+			return false;
+	}
+
+	/* Compare remaining bytes until the end */
+	while (p < end)
+	{
+		if (*p++ != 0)
+			return false;
+	}
+
+	return true;
+}
 
 #endif							/* MEMUTILS_H */

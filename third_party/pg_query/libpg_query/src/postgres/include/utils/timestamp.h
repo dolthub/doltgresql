@@ -3,7 +3,7 @@
  * timestamp.h
  *	  Definitions for the SQL "timestamp" and "interval" types.
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/utils/timestamp.h
@@ -85,6 +85,15 @@ IntervalPGetDatum(const Interval *X)
 #define TimestampTzPlusMilliseconds(tz,ms) ((tz) + ((ms) * (int64) 1000))
 #define TimestampTzPlusSeconds(tz,s) ((tz) + ((s) * (int64) 1000000))
 
+/* Helper for simple subtraction between two timestamps */
+static inline uint64
+TimestampDifferenceMicroseconds(TimestampTz start_time,
+								TimestampTz stop_time)
+{
+	if (start_time >= stop_time)
+		return 0;
+	return (uint64) stop_time - start_time;
+}
 
 /* Set at postmaster start */
 extern PGDLLIMPORT TimestampTz PgStartTime;
@@ -107,6 +116,9 @@ extern long TimestampDifferenceMilliseconds(TimestampTz start_time,
 extern bool TimestampDifferenceExceeds(TimestampTz start_time,
 									   TimestampTz stop_time,
 									   int msec);
+extern bool TimestampDifferenceExceedsSeconds(TimestampTz start_time,
+											  TimestampTz stop_time,
+											  int threshold_sec);
 
 extern TimestampTz time_t_to_timestamptz(pg_time_t tm);
 extern pg_time_t timestamptz_to_time_t(TimestampTz t);

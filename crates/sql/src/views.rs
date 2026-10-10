@@ -92,7 +92,7 @@ fn relations(select: &SelectStmt) -> Vec<(String, String)> {
 
 /// view_query returns the query of a stored CREATE VIEW statement, with its column names.
 pub fn view_query(fragment: &str) -> Result<(SelectStmt, Vec<String>)> {
-    let parsed = pg_query::parse(fragment).map_err(PgError::internal)?;
+    let parsed = pg_query::parse(fragment, 0).map_err(PgError::internal)?;
     let statement = parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node);
     let Some(NodeEnum::ViewStmt(view)) = statement else {
         return Err(PgError::internal(format!("a stored view that is not one: {fragment}")));
@@ -112,7 +112,10 @@ impl Ctx<'_> {
         let text =
             match crate::ruleutils::Analyzer::new(self, Vec::new()).deparse_query(&select, &aliases, pretty, wrap) {
                 Ok(text) => text,
-                Err(_) => format!(" {}", pg_query::NodeRef::SelectStmt(&select).deparse().map_err(PgError::internal)?),
+                Err(_) => format!(
+                    " {}",
+                    pg_query::NodeRef::SelectStmt(&select).deparse(Default::default()).map_err(PgError::internal)?
+                ),
             };
         Ok(format!("{text};"))
     }
@@ -283,7 +286,7 @@ impl Ctx<'_> {
         if self.relation_names(schema)?.iter().any(|n| n == new) {
             return Err(PgError::new(code::DUPLICATE_TABLE, format!("relation \"{new}\" already exists")));
         }
-        let parsed = pg_query::parse(fragment).map_err(PgError::internal)?;
+        let parsed = pg_query::parse(fragment, 0).map_err(PgError::internal)?;
         let Some(NodeEnum::ViewStmt(mut view)) =
             parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node)
         else {
@@ -292,7 +295,7 @@ impl Ctx<'_> {
         if let Some(relation) = view.view.as_mut() {
             relation.relname = new.to_string();
         }
-        let renamed = NodeRef::ViewStmt(&view).deparse().map_err(PgError::internal)?;
+        let renamed = NodeRef::ViewStmt(&view).deparse(Default::default()).map_err(PgError::internal)?;
         self.put_view(schema, old, None)?;
         self.put_view(schema, new, Some(&renamed))?;
         let mut auth = self.auth()?;

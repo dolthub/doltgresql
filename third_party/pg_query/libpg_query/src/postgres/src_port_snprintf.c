@@ -23,6 +23,7 @@
  * - pg_sprintf
  * - pg_vsprintf
  * - pg_printf
+ * - pg_printf
  *--------------------------------------------------------------------
  */
 
@@ -30,7 +31,7 @@
  * Copyright (c) 1983, 1995, 1996 Eric P. Allman
  * Copyright (c) 1988, 1993
  *	The Regents of the University of California.  All rights reserved.
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -581,6 +582,28 @@ nextch2:
 					fmtpos = accum;
 				accum = 0;
 				goto nextch2;
+#ifdef WIN32
+			case 'I':
+				/* Windows PRI*{32,64,PTR} size */
+				if (format[0] == '3' && format[1] == '2')
+					format += 2;
+				else if (format[0] == '6' && format[1] == '4')
+				{
+					format += 2;
+					longlongflag = 1;
+				}
+				else
+				{
+#if SIZEOF_VOID_P == SIZEOF_LONG
+					longflag = 1;
+#elif SIZEOF_VOID_P == SIZEOF_LONG_LONG
+					longlongflag = 1;
+#else
+#error "cannot find integer type of the same size as intptr_t"
+#endif
+				}
+				goto nextch2;
+#endif
 			case 'l':
 				if (longflag)
 					longlongflag = 1;
@@ -588,16 +611,12 @@ nextch2:
 					longflag = 1;
 				goto nextch2;
 			case 'z':
-#if SIZEOF_SIZE_T == 8
-#ifdef HAVE_LONG_INT_64
+#if SIZEOF_SIZE_T == SIZEOF_LONG
 				longflag = 1;
-#elif defined(HAVE_LONG_LONG_INT_64)
+#elif SIZEOF_SIZE_T == SIZEOF_LONG_LONG
 				longlongflag = 1;
 #else
-#error "Don't know how to print 64bit integers"
-#endif
-#else
-				/* assume size_t is same size as int */
+#error "cannot find integer type of the same size as size_t"
 #endif
 				goto nextch2;
 			case 'h':
@@ -848,6 +867,28 @@ nextch1:
 					fmtpos = accum;
 				accum = 0;
 				goto nextch1;
+#ifdef WIN32
+			case 'I':
+				/* Windows PRI*{32,64,PTR} size */
+				if (format[0] == '3' && format[1] == '2')
+					format += 2;
+				else if (format[0] == '6' && format[1] == '4')
+				{
+					format += 2;
+					longlongflag = 1;
+				}
+				else
+				{
+#if SIZEOF_VOID_P == SIZEOF_LONG
+					longflag = 1;
+#elif SIZEOF_VOID_P == SIZEOF_LONG_LONG
+					longlongflag = 1;
+#else
+#error "cannot find integer type of the same size as intptr_t"
+#endif
+				}
+				goto nextch1;
+#endif
 			case 'l':
 				if (longflag)
 					longlongflag = 1;
@@ -855,16 +896,12 @@ nextch1:
 					longflag = 1;
 				goto nextch1;
 			case 'z':
-#if SIZEOF_SIZE_T == 8
-#ifdef HAVE_LONG_INT_64
+#if SIZEOF_SIZE_T == SIZEOF_LONG
 				longflag = 1;
-#elif defined(HAVE_LONG_LONG_INT_64)
+#elif SIZEOF_SIZE_T == SIZEOF_LONG_LONG
 				longlongflag = 1;
 #else
-#error "Don't know how to print 64bit integers"
-#endif
-#else
-				/* assume size_t is same size as int */
+#error "cannot find integer type of the same size as size_t"
 #endif
 				goto nextch1;
 			case 'h':

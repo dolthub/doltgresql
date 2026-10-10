@@ -8,7 +8,7 @@
  * higher-level API provided by parser.h.
  *
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * src/include/parser/scanner.h
@@ -115,6 +115,9 @@ typedef struct core_yy_extra_type
 	bool		saw_non_ascii;
 
 	int yyllocend;
+
+	/* return comments as SQL_COMMENT/C_COMMENT tokens, instead of ignoring */
+	bool		return_comments;
 } core_yy_extra_type;
 
 /*
@@ -147,6 +150,6 @@ extern void setup_scanner_errposition_callback(ScannerCallbackState *scbstate,
 											   core_yyscan_t yyscanner,
 											   int location);
 extern void cancel_scanner_errposition_callback(ScannerCallbackState *scbstate);
-extern void scanner_yyerror(const char *message, core_yyscan_t yyscanner) pg_attribute_noreturn();
+pg_noreturn extern void scanner_yyerror(const char *message, core_yyscan_t yyscanner);
 
 #endif							/* SCANNER_H */

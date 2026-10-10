@@ -66,7 +66,7 @@ pub fn expression_text(expr: &Node) -> Result<String> {
         op: pg_query::protobuf::SetOperation::SetopNone as i32,
         ..Default::default()
     };
-    let text = pg_query::NodeRef::SelectStmt(&select).deparse().map_err(PgError::internal)?;
+    let text = pg_query::NodeRef::SelectStmt(&select).deparse(Default::default()).map_err(PgError::internal)?;
     Ok(text.strip_prefix("SELECT ").unwrap_or(&text).to_string())
 }
 
@@ -128,7 +128,7 @@ pub(crate) type Deferral = (bool, bool);
 
 /// deferral returns a table constraint's DEFERRABLE and INITIALLY DEFERRED settings, where INITIALLY DEFERRED implies
 /// DEFERRABLE.
-pub(crate) fn deferral(constraint: &pg_query::protobuf::Constraint) -> Deferral {
+fn deferral(constraint: &pg_query::protobuf::Constraint) -> Deferral {
     (constraint.deferrable || constraint.initdeferred, constraint.initdeferred)
 }
 
@@ -632,8 +632,8 @@ impl Ctx<'_> {
                 table.indexes.iter().filter(|i| i.unique && !i.system && i.columns.iter().all(|&c| c < HIDDEN_BASE));
             definitions.extend(uniques.map(|i| format!("UNIQUE ({})", names(&i.columns))));
         }
-        let parsed =
-            pg_query::parse(&format!("CREATE TABLE liked ({})", definitions.join(", "))).map_err(PgError::internal)?;
+        let parsed = pg_query::parse(&format!("CREATE TABLE liked ({})", definitions.join(", ")), 0)
+            .map_err(PgError::internal)?;
         let Some(NodeEnum::CreateStmt(liked)) =
             parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node)
         else {
@@ -678,7 +678,7 @@ impl Ctx<'_> {
                     format!("CONSTRAINT {} CHECK ({})", crate::engine::quote_identifier(&c.name), c.expression)
                 }))
                 .collect();
-        let parsed = pg_query::parse(&format!("CREATE TABLE inherited ({})", definitions.join(", ")))
+        let parsed = pg_query::parse(&format!("CREATE TABLE inherited ({})", definitions.join(", ")), 0)
             .map_err(PgError::internal)?;
         let Some(NodeEnum::CreateStmt(inherited)) =
             parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node)
@@ -1311,7 +1311,7 @@ impl Ctx<'_> {
             );
             statements.extend(sequences.iter().map(|s| format!("DROP SEQUENCE {}", quoted(s))));
             for statement in statements {
-                let parsed = pg_query::parse(&statement).map_err(PgError::internal)?;
+                let parsed = pg_query::parse(&statement, 0).map_err(PgError::internal)?;
                 let Some(NodeEnum::DropStmt(stmt)) =
                     parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node)
                 else {

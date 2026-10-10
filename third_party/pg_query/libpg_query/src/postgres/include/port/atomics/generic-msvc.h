@@ -3,7 +3,7 @@
  * generic-msvc.h
  *	  Atomic operations support when using MSVC
  *
- * Portions Copyright (c) 1996-2024, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2025, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTES:
@@ -29,8 +29,6 @@
 #ifndef pg_memory_barrier_impl
 #define pg_memory_barrier_impl()	MemoryBarrier()
 #endif
-
-#if defined(HAVE_ATOMICS)
 
 #define PG_HAVE_ATOMIC_U32_SUPPORT
 typedef struct pg_atomic_uint32
@@ -115,5 +113,3 @@ pg_atomic_fetch_add_u64_impl(volatile pg_atomic_uint64 *ptr, int64 add_)
 }
 
 #endif /* _WIN64 */
-
-#endif /* HAVE_ATOMICS */
