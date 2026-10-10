@@ -1324,3 +1324,56 @@ fn test_merge_statement() {
         },
     ]);
 }
+
+#[test]
+fn test_insert_into_array_elements() {
+    run_scripts(&[
+        ScriptTest {
+            name: "INSERT targets that name array elements and slices",
+            set_up_script: &[
+                "CREATE TABLE ia_t (pk INT PRIMARY KEY, f1 INT[]);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "INSERT INTO ia_t (pk, f1[1:2]) VALUES (1, '{}');",
+                    expected: Expected::Error(Diagnostic { code: "2202E", message: "source array too small", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ia_t (pk, f1[0:2147483647]) VALUES (2, '{}');",
+                    expected: Expected::Error(Diagnostic { code: "54000", message: "array size exceeds the maximum allowed (134217727)", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ia_t (pk, f1[1]) VALUES (3, 7);",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ia_t (pk, f1[1:2]) VALUES (4, '{5,6}');",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO ia_t (pk, f1[1:2]) SELECT 5, '{5,6}';",
+                    expected: Expected::Tag("INSERT 0 1"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pk, f1 FROM ia_t ORDER BY pk;",
+                    expected: Expected::Rows {
+                        columns: &[Column("pk", INT4), Column("f1", INT4_ARRAY)],
+                        rows: &[
+                            &[T("3"), T("{7}")],
+                            &[T("4"), T("{5,6}")],
+                            &[T("5"), T("{5,6}")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

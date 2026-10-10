@@ -26,9 +26,9 @@ use prolly::{NodeStore, Tuple, get};
 use crate::auth::Object;
 use crate::cast::cast_value;
 use crate::catalog::ColumnType;
-use crate::catalog::table::{HIDDEN_BASE, IndexDef, TableDef};
+use crate::catalog::table::{ColumnDef, HIDDEN_BASE, IndexDef, TableDef};
 use crate::error::{ErrorObjects, PgError, Result, code};
-use crate::expr::{Binder, Expr, Scope, ScopeColumn, arg_location, assign, coerce, position, typ};
+use crate::expr::{Binder, Bound, Expr, Scope, ScopeColumn, arg_location, assign, coerce, position, typ};
 use crate::foreign::Change;
 use crate::plan::{JoinKind, Plan, Planner, push_down};
 use crate::query::{Ctx, scan};
@@ -885,6 +885,14 @@ impl Ctx<'_> {
                 })
                 .collect::<Result<_>>()?
         };
+        let subscripted: Vec<Option<&pg_query::protobuf::ResTarget>> = insert
+            .cols
+            .iter()
+            .map(|col| match col.node.as_ref() {
+                Some(NodeEnum::ResTarget(target)) if !target.indirection.is_empty() => Some(target.as_ref()),
+                _ => None,
+            })
+            .collect();
         let overriding = pg_query::protobuf::OverridingKind::try_from(insert.r#override)
             .unwrap_or(pg_query::protobuf::OverridingKind::OverridingNotSet);
         let empty_row = pg_query::Node { node: Some(NodeEnum::List(pg_query::protobuf::List { items: Vec::new() })) };
@@ -944,7 +952,7 @@ impl Ctx<'_> {
             if query.columns.len() > targets.len() {
                 return Err(too_many(-1));
             }
-            for (ty, &target) in query.types.iter().zip(&targets) {
+            for (k, (ty, &target)) in query.types.iter().zip(&targets).enumerate() {
                 let column = &table.columns[target];
                 if column.generated {
                     return Err(generated_error(&column.name, "cannot insert a non-DEFAULT value into column"));
@@ -955,9 +963,27 @@ impl Ctx<'_> {
                 if column.identity == b'a' && overriding != pg_query::protobuf::OverridingKind::OverridingSystemValue {
                     return Err(identity_error(&column.name, "cannot insert a non-DEFAULT value into column"));
                 }
-                assign((Expr::Column(0), *ty), column.ty, &column.name, -1)?;
+                if subscripted.get(k).is_none_or(Option::is_none) {
+                    assign((Expr::Column(0), *ty), column.ty, &column.name, -1)?;
+                }
             }
-            InsertSource::Select(Box::new(query.plan))
+            let mut plan = query.plan;
+            if subscripted.iter().any(Option::is_some) {
+                let mut binder = Binder::new(self, Scope::default());
+                let mut exprs = Vec::with_capacity(query.types.len());
+                for (k, (ty, &target)) in query.types.iter().zip(&targets).enumerate() {
+                    exprs.push(match subscripted.get(k) {
+                        Some(Some(res_target)) => {
+                            let bound = ((Expr::Column(k), *ty), -1);
+                            let null = Expr::Const(Value::Null);
+                            assign_subscripts(&mut binder, &table.columns[target], res_target, bound, null)?
+                        }
+                        _ => Expr::Column(k),
+                    });
+                }
+                plan = Plan::Project { input: Box::new(plan), exprs };
+            }
+            InsertSource::Select(Box::new(plan))
         } else {
             let mut binder = Binder::new(self, Scope::default());
             binder.clause = "VALUES";
@@ -968,7 +994,7 @@ impl Ctx<'_> {
                     return Err(too_many(arg_location(&list.items[targets.len()])));
                 }
                 let mut row = Vec::new();
-                for (item, &target) in list.items.iter().zip(&targets) {
+                for (k, (item, &target)) in list.items.iter().zip(&targets).enumerate() {
                     let column = &table.columns[target];
                     if matches!(item.node.as_ref(), Some(NodeEnum::SetToDefault(_))) {
                         row.push(Expr::Default(target));
@@ -985,6 +1011,11 @@ impl Ctx<'_> {
                         && overriding != pg_query::protobuf::OverridingKind::OverridingSystemValue
                     {
                         return Err(identity_error(&column.name, "cannot insert a non-DEFAULT value into column"));
+                    }
+                    if let Some(Some(res_target)) = subscripted.get(k) {
+                        let bound = (binder.bind(item)?, arg_location(item));
+                        row.push(assign_subscripts(&mut binder, column, res_target, bound, Expr::Const(Value::Null))?);
+                        continue;
                     }
                     let bound = binder.bind(item)?;
                     if let Expr::Param(i) = bound.0
@@ -1264,6 +1295,38 @@ impl Ctx<'_> {
     }
 }
 
+/// assign_subscripts binds the assignment of a bound value, written at the location, to the array elements that a
+/// target's subscripts name, within a base value of the target's column.
+fn assign_subscripts(
+    binder: &mut Binder<'_, '_>,
+    column: &ColumnDef,
+    target: &pg_query::protobuf::ResTarget,
+    (bound, location): (Bound, i32),
+    base: Expr,
+) -> Result<Expr> {
+    let subscripted = matches!(target.indirection[0].node, Some(NodeEnum::AIndices(_)));
+    if subscripted && !crate::array::is_array_type(column.ty.oid) {
+        return Err(PgError {
+            position: position(target.location),
+            ..PgError::new(
+                code::DATATYPE_MISMATCH,
+                format!(
+                    "cannot subscript type {} because it does not support subscripting",
+                    crate::cast::type_display(column.ty.oid)
+                ),
+            )
+        });
+    }
+    if !crate::array::is_array_type(column.ty.oid) {
+        return Err(PgError::unsupported("this assignment"));
+    }
+    let (subscripts, slice) = binder.subscripts(&target.indirection)?;
+    let element = crate::expr::element_type(column.ty.oid);
+    let ty = if slice { column.ty } else { ColumnType { oid: element, modifier: column.ty.modifier } };
+    let value = assign(bound, ty, &column.name, location)?.0;
+    Ok(Expr::SubscriptAssign(Box::new(base), element, subscripts, slice, Box::new(value)))
+}
+
 /// bind_assignments binds the SET list of an UPDATE or ON CONFLICT DO UPDATE.
 fn bind_assignments(
     binder: &mut Binder<'_, '_>,
@@ -1298,32 +1361,12 @@ fn bind_assignments(
             continue;
         }
         if !target.indirection.is_empty() {
-            let subscripted = matches!(target.indirection[0].node, Some(NodeEnum::AIndices(_)));
-            if subscripted && !crate::array::is_array_type(column.ty.oid) {
-                return Err(PgError {
-                    position: position(target.location),
-                    ..PgError::new(
-                        code::DATATYPE_MISMATCH,
-                        format!(
-                            "cannot subscript type {} because it does not support subscripting",
-                            crate::cast::type_display(column.ty.oid)
-                        ),
-                    )
-                });
-            }
-            if !crate::array::is_array_type(column.ty.oid) {
-                return Err(PgError::unsupported("this assignment"));
-            }
-            let (subscripts, slice) = binder.subscripts(&target.indirection)?;
-            let element = crate::expr::element_type(column.ty.oid);
-            let ty = if slice { column.ty } else { ColumnType { oid: element, modifier: column.ty.modifier } };
-            let bound = binder.bind(value)?;
-            let value = assign(bound, ty, &column.name, arg_location(value))?.0;
             let base = match assignments.iter().position(|(c, _)| *c == i) {
                 Some(at) => assignments.remove(at).1,
                 None => Expr::Column(i),
             };
-            let expr = Expr::SubscriptAssign(Box::new(base), element, subscripts, slice, Box::new(value));
+            let bound = binder.bind(value)?;
+            let expr = assign_subscripts(binder, column, target, (bound, arg_location(value)), base)?;
             assignments.push((i, expr));
             continue;
         }
