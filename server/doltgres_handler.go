@@ -662,8 +662,15 @@ func resultForEmptyIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 }
 
 // resultForMax1RowIter ensures that an empty iterator returns at most one row
-func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, resultFields []pgproto3.FieldDescription, formatCodes []int16) (*Result, error) {
+func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, resultFields []pgproto3.FieldDescription, formatCodes []int16) (result *Result, err error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForMax1RowIter").End()
+	// Lazy values may still need the query context while rowToBytes encodes them.
+	// Closing a tracked iterator ends that context, so close only after encoding.
+	defer func() {
+		if closeErr := iter.Close(ctx); err == nil && closeErr != nil {
+			result, err = nil, closeErr
+		}
+	}()
 	row, err := iter.Next(ctx)
 	if err == io.EOF {
 		return &Result{Fields: resultFields}, nil
@@ -673,9 +680,6 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 
 	if _, err = iter.Next(ctx); err != io.EOF {
 		return nil, errors.Errorf("result max1Row iterator returned more than one row")
-	}
-	if err := iter.Close(ctx); err != nil {
-		return nil, err
 	}
 
 	outputRow, err := rowToBytes(ctx, schema, row, formatCodes)
