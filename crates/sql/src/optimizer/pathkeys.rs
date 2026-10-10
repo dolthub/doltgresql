@@ -403,18 +403,112 @@ fn right_merge_direction(root: &PlannerInfo<'_, '_>, pathkey: &PathKey) -> bool 
     !pathkey.pk_descending
 }
 
-/// truncate_useless_pathkeys returns the leading pathkeys of an order that a merge join or the query's order could
-/// use, as Postgres' function of the same name does.
+/// truncate_useless_pathkeys returns the leading pathkeys of an order that a merge join, the query's order, its
+/// grouping, its DISTINCT, or a set operation over it could use, as Postgres' function of the same name does.
 pub fn truncate_useless_pathkeys(root: &PlannerInfo<'_, '_>, rel: usize, pathkeys: &[PkId]) -> Vec<PkId> {
     let nuseful = pathkeys_useful_for_merging(root, rel, pathkeys)
-        .max(pathkeys_count_contained_in(&root.query_pathkeys, pathkeys).1);
+        .max(pathkeys_useful_for_ordering(root, pathkeys))
+        .max(pathkeys_useful_for_grouping(root, pathkeys))
+        .max(pathkeys_useful_for_distinct(root, pathkeys))
+        .max(pathkeys_useful_for_setop(root, pathkeys));
     pathkeys[..nuseful].to_vec()
 }
 
-/// has_useful_pathkeys reports whether an order of a relation's rows could be useful, for a merge join or the
-/// query's order, as Postgres' function of the same name does.
+/// pathkeys_useful_for_ordering counts the leading pathkeys of an order that the query's order starts with, as
+/// Postgres' function of the same name does.
+fn pathkeys_useful_for_ordering(root: &PlannerInfo<'_, '_>, pathkeys: &[PkId]) -> usize {
+    pathkeys_count_contained_in(&root.query_pathkeys, pathkeys).1
+}
+
+/// pathkeys_useful_for_grouping counts the leading pathkeys of an order that are among the query's group keys, in
+/// any order, as Postgres' function of the same name does.
+fn pathkeys_useful_for_grouping(root: &PlannerInfo<'_, '_>, pathkeys: &[PkId]) -> usize {
+    pathkeys.iter().take_while(|pk| root.group_pathkeys.contains(pk)).count()
+}
+
+/// pathkeys_useful_for_distinct counts the leading pathkeys of an order that are among the query's DISTINCT keys, in
+/// any order, as Postgres' function of the same name does.
+fn pathkeys_useful_for_distinct(root: &PlannerInfo<'_, '_>, pathkeys: &[PkId]) -> usize {
+    pathkeys.iter().take_while(|pk| root.distinct_pathkeys.contains(pk)).count()
+}
+
+/// pathkeys_useful_for_setop counts the leading pathkeys of an order that the order a set operation over the query
+/// wants starts with, as Postgres' function of the same name does.
+fn pathkeys_useful_for_setop(root: &PlannerInfo<'_, '_>, pathkeys: &[PkId]) -> usize {
+    pathkeys_count_contained_in(&root.setop_pathkeys, pathkeys).1
+}
+
+/// append_pathkeys adds the pathkeys of one order that another lacks to its end, as Postgres' function of the same
+/// name does.
+pub fn append_pathkeys(root: &PlannerInfo<'_, '_>, mut target: Vec<PkId>, source: &[PkId]) -> Vec<PkId> {
+    for &pk in source {
+        if !pathkey_is_redundant(root, pk, &target) {
+            target.push(pk);
+        }
+    }
+    target
+}
+
+/// make_pathkeys_for_sortclauses_extended returns the pathkeys of sort or group clauses over a target list, without
+/// redundant ones, which it also removes from the clauses when asked, and gives each new key's class the clause's
+/// number when asked, as Postgres' function of the same name does, or None when the planner does not know a key's
+/// btree operator family, so that the clauses cannot be sorted.
+pub fn make_pathkeys_for_sortclauses_extended(
+    root: &mut PlannerInfo<'_, '_>,
+    sortclauses: &mut Vec<super::nodes::SortGroupClause>,
+    tlist: &[super::nodes::TargetEntry],
+    remove_redundant: bool,
+    set_ec_sortref: bool,
+) -> Option<Vec<PkId>> {
+    let mut pathkeys = Vec::new();
+    let mut sortable = true;
+    let mut i = 0;
+    while i < sortclauses.len() {
+        let sortcl = sortclauses[i];
+        let sortkey = super::tlist::get_sortgroupclause_expr(&sortcl, tlist);
+        let Some(opcintype) = super::nodefuncs::expr_type(root, &sortkey) else {
+            sortable = false;
+            i += 1;
+            continue;
+        };
+        let Some(opfamily) = super::nodefuncs::btree_opfamily(opcintype) else {
+            sortable = false;
+            i += 1;
+            continue;
+        };
+        let pathkey = make_pathkey_from_sortinfo(
+            root,
+            sortkey,
+            opfamily,
+            opcintype,
+            sortcl.descending,
+            sortcl.nulls_first,
+            sortcl.tle_sort_group_ref,
+            true,
+        )
+        .expect("a class is created when none has the expression");
+        let ec = root.canon_pathkeys[pathkey].pk_eclass;
+        if root.eq_classes[ec].ec_sortref == 0 && set_ec_sortref {
+            root.eq_classes[ec].ec_sortref = sortcl.tle_sort_group_ref;
+        }
+        if !pathkey_is_redundant(root, pathkey, &pathkeys) {
+            pathkeys.push(pathkey);
+        } else if remove_redundant {
+            sortclauses.remove(i);
+            continue;
+        }
+        i += 1;
+    }
+    sortable.then_some(pathkeys)
+}
+
+/// has_useful_pathkeys reports whether an order of a relation's rows could be useful, for a merge join, the query's
+/// grouping, or the query's order, as Postgres' function of the same name does.
 pub fn has_useful_pathkeys(root: &PlannerInfo<'_, '_>, rel: usize) -> bool {
-    !root.rels[rel].joininfo.is_empty() || root.rels[rel].has_eclass_joins || !root.query_pathkeys.is_empty()
+    !root.rels[rel].joininfo.is_empty()
+        || root.rels[rel].has_eclass_joins
+        || !root.group_pathkeys.is_empty()
+        || !root.query_pathkeys.is_empty()
 }
 
 /// subquery_output_order returns a subquery's pathkeys by its output columns, the half of Postgres'

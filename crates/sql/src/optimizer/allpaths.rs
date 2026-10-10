@@ -124,7 +124,7 @@ fn set_subquery_pathlist(root: &mut PlannerInfo<'_, '_>, rti: usize) {
         true => 0.0,
         false => root.tuple_fraction,
     };
-    if !plan_subquery_rel(root, rti, subquery, tuple_fraction) {
+    if !plan_subquery_rel(root, rti, subquery, tuple_fraction, None) {
         set_dummy_rel_pathlist(root, rti);
         return;
     }
@@ -153,9 +153,10 @@ pub fn plan_subquery_rel(
     rti: usize,
     subquery: super::nodes::Query,
     tuple_fraction: f64,
+    setops: Option<&super::nodes::SetOperationStmt>,
 ) -> bool {
     let (tuples, attr_widths, subplans, num_groups, dummy) = {
-        let mut subroot = super::subquery_planner(root.ctx, root.glob, subquery, tuple_fraction);
+        let mut subroot = super::subquery_planner(root.ctx, root.glob, subquery, tuple_fraction, setops);
         let sub_final_rel = super::relnode::fetch_upper_rel(
             &mut subroot,
             super::nodes::UpperRelationKind::Final,

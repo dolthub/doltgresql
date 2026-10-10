@@ -135,6 +135,10 @@ pub struct PlannerInfo<'r, 'a> {
     pub window_pathkeys: Vec<PkId>,
     pub distinct_pathkeys: Vec<PkId>,
     pub sort_pathkeys: Vec<PkId>,
+    /// The order that a set operation over the query wants its rows in, as Postgres' setop_pathkeys.
+    pub setop_pathkeys: Vec<PkId>,
+    /// The query's DISTINCT clauses without redundant ones, as Postgres' processed_distinctClause.
+    pub processed_distinct_clause: Vec<nodes::SortGroupClause>,
     /// How many aggregate calls take ordered or DISTINCT input.
     pub num_ordered_aggs: usize,
     /// Whether the query's expressions hold AlternativeSubPlans, as Postgres' hasAlternativeSubPlans records.
@@ -165,7 +169,7 @@ pub(crate) fn enabled() -> bool {
 pub(crate) fn planner(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
     let mut glob = PlannerGlobal::default();
     let parse = query::unbind(&mut glob, ctx, plan);
-    let mut root = subquery_planner(ctx, &mut glob, parse, 0.0);
+    let mut root = subquery_planner(ctx, &mut glob, parse, 0.0, None);
     create_final_plan(&mut root, 0.0).0
 }
 
@@ -186,7 +190,7 @@ fn plan_subselect(
     parse: Query,
     tuple_fraction: f64,
 ) -> (Plan, Rc<nodes::Path>) {
-    let mut root = subquery_planner(ctx, glob, parse, tuple_fraction);
+    let mut root = subquery_planner(ctx, glob, parse, tuple_fraction, None);
     let (plan, path) = create_final_plan(&mut root, tuple_fraction);
     let mut plan = crate::joins::plan_joins(ctx, plan);
     crate::indexscan::prune(&mut plan);
@@ -243,6 +247,7 @@ fn subquery_planner<'r, 'a>(
     glob: &'r mut PlannerGlobal,
     mut parse: Query,
     tuple_fraction: f64,
+    setops: Option<&nodes::SetOperationStmt>,
 ) -> PlannerInfo<'r, 'a> {
     prepjointree::pull_up_subqueries(glob, &mut parse);
     preprocess_query_expressions(ctx, &mut parse);
@@ -258,7 +263,7 @@ fn subquery_planner<'r, 'a>(
         root.has_alternative_subplans |= matches!(e, Expr::AlternativeSubPlan(_))
     });
     root.num_ordered_aggs = prepagg::count_ordered_aggs(&root);
-    planner::grouping_planner(&mut root, tuple_fraction);
+    planner::grouping_planner(&mut root, tuple_fraction, setops);
     let final_rel = relnode::fetch_upper_rel(&mut root, nodes::UpperRelationKind::Final, &Relids::new());
     subselect::ss_charge_for_initplans(&mut root, final_rel);
     pathnode::set_cheapest(&mut root.rels[final_rel]);
@@ -320,6 +325,8 @@ fn new_planner_info<'r, 'a>(
         window_pathkeys: Vec::new(),
         distinct_pathkeys: Vec::new(),
         sort_pathkeys: Vec::new(),
+        setop_pathkeys: Vec::new(),
+        processed_distinct_clause: Vec::new(),
         num_ordered_aggs: 0,
         has_alternative_subplans: false,
         minmax_aggs: Vec::new(),

@@ -23,7 +23,10 @@ use super::nodes::{
     AggStrategy, GroupingSetData, Path, PathTarget, PkId, Query, RelOptInfo, Relids, RollupData, SortGroupClause,
     TargetEntry, UpperRelationKind,
 };
-use super::pathkeys::{pathkeys_contained_in, pathkeys_count_contained_in};
+use super::pathkeys::{
+    PathKeysComparison, compare_pathkeys, make_pathkeys_for_sortclauses_extended, pathkeys_contained_in,
+    pathkeys_count_contained_in,
+};
 use super::pathnode::{add_path, compare_fractional_path_costs, set_cheapest};
 use super::tlist;
 use crate::expr::Expr;
@@ -34,11 +37,12 @@ use crate::types::Value;
 const DEFAULT_LIMIT_FRACTION: f64 = 0.10;
 
 /// QpExtra is what standard_qp_callback needs besides the query, as Postgres' standard_qp_extra holds it: the windows
-/// to evaluate, in order, as the positions of their calls in the query's window calls, and the group clauses of the
-/// first rollup of the query's grouping sets.
-struct QpExtra {
+/// to evaluate, in order, as the positions of their calls in the query's window calls, the group clauses of the
+/// first rollup of the query's grouping sets, and the set operation over the query that wants its rows sorted.
+struct QpExtra<'s> {
     active_windows: Vec<Vec<usize>>,
     gset_group_clause: Option<Vec<SortGroupClause>>,
+    setop: Option<&'s super::nodes::SetOperationStmt>,
 }
 
 /// GroupingSetsData is what preprocess_grouping_sets finds of a query's grouping sets, as Postgres'
@@ -57,7 +61,11 @@ struct GroupingSetsData {
 /// grouping_planner plans a query's join tree, or its set operations, and then its upper processing, adding the paths
 /// of its final relation, as Postgres' function of the same name does. A LIMIT's row count becomes the share of rows
 /// that the query reads.
-pub fn grouping_planner(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) {
+pub fn grouping_planner(
+    root: &mut PlannerInfo<'_, '_>,
+    tuple_fraction: f64,
+    setops: Option<&super::nodes::SetOperationStmt>,
+) {
     let mut tuple_fraction = tuple_fraction;
     let (mut offset_est, mut count_est) = (0i64, 0i64);
     let mut limit_tuples = -1.0;
@@ -114,7 +122,7 @@ pub fn grouping_planner(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) {
     let gset_group_clause = gset_data
         .as_ref()
         .map(|gd: &GroupingSetsData| gd.rollups.first().map(|r| r.group_clause.clone()).unwrap_or_default());
-    let qp_extra = QpExtra { active_windows: active_windows.clone(), gset_group_clause };
+    let qp_extra = QpExtra { active_windows: active_windows.clone(), gset_group_clause, setop: setops };
     let mut current_rel = super::query_planner(root, &mut |root| standard_qp_callback(root, &qp_extra));
     let final_target = Rc::new(tlist::create_pathtarget(root, &root.processed_tlist));
     let mut have_postponed_srfs = false;
@@ -622,7 +630,7 @@ fn consider_groupingsets_paths(
 
 /// standard_qp_callback sets the orders that the query's upper processing asks for, and the order that the join of
 /// its relations should give, as Postgres' function of the same name does.
-fn standard_qp_callback(root: &mut PlannerInfo<'_, '_>, qp_extra: &QpExtra) {
+fn standard_qp_callback(root: &mut PlannerInfo<'_, '_>, qp_extra: &QpExtra<'_>) {
     let tlist = root.processed_tlist.clone();
     if let Some(group_clause) = &qp_extra.gset_group_clause {
         match tlist::grouping_is_sortable(group_clause)
@@ -638,16 +646,21 @@ fn standard_qp_callback(root: &mut PlannerInfo<'_, '_>, qp_extra: &QpExtra) {
                 root.num_groupby_pathkeys = 0;
             }
         }
-    } else if !root.processed_group_clause.is_empty() {
-        let clauses = root.processed_group_clause.clone();
-        match make_pathkeys_for_sortclauses(root, &clauses, &tlist) {
-            Some(pathkeys) => {
-                root.num_groupby_pathkeys = pathkeys.len();
-                root.group_pathkeys = pathkeys;
-            }
+    } else if !root.parse.group_clause.is_empty() || root.num_ordered_aggs > 0 {
+        let mut clauses = std::mem::take(&mut root.processed_group_clause);
+        let pathkeys = make_pathkeys_for_sortclauses_extended(root, &mut clauses, &tlist, true, true);
+        root.processed_group_clause = clauses;
+        match pathkeys {
             None => {
                 root.group_pathkeys = Vec::new();
                 root.num_groupby_pathkeys = 0;
+            }
+            Some(pathkeys) => {
+                root.num_groupby_pathkeys = pathkeys.len();
+                root.group_pathkeys = pathkeys;
+                if root.num_ordered_aggs > 0 {
+                    adjust_group_pathkeys_for_groupagg(root);
+                }
             }
         }
     } else {
@@ -658,24 +671,153 @@ fn standard_qp_callback(root: &mut PlannerInfo<'_, '_>, qp_extra: &QpExtra) {
         Some(window) => make_pathkeys_for_window(root, window[0]),
         None => Vec::new(),
     };
-    root.distinct_pathkeys = match root.parse.distinct_clause.is_empty() {
-        true => Vec::new(),
-        false => {
-            let clauses = root.parse.distinct_clause.clone();
-            make_pathkeys_for_sortclauses(root, &clauses, &tlist).unwrap_or_default()
-        }
-    };
+    if root.parse.distinct_clause.is_empty() {
+        root.distinct_pathkeys = Vec::new();
+    } else {
+        let mut clauses = root.parse.distinct_clause.clone();
+        root.distinct_pathkeys =
+            make_pathkeys_for_sortclauses_extended(root, &mut clauses, &tlist, true, false).unwrap_or_default();
+        root.processed_distinct_clause = clauses;
+    }
     let sort_clause = root.parse.sort_clause.clone();
     root.sort_pathkeys = make_pathkeys_for_sortclauses(root, &sort_clause, &tlist).unwrap_or_default();
+    root.setop_pathkeys = match qp_extra.setop {
+        Some(setop) => {
+            let mut group_clauses = generate_setop_child_grouplist(root, setop);
+            let tlist = root.processed_tlist.clone();
+            make_pathkeys_for_sortclauses_extended(root, &mut group_clauses, &tlist, false, false).unwrap_or_default()
+        }
+        None => Vec::new(),
+    };
     root.query_pathkeys = if !root.group_pathkeys.is_empty() {
         root.group_pathkeys.clone()
     } else if !root.window_pathkeys.is_empty() {
         root.window_pathkeys.clone()
     } else if root.distinct_pathkeys.len() > root.sort_pathkeys.len() {
         root.distinct_pathkeys.clone()
-    } else {
+    } else if !root.sort_pathkeys.is_empty() {
         root.sort_pathkeys.clone()
+    } else {
+        root.setop_pathkeys.clone()
     };
+}
+
+/// adjust_group_pathkeys_for_groupagg extends the grouping's order with the order of the most aggregate calls with
+/// ORDER BY or DISTINCT that one order serves, so that a sorted aggregation gives them their input in order, as
+/// Postgres' function of the same name does. A call with a FILTER over anything but columns and constants keeps
+/// sorting its own input.
+fn adjust_group_pathkeys_for_groupagg(root: &mut PlannerInfo<'_, '_>) {
+    if !root.enables.presorted_aggregate {
+        return;
+    }
+    let grouppathkeys = root.group_pathkeys.clone();
+    let mut unprocessed_aggs: Vec<usize> = Vec::new();
+    for (i, call) in root.parse.aggregates.iter().enumerate() {
+        if !call.distinct && call.order.is_empty() {
+            continue;
+        }
+        if call.filter.is_some() {
+            let allow_presort = call.args.iter().all(|arg| match arg {
+                Expr::Column(id) => matches!(root.glob.node(*id), super::nodes::VarNode::Var(_)),
+                Expr::Const(_) => true,
+                _ => false,
+            });
+            if !allow_presort {
+                continue;
+            }
+        }
+        unprocessed_aggs.push(i);
+    }
+    let (mut bestpathkeys, mut bestaggs): (Vec<PkId>, Vec<usize>) = (Vec::new(), Vec::new());
+    while unprocessed_aggs.len() > bestaggs.len() {
+        let mut aggindexes = Vec::new();
+        let mut currpathkeys: Vec<PkId> = Vec::new();
+        for i in unprocessed_aggs.clone() {
+            let call = &root.parse.aggregates[i];
+            let sortlist: Vec<crate::plan::SortKey> = match call.distinct {
+                true => call
+                    .args
+                    .iter()
+                    .map(|arg| crate::plan::SortKey { expr: arg.clone(), descending: false, nulls_first: false })
+                    .collect(),
+                false => call
+                    .order
+                    .iter()
+                    .map(|(expr, descending, nulls_first)| crate::plan::SortKey {
+                        expr: expr.clone(),
+                        descending: *descending,
+                        nulls_first: *nulls_first,
+                    })
+                    .collect(),
+            };
+            let pathkeys = super::pathkeys::make_pathkeys_for_sortclauses(root, &sortlist);
+            let Some(pathkeys) = pathkeys.filter(|pathkeys| !has_volatile_pathkey(root, pathkeys)) else {
+                unprocessed_aggs.retain(|&a| a != i);
+                continue;
+            };
+            if currpathkeys.is_empty() {
+                currpathkeys = match grouppathkeys.is_empty() {
+                    true => pathkeys,
+                    false => super::pathkeys::append_pathkeys(root, grouppathkeys.clone(), &pathkeys),
+                };
+                aggindexes.push(i);
+            } else {
+                let pathkeys = match grouppathkeys.is_empty() {
+                    true => pathkeys,
+                    false => super::pathkeys::append_pathkeys(root, grouppathkeys.clone(), &pathkeys),
+                };
+                match compare_pathkeys(&currpathkeys, &pathkeys) {
+                    PathKeysComparison::Better2 => {
+                        currpathkeys = pathkeys;
+                        aggindexes.push(i);
+                    }
+                    PathKeysComparison::Better1 | PathKeysComparison::Equal => aggindexes.push(i),
+                    PathKeysComparison::Different => {}
+                }
+            }
+        }
+        unprocessed_aggs.retain(|a| !aggindexes.contains(a));
+        if aggindexes.len() > bestaggs.len() {
+            bestaggs = aggindexes;
+            bestpathkeys = currpathkeys;
+        }
+    }
+    if !bestpathkeys.is_empty() {
+        root.group_pathkeys = bestpathkeys;
+    }
+}
+
+/// has_volatile_pathkey reports whether an order has a key over a volatile expression, as Postgres' function of the
+/// same name does.
+fn has_volatile_pathkey(root: &PlannerInfo<'_, '_>, keys: &[PkId]) -> bool {
+    keys.iter().any(|&pk| root.eq_classes[root.canon_pathkeys[pk].pk_eclass].ec_has_volatile)
+}
+
+/// generate_setop_child_grouplist returns the group clauses that a set operation over the query sorts its target
+/// list's columns by, numbering the columns that have no number yet, or none when a column's type differs from the
+/// set operation's, as Postgres' function of the same name does.
+fn generate_setop_child_grouplist(
+    root: &mut PlannerInfo<'_, '_>,
+    op: &super::nodes::SetOperationStmt,
+) -> Vec<SortGroupClause> {
+    let mut grouplist = Vec::new();
+    let mut col_types = op.col_types.iter();
+    for i in 0..root.processed_tlist.len() {
+        if root.processed_tlist[i].resjunk {
+            continue;
+        }
+        let coltype = col_types.next().expect("a column type for each output column");
+        if *coltype != super::nodefuncs::expr_type(root, &root.processed_tlist[i].expr) {
+            return Vec::new();
+        }
+        if root.processed_tlist[i].ressortgroupref == 0 {
+            let max_ref = root.processed_tlist.iter().map(|tle| tle.ressortgroupref).max().unwrap_or(0);
+            root.processed_tlist[i].ressortgroupref = max_ref + 1;
+        }
+        let tle_sort_group_ref = root.processed_tlist[i].ressortgroupref;
+        grouplist.push(SortGroupClause { tle_sort_group_ref, descending: false, nulls_first: false, hashable: true });
+    }
+    grouplist
 }
 
 /// make_pathkeys_for_sortclauses returns the pathkeys of sort or group clauses over a target list, as Postgres'
@@ -685,15 +827,7 @@ pub fn make_pathkeys_for_sortclauses(
     clauses: &[SortGroupClause],
     tlist: &[super::nodes::TargetEntry],
 ) -> Option<Vec<PkId>> {
-    let keys: Vec<crate::plan::SortKey> = clauses
-        .iter()
-        .map(|c| crate::plan::SortKey {
-            expr: tlist::get_sortgroupclause_expr(c, tlist),
-            descending: c.descending,
-            nulls_first: c.nulls_first,
-        })
-        .collect();
-    super::pathkeys::make_pathkeys_for_sortclauses(root, &keys)
+    make_pathkeys_for_sortclauses_extended(root, &mut clauses.to_vec(), tlist, false, false)
 }
 
 /// create_grouping_paths returns the relation of the query's grouped rows, with its paths over the paths of the
@@ -1066,61 +1200,58 @@ fn create_distinct_paths(root: &mut PlannerInfo<'_, '_>, input_rel: usize, targe
 /// same name does.
 fn create_final_distinct_paths(root: &mut PlannerInfo<'_, '_>, input_rel: usize, distinct_rel: usize) {
     let cheapest_input_path = root.rels[input_rel].cheapest_total_path.clone().expect("every relation has a path");
-    let distinct_exprs = tlist::get_sortgrouplist_exprs(&root.parse.distinct_clause, &root.parse.target_list);
-    let num_distinct_rows = match root.parse.group_clause.is_empty()
-        && root.parse.grouping_sets.is_none()
-        && !root.parse.has_aggs
-        && !root.has_having_qual
-    {
-        true => super::selfuncs::estimate_num_groups(root, &distinct_exprs, cheapest_input_path.rows, None, None),
-        false => cheapest_input_path.rows,
-    };
-    let sortable = tlist::grouping_is_sortable(&root.parse.distinct_clause);
-    if sortable {
+    let parse = &root.parse;
+    let num_distinct_rows =
+        match !parse.group_clause.is_empty() || parse.grouping_sets.is_some() || parse.has_aggs || root.has_having_qual
+        {
+            true => cheapest_input_path.rows,
+            false => {
+                let distinct_exprs =
+                    tlist::get_sortgrouplist_exprs(&root.processed_distinct_clause, &parse.target_list);
+                super::selfuncs::estimate_num_groups(root, &distinct_exprs, cheapest_input_path.rows, None, None)
+            }
+        };
+    if tlist::grouping_is_sortable(&root.processed_distinct_clause) {
+        let limittuples = if root.distinct_pathkeys.is_empty() { 1.0 } else { -1.0 };
         let needed_pathkeys =
             match root.parse.has_distinct_on && root.distinct_pathkeys.len() < root.sort_pathkeys.len() {
                 true => root.sort_pathkeys.clone(),
                 false => root.distinct_pathkeys.clone(),
             };
-        let num_keys = root.distinct_pathkeys.len();
         for input_path in root.rels[input_rel].pathlist.clone() {
             for useful_pathkeys in get_useful_pathkeys_for_distinct(root, &needed_pathkeys, &input_path.pathkeys) {
-                let (is_sorted, presorted_keys) = pathkeys_count_contained_in(&useful_pathkeys, &input_path.pathkeys);
-                let sorted_path = if is_sorted {
-                    input_path.clone()
-                } else if !Rc::ptr_eq(&input_path, &cheapest_input_path)
-                    && (presorted_keys == 0 || !root.enables.incremental_sort)
-                {
+                let Some(sorted_path) = make_ordered_path(
+                    root,
+                    distinct_rel,
+                    input_path.clone(),
+                    &cheapest_input_path,
+                    &useful_pathkeys,
+                    limittuples,
+                ) else {
                     continue;
-                } else if presorted_keys == 0 || !root.enables.incremental_sort {
-                    super::pathnode::create_sort_path(root, distinct_rel, input_path.clone(), useful_pathkeys, -1.0)
-                } else {
-                    super::pathnode::create_incremental_sort_path(
-                        root,
-                        distinct_rel,
-                        input_path.clone(),
-                        useful_pathkeys,
-                        presorted_keys,
-                        -1.0,
-                    )
                 };
-                let path = match num_keys == 0 {
+                let path = match root.distinct_pathkeys.is_empty() {
                     true => super::pathnode::create_limit_path_one(root, distinct_rel, sorted_path),
-                    false => super::pathnode::create_upper_unique_path(
-                        root,
-                        distinct_rel,
-                        sorted_path,
-                        num_keys,
-                        num_distinct_rows,
-                    ),
+                    false => {
+                        let num_keys = root.distinct_pathkeys.len();
+                        super::pathnode::create_upper_unique_path(
+                            root,
+                            distinct_rel,
+                            sorted_path,
+                            num_keys,
+                            num_distinct_rows,
+                        )
+                    }
                 };
                 add_path(&mut root.rels[distinct_rel], path);
             }
         }
     }
-    if !root.parse.has_distinct_on && tlist::grouping_is_hashable(&root.parse.distinct_clause) {
+    let allow_hash =
+        root.rels[distinct_rel].pathlist.is_empty() || !(root.parse.has_distinct_on || !root.enables.hashagg);
+    if allow_hash && tlist::grouping_is_hashable(&root.processed_distinct_clause) {
         let target = Rc::new(root.rels[distinct_rel].reltarget.clone());
-        let clauses = root.parse.distinct_clause.clone();
+        let clauses = root.processed_distinct_clause.clone();
         let costs = super::prepagg::AggClauseCosts::default();
         let path = super::pathnode::create_agg_path(
             root,

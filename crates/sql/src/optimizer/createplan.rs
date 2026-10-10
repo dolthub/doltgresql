@@ -304,12 +304,31 @@ fn create_agg_plan(
 ) -> (Plan, Vec<Slot>) {
     let (plan, layout) = create_plan_recurse(root, subpath);
     let groups = group_exprs.iter().map(|g| positional(root, g.clone(), &layout)).collect();
-    let aggregates: Vec<crate::functions::aggregate::AggCall> = match with_aggregates {
+    let mut aggregates: Vec<crate::functions::aggregate::AggCall> = match with_aggregates {
         true => root.parse.aggregates.iter().map(|call| agg_call(root, call.clone(), &layout)).collect(),
         false => Vec::new(),
     };
     let mut agg_layout: Vec<Slot> = group_exprs.iter().map(|g| expr_slot(root, g)).collect();
     agg_layout.extend((0..aggregates.len()).map(|k| Slot::Expr(Expr::AggRef(k))));
+    for var in dependent_vars(root, path, qual, &agg_layout) {
+        let ret = super::nodefuncs::expr_type(root, &var).unwrap_or(crate::oid::UNKNOWN);
+        let index = crate::functions::aggregate::AGGREGATES
+            .iter()
+            .position(|aggregate| aggregate.name == "min")
+            .expect("the min aggregate");
+        let args = vec![positional(root, var.clone(), &layout)];
+        let call = crate::functions::aggregate::AggCall {
+            index,
+            args,
+            distinct: false,
+            filter: None,
+            order: Vec::new(),
+            ret,
+            user: None,
+        };
+        aggregates.push(call);
+        agg_layout.push(slot(root, &var));
+    }
     let grouping_sets = sets.is_some();
     let mut plan = Plan::Aggregate { input: Box::new(plan), groups, aggregates, sets };
     if grouping_sets {
@@ -350,6 +369,25 @@ fn create_groupingsets_plan(
     let group_exprs = tlist_exprs(root, &group_clause);
     let with_aggregates = root.parse.has_aggs;
     create_agg_plan(root, path, &gspath.subpath, group_exprs, &gspath.qual, with_aggregates, Some(sets))
+}
+
+/// dependent_vars returns the Vars that an aggregation's target and conditions read outside its group keys and
+/// aggregates, which a redundant group key that make_pathkeys_for_sortclauses_extended removed leaves: each is one value
+/// in each group, which Postgres' Agg reads from the group's first row and Doltgres' as the group's MIN.
+fn dependent_vars(root: &PlannerInfo<'_, '_>, path: &Path, qual: &[Expr], agg_layout: &[Slot]) -> Vec<Expr> {
+    let mut vars: Vec<Expr> = Vec::new();
+    for e in super::planner::path_exprs(root, path).iter().chain(qual) {
+        if computable(root, e, agg_layout) {
+            continue;
+        }
+        for id in super::var::pull_var_clause(root.glob, e, true) {
+            let var = Expr::Column(id);
+            if !agg_layout.contains(&slot(root, &var)) && !vars.contains(&var) {
+                vars.push(var);
+            }
+        }
+    }
+    vars
 }
 
 /// grouping_mask points the GROUPING calls of an expression over an aggregation's rows at the column of the mask that

@@ -34,7 +34,7 @@ pub fn plan_set_operations(root: &mut PlannerInfo<'_, '_>) -> usize {
     let (setop_rel, top_tlist) = match root.parse.recursion {
         Some(wt_param_id) => generate_recursion_path(root, &topop, wt_param_id),
         None => {
-            let (rel, tlist, _) = recurse_set_operations(root, &SetOpTree::Op(topop.clone()), &topop.col_types);
+            let (rel, tlist, _) = recurse_set_operations(root, &SetOpTree::Op(topop.clone()), None, &topop.col_types);
             (rel, tlist)
         }
     };
@@ -48,6 +48,7 @@ pub fn plan_set_operations(root: &mut PlannerInfo<'_, '_>) -> usize {
 fn recurse_set_operations(
     root: &mut PlannerInfo<'_, '_>,
     set_op: &SetOpTree,
+    parent_op: Option<&SetOperationStmt>,
     col_types: &[Option<u32>],
 ) -> (usize, Vec<TargetEntry>, bool) {
     match set_op {
@@ -59,7 +60,7 @@ fn recurse_set_operations(
             };
             let subquery = (**subquery).clone();
             let tuple_fraction = root.tuple_fraction;
-            if !super::allpaths::plan_subquery_rel(root, rti, subquery, tuple_fraction) {
+            if !super::allpaths::plan_subquery_rel(root, rti, subquery, tuple_fraction, parent_op) {
                 super::joinrels::mark_dummy_rel(root, rti);
             }
             let tlist = generate_setop_tlist(root, col_types, rti);
@@ -84,11 +85,11 @@ fn generate_recursion_path(
     set_op: &SetOperationStmt,
     wt_param_id: usize,
 ) -> (usize, Vec<TargetEntry>) {
-    let (lrel, lpath_tlist, lpath_trivial_tlist) = recurse_set_operations(root, &set_op.larg, &set_op.col_types);
+    let (lrel, lpath_tlist, lpath_trivial_tlist) = recurse_set_operations(root, &set_op.larg, None, &set_op.col_types);
     build_setop_child_paths(root, lrel, lpath_trivial_tlist, &lpath_tlist, &[]);
     let lpath = root.rels[lrel].cheapest_total_path.clone().expect("a path of the non-recursive term");
     root.glob.non_recursive_rows = Some(lpath.rows);
-    let (rrel, rpath_tlist, rpath_trivial_tlist) = recurse_set_operations(root, &set_op.rarg, &set_op.col_types);
+    let (rrel, rpath_tlist, rpath_trivial_tlist) = recurse_set_operations(root, &set_op.rarg, None, &set_op.col_types);
     build_setop_child_paths(root, rrel, rpath_trivial_tlist, &rpath_tlist, &[]);
     let rpath = root.rels[rrel].cheapest_total_path.clone().expect("a path of the recursive term");
     root.glob.non_recursive_rows = None;
@@ -252,8 +253,10 @@ fn generate_union_paths(root: &mut PlannerInfo<'_, '_>, op: &SetOperationStmt) -
 fn generate_nonunion_paths(root: &mut PlannerInfo<'_, '_>, op: &SetOperationStmt) -> (usize, Vec<TargetEntry>) {
     let save_fraction = root.tuple_fraction;
     root.tuple_fraction = 0.0;
-    let (mut lrel, mut lpath_tlist, lpath_trivial_tlist) = recurse_set_operations(root, &op.larg, &op.col_types);
-    let (mut rrel, mut rpath_tlist, rpath_trivial_tlist) = recurse_set_operations(root, &op.rarg, &op.col_types);
+    let (mut lrel, mut lpath_tlist, lpath_trivial_tlist) =
+        recurse_set_operations(root, &op.larg, Some(op), &op.col_types);
+    let (mut rrel, mut rpath_tlist, rpath_trivial_tlist) =
+        recurse_set_operations(root, &op.rarg, Some(op), &op.col_types);
     let tlist = generate_setop_tlist(root, &op.col_types, 0);
     let group_list = generate_setop_grouplist(&tlist);
     let can_sort = super::tlist::grouping_is_sortable(&group_list);
@@ -336,7 +339,8 @@ fn plan_union_children(
             pending_rels.insert(0, op.larg.clone());
             continue;
         }
-        result.push(recurse_set_operations(root, &set_op, &top_union.col_types));
+        let parent_op = (!top_union.all).then_some(top_union);
+        result.push(recurse_set_operations(root, &set_op, parent_op, &top_union.col_types));
     }
     result
 }
