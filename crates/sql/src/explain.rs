@@ -223,6 +223,11 @@ fn columns(plan: &Plan) -> Vec<String> {
             });
             groups.iter().map(|e| expr_text(e, &names)).chain(calls).collect()
         }
+        Plan::Window { input, calls } => {
+            let mut names = columns(input);
+            names.extend(calls.iter().map(|call| format!("{}() OVER (?)", call.name())));
+            names
+        }
         _ => Vec::new(),
     }
 }

@@ -1072,8 +1072,19 @@ fn get_number_of_groups(
 /// window whose sort keys lead another's comes after it.
 fn select_active_windows(root: &PlannerInfo<'_, '_>) -> Vec<Vec<usize>> {
     let mut actives: Vec<(Vec<crate::plan::SortKey>, Vec<usize>)> = Vec::new();
-    for (k, call) in root.parse.window_funcs.iter().enumerate() {
-        let unique_order = window_unique_order(call);
+    let mut appearance = Vec::new();
+    for tle in &root.parse.target_list {
+        tle.expr.visit(&mut |e| {
+            if let Expr::WindowRef(k) = e
+                && !appearance.contains(k)
+            {
+                appearance.push(*k);
+            }
+        });
+    }
+    appearance.extend((0..root.parse.window_funcs.len()).filter(|k| !appearance.contains(k)).collect::<Vec<_>>());
+    for k in appearance {
+        let unique_order = window_unique_order(&root.parse.window_funcs[k]);
         match actives.iter_mut().find(|(order, _)| *order == unique_order) {
             Some((_, members)) => members.push(k),
             None => actives.push((unique_order, vec![k])),
