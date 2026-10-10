@@ -2229,7 +2229,9 @@ impl<'b, 'a> Planner<'b, 'a> {
                 sort_keys.push(SortKey { expr: key.clone(), descending: false, nulls_first: false });
             }
             sort_keys.extend(keys.iter().skip(prefix).cloned());
-            plan = Plan::Sort { input: Box::new(plan), keys: sort_keys };
+            if !(crate::optimizer::enabled() && keys.is_empty()) {
+                plan = Plan::Sort { input: Box::new(plan), keys: sort_keys };
+            }
             plan = Plan::Distinct { input: Box::new(plan), keys: distinct_keys };
         } else {
             if distinct {

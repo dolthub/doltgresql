@@ -308,7 +308,8 @@ fn tlist_exprs(root: &PlannerInfo<'_, '_>, clauses: &[super::nodes::SortGroupCla
 /// create_agg_plan makes the plan of an aggregation or GROUP BY over a path's rows: their group keys and the query's
 /// aggregate calls over them that the rows do not hold already, under the HAVING conditions, computing the path's target, as Postgres' create_agg_plan
 /// and create_group_plan do. Doltgres' aggregation keeps its groups in the order it first meets them, which is the
-/// order of sorted rows.
+/// order of sorted rows. A GROUP BY whose keys are all redundant groups by a constant, so that it still returns no row
+/// for no input, as Postgres' sorted aggregation of no keys does.
 fn create_agg_plan(
     root: &mut PlannerInfo<'_, '_>,
     path: &Path,
@@ -319,6 +320,10 @@ fn create_agg_plan(
     sets: Option<Vec<Vec<usize>>>,
 ) -> (Plan, Vec<Slot>) {
     let (plan, layout) = create_plan_recurse(root, subpath);
+    let group_exprs = match group_exprs.is_empty() && !root.parse.group_clause.is_empty() && sets.is_none() {
+        true => vec![Expr::Const(Value::Bool(true))],
+        false => group_exprs,
+    };
     let groups = group_exprs.iter().map(|g| positional(root, g.clone(), &layout)).collect();
     let computed: Vec<usize> = match with_aggregates {
         true => (0..root.parse.aggregates.len()).filter(|&k| !layout.contains(&Slot::Expr(Expr::AggRef(k)))).collect(),
@@ -461,7 +466,7 @@ fn window_call(
 /// create_plan_recurse makes the plan of a path, returning it with what each column of its rows holds.
 fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Vec<Slot>) {
     let (plan, layout) = match &path.kind {
-        PathKind::SeqScan | PathKind::Lookup(_) => create_scan_plan(root, path.parent),
+        PathKind::SeqScan | PathKind::Lookup(_) => create_scan_plan(root, path.parent, &[]),
         PathKind::SubqueryScan(subplan) => create_subqueryscan_plan(root, path.parent, *subplan),
         PathKind::Result(_) if path.pathtarget.is_some() => {
             let (plan, layout) = create_upper_plan(root, path);
@@ -475,7 +480,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 None => (Plan::OneRow, Vec::new()),
             }
         }
-        PathKind::IndexScan(_) if !path.param.is_empty() => create_scan_plan(root, path.parent),
+        PathKind::IndexScan(_) if !path.param.is_empty() => create_scan_plan(root, path.parent, &[]),
         PathKind::IndexScan(best_path) => create_indexscan_plan(root, path.parent, best_path),
         PathKind::BitmapHeapScan(_) => create_bitmap_scan_plan(root, path, &[]),
         PathKind::BitmapAnd(_) | PathKind::BitmapOr(_) => unreachable!("a bitmap tree is planned by its heap scan"),
@@ -516,6 +521,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
             let lateral = !inner.param.is_empty()
                 && match &inner.kind {
                     PathKind::BitmapHeapScan(_) => true,
+                    PathKind::SeqScan => root.parse.rte(inner.parent).lateral,
                     PathKind::IndexScan(ipath) => {
                         lookup_keys(root, inner.parent, ipath.index, &ipath.indexclauses).is_none()
                     }
@@ -525,6 +531,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 true => {
                     let (plan, layout) = match &inner.kind {
                         PathKind::BitmapHeapScan(_) => create_bitmap_scan_plan(root, inner, &outer_layout),
+                        PathKind::SeqScan => create_scan_plan(root, inner.parent, &outer_layout),
                         _ => create_param_indexscan_plan(root, inner, &outer_layout),
                     };
                     let (mut plan, layout) = add_placeholders(root, inner.parent, plan, layout);
@@ -760,15 +767,22 @@ fn add_placeholders(root: &PlannerInfo<'_, '_>, rel: usize, plan: Plan, mut layo
 /// create_scan_plan makes the plan that reads a base relation's rows and tests its restrictions: a scan of its table
 /// under a filter, the one row of a RESULT relation, or its own plan with the restrictions pushed into it, where an
 /// index of a system catalog may answer them.
-fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<Slot>) {
+fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, outer: &[Slot]) -> (Plan, Vec<Slot>) {
     let restrictinfo = order_qual_clauses(root, extract_actual_clauses(root, &root.rels[rel].baserestrictinfo, false));
+    let lateral = root.parse.rte(rel).lateral;
     match root.parse.rte(rel).kind.clone() {
         RteKind::Relation(plan, _) => {
             let layout = base_slots(rel, plan.width());
             (filtered(root, plan, &restrictinfo, &layout), layout)
         }
         RteKind::Result => (filtered(root, Plan::OneRow, &restrictinfo, &[]), Vec::new()),
-        RteKind::Plan(plan) => {
+        RteKind::Plan(mut plan) => {
+            if lateral {
+                plan.map_exprs(0, &mut |e, depth| match depth {
+                    0 => param_positional(root, e, &[], outer),
+                    _ => e,
+                });
+            }
             let layout = base_slots(rel, plan.width());
             let predicate = restrictinfo
                 .iter()
@@ -803,7 +817,7 @@ fn create_indexscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, best_path: 
     let info = &root.rels[rel].indexlist[best_path.index];
     let (index, scan_clauses) = (info.index, info.indrestrictinfo.clone());
     if index.is_none() && best_path.indexclauses.is_empty() && !best_path.backward {
-        return create_scan_plan(root, rel);
+        return create_scan_plan(root, rel, &[]);
     }
     let indexquals = best_path.indexclauses.iter().flat_map(|iclause| &iclause.indexquals);
     let predicate = indexquals

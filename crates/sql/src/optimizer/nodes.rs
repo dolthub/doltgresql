@@ -336,6 +336,8 @@ pub enum RteKind {
 pub struct RangeTblEntry {
     pub kind: RteKind,
     pub coltypes: Vec<Option<u32>>,
+    /// Whether the entry reads Vars of the entries before it, as a LATERAL item does.
+    pub lateral: bool,
 }
 
 impl RangeTblEntry {
@@ -987,6 +989,8 @@ pub struct RelOptInfo {
     pub non_unique_for_rels: Vec<Relids>,
     /// The relations that read a base relation laterally.
     pub lateral_referencers: Relids,
+    /// The Vars of other relations that a lateral base relation reads.
+    pub lateral_vars: Vec<Expr>,
     /// The equivalence classes that mention the relation.
     pub eclass_indexes: Relids,
     /// The restriction clauses of a base relation.

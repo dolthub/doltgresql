@@ -270,8 +270,8 @@ fn subquery_planner<'r, 'a>(
     setops: Option<&nodes::SetOperationStmt>,
 ) -> PlannerInfo<'r, 'a> {
     prepjointree::pull_up_subqueries(glob, &mut parse);
-    preprocess_query_expressions(ctx, &mut parse);
     let has_having_qual = parse.having_qual.is_some();
+    preprocess_query_expressions(ctx, &mut parse);
     preprocess_having(glob, &mut parse);
     if prepjointree::has_outer_joins(&parse) {
         prepjointree::reduce_outer_joins(glob, &mut parse);
@@ -443,10 +443,77 @@ fn unlateral(right: &Plan) -> Option<Plan> {
     reached.then_some(right)
 }
 
-/// decomposable reports whether a join's inputs can join in any order the planner finds: it is not lateral and not
-/// already planned.
+/// decomposable reports whether a join's inputs can join in any order the planner finds: it is not already planned,
+/// and it is not lateral or its lateral input is a function or VALUES list that reads the left rows in its own
+/// expressions only, in an inner join.
 fn decomposable(join: &Plan) -> bool {
-    matches!(join, Plan::Join { lateral: false, method: JoinMethod::Unplanned, .. })
+    match join {
+        Plan::Join { lateral: false, method: JoinMethod::Unplanned, .. } => true,
+        Plan::Join { right, kind: JoinKind::Inner, lateral: true, method: JoinMethod::Unplanned, .. } => {
+            matches!(**right, Plan::Function { .. } | Plan::RowsFrom { .. } | Plan::Values(_))
+                && lateral_reads_shallow(right)
+        }
+        _ => false,
+    }
+}
+
+/// lateral_reads_shallow reports whether the right input of a lateral join reads the left rows only in its own
+/// expressions, outside its subqueries.
+fn lateral_reads_shallow(right: &Plan) -> bool {
+    let mut shallow = true;
+    let mut right = right.clone();
+    let reached = right.map_exprs(0, &mut |e, depth| {
+        if depth > 0 {
+            let mut read = std::collections::BTreeSet::new();
+            e.visit(&mut |x| {
+                if let Expr::Outer(d, c) = x
+                    && *d == depth + 1
+                {
+                    read.insert(*c);
+                }
+            });
+            shallow &= read.is_empty();
+        }
+        for plan in e.subqueries() {
+            let mut read = std::collections::BTreeSet::new();
+            shallow &= crate::indexscan::outer_reads(plan, depth + 2, &mut read) && read.is_empty();
+        }
+        e
+    });
+    reached && shallow
+}
+
+/// lateral_relation adds a lateral function or VALUES list to a range table, reading the Vars of the left rows' columns
+/// in place of its reads of them, as Postgres' parser builds a LATERAL item's Vars, and returns its reference.
+fn lateral_relation(
+    glob: &mut PlannerGlobal,
+    mut right: Plan,
+    left_columns: &[Expr],
+    rtable: &mut Vec<RangeTblEntry>,
+    output: &mut Vec<Expr>,
+) -> JoinTreeNode {
+    right.map_exprs(0, &mut |e, depth| match depth {
+        0 => read_left_vars(e, left_columns),
+        _ => subselect::decrement_sublevels_up(e, depth),
+    });
+    let coltypes = plan_coltypes(&right);
+    let node = push_relation(glob, rtable, output, RteKind::Plan(right), coltypes);
+    rtable.last_mut().expect("the lateral relation").lateral = true;
+    node
+}
+
+/// read_left_vars rewrites an expression of a lateral input to read the Vars of the left rows' columns in place of
+/// its reads of the left row, and the rows of the enclosing queries one level closer.
+fn read_left_vars(e: Expr, left_columns: &[Expr]) -> Expr {
+    let mut e = match e {
+        Expr::Outer(1, c) => return left_columns[c].clone(),
+        Expr::Outer(d, c) if d > 1 => return Expr::Outer(d - 1, c),
+        other => other.map_children(&mut |x| read_left_vars(x, left_columns)),
+    };
+    for plan in e.subqueries_mut() {
+        plan.map_exprs(0, &mut |x, depth| subselect::decrement_sublevels_up(x, depth + 1));
+    }
+    e
 }
 
 /// query_planner builds the base relations, distributes the join tree's clauses, sets the orders that the upper
@@ -513,6 +580,7 @@ fn query_planner(root: &mut PlannerInfo<'_, '_>, qp_callback: &mut dyn FnMut(&mu
         let final_tlist: Vec<Expr> = root.parse.upper_exprs();
         initsplan::build_base_rel_tlists(root, &final_tlist);
         placeholder::find_placeholders_in_jointree(root);
+        initsplan::find_lateral_references(root);
         let joinlist = initsplan::deconstruct_jointree(root);
         equivclass::reconsider_outer_join_clauses(root);
         equivclass::generate_base_implied_equalities(root);
@@ -525,6 +593,7 @@ fn query_planner(root: &mut PlannerInfo<'_, '_>, qp_callback: &mut dyn FnMut(&mu
             continue;
         }
         placeholder::add_placeholders_to_base_rels(root);
+        initsplan::create_lateral_join_info(root);
         initsplan::match_foreign_keys_to_quals(root);
         orclauses::extract_restriction_or_clauses(root);
         return allpaths::make_one_rel(root, &joinlist);
@@ -559,7 +628,7 @@ pub(super) fn build_jointree(
         other => other,
     };
     match plan {
-        Plan::Join { left, right, kind, condition, .. } if decomposable(&plan) && !kind.tests_matches() => {
+        Plan::Join { left, right, kind, condition, lateral, .. } if decomposable(&plan) && !kind.tests_matches() => {
             let jointype = match kind {
                 JoinKind::Inner => JoinType::Inner,
                 JoinKind::Left => JoinType::Left,
@@ -569,11 +638,14 @@ pub(super) fn build_jointree(
                     unreachable!("semi and anti joins stay planned")
                 }
             };
-            rtable.push(RangeTblEntry { kind: RteKind::Join(jointype), coltypes: Vec::new() });
+            rtable.push(RangeTblEntry { kind: RteKind::Join(jointype), coltypes: Vec::new(), lateral: false });
             let rtindex = rtable.len();
             let (mut left_columns, mut right_columns) = (Vec::new(), Vec::new());
             let mut larg = build_jointree(glob, ctx, *left, rtable, &mut left_columns);
-            let mut rarg = build_jointree(glob, ctx, *right, rtable, &mut right_columns);
+            let mut rarg = match lateral {
+                true => lateral_relation(glob, *right, &left_columns, rtable, &mut right_columns),
+                false => build_jointree(glob, ctx, *right, rtable, &mut right_columns),
+            };
             let both = [left_columns.as_slice(), right_columns.as_slice()].concat();
             let conjuncts = condition.as_ref().map(crate::indexscan::conjuncts).unwrap_or_default();
             let conjuncts: Vec<Expr> = conjuncts.into_iter().cloned().collect();
@@ -702,7 +774,7 @@ pub(super) fn push_relation(
 ) -> JoinTreeNode {
     let varno = rtable.len() + 1;
     output.extend((0..coltypes.len()).map(|attno| glob.var(varno, attno, Relids::new())));
-    rtable.push(RangeTblEntry { kind, coltypes });
+    rtable.push(RangeTblEntry { kind, coltypes, lateral: false });
     JoinTreeNode::Rel(varno)
 }
 

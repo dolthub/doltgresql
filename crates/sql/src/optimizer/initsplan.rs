@@ -130,6 +130,113 @@ pub fn remove_useless_groupby_columns(root: &mut PlannerInfo<'_, '_>) {
     });
 }
 
+/// find_lateral_references records the Vars of other relations that each lateral base relation reads and marks them
+/// as needed by it, as Postgres' function of the same name does.
+pub fn find_lateral_references(root: &mut PlannerInfo<'_, '_>) {
+    for rti in 1..=root.parse.rtable.len() {
+        if root.rels.get(rti).is_none_or(|rel| rel.reloptkind != RelOptKind::BaseRel) {
+            continue;
+        }
+        extract_lateral_references(root, rti);
+    }
+}
+
+/// extract_lateral_references records the Vars of other relations that a lateral base relation reads, in its own
+/// expressions, and marks them as needed by it, as Postgres' function of the same name does.
+fn extract_lateral_references(root: &mut PlannerInfo<'_, '_>, rtindex: usize) {
+    let rte = root.parse.rte(rtindex);
+    let RteKind::Plan(plan) = &rte.kind else { return };
+    if !rte.lateral {
+        return;
+    }
+    let mut vars = Vec::new();
+    let mut plan = plan.clone();
+    plan.map_exprs(0, &mut |e, depth| {
+        if depth == 0 {
+            for id in pull_var_clause(root.glob, &e, true) {
+                if !vars.contains(&id) {
+                    vars.push(id);
+                }
+            }
+        }
+        e
+    });
+    if vars.is_empty() {
+        return;
+    }
+    root.has_lateral_rtes = true;
+    add_vars_to_targetlist(root, &vars, &Relids::singleton(rtindex));
+    root.rels[rtindex].lateral_vars = vars.into_iter().map(Expr::Column).collect();
+}
+
+/// create_lateral_join_info sets the relations that each base relation reads laterally, directly or through the
+/// relations it reads, and those that read it, as Postgres' function of the same name does.
+pub fn create_lateral_join_info(root: &mut PlannerInfo<'_, '_>) {
+    if !root.has_lateral_rtes {
+        return;
+    }
+    let mut found_laterals = false;
+    let base_rels: Vec<usize> = (1..=root.parse.rtable.len())
+        .filter(|&rti| root.rels.get(rti).is_some_and(|rel| rel.reloptkind == RelOptKind::BaseRel && rel.relid == rti))
+        .collect();
+    for &rti in &base_rels {
+        let mut lateral_relids = Relids::new();
+        for e in root.rels[rti].lateral_vars.clone() {
+            let Expr::Column(id) = e else { continue };
+            found_laterals = true;
+            match root.glob.node(id).clone() {
+                VarNode::Var(var) => lateral_relids.add_member(var.varno),
+                VarNode::PlaceHolderVar(phv) => {
+                    let i = find_placeholder_info(root, phv.phid);
+                    lateral_relids.add_members(&root.placeholder_list[i].ph_eval_at);
+                }
+            }
+        }
+        root.rels[rti].direct_lateral_relids = lateral_relids.clone();
+        root.rels[rti].lateral_relids = lateral_relids;
+    }
+    for phinfo in root.placeholder_list.clone() {
+        if phinfo.ph_lateral.is_empty() {
+            continue;
+        }
+        found_laterals = true;
+        let lateral_refs = phinfo.ph_lateral.intersect(&root.all_baserels);
+        match phinfo.ph_eval_at.singleton_member() {
+            Some(varno) => {
+                root.rels[varno].direct_lateral_relids.add_members(&lateral_refs);
+                root.rels[varno].lateral_relids.add_members(&lateral_refs);
+            }
+            None => {
+                for varno in phinfo.ph_eval_at.members().filter(|varno| base_rels.contains(varno)) {
+                    root.rels[varno].lateral_relids.add_members(&lateral_refs);
+                }
+            }
+        }
+    }
+    if !found_laterals {
+        root.has_lateral_rtes = false;
+        return;
+    }
+    for &rti in &base_rels {
+        let outer_lateral_relids = root.rels[rti].lateral_relids.clone();
+        if outer_lateral_relids.is_empty() {
+            continue;
+        }
+        for &rti2 in &base_rels {
+            if root.rels[rti2].lateral_relids.is_member(rti) {
+                root.rels[rti2].lateral_relids.add_members(&outer_lateral_relids);
+            }
+        }
+    }
+    for &rti in &base_rels {
+        for rti2 in root.rels[rti].lateral_relids.clone().members() {
+            if base_rels.contains(&rti2) {
+                root.rels[rti2].lateral_referencers.add_member(rti);
+            }
+        }
+    }
+}
+
 /// build_base_rel_tlists marks the Vars of the query's output as needed by it, as Postgres' function of the same
 /// name does.
 pub fn build_base_rel_tlists(root: &mut PlannerInfo<'_, '_>, final_tlist: &[Expr]) {

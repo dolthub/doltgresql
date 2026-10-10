@@ -142,7 +142,7 @@ pub fn grouping_planner(
     let have_grouping =
         !parse.group_clause.is_empty() || parse.grouping_sets.is_some() || parse.has_aggs || root.has_having_qual;
     let scanjoin_target = match have_grouping {
-        true => Rc::new(make_group_input_target(root, &final_target)),
+        true => Rc::new(make_group_input_target(root, &grouping_target)),
         false => grouping_target.clone(),
     };
     let srfs = !root.parse.target_srfs.is_empty();
@@ -1603,7 +1603,7 @@ fn adjust_paths_for_srfs(root: &mut PlannerInfo<'_, '_>, rel: usize, targets: &m
     let paths = std::mem::take(&mut root.rels[rel].pathlist);
     for path in paths {
         let mut newpath = path;
-        for (target, &srfs) in targets.iter().zip(contain_srfs.iter()).skip(1) {
+        for (target, &srfs) in targets.iter().zip(contain_srfs.iter()) {
             newpath = match srfs {
                 true => super::pathnode::create_set_projection_path(root, rel, newpath, target.clone()),
                 false => super::pathnode::apply_projection_to_path(root, rel, newpath, target.clone()),
