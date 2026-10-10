@@ -22,10 +22,13 @@ use std::rc::Rc;
 
 use super::clauses::is_volatile_node;
 use super::costsize::{Enables, HASH_MEM, TUPLE_HEADER, cost_material, cost_subplan, maxalign};
-use super::nodes::{FromExpr, JoinExpr, JoinTreeNode, JoinType, Path, PlannerGlobal, Query, RangeTblEntry};
+use super::nodes::{
+    FromExpr, JoinExpr, JoinTreeNode, JoinType, Path, PlannerGlobal, Query, RangeTblEntry, TargetEntry,
+};
 use crate::expr::{CmpOp, Expr, SubPlan};
 use crate::plan::Plan;
 use crate::query::Ctx;
+use crate::types::Value;
 
 /// sublink_convertible reports whether pull_up_sublinks turns an `EXISTS` or `IN` subquery of the WHERE clause into
 /// a join.
@@ -37,34 +40,77 @@ pub(crate) fn sublink_convertible(e: &Expr) -> bool {
     }
 }
 
+/// values_convertible reports whether pull_up_sublinks turns an `IN` test of a VALUES list of the WHERE clause into a
+/// comparison with an array, as convert_values_to_any does: the test is one comparison, and the list has two or more
+/// rows of one constant value.
+pub(crate) fn values_convertible(e: &Expr) -> bool {
+    let Expr::AnySubquery(test, plan, false) = e else { return false };
+    let Plan::Values(rows) = &**plan else { return false };
+    matches!(**test, Expr::Compare(..))
+        && rows.len() >= 2
+        && rows.iter().all(|row| row.len() == 1 && crate::indexscan::is_constant(&row[0]) && !volatile(&row[0]))
+}
+
+/// convert_values_to_any returns the comparison with an array of the values of a VALUES list that an `IN` test of
+/// the list is, as Postgres' convert_VALUES_to_ANY does, when values_convertible allows it and the values evaluate.
+fn convert_values_to_any(ctx: &mut Ctx<'_>, e: &Expr) -> Option<Expr> {
+    if !values_convertible(e) {
+        return None;
+    }
+    let Expr::AnySubquery(test, plan, _) = e else { return None };
+    let Plan::Values(rows) = &**plan else { return None };
+    let values = rows.iter().map(|row| row[0].eval(ctx, &[]).ok()).collect::<Option<Vec<Value>>>()?;
+    let element = values.iter().find_map(super::nodefuncs::value_type)?;
+    let array = Value::Array(Box::new(crate::array::Array::one_dimensional(element, values)));
+    Some(Expr::AnyArray(test.clone(), Box::new(Expr::Const(array)), false))
+}
+
 /// make_subplan returns the SubPlan of a subquery expression over a row of `width` columns, whose subquery is the
 /// binder's plan, planned already or not, as Postgres' function of the same name does: the subquery's reads of the
 /// enclosing row become reads of the SubPlan's arguments, and an unplanned subquery is planned for the share of its
-/// rows that the expression reads.
+/// rows that the expression reads. A correlated EXISTS whose conditions convert_EXISTS_to_ANY turns into an IN test
+/// becomes an AlternativeSubPlan of both, which the plan around it picks from.
 pub(crate) fn make_subplan(ctx: &mut Ctx<'_>, mut link: Expr, planned: bool, width: usize) -> Expr {
     let plan = link.subquery_mut().expect("a subquery expression");
     let args = replace_correlation_vars(plan, width);
     let plan = std::mem::replace(plan, Plan::OneRow);
+    if planned {
+        return Expr::SubPlan(Box::new(build_subplan(ctx, link, plan, None, args)));
+    }
     let tuple_fraction = match &link {
         Expr::Exists(_) => 1.0,
         Expr::AnySubquery(..) => 0.5,
         _ => 0.0,
     };
-    let (plan, path) = match planned {
-        true => (plan, None),
-        false => {
-            let (plan, path) = super::plan_subselect(ctx, plan, matches!(link, Expr::Exists(_)), tuple_fraction);
-            (plan, Some(path))
-        }
+    let orig_subquery = matches!(link, Expr::Exists(_)).then(|| plan.clone());
+    let mut glob = PlannerGlobal::default();
+    let mut subquery = super::query::unbind(&mut glob, ctx, plan);
+    let simple_exists = orig_subquery.is_some() && simplify_exists_query(&mut subquery);
+    let (plan, path) = super::plan_subselect(ctx, &mut glob, subquery, tuple_fraction);
+    let result = build_subplan(ctx, link, plan, Some(path), args.clone());
+    let Some(orig_subquery) = orig_subquery.filter(|_| simple_exists && !result.init_plan) else {
+        return Expr::SubPlan(Box::new(result));
     };
-    build_subplan(ctx, link, plan, path, args)
+    let mut glob = PlannerGlobal::default();
+    let mut subquery = super::query::unbind(&mut glob, ctx, orig_subquery);
+    simplify_exists_query(&mut subquery);
+    let Some((subquery, testexpr)) = convert_exists_to_any(&glob, subquery, &args) else {
+        return Expr::SubPlan(Box::new(result));
+    };
+    let (plan, path) = super::plan_subselect(ctx, &mut glob, subquery, 0.0);
+    if !subpath_is_hashable(&path) {
+        return Expr::SubPlan(Box::new(result));
+    }
+    let link = Expr::AnySubquery(Box::new(testexpr), Box::new(Plan::OneRow), false);
+    let hashplan = build_subplan(ctx, link, plan, Some(path), Vec::new());
+    Expr::AlternativeSubPlan(vec![result, hashplan])
 }
 
 /// build_subplan makes the SubPlan of a subquery expression from its subquery's plan, the path the planner chose for
 /// it, and its arguments, as Postgres' function of the same name does: a subquery that reads no column of the
 /// enclosing row is an initplan unless it is an ANY or ALL test, an uncorrelated IN test hashes the subquery's rows
 /// when they fit in memory, and the rows of a subquery that reads no enclosing row are kept for every call.
-fn build_subplan(ctx: &Ctx<'_>, mut link: Expr, plan: Plan, mut path: Option<Rc<Path>>, args: Vec<Expr>) -> Expr {
+fn build_subplan(ctx: &Ctx<'_>, mut link: Expr, plan: Plan, mut path: Option<Rc<Path>>, args: Vec<Expr>) -> SubPlan {
     let init_plan = args.is_empty() && !matches!(link, Expr::AnySubquery(..));
     let use_hash_table = match (&link, &path) {
         (Expr::AnySubquery(test, _, false), Some(path)) => {
@@ -87,7 +133,97 @@ fn build_subplan(ctx: &Ctx<'_>, mut link: Expr, plan: Plan, mut path: Option<Rc<
     if let Some(path) = &path {
         cost_subplan(&mut subplan, path, use_hash_table, materializes);
     }
-    Expr::SubPlan(Box::new(subplan))
+    subplan
+}
+
+/// convert_exists_to_any returns the subquery and test of the IN test that an EXISTS subquery is, when the conditions
+/// of its WHERE clause that read the enclosing row are equalities of an expression of the enclosing row and one of
+/// the subquery's own rows, as Postgres' convert_EXISTS_to_ANY finds them: the subquery returns the expressions of its
+/// own rows, without those conditions, and the test compares them to the expressions of the enclosing row, which read
+/// the SubPlan's arguments `args` as the enclosing row's columns.
+fn convert_exists_to_any(glob: &PlannerGlobal, mut subselect: Query, args: &[Expr]) -> Option<(Query, Expr)> {
+    let where_clause = std::mem::take(&mut subselect.jointree.quals);
+    if query_reads_enclosing(&subselect)
+        || where_clause.iter().any(|c| super::clauses::contain_volatile_functions(glob, c))
+    {
+        return None;
+    }
+    let (mut leftargs, mut rightargs, mut new_where) = (Vec::new(), Vec::new(), Vec::new());
+    for clause in where_clause {
+        match clause {
+            Expr::Compare(op, left, right) if hash_ok_operator(op) && reads_enclosing(&left) => {
+                leftargs.push(*left);
+                rightargs.push(*right);
+            }
+            Expr::Compare(op, left, right) if hash_ok_operator(op) && reads_enclosing(&right) => {
+                leftargs.push(*right);
+                rightargs.push(*left);
+            }
+            other => new_where.push(other),
+        }
+    }
+    if leftargs.is_empty() || new_where.iter().chain(&rightargs).any(reads_enclosing) {
+        return None;
+    }
+    let mut reads_own = false;
+    leftargs.iter().for_each(|e| e.visit(&mut |x| reads_own |= matches!(x, Expr::Column(_))));
+    if reads_own || leftargs.iter().any(super::clauses::contain_subplans) {
+        return None;
+    }
+    subselect.jointree.quals = new_where;
+    let n = rightargs.len();
+    subselect.target_list =
+        rightargs.into_iter().map(|expr| TargetEntry { expr, resjunk: false, ressortgroupref: 0 }).collect();
+    let testlist = leftargs.into_iter().enumerate().map(|(i, left)| {
+        let value = match n {
+            1 => Expr::SubqueryValue,
+            _ => Expr::Field(Box::new(Expr::SubqueryValue), i),
+        };
+        Expr::Compare(CmpOp::Eq, Box::new(increment_var_sublevels_up(left, args)), Box::new(value))
+    });
+    let testexpr = testlist.reduce(|a, b| Expr::And(Box::new(a), Box::new(b))).expect("a hash clause");
+    Some((subselect, testexpr))
+}
+
+/// increment_var_sublevels_up rewrites an expression of a subquery that reads the enclosing row through the
+/// SubPlan's arguments into one of the enclosing query, as Postgres' IncrementVarSublevelsUp moves it up a level.
+fn increment_var_sublevels_up(e: Expr, args: &[Expr]) -> Expr {
+    match e {
+        Expr::Outer(1, n) => args[n].clone(),
+        Expr::Outer(d, i) => Expr::Outer(d - 1, i),
+        other => other.map_children(&mut |c| increment_var_sublevels_up(c, args)),
+    }
+}
+
+/// reads_enclosing reports whether an expression of a subquery reads its enclosing row, as Postgres'
+/// contain_vars_of_level does for level 1.
+fn reads_enclosing(e: &Expr) -> bool {
+    let mut reads = false;
+    e.visit(&mut |x| match x {
+        Expr::Outer(1, _) => reads = true,
+        x => {
+            for plan in x.subqueries() {
+                let mut read = BTreeSet::new();
+                reads |= !crate::indexscan::outer_reads(plan, 2, &mut read) || !read.is_empty();
+            }
+        }
+    });
+    reads
+}
+
+/// query_reads_enclosing reports whether anything of a query reads its enclosing row: its range table's inputs,
+/// join conditions, and upper clauses.
+fn query_reads_enclosing(query: &Query) -> bool {
+    let mut reads = query.upper_exprs().iter().any(reads_enclosing);
+    query.jointree.fromlist.iter().for_each(|node| jointree_quals(node, &mut |q| reads |= reads_enclosing(q)));
+    reads
+        || query.rtable.iter().any(|rte| match &rte.kind {
+            super::nodes::RteKind::Subquery(_, plan) | super::nodes::RteKind::Plan(plan) => {
+                let mut read = BTreeSet::new();
+                !crate::indexscan::outer_reads(plan, 1, &mut read) || !read.is_empty()
+            }
+            _ => false,
+        })
 }
 
 /// exec_materializes_output reports whether a plan's top node keeps its rows for reading again, as Postgres'
@@ -161,7 +297,7 @@ fn assign_params(e: Expr, nesting: usize, params: &[usize]) -> Expr {
         }
         other => other.map_children(&mut |x| assign_params(x, nesting, params)),
     };
-    if let Some(plan) = e.subquery_mut() {
+    for plan in e.subqueries_mut() {
         plan.map_exprs(0, &mut |x, depth| assign_params(x, nesting + 1 + depth, params));
     }
     e
@@ -219,18 +355,13 @@ pub fn simplify_exists_query(query: &mut Query) -> bool {
 /// final relation, as Postgres' SS_charge_for_initplans does.
 pub fn ss_charge_for_initplans(root: &mut super::PlannerInfo<'_, '_>, final_rel: usize) {
     let mut initplan_cost = 0.0;
-    let mut add = |e: &Expr| {
-        e.visit(&mut |x| {
-            if let Expr::SubPlan(subplan) = x
-                && subplan.init_plan
-            {
-                initplan_cost += subplan.startup_cost + subplan.per_call_cost;
-            }
-        })
-    };
-    root.parse.upper_exprs_mut().into_iter().for_each(|e| add(e));
-    root.parse.jointree.fromlist.iter().for_each(|node| jointree_quals(node, &mut add));
-    root.parse.jointree.quals.iter().for_each(&mut add);
+    query_exprs(&mut root.parse, &mut |x| {
+        if let Expr::SubPlan(subplan) = x
+            && subplan.init_plan
+        {
+            initplan_cost += subplan.startup_cost + subplan.per_call_cost;
+        }
+    });
     if initplan_cost == 0.0 {
         return;
     }
@@ -240,6 +371,14 @@ pub fn ss_charge_for_initplans(root: &mut super::PlannerInfo<'_, '_>, final_rel:
         charged.total_cost += initplan_cost;
         *path = Rc::new(charged);
     }
+}
+
+/// query_exprs calls a function with every expression of a query's level and each of their descendants, outside
+/// subquery plans.
+pub fn query_exprs(query: &mut Query, f: &mut dyn FnMut(&Expr)) {
+    query.upper_exprs_mut().into_iter().for_each(|e| e.visit(f));
+    query.jointree.fromlist.iter().for_each(|node| jointree_quals(node, &mut |q| q.visit(f)));
+    query.jointree.quals.iter().for_each(|q| q.visit(f));
 }
 
 /// jointree_quals calls a function with each qual of a join tree.
@@ -260,8 +399,9 @@ fn jointree_quals(node: &JoinTreeNode, f: &mut dyn FnMut(&Expr)) {
 }
 
 /// pull_up_sublinks turns each of the WHERE clause's conditions that pull_up_sublinks can into a semi or anti join of
-/// the join tree with the subquery's rows, returning the new join tree and the other conditions, as Postgres'
-/// function of the same name does for the WHERE clause's top-level conditions.
+/// the join tree with the subquery's rows, or into a comparison with an array of a VALUES list's values, returning
+/// the new join tree and the other conditions, as Postgres' function of the same name does for the WHERE clause's
+/// top-level conditions.
 pub fn pull_up_sublinks(
     glob: &mut PlannerGlobal,
     ctx: &mut Ctx<'_>,
@@ -272,6 +412,10 @@ pub fn pull_up_sublinks(
 ) -> (JoinTreeNode, Vec<Expr>) {
     let mut remaining = Vec::new();
     for qual in quals {
+        if let Some(saop) = convert_values_to_any(ctx, &qual) {
+            remaining.push(saop);
+            continue;
+        }
         let converted = match &qual {
             Expr::Exists(plan) => convert_exists_sublink_to_join(glob, ctx, plan, false, rtable, output),
             Expr::Not(inner) => match &**inner {

@@ -138,7 +138,12 @@ pub fn cost_qual_eval_node(e: &Expr) -> QualCost {
 /// cost_qual_eval_walker adds the cost of evaluating an expression to a total, as Postgres' function of the same name
 /// does: a subplan costs what cost_subplan found, and an initplan costs nothing here, since the query pays for it once.
 fn cost_qual_eval_walker(e: &Expr, total: &mut QualCost) {
-    if let Expr::SubPlan(subplan) = e {
+    let subplan = match e {
+        Expr::SubPlan(subplan) => Some(&**subplan),
+        Expr::AlternativeSubPlan(subplans) => subplans.first(),
+        _ => None,
+    };
+    if let Some(subplan) = subplan {
         if !subplan.init_plan {
             total.startup += subplan.startup_cost;
             total.per_tuple += subplan.per_call_cost;

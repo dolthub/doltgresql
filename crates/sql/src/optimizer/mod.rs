@@ -50,7 +50,7 @@ mod var;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub(crate) use subselect::{make_subplan, sublink_convertible};
+pub(crate) use subselect::{make_subplan, sublink_convertible, values_convertible};
 
 use nodes::{
     EquivalenceClass, EquivalenceMember, FromExpr, JoinDomain, JoinExpr, JoinTreeNode, JoinType, OuterJoinClauseInfo,
@@ -128,6 +128,8 @@ pub struct PlannerInfo<'r, 'a> {
     pub sort_pathkeys: Vec<PkId>,
     /// How many aggregate calls take ordered or DISTINCT input.
     pub num_ordered_aggs: usize,
+    /// Whether the query's expressions hold AlternativeSubPlans, as Postgres' hasAlternativeSubPlans records.
+    pub has_alternative_subplans: bool,
 }
 
 impl PlannerInfo<'_, '_> {
@@ -156,14 +158,14 @@ pub(crate) fn planner(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
 }
 
 /// plan_subselect plans the subquery of a subquery expression for the share of its rows that the expression reads,
-/// simplifying an EXISTS subquery first, and returns its plan and path, as Postgres' make_subplan plans it.
-fn plan_subselect(ctx: &mut Ctx<'_>, plan: Plan, exists: bool, tuple_fraction: f64) -> (Plan, Rc<nodes::Path>) {
-    let mut glob = PlannerGlobal::default();
-    let mut parse = query::unbind(&mut glob, ctx, plan);
-    if exists {
-        subselect::simplify_exists_query(&mut parse);
-    }
-    let (plan, path) = subquery_planner(ctx, &mut glob, parse, tuple_fraction);
+/// and returns its plan and path, as Postgres' make_subplan plans it.
+fn plan_subselect(
+    ctx: &mut Ctx<'_>,
+    glob: &mut PlannerGlobal,
+    parse: Query,
+    tuple_fraction: f64,
+) -> (Plan, Rc<nodes::Path>) {
+    let (plan, path) = subquery_planner(ctx, glob, parse, tuple_fraction);
     let mut plan = crate::joins::plan_joins(ctx, plan);
     crate::indexscan::prune(&mut plan);
     (plan, path)
@@ -239,7 +241,11 @@ fn subquery_planner(
         distinct_pathkeys: Vec::new(),
         sort_pathkeys: Vec::new(),
         num_ordered_aggs: 0,
+        has_alternative_subplans: false,
     };
+    subselect::query_exprs(&mut root.parse, &mut |e| {
+        root.has_alternative_subplans |= matches!(e, Expr::AlternativeSubPlan(_))
+    });
     root.num_ordered_aggs = prepagg::count_ordered_aggs(&root);
     planner::grouping_planner(&mut root, tuple_fraction);
     let final_rel = relnode::fetch_upper_rel(&mut root, nodes::UpperRelationKind::Final);

@@ -285,6 +285,7 @@ pub(crate) fn is_constant(e: &Expr) -> bool {
                 | Expr::ArraySubquery(..)
                 | Expr::AnySubquery(..)
                 | Expr::SubPlan(_)
+                | Expr::AlternativeSubPlan(_)
                 | Expr::SubqueryValue
                 | Expr::InputColumn(_)
                 | Expr::AggRef(_)
@@ -2271,8 +2272,10 @@ pub(crate) fn columns_read<'e>(exprs: impl IntoIterator<Item = &'e Expr>) -> Opt
             Expr::Exists(plan) | Expr::Scalar(plan) | Expr::ArraySubquery(plan, _) | Expr::AnySubquery(_, plan, _) => {
                 known &= outer_reads(plan, 1, &mut columns);
             }
-            Expr::SubPlan(subplan) => {
-                known &= outer_reads(subplan.link.subquery().expect("a subquery"), 1, &mut BTreeSet::new())
+            Expr::SubPlan(_) | Expr::AlternativeSubPlan(_) => {
+                for plan in e.subqueries() {
+                    known &= outer_reads(plan, 1, &mut BTreeSet::new());
+                }
             }
             Expr::InputColumn(_) | Expr::AggRef(_) | Expr::Default(_) => known = false,
             _ => {}
@@ -2291,8 +2294,11 @@ pub(crate) fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) 
                 Expr::Outer(d, i) if *d == depth => {
                     out.insert(*i);
                 }
-                e if e.subquery().is_some() => known &= outer_reads(e.subquery().expect("a subquery"), depth + 1, out),
-                _ => {}
+                e => {
+                    for plan in e.subqueries() {
+                        known &= outer_reads(plan, depth + 1, out);
+                    }
+                }
             });
         }
     };

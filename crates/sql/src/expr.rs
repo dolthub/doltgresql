@@ -142,6 +142,21 @@ pub struct SubPlan {
     pub per_call_cost: f64,
 }
 
+impl SubPlan {
+    /// eval evaluates the SubPlan for a row, running its subquery with its arguments' values as the enclosing row.
+    fn eval(&self, ctx: &mut Ctx<'_>, row: &[Value]) -> Result<Value> {
+        let args = self.args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<Value>>>()?;
+        self.link.eval_sublink(ctx, row, &args)
+    }
+
+    /// map_children replaces the SubPlan's arguments and its test's children with what a function makes of them.
+    fn map_children(&mut self, f: &mut dyn FnMut(Expr) -> Expr) {
+        self.args = std::mem::take(&mut self.args).into_iter().map(&mut *f).collect();
+        let link = std::mem::replace(&mut self.link, Expr::SubqueryValue);
+        self.link = link.map_children(f);
+    }
+}
+
 /// Expr is a bound expression.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -206,6 +221,8 @@ pub enum Expr {
     AnySubquery(Box<Expr>, Box<Plan>, bool),
     /// A subquery expression that the planner planned.
     SubPlan(Box<SubPlan>),
+    /// SubPlans that compute the same value, of which the planner picks the cheapest for how often it runs.
+    AlternativeSubPlan(Vec<SubPlan>),
     /// The subquery value a comparison of AnySubquery tests.
     SubqueryValue,
     /// The default of a column of the table being written, by position.
@@ -1834,10 +1851,9 @@ impl<'b, 'a> Binder<'b, 'a> {
             query.plan = crate::plan::share_subquery(query.plan, inner >= self.scopes.len());
         }
         let (bound, ty) = self.sublink_test(link, kind, query)?;
-        let joined = deferred
-            && simple
-            && self.ctx.deferred_sublinks.contains(&link.location)
-            && crate::optimizer::sublink_convertible(&bound);
+        let joined = self.ctx.deferred_sublinks.contains(&link.location)
+            && ((deferred && simple && crate::optimizer::sublink_convertible(&bound))
+                || crate::optimizer::values_convertible(&bound));
         match crate::optimizer::enabled() && !joined {
             true => Ok((crate::optimizer::make_subplan(self.ctx, bound, !deferred, self.width()), ty)),
             false => Ok((bound, ty)),
@@ -3652,14 +3668,28 @@ impl Expr {
             Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) => {
                 self.eval_sublink(ctx, row, row)?
             }
-            Expr::SubPlan(subplan) => {
-                let args = subplan.args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<Value>>>()?;
-                subplan.link.eval_sublink(ctx, row, &args)?
-            }
+            Expr::SubPlan(subplan) => subplan.eval(ctx, row)?,
+            Expr::AlternativeSubPlan(subplans) => subplans[0].eval(ctx, row)?,
         })
     }
 
-    /// subquery returns the plan of a subquery expression, planned or not.
+    /// subqueries returns the plans of a subquery expression, planned or not.
+    pub(crate) fn subqueries(&self) -> Vec<&Plan> {
+        match self {
+            Expr::AlternativeSubPlan(subplans) => subplans.iter().filter_map(|s| s.link.subquery()).collect(),
+            other => other.subquery().into_iter().collect(),
+        }
+    }
+
+    /// subqueries_mut is subqueries for changing the plans.
+    pub(crate) fn subqueries_mut(&mut self) -> Vec<&mut Plan> {
+        match self {
+            Expr::AlternativeSubPlan(subplans) => subplans.iter_mut().filter_map(|s| s.link.subquery_mut()).collect(),
+            other => other.subquery_mut().into_iter().collect(),
+        }
+    }
+
+    /// subquery returns the plan of a subquery expression or SubPlan.
     pub(crate) fn subquery(&self) -> Option<&Plan> {
         match self {
             Expr::Exists(p) | Expr::Scalar(p) | Expr::ArraySubquery(p, _) | Expr::AnySubquery(_, p, _) => Some(p),
@@ -3860,10 +3890,12 @@ impl Expr {
             Expr::BoolTest(e, v, n) => Expr::BoolTest(b(e), v, n),
             Expr::AnySubquery(c, p, all) => Expr::AnySubquery(b(c), p, all),
             Expr::SubPlan(mut subplan) => {
-                subplan.args = std::mem::take(&mut subplan.args).into_iter().map(&mut *f).collect();
-                let link = std::mem::replace(&mut subplan.link, Expr::SubqueryValue);
-                subplan.link = link.map_children(&mut *f);
+                subplan.map_children(f);
                 Expr::SubPlan(subplan)
+            }
+            Expr::AlternativeSubPlan(mut subplans) => {
+                subplans.iter_mut().for_each(|s| s.map_children(f));
+                Expr::AlternativeSubPlan(subplans)
             }
             Expr::DateTime(op, l, r) => {
                 let l = b(l);
@@ -3983,6 +4015,12 @@ impl Expr {
                 subplan.args.iter().for_each(&mut *f);
                 subplan.link.visit_children(f);
             }
+            Expr::AlternativeSubPlan(subplans) => {
+                for subplan in subplans {
+                    subplan.args.iter().for_each(&mut *f);
+                    subplan.link.visit_children(&mut *f);
+                }
+            }
             _ => {}
         }
     }
@@ -4043,10 +4081,7 @@ impl Expr {
                 otherwise.visit(f);
             }
             Expr::AnySubquery(c, ..) => c.visit(f),
-            Expr::SubPlan(subplan) => {
-                subplan.args.iter().for_each(|a| a.visit(f));
-                subplan.link.visit_children(&mut |c| c.visit(f));
-            }
+            Expr::SubPlan(_) | Expr::AlternativeSubPlan(_) => self.visit_children(&mut |c| c.visit(f)),
             _ => {}
         }
     }

@@ -51,6 +51,7 @@ pub fn query_expr_type(glob: &super::nodes::PlannerGlobal, parse: &Query, e: &Ex
         | Expr::AnySubquery(..)
         | Expr::AnyArray(..) => Some(BOOLOID),
         Expr::SubPlan(subplan) => query_expr_type(glob, parse, &subplan.link),
+        Expr::AlternativeSubPlan(subplans) => query_expr_type(glob, parse, &subplans[0].link),
         Expr::Func(f, _) => known_type(crate::functions::function(*f).ret),
         Expr::AggRef(k) => parse.aggregates.get(*k).map(|call| call.ret),
         Expr::WindowRef(k) => parse.window_funcs.get(*k).map(|call| call.ret.oid),

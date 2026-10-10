@@ -818,16 +818,18 @@ fn lowest_level(e: &Expr, nesting: i64) -> Option<i64> {
     e.visit(&mut |x| match x {
         Expr::Column(_) => lowest = lowest.min(nesting),
         Expr::Outer(d, _) => lowest = lowest.min(nesting - *d as i64),
-        x if x.subquery().is_some() => {
-            let mut plan = x.subquery().expect("a subquery").clone();
-            let reachable = plan.map_exprs(0, &mut |e, depth| {
-                match lowest_level(&e, nesting + 1 + depth as i64) {
-                    Some(level) => lowest = lowest.min(level),
-                    None => known = false,
-                }
-                e
-            });
-            known &= reachable;
+        x if !x.subqueries().is_empty() => {
+            for plan in x.subqueries() {
+                let mut plan = plan.clone();
+                let reachable = plan.map_exprs(0, &mut |e, depth| {
+                    match lowest_level(&e, nesting + 1 + depth as i64) {
+                        Some(level) => lowest = lowest.min(level),
+                        None => known = false,
+                    }
+                    e
+                });
+                known &= reachable;
+            }
         }
         _ => {}
     });

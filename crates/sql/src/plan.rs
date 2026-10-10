@@ -3314,9 +3314,12 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
         c.visit(&mut |e| match e {
             Expr::Column(i) if *i >= width => reads_right = true,
             Expr::Column(_) => reads_left = true,
-            Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) | Expr::SubPlan(_) => {
-                subquery = true
-            }
+            Expr::Exists(_)
+            | Expr::Scalar(_)
+            | Expr::ArraySubquery(..)
+            | Expr::AnySubquery(..)
+            | Expr::SubPlan(_)
+            | Expr::AlternativeSubPlan(_) => subquery = true,
             _ => {}
         });
         match (reads_left, reads_right, subquery) {
@@ -3500,9 +3503,12 @@ pub(crate) fn join_keys(condition: &Expr, width: usize) -> (Vec<Expr>, Vec<Expr>
         e.visit(&mut |e| match e {
             Expr::Column(i) if *i >= width => right = true,
             Expr::Column(_) => left = true,
-            Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) | Expr::SubPlan(_) => {
-                other = true
-            }
+            Expr::Exists(_)
+            | Expr::Scalar(_)
+            | Expr::ArraySubquery(..)
+            | Expr::AnySubquery(..)
+            | Expr::SubPlan(_)
+            | Expr::AlternativeSubPlan(_) => other = true,
             _ => {}
         });
         match (left, right, other) {
@@ -3552,7 +3558,8 @@ pub(crate) fn index_parts(ctx: &mut Ctx<'_>, predicate: &Expr) -> (Vec<Expr>, Ro
             | Expr::Scalar(_)
             | Expr::ArraySubquery(..)
             | Expr::AnySubquery(..)
-            | Expr::SubPlan(_) => other = true,
+            | Expr::SubPlan(_)
+            | Expr::AlternativeSubPlan(_) => other = true,
             _ => {}
         });
         (column, other)
@@ -3652,7 +3659,7 @@ pub(crate) fn share_scans(plan: Plan) -> Plan {
 pub(crate) fn has_subquery(e: &Expr) -> bool {
     let mut found = false;
     e.visit(&mut |e| {
-        if e.subquery().is_some() {
+        if !e.subqueries().is_empty() {
             found = true;
         }
     });

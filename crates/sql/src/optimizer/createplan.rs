@@ -50,7 +50,7 @@ pub fn create_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> Plan {
     if exprs.len() == layout.len() && exprs.iter().enumerate().all(|(i, e)| *e == Expr::Column(i)) {
         return plan;
     }
-    Plan::Project { input: Box::new(plan), exprs }
+    fix_alternative_subplans(root, Plan::Project { input: Box::new(plan), exprs }, path.rows)
 }
 
 /// target_slots returns the slots of the expressions of a target.
@@ -294,7 +294,10 @@ fn window_call(
 fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Vec<Slot>) {
     let (plan, layout) = match &path.kind {
         PathKind::SeqScan | PathKind::Lookup(_) => create_scan_plan(root, path.parent),
-        PathKind::Result(_) if path.pathtarget.is_some() => return create_upper_plan(root, path),
+        PathKind::Result(_) if path.pathtarget.is_some() => {
+            let (plan, layout) = create_upper_plan(root, path);
+            return (fix_alternative_subplans(root, plan, path.rows), layout);
+        }
         PathKind::Result(quals) => {
             let quals = quals.iter().map(|q| positional(root, q.clone(), &[]));
             let predicate = quals.reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
@@ -426,7 +429,42 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
             (filtered(root, plan, &otherquals, &layout), layout)
         }
     };
-    add_placeholders(root, path.parent, plan, layout)
+    let (plan, layout) = add_placeholders(root, path.parent, plan, layout);
+    (fix_alternative_subplans(root, plan, path.rows), layout)
+}
+
+/// fix_alternative_subplans replaces each AlternativeSubPlan of a path's plan by the SubPlan that costs least for the
+/// rows the plan returns, as Postgres' set_plan_refs does, which runs a target list once for each row and a condition
+/// twice.
+fn fix_alternative_subplans(root: &PlannerInfo<'_, '_>, mut plan: Plan, rows: f64) -> Plan {
+    if !root.has_alternative_subplans {
+        return plan;
+    }
+    match &mut plan {
+        Plan::Project { input, exprs } => {
+            for e in exprs.iter_mut() {
+                *e = fix_alternative_subplan(std::mem::replace(e, Expr::SubqueryValue), rows);
+            }
+            input.map_exprs(0, &mut |e, _| fix_alternative_subplan(e, rows * 2.0));
+        }
+        other => {
+            other.map_exprs(0, &mut |e, _| fix_alternative_subplan(e, rows * 2.0));
+        }
+    }
+    plan
+}
+
+/// fix_alternative_subplan replaces each AlternativeSubPlan of an expression by the SubPlan that costs least for an
+/// estimated number of runs, the later one of equal costs, as Postgres' function of the same name does.
+fn fix_alternative_subplan(e: Expr, num_exec: f64) -> Expr {
+    match e {
+        Expr::AlternativeSubPlan(subplans) => {
+            let cost = |s: &crate::expr::SubPlan| s.startup_cost + num_exec * s.per_call_cost;
+            let best = subplans.into_iter().reduce(|best, cur| if cost(&cur) <= cost(&best) { cur } else { best });
+            Expr::SubPlan(Box::new(best.expect("an alternative")))
+        }
+        other => other.map_children(&mut |c| fix_alternative_subplan(c, num_exec)),
+    }
 }
 
 /// add_placeholders computes the PlaceHolderVars of a relation's target that its plan's rows do not hold yet, after
@@ -747,7 +785,7 @@ fn read_lateral_row(e: Expr, depth: usize) -> Expr {
         Expr::Outer(d, i) if d > depth => return Expr::Outer(d + 1, i),
         other => other.map_children(&mut |c| read_lateral_row(c, depth)),
     };
-    if let Some(p) = e.subquery_mut() {
+    for p in e.subqueries_mut() {
         p.map_exprs(0, &mut |x, d| read_lateral_row(x, depth + 1 + d));
     }
     e
