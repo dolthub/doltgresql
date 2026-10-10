@@ -117,7 +117,7 @@ pub fn clamp_row_est(nrows: f64) -> f64 {
     } else if nrows <= 1.0 {
         1.0
     } else {
-        nrows.round()
+        nrows.round_ties_even()
     }
 }
 
@@ -277,9 +277,9 @@ fn page_size(tuples: f64, width: f64) -> f64 {
 pub fn cost_seqscan(root: &PlannerInfo<'_, '_>, rel: usize) -> Costs {
     let rel = &root.rels[rel];
     let qpqual_cost = cost_qual_eval(root, &rel.baserestrictinfo);
-    let startup_cost = qpqual_cost.startup;
+    let startup_cost = qpqual_cost.startup + rel.reltarget.cost.startup;
     let disk_run_cost = SEQ_PAGE_COST * rel.pages;
-    let cpu_run_cost = (CPU_TUPLE_COST + qpqual_cost.per_tuple) * rel.tuples;
+    let cpu_run_cost = (CPU_TUPLE_COST + qpqual_cost.per_tuple) * rel.tuples + rel.reltarget.cost.per_tuple * rel.rows;
     (disabled(root.enables.seqscan), startup_cost, startup_cost + cpu_run_cost + disk_run_cost)
 }
 
@@ -304,8 +304,10 @@ pub fn cost_functionscan(root: &PlannerInfo<'_, '_>, rel: usize, functions: &[Ex
         exprcost.per_tuple += cost.per_tuple;
     }
     let qpqual_cost = get_restriction_qual_cost(root, rel, None);
-    let startup_cost = exprcost.startup + exprcost.per_tuple + qpqual_cost.startup;
-    let run_cost = (CPU_TUPLE_COST + qpqual_cost.per_tuple) * root.rels[rel].tuples;
+    let target = &root.rels[rel].reltarget.cost;
+    let startup_cost = exprcost.startup + exprcost.per_tuple + qpqual_cost.startup + target.startup;
+    let run_cost =
+        (CPU_TUPLE_COST + qpqual_cost.per_tuple) * root.rels[rel].tuples + target.per_tuple * root.rels[rel].rows;
     (0, startup_cost, startup_cost + run_cost)
 }
 
@@ -314,7 +316,9 @@ pub fn cost_functionscan(root: &PlannerInfo<'_, '_>, rel: usize, functions: &[Ex
 pub fn cost_valuesscan(root: &PlannerInfo<'_, '_>, rel: usize) -> Costs {
     let qpqual_cost = get_restriction_qual_cost(root, rel, None);
     let cpu_per_tuple = CPU_OPERATOR_COST + CPU_TUPLE_COST + qpqual_cost.per_tuple;
-    (0, qpqual_cost.startup, qpqual_cost.startup + cpu_per_tuple * root.rels[rel].tuples)
+    let target = &root.rels[rel].reltarget.cost;
+    let startup_cost = qpqual_cost.startup + target.startup;
+    (0, startup_cost, startup_cost + cpu_per_tuple * root.rels[rel].tuples + target.per_tuple * root.rels[rel].rows)
 }
 
 /// cost_ctescan returns the costs of reading a WITH query's rows under the relation's restrictions, as Postgres'
@@ -322,7 +326,9 @@ pub fn cost_valuesscan(root: &PlannerInfo<'_, '_>, rel: usize) -> Costs {
 pub fn cost_ctescan(root: &PlannerInfo<'_, '_>, rel: usize) -> Costs {
     let qpqual_cost = get_restriction_qual_cost(root, rel, None);
     let cpu_per_tuple = CPU_TUPLE_COST + CPU_TUPLE_COST + qpqual_cost.per_tuple;
-    (0, qpqual_cost.startup, qpqual_cost.startup + cpu_per_tuple * root.rels[rel].tuples)
+    let target = &root.rels[rel].reltarget.cost;
+    let startup_cost = qpqual_cost.startup + target.startup;
+    (0, startup_cost, startup_cost + cpu_per_tuple * root.rels[rel].tuples + target.per_tuple * root.rels[rel].rows)
 }
 
 /// set_function_size_estimates sizes a relation of set-returning calls by the most rows that one of them returns, as
@@ -356,9 +362,11 @@ pub fn set_tablefunc_size_estimates(root: &mut PlannerInfo<'_, '_>, rel: usize) 
 /// cost_resultscan returns the costs of the one row of a RESULT relation under its restrictions, as Postgres'
 /// function of the same name does.
 pub fn cost_resultscan(root: &PlannerInfo<'_, '_>, rel: usize) -> Costs {
-    let qpqual_cost = cost_qual_eval(root, &root.rels[rel].baserestrictinfo);
-    let startup = qpqual_cost.startup;
-    (0, startup, startup + CPU_TUPLE_COST + qpqual_cost.per_tuple)
+    let rel = &root.rels[rel];
+    let qpqual_cost = cost_qual_eval(root, &rel.baserestrictinfo);
+    let startup = qpqual_cost.startup + rel.reltarget.cost.startup;
+    let run = (CPU_TUPLE_COST + qpqual_cost.per_tuple) * rel.tuples + rel.reltarget.cost.per_tuple * rel.rows;
+    (0, startup, startup + run)
 }
 
 /// IndexCost is what the costs of a lookup in a system catalog's index know of the index: its size, whether a scan
@@ -1282,8 +1290,15 @@ pub fn cost_subqueryscan(
 /// as Postgres' function of the same name does.
 pub fn set_rel_width(root: &mut PlannerInfo<'_, '_>, rel: usize) {
     let mut tuple_width = 0.0;
+    let mut cost = QualCost::default();
     for e in root.rels[rel].reltarget.exprs.clone() {
-        let Expr::Column(id) = e else { continue };
+        let Expr::Column(id) = e else {
+            tuple_width += get_typavgwidth(super::nodefuncs::expr_type(root, &e), -1);
+            let expr_cost = cost_qual_eval_node(&e);
+            cost.startup += expr_cost.startup;
+            cost.per_tuple += expr_cost.per_tuple;
+            continue;
+        };
         tuple_width += match root.glob.node(id) {
             super::nodes::VarNode::Var(var) if root.rels[rel].attr_widths[var.varattno] > 0.0 => {
                 root.rels[rel].attr_widths[var.varattno]
@@ -1306,11 +1321,15 @@ pub fn set_rel_width(root: &mut PlannerInfo<'_, '_>, rel: usize) {
                 width
             }
             super::nodes::VarNode::PlaceHolderVar(phv) => {
+                let expr_cost = cost_qual_eval_node(&root.glob.placeholder(phv.phid).phexpr);
+                cost.startup += expr_cost.startup;
+                cost.per_tuple += expr_cost.per_tuple;
                 let i = root.placeholder_array[&phv.phid];
                 root.placeholder_list[i].ph_width
             }
         };
     }
+    root.rels[rel].reltarget.cost = cost;
     root.rels[rel].reltarget.width = tuple_width;
 }
 
