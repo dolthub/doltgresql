@@ -21,8 +21,8 @@ use std::rc::Rc;
 use super::PlannerInfo;
 use super::clausesel::{self, clause_selectivity, clauselist_selectivity};
 use super::nodes::{
-    JoinType, MemoizePath, MergePath, MergeScanSelCache, Path, PathKey, PathKind, PkId, Relids, RinfoId,
-    SpecialJoinInfo,
+    HashPath, JoinPath, JoinType, MemoizePath, MergePath, MergeScanSelCache, Path, PathKey, PathKind, PkId, Relids,
+    RinfoId, SpecialJoinInfo,
 };
 use super::restrictinfo::{join_clause_is_movable_into, rinfo_is_pushed_down};
 use crate::expr::{CmpOp, Expr};
@@ -732,7 +732,7 @@ pub fn cost_sort(root: &PlannerInfo<'_, '_>, input: &Path, limit_tuples: f64) ->
 /// name does: kept rows cost little to read again, and a hash table or a function's rows need not be built again.
 fn cost_rescan(root: &PlannerInfo<'_, '_>, path: &Path) -> (f64, f64) {
     match &path.kind {
-        PathKind::HashJoin(join) => match exec_choose_hash_table_size(join.inner.rows, join.inner.width).1 == 1.0 {
+        PathKind::HashJoin(hpath) => match hpath.num_batches == 1.0 {
             true => (0.0, path.total_cost - path.startup_cost),
             false => (path.startup_cost, path.total_cost),
         },
@@ -800,9 +800,9 @@ pub struct JoinPathExtraData {
     pub semifactors: SemiAntiJoinFactors,
 }
 
-/// JoinCostWorkspace is what initial_cost_mergejoin estimates for final_cost_mergejoin, as Postgres'
-/// JoinCostWorkspace holds it: the costs before the CPU costs of the join's clauses, the run costs of the outer and
-/// inner sides, and the rows of each side that the join reads and skips.
+/// JoinCostWorkspace is what the initial cost of a join estimates for its final cost, as Postgres' JoinCostWorkspace
+/// holds it: the costs before the CPU costs of the join's clauses, the run costs of the outer and inner sides, the
+/// rows of each side that the join reads and skips, and the buckets and batches of a hash join's table.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct JoinCostWorkspace {
     pub disabled_nodes: usize,
@@ -814,43 +814,74 @@ pub struct JoinCostWorkspace {
     pub inner_rows: f64,
     pub outer_skip_rows: f64,
     pub inner_skip_rows: f64,
+    pub inner_rescan_run_cost: f64,
+    pub numbuckets: f64,
+    pub numbatches: f64,
 }
 
-/// cost_nestloop returns the costs of a nested loop of an inner path over an outer one, as
-/// Postgres' initial_cost_nestloop and final_cost_nestloop do, given the clauses that the join tests and whether the
-/// inner path looks its rows up by the join's clauses.
-pub fn cost_nestloop(
+/// initial_cost_nestloop estimates the costs of a nested loop of an inner path over an outer one before the CPU costs
+/// of its clauses, as Postgres' function of the same name does.
+pub fn initial_cost_nestloop(
     root: &PlannerInfo<'_, '_>,
     jointype: JoinType,
-    outer: &Path,
-    inner: &Path,
+    outer_path: &Path,
+    inner_path: &Path,
     extra: &JoinPathExtraData,
-    joinrestrictinfo: &[RinfoId],
-    has_indexed_join_quals: bool,
-) -> Costs {
-    let (inner_rescan_start_cost, inner_rescan_total_cost) = cost_rescan(root, inner);
-    let disabled_nodes = disabled(root.enables.nestloop) + inner.disabled_nodes + outer.disabled_nodes;
-    let mut startup_cost = outer.startup_cost + inner.startup_cost;
-    let mut run_cost = outer.total_cost - outer.startup_cost;
-    if outer.rows > 1.0 {
-        run_cost += (outer.rows - 1.0) * inner_rescan_start_cost;
+) -> JoinCostWorkspace {
+    let disabled_nodes = disabled(root.enables.nestloop) + inner_path.disabled_nodes + outer_path.disabled_nodes;
+    let (inner_rescan_start_cost, inner_rescan_total_cost) = cost_rescan(root, inner_path);
+    let startup_cost = outer_path.startup_cost + inner_path.startup_cost;
+    let mut run_cost = outer_path.total_cost - outer_path.startup_cost;
+    if outer_path.rows > 1.0 {
+        run_cost += (outer_path.rows - 1.0) * inner_rescan_start_cost;
     }
-    let inner_run_cost = inner.total_cost - inner.startup_cost;
+    let inner_run_cost = inner_path.total_cost - inner_path.startup_cost;
     let inner_rescan_run_cost = inner_rescan_total_cost - inner_rescan_start_cost;
-    let inner_rows = inner.rows.max(1.0);
-    let ntuples = if matches!(jointype, JoinType::Semi | JoinType::Anti) || extra.inner_unique {
-        let mut outer_matched_rows = (outer.rows * extra.semifactors.outer_match_frac).round_ties_even();
-        let mut outer_unmatched_rows = outer.rows - outer_matched_rows;
+    let mut workspace = JoinCostWorkspace::default();
+    if matches!(jointype, JoinType::Semi | JoinType::Anti) || extra.inner_unique {
+        workspace.inner_run_cost = inner_run_cost;
+        workspace.inner_rescan_run_cost = inner_rescan_run_cost;
+    } else {
+        run_cost += inner_run_cost;
+        if outer_path.rows > 1.0 {
+            run_cost += (outer_path.rows - 1.0) * inner_rescan_run_cost;
+        }
+    }
+    workspace.disabled_nodes = disabled_nodes;
+    workspace.startup_cost = startup_cost;
+    workspace.total_cost = startup_cost + run_cost;
+    workspace.run_cost = run_cost;
+    workspace
+}
+
+/// final_cost_nestloop returns the costs of a nested loop from what initial_cost_nestloop estimated, with the CPU
+/// costs of the rows it joins and the clauses it tests, as Postgres' function of the same name does.
+pub fn final_cost_nestloop(
+    root: &mut PlannerInfo<'_, '_>,
+    joinrel: usize,
+    path: &JoinPath,
+    workspace: &JoinCostWorkspace,
+    extra: &JoinPathExtraData,
+) -> Costs {
+    let (outer_path, inner_path) = (&path.outer, &path.inner);
+    let outer_path_rows = if outer_path.rows <= 0.0 { 1.0 } else { outer_path.rows };
+    let inner_path_rows = if inner_path.rows <= 0.0 { 1.0 } else { inner_path.rows };
+    let (mut startup_cost, mut run_cost) = (workspace.startup_cost, workspace.run_cost);
+    let ntuples = if matches!(path.jointype, JoinType::Semi | JoinType::Anti) || extra.inner_unique {
+        let (inner_run_cost, inner_rescan_run_cost) = (workspace.inner_run_cost, workspace.inner_rescan_run_cost);
+        let mut outer_matched_rows = (outer_path_rows * extra.semifactors.outer_match_frac).round_ties_even();
+        let mut outer_unmatched_rows = outer_path_rows - outer_matched_rows;
         let inner_scan_frac = 2.0 / (extra.semifactors.match_count + 1.0);
-        let mut ntuples = outer_matched_rows * inner_rows * inner_scan_frac;
-        if has_indexed_join_quals {
+        let mut ntuples = outer_matched_rows * inner_path_rows * inner_scan_frac;
+        let joinrelids = root.rels[joinrel].relids.clone();
+        if has_indexed_join_quals(root, &joinrelids, inner_path, &path.joinrestrictinfo) {
             run_cost += inner_run_cost * inner_scan_frac;
             if outer_matched_rows > 1.0 {
                 run_cost += (outer_matched_rows - 1.0) * inner_rescan_run_cost * inner_scan_frac;
             }
-            run_cost += outer_unmatched_rows * inner_rescan_run_cost / inner_rows;
+            run_cost += outer_unmatched_rows * inner_rescan_run_cost / inner_path_rows;
         } else {
-            ntuples += outer_unmatched_rows * inner_rows;
+            ntuples += outer_unmatched_rows * inner_path_rows;
             run_cost += inner_run_cost;
             if outer_unmatched_rows >= 1.0 {
                 outer_unmatched_rows -= 1.0;
@@ -866,22 +897,18 @@ pub fn cost_nestloop(
         }
         ntuples
     } else {
-        run_cost += inner_run_cost;
-        if outer.rows > 1.0 {
-            run_cost += (outer.rows - 1.0) * inner_rescan_run_cost;
-        }
-        outer.rows.max(1.0) * inner_rows
+        outer_path_rows * inner_path_rows
     };
-    let restrict_qual_cost = cost_qual_eval(root, joinrestrictinfo);
+    let restrict_qual_cost = cost_qual_eval(root, &path.joinrestrictinfo);
     startup_cost += restrict_qual_cost.startup;
     run_cost += (CPU_TUPLE_COST + restrict_qual_cost.per_tuple) * ntuples;
-    (disabled_nodes, startup_cost, startup_cost + run_cost)
+    (workspace.disabled_nodes, startup_cost, startup_cost + run_cost)
 }
 
 /// has_indexed_join_quals reports whether a nested loop tests no clauses of its own and its inner index path, or bitmap
 /// scan of one index, searches by each join clause that it is parameterized by, as Postgres' function of the same name
 /// does.
-pub fn has_indexed_join_quals(
+fn has_indexed_join_quals(
     root: &mut PlannerInfo<'_, '_>,
     joinrelids: &Relids,
     inner: &Path,
@@ -1000,6 +1027,7 @@ pub fn initial_cost_mergejoin(
         inner_rows,
         outer_skip_rows,
         inner_skip_rows,
+        ..JoinCostWorkspace::default()
     }
 }
 
@@ -1136,71 +1164,96 @@ fn exec_choose_hash_table_size(ntuples: f64, width: f64) -> (f64, f64) {
     (nbuckets as f64, nbatch as f64)
 }
 
-/// cost_hashjoin returns the costs of a hash join that hashes the inner path's rows by the hash
-/// clauses and probes them with the outer path's, as Postgres' initial_cost_hashjoin and final_cost_hashjoin do.
-pub fn cost_hashjoin(
+/// initial_cost_hashjoin estimates the costs of a hash join that hashes the inner path's rows by the hash clauses and
+/// probes them with the outer path's, before the CPU costs of its clauses, as Postgres' function of the same name
+/// does.
+pub fn initial_cost_hashjoin(
     root: &PlannerInfo<'_, '_>,
-    jointype: JoinType,
     hashclauses: &[RinfoId],
-    outer: &Path,
-    inner: &Path,
-    extra: &JoinPathExtraData,
-) -> Costs {
+    outer_path: &Path,
+    inner_path: &Path,
+) -> JoinCostWorkspace {
     let num_hashclauses = hashclauses.len() as f64;
-    let disabled_nodes = disabled(root.enables.hashjoin) + inner.disabled_nodes + outer.disabled_nodes;
-    let mut startup_cost = outer.startup_cost + inner.total_cost;
-    let mut run_cost = outer.total_cost - outer.startup_cost;
-    startup_cost += (CPU_OPERATOR_COST * num_hashclauses + CPU_TUPLE_COST) * inner.rows;
-    run_cost += CPU_OPERATOR_COST * num_hashclauses * outer.rows;
-    let (numbuckets, numbatches) = exec_choose_hash_table_size(inner.rows, inner.width);
+    let disabled_nodes = disabled(root.enables.hashjoin) + inner_path.disabled_nodes + outer_path.disabled_nodes;
+    let mut startup_cost = outer_path.startup_cost;
+    let mut run_cost = outer_path.total_cost - outer_path.startup_cost;
+    startup_cost += inner_path.total_cost;
+    startup_cost += (CPU_OPERATOR_COST * num_hashclauses + CPU_TUPLE_COST) * inner_path.rows;
+    run_cost += CPU_OPERATOR_COST * num_hashclauses * outer_path.rows;
+    let (numbuckets, numbatches) = exec_choose_hash_table_size(inner_path.rows, inner_path.width);
     if numbatches > 1.0 {
-        let (outerpages, innerpages) = (page_size(outer.rows, outer.width), page_size(inner.rows, inner.width));
+        let outerpages = page_size(outer_path.rows, outer_path.width);
+        let innerpages = page_size(inner_path.rows, inner_path.width);
         startup_cost += SEQ_PAGE_COST * innerpages;
         run_cost += SEQ_PAGE_COST * (innerpages + 2.0 * outerpages);
     }
-    let virtualbuckets = numbuckets * numbatches;
-    let (mut innerbucketsize, mut innermcvfreq) = match inner.kind {
+    JoinCostWorkspace {
+        disabled_nodes,
+        startup_cost,
+        total_cost: startup_cost + run_cost,
+        run_cost,
+        numbuckets,
+        numbatches,
+        ..JoinCostWorkspace::default()
+    }
+}
+
+/// final_cost_hashjoin returns the costs of a hash join from what initial_cost_hashjoin estimated, with the CPU costs
+/// of its clauses over the rows that share the inner rows' buckets, and records its batches, as Postgres' function
+/// of the same name does.
+pub fn final_cost_hashjoin(
+    root: &PlannerInfo<'_, '_>,
+    path: &mut HashPath,
+    workspace: &JoinCostWorkspace,
+    extra: &JoinPathExtraData,
+) -> Costs {
+    let (outer_path, inner_path) = (&path.jpath.outer, &path.jpath.inner);
+    let hashclauses = &path.path_hashclauses;
+    let (mut startup_cost, mut run_cost) = (workspace.startup_cost, workspace.run_cost);
+    path.num_batches = workspace.numbatches;
+    let virtualbuckets = workspace.numbuckets * workspace.numbatches;
+    let (mut innerbucketsize, mut innermcvfreq) = match inner_path.kind {
         PathKind::UniquePath(_) => (1.0 / virtualbuckets, 0.0),
         _ => (1.0f64, 1.0f64),
     };
-    for &rinfo in hashclauses.iter().filter(|_| !matches!(inner.kind, PathKind::UniquePath(_))) {
+    for &rinfo in hashclauses.iter().filter(|_| !matches!(inner_path.kind, PathKind::UniquePath(_))) {
         let rinfo = &root.rinfos[rinfo];
         let Expr::Compare(_, l, r) = &rinfo.clause else { continue };
-        let key = if rinfo.right_relids.is_subset(&inner.relids) { r } else { l };
-        let (mcvfreq, bucketsize) = super::selfuncs::estimate_hash_bucket_stats(root, key, virtualbuckets);
-        innerbucketsize = innerbucketsize.min(bucketsize);
-        innermcvfreq = innermcvfreq.min(mcvfreq);
+        let key = if rinfo.right_relids.is_subset(&inner_path.relids) { r } else { l };
+        let (thismcvfreq, thisbucketsize) = super::selfuncs::estimate_hash_bucket_stats(root, key, virtualbuckets);
+        innerbucketsize = innerbucketsize.min(thisbucketsize);
+        innermcvfreq = innermcvfreq.min(thismcvfreq);
     }
-    if relation_byte_size(clamp_row_est(inner.rows * innermcvfreq), inner.width) > HASH_MEM {
+    if relation_byte_size(clamp_row_est(inner_path.rows * innermcvfreq), inner_path.width) > HASH_MEM {
         startup_cost += DISABLE_COST;
     }
     let hash_qual_cost = cost_qual_eval(root, hashclauses);
-    let mut qp_qual_cost = cost_qual_eval(root, &extra.restrictlist);
+    let mut qp_qual_cost = cost_qual_eval(root, &path.jpath.joinrestrictinfo);
     qp_qual_cost.startup -= hash_qual_cost.startup;
     qp_qual_cost.per_tuple -= hash_qual_cost.per_tuple;
     startup_cost += hash_qual_cost.startup;
-    let hashjointuples = if matches!(jointype, JoinType::Semi | JoinType::Anti) || extra.inner_unique {
-        let outer_matched_rows = (outer.rows * extra.semifactors.outer_match_frac).round_ties_even();
+    let hashjointuples = if matches!(path.jpath.jointype, JoinType::Semi | JoinType::Anti) || extra.inner_unique {
+        let outer_matched_rows = (outer_path.rows * extra.semifactors.outer_match_frac).round_ties_even();
         let inner_scan_frac = 2.0 / (extra.semifactors.match_count + 1.0);
         run_cost += hash_qual_cost.per_tuple
             * outer_matched_rows
-            * clamp_row_est(inner.rows * innerbucketsize * inner_scan_frac)
+            * clamp_row_est(inner_path.rows * innerbucketsize * inner_scan_frac)
             * 0.5;
         run_cost += hash_qual_cost.per_tuple
-            * (outer.rows - outer_matched_rows)
-            * clamp_row_est(inner.rows / virtualbuckets)
+            * (outer_path.rows - outer_matched_rows)
+            * clamp_row_est(inner_path.rows / virtualbuckets)
             * 0.05;
-        match jointype {
-            JoinType::Anti => outer.rows - outer_matched_rows,
+        match path.jpath.jointype {
+            JoinType::Anti => outer_path.rows - outer_matched_rows,
             _ => outer_matched_rows,
         }
     } else {
-        run_cost += hash_qual_cost.per_tuple * outer.rows * clamp_row_est(inner.rows * innerbucketsize) * 0.5;
-        approx_tuple_count(root, outer, inner, hashclauses)
+        run_cost += hash_qual_cost.per_tuple * outer_path.rows * clamp_row_est(inner_path.rows * innerbucketsize) * 0.5;
+        approx_tuple_count(root, outer_path, inner_path, hashclauses)
     };
     startup_cost += qp_qual_cost.startup;
     run_cost += (CPU_TUPLE_COST + qp_qual_cost.per_tuple) * hashjointuples;
-    (disabled_nodes, startup_cost, startup_cost + run_cost)
+    (workspace.disabled_nodes, startup_cost, startup_cost + run_cost)
 }
 
 /// compute_semi_anti_join_factors returns the share of outer rows that find a match in a join and how many they find

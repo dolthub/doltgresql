@@ -20,10 +20,10 @@ use std::rc::Rc;
 
 use super::PlannerInfo;
 use super::costsize::{
-    JoinPathExtraData, SemiAntiJoinFactors, compute_semi_anti_join_factors, cost_hashjoin, cost_material,
-    cost_nestloop, has_indexed_join_quals, initial_cost_mergejoin,
+    JoinPathExtraData, SemiAntiJoinFactors, compute_semi_anti_join_factors, cost_material, initial_cost_hashjoin,
+    initial_cost_mergejoin, initial_cost_nestloop,
 };
-use super::nodes::{JoinPath, JoinType, Path, PathKind, PkId, Relids, RestrictInfo, RinfoId, SpecialJoinInfo, VarNode};
+use super::nodes::{JoinType, Path, PathKind, PkId, Relids, RestrictInfo, RinfoId, SpecialJoinInfo, VarNode};
 use super::pathkeys::{
     build_join_pathkeys, find_mergeclauses_for_outer_pathkeys, get_cheapest_path_for_pathkeys,
     make_inner_pathkeys_for_merge, pathkeys_contained_in, pathkeys_count_contained_in, select_outer_pathkeys_for_merge,
@@ -31,7 +31,8 @@ use super::pathkeys::{
 };
 use super::pathnode::{
     CostSelector, add_path, add_path_precheck, calc_nestloop_required_outer, calc_non_nestloop_required_outer,
-    compare_path_costs, create_join_path, create_memoize_path, create_mergejoin_path, create_unique_path,
+    compare_path_costs, create_hashjoin_path, create_memoize_path, create_mergejoin_path, create_nestloop_path,
+    create_unique_path,
 };
 use super::restrictinfo::rinfo_is_pushed_down;
 use crate::expr::Expr;
@@ -234,20 +235,24 @@ fn try_nestloop_path(
         return;
     }
     let outerrelids = &root.rels[outer.parent].relids;
-    if !calc_nestloop_required_outer(outerrelids, &outer.param, &inner.param).is_empty() {
+    let required_outer = calc_nestloop_required_outer(outerrelids, &outer.param, &inner.param);
+    if !required_outer.is_empty() {
         return;
     }
-    let joinrelids = root.rels[joinrel].relids.clone();
-    let mut restrict_clauses = extra.restrictlist.clone();
-    if inner.param.overlap(&outer.relids) {
-        let enforced_serials = super::relnode::get_param_path_clause_serials(root, &inner);
-        restrict_clauses.retain(|&r| !enforced_serials.is_member(root.rinfos[r].rinfo_serial));
+    let workspace = initial_cost_nestloop(root, jointype, &outer, &inner, extra);
+    if add_path_precheck(
+        &root.rels[joinrel],
+        workspace.disabled_nodes,
+        workspace.startup_cost,
+        workspace.total_cost,
+        &pathkeys,
+        &required_outer,
+    ) {
+        let restrict_clauses = extra.restrictlist.clone();
+        let path =
+            create_nestloop_path(root, joinrel, jointype, &workspace, extra, outer, inner, restrict_clauses, pathkeys);
+        add_path(&mut root.rels[joinrel], path);
     }
-    let has_indexed_join_quals = has_indexed_join_quals(root, &joinrelids, &inner, &restrict_clauses);
-    let cost = cost_nestloop(root, jointype, &outer, &inner, extra, &restrict_clauses, has_indexed_join_quals);
-    let join = JoinPath { jointype, outer, inner, joinrestrictinfo: restrict_clauses };
-    let path = create_join_path(joinrel, &root.rels[joinrel], PathKind::NestLoop(join), cost, pathkeys);
-    add_path(&mut root.rels[joinrel], path);
 }
 
 /// try_mergejoin_path adds a merge join of two paths by merge clauses to the join relation, sorting a side first by
@@ -337,13 +342,33 @@ fn try_hashjoin_path(
     if ojrelid != 0 && (inner.param.is_member(ojrelid) || outer.param.is_member(ojrelid)) {
         return;
     }
-    if !calc_non_nestloop_required_outer(&outer, &inner).is_empty() {
+    let required_outer = calc_non_nestloop_required_outer(&outer, &inner);
+    if !required_outer.is_empty() {
         return;
     }
-    let cost = cost_hashjoin(root, jointype, hashclauses, &outer, &inner, extra);
-    let join = JoinPath { jointype, outer, inner, joinrestrictinfo: extra.restrictlist.clone() };
-    let path = create_join_path(joinrel, &root.rels[joinrel], PathKind::HashJoin(join), cost, Vec::new());
-    add_path(&mut root.rels[joinrel], path);
+    let workspace = initial_cost_hashjoin(root, hashclauses, &outer, &inner);
+    if add_path_precheck(
+        &root.rels[joinrel],
+        workspace.disabled_nodes,
+        workspace.startup_cost,
+        workspace.total_cost,
+        &[],
+        &required_outer,
+    ) {
+        let (restrict_clauses, hashclauses) = (extra.restrictlist.clone(), hashclauses.to_vec());
+        let path = create_hashjoin_path(
+            root,
+            joinrel,
+            jointype,
+            &workspace,
+            extra,
+            outer,
+            inner,
+            restrict_clauses,
+            hashclauses,
+        );
+        add_path(&mut root.rels[joinrel], path);
+    }
 }
 
 /// sort_inner_and_outer adds the merge joins of the relations' cheapest paths sorted by every mergejoinable clause,

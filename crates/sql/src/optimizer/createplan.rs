@@ -22,7 +22,6 @@ use std::rc::Rc;
 use super::PlannerInfo;
 use super::costsize::cost_qual_eval_node;
 use super::indxpath::{lookup_keys, to_attnos};
-use super::joinpath::clause_sides_match_join;
 use super::nodes::{IndexPath, JoinType, Path, PathKind, RinfoId, RteKind, VarNode};
 use super::restrictinfo::{extract_actual_clauses, extract_actual_join_clauses};
 use crate::expr::Expr;
@@ -539,12 +538,9 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 joinquals.extend(ppi.ppi_clauses.into_iter().filter(|r| !join.joinrestrictinfo.contains(r)));
             }
             let joinquals: Vec<Expr> = match &path.kind {
-                PathKind::HashJoin(_) => {
-                    let (hashclauses, rest): (Vec<RinfoId>, Vec<RinfoId>) = joinquals.into_iter().partition(|&r| {
-                        let r = &root.rinfos[r];
-                        r.hashjoinable && clause_sides_match_join(r, &join.outer.relids, &inner.relids)
-                    });
-                    let mut quals = get_switched_clauses(root, &hashclauses, &join.outer.relids);
+                PathKind::HashJoin(hpath) => {
+                    let rest = joinquals.into_iter().filter(|r| !hpath.path_hashclauses.contains(r)).collect();
+                    let mut quals = get_switched_clauses(root, &hpath.path_hashclauses, &join.outer.relids);
                     quals.extend(order_qual_clauses(root, rest).into_iter().map(|r| root.rinfos[r].clause.clone()));
                     quals
                 }
@@ -1073,8 +1069,8 @@ fn order_qual_clauses(root: &PlannerInfo<'_, '_>, clauses: Vec<RinfoId>) -> Vec<
     items.into_iter().map(|(r, ..)| r).collect()
 }
 
-/// get_switched_clauses returns the clauses of hash clauses with each one's outer side first, as Postgres' function
-/// of the same name does.
+/// get_switched_clauses returns the clauses of hash or merge clauses with each one's outer side first, and records
+/// which side that was, as Postgres' function of the same name does.
 fn get_switched_clauses(
     root: &PlannerInfo<'_, '_>,
     clauses: &[RinfoId],
@@ -1084,8 +1080,10 @@ fn get_switched_clauses(
         .iter()
         .map(|&r| {
             let r = &root.rinfos[r];
+            let switched = r.right_relids.is_subset(outer_relids);
+            r.outer_is_left.set(!switched);
             match &r.clause {
-                Expr::Compare(op, left, right) if r.can_join && r.right_relids.is_subset(outer_relids) => {
+                Expr::Compare(op, left, right) if switched => {
                     Expr::Compare(crate::indexscan::swap(*op), right.clone(), left.clone())
                 }
                 other => other.clone(),

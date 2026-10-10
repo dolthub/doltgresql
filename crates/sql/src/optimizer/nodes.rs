@@ -710,7 +710,7 @@ pub enum PathKind {
     /// A nested loop of an outer path over an inner one.
     NestLoop(JoinPath),
     /// A hash join probing a hash table of the inner path with the outer path's rows.
-    HashJoin(JoinPath),
+    HashJoin(Box<HashPath>),
     /// A merge join of an outer path and an inner one sorted by its merge clauses.
     MergeJoin(Box<MergePath>),
 }
@@ -719,7 +719,8 @@ impl PathKind {
     /// join returns the inputs and clauses of a join path.
     pub fn join(&self) -> Option<&JoinPath> {
         match self {
-            PathKind::NestLoop(join) | PathKind::HashJoin(join) => Some(join),
+            PathKind::NestLoop(join) => Some(join),
+            PathKind::HashJoin(hpath) => Some(&hpath.jpath),
             PathKind::MergeJoin(mpath) => Some(&mpath.jpath),
             _ => None,
         }
@@ -757,6 +758,14 @@ pub struct MergePath {
     pub skip_mark_restore: bool,
     /// Whether the inner side's rows are kept in memory so they can be read again.
     pub materialize_inner: bool,
+}
+
+/// HashPath is a hash join by hash clauses, with the batches its hash table splits into, as Postgres' HashPath is.
+#[derive(Clone, Debug)]
+pub struct HashPath {
+    pub jpath: JoinPath,
+    pub path_hashclauses: Vec<RinfoId>,
+    pub num_batches: f64,
 }
 
 /// ForeignKeyOptInfo is a foreign key between two of a query's base relations, with what of the query matches its

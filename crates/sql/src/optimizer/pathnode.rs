@@ -21,11 +21,12 @@ use std::rc::Rc;
 use super::PlannerInfo;
 use super::costsize::{
     Costs, JoinCostWorkspace, JoinPathExtraData, cost_bitmap_and_node, cost_bitmap_heap_scan, cost_bitmap_or_node,
-    final_cost_mergejoin,
+    final_cost_hashjoin, final_cost_mergejoin, final_cost_nestloop,
 };
 use super::nodes::{
-    AggStrategy, BitmapPath, JoinPath, JoinType, MemoizePath, MergePath, Path, PathKind, PkId, RelOptInfo, Relids,
-    RinfoId, RteKind, SortGroupClause, SpecialJoinInfo, SubsetCompare, TargetEntry, UniquePath, UniquePathMethod,
+    AggStrategy, BitmapPath, HashPath, JoinPath, JoinType, MemoizePath, MergePath, Path, PathKind, PkId, RelOptInfo,
+    Relids, RinfoId, RteKind, SortGroupClause, SpecialJoinInfo, SubsetCompare, TargetEntry, UniquePath,
+    UniquePathMethod,
 };
 use super::pathkeys::{PathKeysComparison, compare_pathkeys};
 
@@ -242,8 +243,8 @@ pub fn add_path(parent_rel: &mut RelOptInfo, new_path: Rc<Path>) {
     parent_rel.pathlist.insert(insert_at, new_path);
 }
 
-/// create_join_path makes a path of a join of two paths, as Postgres' create_nestloop_path and create_hashjoin_path
-/// do, with the join relation's row estimate, the costs, and the order of its rows given.
+/// create_join_path makes a path of a join of two paths with the join relation's row estimate and the given costs and
+/// order of its rows, as Postgres' create_nestloop_path, create_mergejoin_path, and create_hashjoin_path fill one in.
 pub fn create_join_path(
     joinrel: usize,
     rel: &RelOptInfo,
@@ -266,6 +267,29 @@ pub fn create_join_path(
         total_cost,
         pathtarget: None,
     })
+}
+
+/// create_nestloop_path makes the path of a nested loop of an inner path over an outer one, which leaves out the
+/// clauses that a parameterized inner path tests already, as Postgres' function of the same name does.
+#[allow(clippy::too_many_arguments)]
+pub fn create_nestloop_path(
+    root: &mut PlannerInfo<'_, '_>,
+    joinrel: usize,
+    jointype: JoinType,
+    workspace: &JoinCostWorkspace,
+    extra: &JoinPathExtraData,
+    outer_path: Rc<Path>,
+    inner_path: Rc<Path>,
+    mut restrict_clauses: Vec<RinfoId>,
+    pathkeys: Vec<PkId>,
+) -> Rc<Path> {
+    if inner_path.param.overlap(&root.rels[outer_path.parent].relids) {
+        let enforced_serials = super::relnode::get_param_path_clause_serials(root, &inner_path);
+        restrict_clauses.retain(|&r| !enforced_serials.is_member(root.rinfos[r].rinfo_serial));
+    }
+    let jpath = JoinPath { jointype, outer: outer_path, inner: inner_path, joinrestrictinfo: restrict_clauses };
+    let cost = final_cost_nestloop(root, joinrel, &jpath, workspace, extra);
+    create_join_path(joinrel, &root.rels[joinrel], PathKind::NestLoop(jpath), cost, pathkeys)
 }
 
 /// create_mergejoin_path makes the path of a merge join of two paths by merge clauses, sorting each side first by
@@ -296,6 +320,26 @@ pub fn create_mergejoin_path(
     };
     let cost = final_cost_mergejoin(root, &mut pathnode, workspace, extra);
     create_join_path(joinrel, &root.rels[joinrel], PathKind::MergeJoin(Box::new(pathnode)), cost, pathkeys)
+}
+
+/// create_hashjoin_path makes the path of a hash join of two paths by hash clauses, whose rows are in no order, as
+/// Postgres' function of the same name does.
+#[allow(clippy::too_many_arguments)]
+pub fn create_hashjoin_path(
+    root: &PlannerInfo<'_, '_>,
+    joinrel: usize,
+    jointype: JoinType,
+    workspace: &JoinCostWorkspace,
+    extra: &JoinPathExtraData,
+    outer_path: Rc<Path>,
+    inner_path: Rc<Path>,
+    restrict_clauses: Vec<RinfoId>,
+    hashclauses: Vec<RinfoId>,
+) -> Rc<Path> {
+    let jpath = JoinPath { jointype, outer: outer_path, inner: inner_path, joinrestrictinfo: restrict_clauses };
+    let mut pathnode = HashPath { jpath, path_hashclauses: hashclauses, num_batches: 0.0 };
+    let cost = final_cost_hashjoin(root, &mut pathnode, workspace, extra);
+    create_join_path(joinrel, &root.rels[joinrel], PathKind::HashJoin(Box::new(pathnode)), cost, Vec::new())
 }
 
 /// create_memoize_path makes a path that caches a parameterized path's rows by the values of its parameter
