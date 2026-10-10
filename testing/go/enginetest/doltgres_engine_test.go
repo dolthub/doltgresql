@@ -243,6 +243,7 @@ func TestAmbiguousColumnResolution(t *testing.T) {
 
 func TestInsertInto(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"values and rows", // MySQL VALUES ROW syntax; previously in the skipped SQL logic suite
 		"with t (i,f) as (select 4,'fourth row' from dual) insert into mytable select i,f from t",                                                 // WITH unsupported syntax
 		"with recursive t (i,f) as (select 4,4 from dual union all select i + 1, i + 1 from t where i < 5) insert into mytable select i,f from t", // WITH unsupported syntax
 		"issue 6675: on duplicate rearranged getfield indexes from select source",                                                                 // panic
@@ -493,21 +494,142 @@ func TestConvert(t *testing.T) {
 	enginetest.TestConvertPrepared(t, h)
 }
 
-func TestScripts(t *testing.T) {
+func TestAggregationScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
-		"can't create table with same name as existing view",      // Doltgres needs to return a different error message
-		"descending index columns",                                // MySQL index prefix syntax (c(10) DESC)
-		"descending index lookups and ordering",                   // MySQL NULLs-first ascending order
-		"descending unique indexes",                               // MySQL REPLACE INTO and ON DUPLICATE KEY UPDATE
-		"descending prefix and expression indexes",                // MySQL index prefix syntax (s(3) DESC)
-		"descending index on a keyless table",                     // MySQL NULLs-first ascending order
-		"descending indexes backing foreign keys",                 // MySQL foreign key error types
-		"descending indexes on assorted types",                    // MySQL ENUM and DATETIME columns
-		"(x between y and z), (x between x and z)",                // expects MySQL's NULLs-first ordering
-		"filter pushdown through join uppercase name",             // syntax error (join without on)
-		"issue 7958, update join uppercase table name validation", // update join syntax not supported
-		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
-		"update join with update trigger",                         // update join syntax not supported (also catches with-trigger variants by substring)
+		"sum() and avg() on non-DECIMAL type column returns the DOUBLE type result", // MySQL-specific: MySQL widens FLOAT to DOUBLE for SUM; Postgres sum(real) stays real
+		"sum() and avg() on DECIMAL type column returns the DECIMAL type result",    // MySQL-specific: MySQL truncates AVG's decimal scale; Postgres numeric division keeps full precision
+	})
+	defer h.Close()
+	enginetest.TestAggregationScripts(t, h)
+}
+
+func TestAutoIncrementScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestAutoIncrementScripts(t, h)
+}
+
+func TestConversionsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"Handle hex number to binary conversion", // ERROR: can't convert 0x7ED0599B to decimal: exponent is not numeric
+	})
+	defer h.Close()
+	enginetest.TestConversionsScripts(t, h)
+}
+
+func TestDatabaseDefinitionsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestDatabaseDefinitionsScripts(t, h)
+}
+
+func TestDeleteScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestDeleteScripts(t, h)
+}
+
+func TestDescendingIndexesScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"descending index columns",                 // MySQL index prefix syntax (c(10) DESC)
+		"descending index lookups and ordering",    // MySQL NULLs-first ascending order
+		"descending unique indexes",                // MySQL REPLACE INTO and ON DUPLICATE KEY UPDATE
+		"descending prefix and expression indexes", // MySQL index prefix syntax (s(3) DESC)
+		"descending index on a keyless table",      // MySQL NULLs-first ascending order
+		"descending indexes backing foreign keys",  // MySQL foreign key error types
+		"descending indexes on assorted types",     // MySQL ENUM and DATETIME columns
+	})
+	defer h.Close()
+	enginetest.TestDescendingIndexesScripts(t, h)
+}
+
+func TestEnumsAndSetsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestEnumsAndSetsScripts(t, h)
+}
+
+func TestExpressionsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"(x between y and z), (x between x and z)", // expects MySQL's NULLs-first ordering
+		"coalesce with system types",               // unsupported
+	})
+	defer h.Close()
+	enginetest.TestExpressionsScripts(t, h)
+}
+
+func TestIndexKeyTypesScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"binary type primary key", // ERROR: blob/text column 'b' used in key specification without a key length
+		"varbinary primary key",   // ERROR: blob/text column 'b' used in key specification without a key length
+		"varchar primary key",     // literal values longer than the key length returns incorrect results for some queries
+	})
+	defer h.Close()
+	enginetest.TestIndexKeyTypesScripts(t, h)
+}
+
+func TestInsertIgnoreRegressionScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"INSERT IGNORE throws an error when json is badly formatted", // error messages don't match
+	})
+	defer h.Close()
+	enginetest.TestInsertIgnoreRegressionScripts(t, h)
+}
+
+func TestJoinsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"filter pushdown through join uppercase name", // syntax error (join without on)
+		"join index lookups do not handle filters",    // need a different join syntax (no ON clause not supported in postgres)
+	})
+	defer h.Close()
+	enginetest.TestJoinsScripts(t, h)
+}
+
+func TestNameResolutionScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"db1.``.i > 0",               // Multi-db Aliasing: MySQL-only empty-backtick ref
+		"join db2.t2 order by",       // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
+		"join db2.t2 group by",       // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
+		"join db2.t1 b order by a.i", // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
+	})
+	defer h.Close()
+	enginetest.TestNameResolutionScripts(t, h)
+}
+
+func TestNumericScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"Ensure proper DECIMAL support (found by fuzzer)",                                                       // unsupported type: SET
+		"arithmetic bit operations on int, float and decimal types",                                             // the power operator is not yet supported
+		"division and int division operation on negative, small and big value for decimal type column of table", // numeric keys broken
+	})
+	defer h.Close()
+	enginetest.TestNumericScripts(t, h)
+}
+
+func TestOrderingScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestOrderingScripts(t, h)
+}
+
+func TestPrimaryKeysScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"recreate primary key rebuilds secondary indexes",      // currently no way to drop primary key in doltgres
+		"insert into t1 (a, b) values ('1234567890', '12345')", // different error message
+		"insert into t2 (a, b) values ('1234567890', '12345')", // different error message
+	})
+	defer h.Close()
+	enginetest.TestPrimaryKeysScripts(t, h)
+}
+
+func TestSessionResultsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestSessionResultsScripts(t, h)
+}
+
+func TestSetOperationsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"WITH RECURSIVE\n" +
 			"    rt (foo) AS (\n" +
 			"        SELECT 1 as foo\n" +
@@ -521,49 +643,81 @@ func TestScripts(t *testing.T) {
 			"        FROM ladder JOIN rt WHERE ladder.foo = rt.foo\n" +
 			"    )\n" +
 			"SELECT * FROM ladder;", // syntax error
-		"CREATE TABLE SELECT Queries", // ERROR: TableCopier only accepts CreateTable or TableNode as the destination
-		"db1.``.i > 0",                // Multi-db Aliasing: MySQL-only empty-backtick ref
-		"join db2.t2 order by",        // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
-		"join db2.t2 group by",        // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
-		"join db2.t1 b order by a.i",  // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
-		// "Simple Update Join test that manipulates two tables",
-		// "Partial indexes are used and return the expected result",
-		// "Multiple indexes on the same columns in a different order",
-		"Ensure proper DECIMAL support (found by fuzzer)", // unsupported type: SET
-		// "Ensure scale is not rounded when inserting to DECIMAL type through float64",
-		"Show create table with various keys and constraints",                                                     // FK adds explicit ON DELETE/UPDATE RESTRICT; CHECK constraints leak backticks; timestamp(6) loses precision
-		"show create table with duplicate primary key",                                                            // auto-generated constraint names differ
-		"recreate primary key rebuilds secondary indexes",                                                         // currently no way to drop primary key in doltgres
-		"Handle hex number to binary conversion",                                                                  // ERROR: can't convert 0x7ED0599B to decimal: exponent is not numeric
-		"join index lookups do not handle filters",                                                                // need a different join syntax (no ON clause not supported in postgres)
-		"arithmetic bit operations on int, float and decimal types",                                               // the power operator is not yet supported
-		"INSERT IGNORE throws an error when json is badly formatted",                                              // error messages don't match
-		"identical expressions over different windows should produce different results",                           // ERROR: integer: unhandled type: float64
-		"windows without ORDER BY should be treated as RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING", // ERROR: integer: unhandled type: float64
-		"sum() and avg() on non-DECIMAL type column returns the DOUBLE type result",                               // MySQL-specific: MySQL widens FLOAT to DOUBLE for SUM; Postgres sum(real) stays real
-		"sum() and avg() on DECIMAL type column returns the DECIMAL type result",                                  // MySQL-specific: MySQL truncates AVG's decimal scale; Postgres numeric division keeps full precision
-		"division and int division operation on negative, small and big value for decimal type column of table",   // numeric keys broken
-		"update columns with default",                                                                             // broken, see repro in update_test.go
-		"select count(*) from t where (f in (null, cast(0.8 as float)));",                                         // incorrect result, needs a fix
-		"update with left join with some missing rows",                                                            // need to translate update joins
-		"preserve now()",          // harness error
-		"binary type primary key", // ERROR: blob/text column 'b' used in key specification without a key length
-		"varbinary primary key",   // ERROR: blob/text column 'b' used in key specification without a key length
-		"insert into t1 (a, b) values ('1234567890', '12345')",                // different error message
-		"insert into t2 (a, b) values ('1234567890', '12345')",                // different error message
-		"invalid utf8 encoding strings",                                       // need to investigate why some strings aren't giving errors, might be a harness error
-		"mismatched collation using hash in tuples",                           // ERROR: plan is not resolved because of node '*plan.Project'
+	})
+	defer h.Close()
+	enginetest.TestSetOperationsScripts(t, h)
+}
+
+func TestStatisticsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"histogram bucket merging error for implementor buckets", // unsupported "with recursive" syntax
+	})
+	defer h.Close()
+	enginetest.TestStatisticsScripts(t, h)
+}
+
+func TestStringFunctionsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestStringFunctionsScripts(t, h)
+}
+
+func TestSubqueriesScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestSubqueriesScripts(t, h)
+}
+
+func TestTableDefinitionsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"CREATE TABLE SELECT Queries",                         // ERROR: TableCopier only accepts CreateTable or TableNode as the destination
+		"Show create table with various keys and constraints", // FK adds explicit ON DELETE/UPDATE RESTRICT; CHECK constraints leak backticks; timestamp(6) loses precision
+	})
+	defer h.Close()
+	enginetest.TestTableDefinitionsScripts(t, h)
+}
+
+func TestTemporalScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestTemporalScripts(t, h)
+}
+
+func TestTransactionsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestTransactionsScripts(t, h)
+}
+
+func TestTupleComparisonsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"select count(*) from t where (f in (null, cast(0.8 as float)));", // incorrect result, needs a fix
+		"mismatched collation using hash in tuples",                       // ERROR: plan is not resolved because of node '*plan.Project'
+	})
+	defer h.Close()
+	enginetest.TestTupleComparisonsScripts(t, h)
+}
+
+func TestUpdateJoinsScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"issue 7958, update join uppercase table name validation", // update join syntax not supported
+		"Dolt issue 7957, update join matched rows",               // update join syntax not supported
+		"update join with update trigger",                         // update join syntax not supported (also catches with-trigger variants by substring)
+		"update with left join with some missing rows",            // need to translate update joins
+	})
+	defer h.Close()
+	enginetest.TestUpdateJoinsScripts(t, h)
+}
+
+func TestVariablesScripts(t *testing.T) {
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"validate_password_strength and validate_password.length",             // unsupported
 		"validate_password_strength and validate_password.number_count",       // unsupported
 		"validate_password_strength and validate_password.mixed_case_count",   // unsupported
 		"validate_password_strength and validate_password.special_char_count", // unsupported
-		"coalesce with system types",                                          // unsupported
-		"histogram bucket merging error for implementor buckets",              // unsupported "with recursive" syntax
-		"varchar primary key",                                                 // literal values longer than the key length returns incorrect results for some queries
-		"can't create view with same name as existing table",                  // different error message
 	})
 	defer h.Close()
-	enginetest.TestScripts(t, h)
+	enginetest.TestVariablesScripts(t, h)
 }
 
 func TestJoinOps(t *testing.T) {
@@ -650,6 +804,13 @@ func TestPkOrdinalsDML(t *testing.T) {
 	enginetest.TestPkOrdinalsDML(t, h)
 }
 
+func TestDropTableWarning(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	h.Setup(setup.MydbData)
+	enginetest.TestDropTableWarnings(t, h, false)
+}
+
 func TestDropTable(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
@@ -707,10 +868,21 @@ func TestBlobs(t *testing.T) {
 }
 
 func TestIndexes(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	defer harness.Close()
-	enginetest.TestIndexes(t, harness)
+	// MySQL index metadata and error behavior differ.
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"show create table with duplicate primary key", // auto-generated constraint names differ
+		"unique key duplicate key update",
+		"multiple indexes over same set of columns",
+		"secondary index errors",
+		"indexes and if exists",
+		"Test oversized primary-key lookups",
+	})
+	defer h.Close()
+
+	h.Setup(setup.MydbData)
+	for _, script := range queries.IndexQueries {
+		enginetest.TestScript(t, h, script)
+	}
 }
 
 func TestIndexedExpressions(t *testing.T) {
@@ -753,10 +925,85 @@ func TestDropForeignKeys(t *testing.T) {
 }
 
 func TestForeignKeys(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	// MySQL foreign-key syntax, metadata, or error expectations differ.
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"Delayed foreign key resolution: update",
+		"Delayed foreign key resolution: delete",
+		"Delayed foreign key resolution insert",
+		"Delayed foreign key still does some validation",
+		"Delayed foreign key resolution resetting FOREIGN_KEY_CHECKS",
+		"DROP TABLE with FOREIGN_KEY_CHECKS=0",
+		"Reordered foreign key columns do match",
+		"Self-referential foreign key is not case sensitive",
+		"INSERT on DUPLICATE correctly works with FKs",
+		"Keyless CASCADE over three tables",
+		"Referenced index includes implicit primary key columns",
+		"rename foreign key constraints",
+		"rename check constraints",
+		"foreign key naming",
+		"Naming automatically created FK indexes",
+		"partial foreign key update",
+		"ON UPDATE CASCADE maintains an index over a virtual column",
+		"ON UPDATE CASCADE recomputes chained virtual columns",
+		"ON DELETE CASCADE maintains an index over a virtual column, self-referential",
+		"ON DELETE CASCADE maintains an index over a virtual column between stored columns",
+		"CREATE TABLE Disallow TEXT/BLOB",
+		"Test foreign keys with spatial parent columns",
+		"ALTER TABLE Single Named FOREIGN KEY",
+		"CREATE TABLE Single Named FOREIGN KEY",
+		"Inline column REFERENCES creates an enforced foreign key",
+		"indexes with prefix lengths are ignored for foreign keys",
+		"CREATE TABLE Name Collision",
+		"SET DEFAULT not supported",
+		"ALTER TABLE Foreign Key Name Collision",
+		"ALTER TABLE DROP FOREIGN KEY",
+		"RENAME TABLE",
+		"RENAME TABLE with autogenerated FK name",
+		"RENAME TABLE with primary key indexes",
+		"Indexes used by foreign keys can't be dropped",
+		"ALTER TABLE RENAME COLUMN",
+		"DROP COLUMN parent",
+		"DROP COLUMN child",
+		"SQL CASCADE",
+		"SQL SET NULL",
+		"SQL RESTRICT",
+		"Multi-table DELETE FROM JOIN with multiple foreign keys",
+		"Single-table DELETE FROM JOIN with multiple foreign keys",
+		"SQL no reference options",
+		"SQL INSERT multiple keys violates only one",
+		"Self-referential same column(s)",
+		"Self-referential child column follows parent RESTRICT",
+		"Self-referential child column follows parent CASCADE",
+		"Self-referential child column follows parent SET NULL",
+		"Self-referential delete cascade depth limit",
+		"INSERT IGNORE INTO works correctly with foreign key violations",
+		"ALTER TABLE ADD CONSTRAINT for different database",
+		"Creating a foreign key on a table with an unsupported type works", // POINT values are not supported
+	})
 	defer h.Close()
-	enginetest.TestForeignKeys(t, h)
+
+	for _, suite := range []struct {
+		scripts   []queries.ScriptTest
+		setupData [][]setup.SetupScript
+	}{
+		{
+			scripts:   queries.ForeignKeyTests,
+			setupData: [][]setup.SetupScript{setup.MydbData, setup.Parent_childData},
+		},
+		{scripts: queries.ForeignKeyTypeTests, setupData: [][]setup.SetupScript{setup.MydbData}},
+		{scripts: queries.ForeignKeyResolutionTests, setupData: [][]setup.SetupScript{setup.MydbData}},
+	} {
+		h.Setup(suite.setupData...)
+		for _, script := range suite.scripts {
+			// Scope this substring skip to its script to preserve similarly named cases.
+			scriptHarness := h
+			if script.Name == "CREATE TABLE Type Mismatch" {
+				scriptHarness = h.WithSkippedQueries([]string{script.Name})
+			}
+
+			enginetest.TestScript(t, scriptHarness, script)
+		}
+	}
 }
 
 func TestForeignKeyBranches(t *testing.T) {
@@ -817,10 +1064,27 @@ func TestReadOnly(t *testing.T) {
 }
 
 func TestViews(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	// MySQL view metadata, syntax, and errors differ.
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"can't create table with same name as existing view", // Doltgres needs to return a different error message
+		"can't create view with same name as existing table", // different error message
+		"existing views",
+		"multi database view",
+		"view of join with projections",
+		"view with explicit column list renames literal columns",
+		"view with explicit column list supports various literal and expression types",
+		"view with numeric column name supports dotted and backtick access",
+		"check view with escaped strings",
+		"show view",
+		"views with defaults",
+		"SHOW CREATE VIEW returns stored definition regardless of underlying object state",
+	})
 	defer h.Close()
-	enginetest.TestViews(t, h)
+
+	h.Setup(setup.MydbData)
+	for _, script := range queries.ViewScripts {
+		enginetest.TestScript(t, h, script)
+	}
 }
 
 func TestBranchViews(t *testing.T) {
@@ -899,10 +1163,46 @@ func TestInnerNestedInNaturalJoins(t *testing.T) {
 }
 
 func TestColumnDefaults(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	// MySQL default syntax and result formatting differ.
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"update columns with default", // broken, see repro in update_test.go
+		"preserve now()",              // harness error
+		"update join ambiguous default",
+		"update join ambiguous generated column",
+		"Default expression with function and referenced column",
+		"REPLACE INTO with default expression",
+		"Add column forward reference to default expression",
+		"Add column back reference to default literal",
+		"Negative float literal",
+		"Column referenced with name change",
+		"Column defaults with functions",
+		"Invalid literal for column type",
+		"Expression contains invalid literal once implicitly converted",
+		"BLOB types can define defaults with literals",
+		"Other types using NOW/CURRENT_TIMESTAMP literal",
+		"Stored procedures are not valid in column default value expressions",
+		"Expression contains invalid literal, fails on insertion",
+		"Add column after back reference to expression",
+		"column default normalization: int column rounds",
+		"column default normalization: float column rounds",
+		"column default normalization: double quotes",
+		"column default normalization: expression string literal",
+		"column default normalization: expression int literal",
+		"User variables in column defaults are not allowed",
+		"System variables in column defaults are not allowed",
+		"User variables in generated columns are not allowed",
+		"System variables in generated columns are not allowed",
+		"User variables in ALTER TABLE ADD COLUMN defaults are not allowed",
+		"System variables in ALTER TABLE ADD COLUMN defaults are not allowed",
+		"User variables in ALTER TABLE ALTER COLUMN defaults are not allowed",
+		"System variables in ALTER TABLE ALTER COLUMN defaults are not allowed",
+	})
 	defer h.Close()
-	enginetest.TestColumnDefaults(t, h)
+
+	h.Setup(setup.MydbData)
+	for _, script := range queries.ColumnDefaultTests {
+		enginetest.TestScript(t, h, script)
+	}
 }
 
 func TestOnUpdateExprScripts(t *testing.T) {
@@ -913,11 +1213,40 @@ func TestOnUpdateExprScripts(t *testing.T) {
 }
 
 func TestAlterTable(t *testing.T) {
-	t.Skip()
-	// This is a newly added test in GMS that dolt doesn't support yet
-	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{"ALTER TABLE t42 ADD COLUMN s varchar(20), drop check check1"})
+	// MySQL ALTER TABLE syntax, metadata, or error behavior differs.
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"modify set column",
+		"ALTER TABLE ... ALTER ADD CHECK / DROP CHECK",
+		"ALTER TABLE AUTO INCREMENT no-ops on table with no original auto increment key",
+		"Identifier lengths",
+		"Prefix index with same columns as another index",
+		"Index case-insensitivity",
+		"alter column and rename table work within same transaction",
+		"alter table comment",
+		"preserve enums through alter statements",
+		"multi alter with invalid schemas",
+		"variety of alter column statements in a single statement",
+		"mix of alter column, add and drop constraints in one statement",
+		"Error queries",
+		"alter table containing column default value expressions",
+		"drop check as part of alter block",
+		"drop constraint as part of alter block",
+		"drop column drops correct check constraint",
+		"drop column does not drop when referenced in constraint with other column",
+		"drop column prevents foreign key violations",
+		"disable keys / enable keys",
+		"ALTER TABLE remove AUTO_INCREMENT",
+		"add column unique index",
+		"add column with inline check constraint definition",
+		"multi-alter ddl column errors",
+		"ALTER TABLE does not change column collations",
+	})
 	defer h.Close()
-	enginetest.TestAlterTable(t, h)
+
+	h.Setup(setup.MydbData, setup.Pk_tablesData)
+	for _, script := range queries.AlterTableScripts {
+		enginetest.TestScript(t, h, script)
+	}
 }
 
 func TestVariables(t *testing.T) {
@@ -956,14 +1285,36 @@ func TestSelectIntoFile(t *testing.T) {
 }
 
 func TestJsonScripts(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	defer h.Close()
-	skippedTests := []string{
+	// MySQL JSON functions, formats, or error expectations differ.
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"types survive round-trip into tables",
+		"unsigned tinyint is still unsigned after round-trip into table",
+		"JSON_ARRAGG with simple and nested json objects.",
+		"JSON -> and ->> operator support",
+		"json is ordered correctly",
+		"Test consistent JSON object comparisons",
+		"json is formatted correctly",
+		"json_extract returns missing keys as sql null and handles json null literals correctly",
+		"json type value compared with number type value",
+		"json bools",
+		"Comparisons with JSON values containing non-JSON types",
 		"round-trip into table", // The current Dolt JSON format does not preserve decimals and unsigneds in JSON.
+		"TextStorage converts to JSON when using dolt wrapper",
+		"json_type scripts",
+		"large integer values keep precision and ordering in document",
+		"json_object preserves types",
+		"json_object preserves escaped characters in key and values",
+		"json conversion works with escaped characters",
+		"json_object with escaped k:v pairs from table",
+		"json_value preserves types",
+		"JSON_ARRAY properly handles CHAR bind vars", // bind-variable execution is not implemented by the server harness
+	})
+	defer h.Close()
+
+	h.Setup(setup.MydbData, setup.BlobData)
+	for _, script := range queries.JsonScripts {
+		enginetest.TestScript(t, h, script)
 	}
-	// TODO: fix this, use a skipping harness
-	enginetest.TestJsonScripts(t, h, skippedTests)
 }
 
 func TestTriggers(t *testing.T) {
@@ -981,9 +1332,132 @@ func TestRollbackTriggers(t *testing.T) {
 }
 
 func TestStoredProcedures(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunStoredProceduresTest(t, h)
+	// MySQL stored procedure syntax and metadata are not supported.
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"REPEAT with OnceBefore returns first loop evaluation result set",
+		"WHILE returns previous loop evaluation result set",
+		"Simple SELECT",
+		"Multiple SELECTs",
+		"IF/ELSE with 1 SELECT at end",
+		"IF/ELSE with nested SELECT in branches",
+		"REPEAT loop over user variable",
+		"WHILE loop over user variable",
+		"CASE statements",
+		"SELECT with JOIN and table aliases",
+		"Nested CALL in IF/ELSE branch",
+		"INSERT INTO SELECT doesn't override SELECT",
+		"Parameters resolve inside of INSERT",
+		"Parameters resolve inside of SELECT UNION",
+		"Parameters resolve inside of REPLACE",
+		"Parameters resolve inside of INSERT INTO SELECT",
+		"Subquery on SET user variable captures parameter",
+		"Simple SELECT INTO",
+		"Multiple variables in SELECT INTO",
+		"SELECT INTO with condition",
+		"SELECT INTO with group by, order by and limit",
+		"multiple SELECT INTO in begin end block",
+		"multiple statement with single SELECT INTO in begin end block",
+		"DECLARE variables, proper nesting support",
+		"DECLARE multiple variables, same statement",
+		"DECLARE variable shadows parameter",
+		"DECLARE CONDITION",
+		"DECLARE CONDITION nesting priority",
+		"FETCH multiple rows",
+		"FETCH with multiple opens and closes",
+		"issue 7458: proc params as limit values",
+		"FETCH captures state at OPEN",
+		"FETCH implicitly closes",
+		"SQLEXCEPTION declare handler",
+		"Test cursor continue-handler checksum loops",
+		"DECLARE HANDLERs exit according to the block they were declared in",
+		"Labeled BEGIN...END",
+		"REPEAT runs loop before first evaluation",
+		"WHILE runs evaluation before first loop",
+		"ITERATE and LEAVE LOOP",
+		"ITERATE and LEAVE REPEAT",
+		"ITERATE and LEAVE WHILE",
+		"Handle setting an uninitialized user variable",
+		"Dolt Issue #4980",
+		"Conditional expression where body has its own columns",
+		"Nested subquery in conditional expression where body has its own columns",
+		"Conditional expression with else doesn't have body columns in its scope",
+		"HANDLERs ignore variables declared after them",
+		"Duplicate parameter names",
+		"Duplicate parameter names mixed casing",
+		"DECLARE CONDITION wrong positions",
+		"DECLARE CONDITION duplicate name",
+		"SIGNAL references condition name for MySQL error code",
+		"SIGNAL non-existent condition name",
+		"Duplicate procedure name",
+		"Broken procedure shouldn't break other procedures",
+		"DECLARE name duplicate same type",
+		"DECLARE name duplicate different type",
+		"Variable, condition, and cursor in invalid order",
+		"FETCH non-existent cursor",
+		"OPEN non-existent cursor",
+		"CLOSE non-existent cursor",
+		"CLOSE without OPEN",
+		"OPEN repeatedly",
+		"CLOSE repeatedly",
+		"With CTE using variable",
+		"With CTE using parameter",
+		"Dolt Issue #4480",
+		"recursive procedure",
+		"multi recursive procedures",
+		"user variables are usable within stored procedures",
+		"prepare statement inside of stored procedures",
+		"stored procedure with exists subquery",
+		"stored procedure with subquery set operations",
+		"Resolve procedure variable in IS expression",
+		"OUT param with SET",
+		"OUT param without SET",
+		"INOUT param with SET",
+		"INOUT param without SET",
+		"Nested CALL with INOUT param",
+		"Incompatible type for parameter",
+		"Incorrect parameter count",
+		"use procedure parameter in filter expressions and multiple statements",
+		"Call procedures by their qualified name",
+		"String literals with escaped chars",
+		"Procedures with TimestampFuncExpr",
+		"Call a procedure that needs subqueries resolved in an if condition",
+		"creating invalid procedure doesn't error until it is called",
+		"event must not contain CREATE PROCEDURE",
+		"table ddl statements in stored procedures",
+		"procedure must not contain CREATE TRIGGER",
+		"procedure must not contain CREATE DB",
+		"procedure can CREATE VIEW",
+		"nested procedure inserts",
+		"DROP procedures",
+		"SHOW procedures",
+		"SHOW non-existent procedures",
+	})
+	defer h.Close()
+
+	h.Setup(setup.MydbData)
+	for _, suite := range []struct {
+		name    string
+		scripts []queries.ScriptTest
+	}{
+		{name: "logic tests", scripts: queries.ProcedureLogicTests},
+		{name: "call tests", scripts: queries.ProcedureCallTests},
+		{name: "create tests", scripts: queries.ProcedureCreateInSubroutineTests},
+		{name: "drop tests", scripts: queries.ProcedureDropTests},
+		{name: "show status tests", scripts: queries.ProcedureShowStatus},
+		{name: "show create tests", scripts: queries.ProcedureShowCreate},
+	} {
+		t.Run(suite.name, func(t *testing.T) {
+			for _, script := range suite.scripts {
+				// Scope this substring skip to its script to preserve similarly named cases.
+				scriptHarness := h
+				if script.Name == "DECLARE CONTINUE HANDLER" {
+					scriptHarness = h.WithSkippedQueries([]string{script.Name})
+				}
+
+				enginetest.TestScript(t, scriptHarness, script)
+			}
+		})
+	}
 }
 
 func TestDoltStoredProcedures(t *testing.T) {
@@ -1441,10 +1915,50 @@ func TestStatisticIndexes(t *testing.T) {
 }
 
 func TestCharsetCollationEngine(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
+	// MySQL character set syntax and collation behavior differ.
+	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
+		"CAST(... AS BINARY) function",
+		"Issue #5482",
+		"LIKE with a space terminated prefix matches rows with a multibyte character after the prefix",
+		"LIKE with a constant prefix keeps rows that sort after the prefix across collations, NOT LIKE, and joins",
+		"IN predicate with accent-insensitive collation",
+		"CHECK constraint with IN predicate and collation",
+		"BINARY() function", // malformed UTF-16 input causes a stack overflow
+		"LIKE respects table collations",
+		"LIKE respects connection collation",
+		"STRCMP() function",
+		"LENGTH() function",
+		"CHAR_LENGTH() function",
+		"CONVERT() USING with malformed multi-byte strings",
+		"UPPER() function",
+		"LOWER() function",
+		"RPAD() function",
+		"LPAD() function",
+		"SUBSTRING() function",
+		"FROM_BASE64() function",
+		"TRIM() function",
+		"RTRIM() function",
+		"LTRIM() function",
+		"SET collation handling",
+		"invalid utf8 encoding strings", // need to investigate why some strings aren't giving errors, might be a harness error
+		"Insert multiple character sets",
+		"Sorting differences",
+		"Character set introducer with invalid collate",
+		"Properly block using not-yet-implemented character sets/collations",
+		"Order by behaves differently according to case-sensitivity",
+		"Proper index access",
+		"Table collation is respected",
+		"SET NAMES does not interfere with column charset",
+		"SET validates character set and collation variables",
+		"setting charset/collation sets the other",
+		"ENUM collation handling",
+	})
 	defer h.Close()
-	enginetest.TestCharsetCollationEngine(t, h)
+
+	h.Setup(setup.MydbData)
+	for _, script := range queries.CharsetCollationEngineTests {
+		enginetest.TestScript(t, h, script)
+	}
 }
 
 func TestCharsetCollationWire(t *testing.T) {
