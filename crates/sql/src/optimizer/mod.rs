@@ -381,14 +381,17 @@ fn preprocess_having(glob: &PlannerGlobal, parse: &mut Query) {
 fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
     match plan {
         join @ Plan::Join { .. } if !decomposable(&join) => match join {
-            Plan::Join { left, right, kind, condition, lateral, method } => Plan::Join {
-                left: Box::new(plan_subquery(ctx, *left)),
-                right: Box::new(plan_subquery(ctx, *right)),
-                kind,
-                condition,
-                lateral,
-                method,
-            },
+            Plan::Join { left, right, kind, condition, lateral, method } => {
+                let width = left.width() + right.width();
+                Plan::Join {
+                    left: Box::new(plan_subquery(ctx, *left)),
+                    right: Box::new(plan_subquery(ctx, *right)),
+                    kind,
+                    condition: condition.map(|c| subselect::process_sublinks(ctx, c, width)),
+                    lateral,
+                    method,
+                }
+            }
             other => other,
         },
         Plan::SetOp { op, all, left, right } => Plan::SetOp {
@@ -422,11 +425,10 @@ fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
     }
 }
 
-/// decomposable reports whether a join's inputs can join in any order the planner finds: it is not lateral, not
-/// already planned, and has no subquery expression in its condition that is not a SubPlan yet.
+/// decomposable reports whether a join's inputs can join in any order the planner finds: it is not lateral and not
+/// already planned.
 fn decomposable(join: &Plan) -> bool {
-    matches!(join, Plan::Join { condition, lateral: false, method: JoinMethod::Unplanned, .. }
-        if !condition.as_ref().is_some_and(subselect::has_sublink))
+    matches!(join, Plan::Join { lateral: false, method: JoinMethod::Unplanned, .. })
 }
 
 /// query_planner builds the base relations, distributes the join tree's clauses, sets the orders that the upper
@@ -516,7 +518,8 @@ fn query_planner(root: &mut PlannerInfo<'_, '_>, qp_callback: &mut dyn FnMut(&mu
 /// SELECT's projection, LIMIT, DISTINCT, or ORDER BY, or a set operation, becomes a subquery, a filter becomes a FROM list with quals, the
 /// one row of an empty FROM clause becomes a RESULT relation, a scan of a table becomes a relation, a WITH query's
 /// reference becomes what ss_process_cte decides, and any other input becomes a relation of its own plan, planned
-/// already, as is any join that is lateral, already planned, or has a subquery in its condition.
+/// already, as is any join that is lateral or already planned. The subqueries of a filter's or a join's conditions
+/// pull up as Postgres' pull_up_sublinks_jointree_recurse pulls them up.
 pub(super) fn build_jointree(
     glob: &mut PlannerGlobal,
     ctx: &mut Ctx<'_>,
@@ -538,11 +541,47 @@ pub(super) fn build_jointree(
             rtable.push(RangeTblEntry { kind: RteKind::Join(jointype), coltypes: Vec::new() });
             let rtindex = rtable.len();
             let (mut left_columns, mut right_columns) = (Vec::new(), Vec::new());
-            let larg = build_jointree(glob, ctx, *left, rtable, &mut left_columns);
-            let rarg = build_jointree(glob, ctx, *right, rtable, &mut right_columns);
+            let mut larg = build_jointree(glob, ctx, *left, rtable, &mut left_columns);
+            let mut rarg = build_jointree(glob, ctx, *right, rtable, &mut right_columns);
             let both = [left_columns.as_slice(), right_columns.as_slice()].concat();
             let conjuncts = condition.as_ref().map(crate::indexscan::conjuncts).unwrap_or_default();
-            let quals = conjuncts.into_iter().map(|c| to_vars(c.clone(), &both)).collect();
+            let conjuncts: Vec<Expr> = conjuncts.into_iter().cloned().collect();
+            let leftrelids = prepjointree::get_relids_in_jointree(&larg, true, true);
+            let rightrelids = prepjointree::get_relids_in_jointree(&rarg, true, true);
+            let mut pull_up = |jtlink: &mut JoinTreeNode, available_rels: &Relids, conjuncts| {
+                let none = Relids::new();
+                let quals = subselect::pull_up_sublinks_qual_recurse(
+                    glob,
+                    ctx,
+                    conjuncts,
+                    jtlink,
+                    available_rels,
+                    None,
+                    &none,
+                    rtable,
+                    &both,
+                );
+                quals.into_iter().map(|c| to_vars(subselect::process_sublinks(ctx, c, both.len()), &both)).collect()
+            };
+            let join =
+                |larg, rarg, quals| JoinTreeNode::Join(Box::new(JoinExpr { jointype, larg, rarg, quals, rtindex }));
+            let node = match jointype {
+                JoinType::Inner => {
+                    let mut node = join(larg, rarg, Vec::new());
+                    let quals = pull_up(&mut node, &leftrelids.union(&rightrelids), conjuncts);
+                    set_sublink_base_quals(&mut node, quals);
+                    node
+                }
+                JoinType::Left => {
+                    let quals = pull_up(&mut rarg, &rightrelids, conjuncts);
+                    join(larg, rarg, quals)
+                }
+                JoinType::Right => {
+                    let quals = pull_up(&mut larg, &leftrelids, conjuncts);
+                    join(larg, rarg, quals)
+                }
+                _ => join(larg, rarg, conjuncts.into_iter().map(|c| to_vars(c, &both)).collect()),
+            };
             let nulled = Relids::singleton(rtindex);
             let (left_nulled, right_nulled) = match jointype {
                 JoinType::Inner => (false, false),
@@ -556,7 +595,7 @@ pub(super) fn build_jointree(
                     false => e,
                 }));
             }
-            JoinTreeNode::Join(Box::new(JoinExpr { jointype, larg, rarg, quals, rtindex }))
+            node
         }
         Plan::Project { .. }
         | Plan::Limit { .. }
@@ -569,13 +608,27 @@ pub(super) fn build_jointree(
         Plan::Filter { input, predicate } => {
             let mut columns = Vec::new();
             let node = build_jointree(glob, ctx, *input, rtable, &mut columns);
+            let frelids = prepjointree::get_relids_in_jointree(&node, true, true);
+            let mut jtlink = JoinTreeNode::From(Box::new(FromExpr { fromlist: vec![node], quals: Vec::new() }));
             let conjuncts = crate::indexscan::conjuncts(&predicate).into_iter().cloned().collect();
-            let (node, conjuncts) = subselect::pull_up_sublinks(glob, ctx, node, conjuncts, rtable, &columns);
+            let none = Relids::new();
+            let conjuncts = subselect::pull_up_sublinks_qual_recurse(
+                glob,
+                ctx,
+                conjuncts,
+                &mut jtlink,
+                &frelids,
+                None,
+                &none,
+                rtable,
+                &columns,
+            );
             let width = columns.len();
             let quals =
                 conjuncts.into_iter().map(|c| to_vars(subselect::process_sublinks(ctx, c, width), &columns)).collect();
+            set_sublink_base_quals(&mut jtlink, quals);
             output.extend(columns);
-            JoinTreeNode::From(Box::new(FromExpr { fromlist: vec![node], quals }))
+            jtlink
         }
         Plan::OneRow => push_relation(glob, rtable, output, RteKind::Result, Vec::new()),
         Plan::CteScan(def) => subselect::ss_process_cte(glob, ctx, def, rtable, output),
@@ -643,6 +696,17 @@ fn plan_coltypes(plan: &Plan) -> Vec<Option<u32>> {
             types
         }
         _ => vec![None; width],
+    }
+}
+
+/// set_sublink_base_quals sets the quals of the join tree node under the joins that pulled-up subqueries made above
+/// it, as Postgres' pull_up_sublinks_jointree_recurse leaves a node's remaining quals on it.
+fn set_sublink_base_quals(node: &mut JoinTreeNode, quals: Vec<Expr>) {
+    match node {
+        JoinTreeNode::Join(j) if j.rtindex == 0 => set_sublink_base_quals(&mut j.larg, quals),
+        JoinTreeNode::Join(j) => j.quals = quals,
+        JoinTreeNode::From(f) => f.quals = quals,
+        JoinTreeNode::Rel(_) => unreachable!("subqueries pull up above a FROM list or a join"),
     }
 }
 

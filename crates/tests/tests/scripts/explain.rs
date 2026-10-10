@@ -621,3 +621,122 @@ fn test_empty_and_full_joins() {
         },
     ]);
 }
+
+#[test]
+fn test_pulled_up_subqueries() {
+    run_scripts(&[
+        ScriptTest {
+            name: "subqueries of join conditions and of subqueries' conditions",
+            set_up_script: &[
+                "CREATE TABLE sl_a (x INT PRIMARY KEY, v INT);",
+                "CREATE TABLE sl_b (y INT, w INT);",
+                "CREATE TABLE sl_c (z INT, u INT);",
+                "INSERT INTO sl_a SELECT i, i % 7 FROM generate_series(1, 200) i;",
+                "INSERT INTO sl_b SELECT i % 50, i FROM generate_series(1, 300) i;",
+                "INSERT INTO sl_c SELECT i % 20, i % 3 FROM generate_series(1, 100) i;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM sl_a JOIN sl_b ON sl_a.x = sl_b.y AND sl_b.w IN (SELECT z FROM sl_c);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("19")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM sl_a LEFT JOIN sl_b ON sl_a.x = sl_b.y AND EXISTS (SELECT 1 FROM sl_c WHERE sl_c.z = sl_b.w);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("200")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM sl_a LEFT JOIN sl_b ON sl_a.x = sl_b.y AND EXISTS (SELECT 1 FROM sl_c WHERE sl_c.z = sl_a.v);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("445")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM sl_a WHERE EXISTS (SELECT 1 FROM sl_b WHERE sl_b.y = sl_a.x AND sl_b.w IN (SELECT z FROM sl_c));",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("19")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM sl_a WHERE EXISTS (SELECT 1 FROM sl_b WHERE sl_b.y = sl_a.x AND EXISTS (SELECT 1 FROM sl_c WHERE sl_c.z = sl_b.w AND sl_c.u = sl_a.v));",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("8")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM sl_a WHERE NOT EXISTS (SELECT 1 FROM sl_b WHERE sl_b.y = sl_a.x AND NOT EXISTS (SELECT 1 FROM sl_c WHERE sl_c.z = sl_b.w));",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("151")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM sl_a WHERE EXISTS (SELECT 1 FROM sl_b WHERE sl_b.y = sl_a.x AND sl_b.w > (SELECT max(u) FROM sl_c WHERE sl_c.z = sl_b.y));",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("19")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM sl_a RIGHT JOIN sl_b ON sl_a.x = sl_b.y AND sl_a.v IN (SELECT u FROM sl_c);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("300")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM sl_a FULL JOIN sl_b ON sl_a.x = sl_b.y AND sl_a.v IN (SELECT u FROM sl_c);",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("479")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

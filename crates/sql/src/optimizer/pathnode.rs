@@ -407,16 +407,20 @@ pub fn create_unique_path(
         return None;
     }
     let relid = root.rels[rel].relid;
-    let unique_already = match &root.parse.rte(relid).kind {
-        RteKind::Relation(..) => {
-            sjinfo.semi_can_btree && super::indxpath::relation_has_unique_index_ext(root, rel, &[], &uniq_exprs, None)
-        }
-        RteKind::Subquery(subquery, _) => {
-            super::analyzejoins::query_supports_distinctness(subquery)
-                && translate_sub_tlist(root, &uniq_exprs, relid)
-                    .is_some_and(|colnos| super::analyzejoins::query_is_distinct_for(subquery, &colnos))
-        }
-        _ => false,
+    let unique_already = match relid {
+        0 => false,
+        _ => match &root.parse.rte(relid).kind {
+            RteKind::Relation(..) => {
+                sjinfo.semi_can_btree
+                    && super::indxpath::relation_has_unique_index_ext(root, rel, &[], &uniq_exprs, None)
+            }
+            RteKind::Subquery(subquery, _) => {
+                super::analyzejoins::query_supports_distinctness(subquery)
+                    && translate_sub_tlist(root, &uniq_exprs, relid)
+                        .is_some_and(|colnos| super::analyzejoins::query_is_distinct_for(subquery, &colnos))
+            }
+            _ => false,
+        },
     };
     let rel_rows = root.rels[rel].rows;
     let path = |umethod, rows, (disabled_nodes, startup_cost, total_cost), pathkeys| {

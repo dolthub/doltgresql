@@ -1819,8 +1819,14 @@ impl<'b, 'a> Planner<'b, 'a> {
         } else {
             match join.quals.as_deref() {
                 Some(quals) => {
-                    let mut binder = self.binder(scope.clone());
-                    Some(crate::expr::condition(binder.bind(quals)?, "JOIN/ON", crate::expr::arg_location(quals))?)
+                    let deferred = match crate::optimizer::enabled() && !lateral && kind != JoinKind::Full {
+                        true => top_level_sublinks(quals),
+                        false => Vec::new(),
+                    };
+                    let saved = std::mem::replace(&mut self.ctx.deferred_sublinks, deferred);
+                    let bound = self.binder(scope.clone()).bind(quals);
+                    self.ctx.deferred_sublinks = saved;
+                    Some(crate::expr::condition(bound?, "JOIN/ON", crate::expr::arg_location(quals))?)
                 }
                 None => None,
             }
@@ -2265,8 +2271,8 @@ fn nearest_planned(plan: Plan) -> Plan {
     }
 }
 
-/// top_level_sublinks returns the locations of the `EXISTS`, `NOT EXISTS`, and `IN` subqueries among a WHERE
-/// clause's top-level conditions, which Postgres' pull_up_sublinks may turn into joins.
+/// top_level_sublinks returns the locations of the `EXISTS`, `NOT EXISTS`, and `IN` subqueries among a WHERE or
+/// JOIN/ON clause's top-level conditions, which Postgres' pull_up_sublinks may turn into joins.
 fn top_level_sublinks(node: &Node) -> Vec<i32> {
     use pg_query::protobuf::{BoolExprType, SubLinkType};
     match node.node.as_ref() {

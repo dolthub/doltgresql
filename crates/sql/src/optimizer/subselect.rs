@@ -23,7 +23,8 @@ use std::rc::Rc;
 use super::clauses::is_volatile_node;
 use super::costsize::{Enables, HASH_MEM, TUPLE_HEADER, cost_material, cost_subplan, maxalign};
 use super::nodes::{
-    FromExpr, JoinExpr, JoinTreeNode, JoinType, Path, PlannerGlobal, Query, RangeTblEntry, RteKind, TargetEntry,
+    FromExpr, JoinExpr, JoinTreeNode, JoinType, Path, PlannerGlobal, Query, RangeTblEntry, Relids, RteKind,
+    TargetEntry, VarNode,
 };
 use crate::expr::{CmpOp, Expr, SubPlan};
 use crate::plan::Plan;
@@ -337,15 +338,6 @@ pub fn process_sublinks(ctx: &mut Ctx<'_>, e: Expr, width: usize) -> Expr {
     }
 }
 
-/// has_sublink reports whether an expression holds a subquery expression that is not a SubPlan yet.
-pub fn has_sublink(e: &Expr) -> bool {
-    let mut found = false;
-    e.visit(&mut |x| {
-        found |= matches!(x, Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..))
-    });
-    found
-}
-
 /// simplify_exists_query drops what an EXISTS subquery's result does not depend on, its target list, grouping,
 /// DISTINCT, ORDER BY, and a positive or NULL constant LIMIT, unless it has aggregates, grouping sets, windows,
 /// set-returning functions, HAVING, or OFFSET, returning whether it did, as Postgres' simplify_EXISTS_query does.
@@ -472,41 +464,122 @@ fn jointree_quals(node: &JoinTreeNode, f: &mut dyn FnMut(&Expr)) {
     }
 }
 
-/// pull_up_sublinks turns each of the WHERE clause's conditions that pull_up_sublinks can into a semi or anti join of
-/// the join tree with the subquery's rows, or into a comparison with an array of a VALUES list's values, returning
-/// the new join tree and the other conditions, as Postgres' function of the same name does for the WHERE clause's
-/// top-level conditions.
-pub fn pull_up_sublinks(
+/// pull_up_sublinks_qual_recurse turns each condition of a list over a row of `output` columns that it can into a
+/// semi or anti join with the subquery's rows, or an `IN` test of a VALUES list into a comparison with an array, and
+/// returns the other conditions, as Postgres' function of the same name does: a subquery joins the first join tree
+/// link when what it reads of the row is among the first relations, or else the second link, and the conditions of
+/// the join it becomes pull up their own subqueries in turn.
+#[allow(clippy::too_many_arguments)]
+pub fn pull_up_sublinks_qual_recurse(
     glob: &mut PlannerGlobal,
     ctx: &mut Ctx<'_>,
-    mut jointree: JoinTreeNode,
     quals: Vec<Expr>,
+    jtlink1: &mut JoinTreeNode,
+    available_rels1: &Relids,
+    mut jtlink2: Option<&mut JoinTreeNode>,
+    available_rels2: &Relids,
     rtable: &mut Vec<RangeTblEntry>,
     output: &[Expr],
-) -> (JoinTreeNode, Vec<Expr>) {
+) -> Vec<Expr> {
     let mut remaining = Vec::new();
     for qual in quals {
         if let Some(saop) = convert_values_to_any(ctx, &qual) {
             remaining.push(saop);
-            continue;
-        }
-        let converted = match &qual {
-            Expr::Exists(plan) => convert_exists_sublink_to_join(glob, ctx, plan, false, rtable, output),
-            Expr::Not(inner) => match &**inner {
-                Expr::Exists(plan) => convert_exists_sublink_to_join(glob, ctx, plan, true, rtable, output),
-                _ => None,
-            },
-            Expr::AnySubquery(test, plan, false) => convert_any_sublink_to_join(glob, ctx, test, plan, rtable, output),
-            _ => None,
-        };
-        match converted {
-            Some((jointype, rarg, quals)) => {
-                jointree = JoinTreeNode::Join(Box::new(JoinExpr { jointype, larg: jointree, rarg, quals, rtindex: 0 }))
-            }
-            None => remaining.push(qual),
+        } else if let Some(join) = convert_sublink_to_join(glob, ctx, &qual, available_rels1, rtable, output) {
+            attach_sublink_join(glob, ctx, join, jtlink1, available_rels1, rtable);
+        } else if let Some(jtlink2) = jtlink2.as_deref_mut()
+            && let Some(join) = convert_sublink_to_join(glob, ctx, &qual, available_rels2, rtable, output)
+        {
+            attach_sublink_join(glob, ctx, join, jtlink2, available_rels2, rtable);
+        } else {
+            remaining.push(qual);
         }
     }
-    (jointree, remaining)
+    remaining
+}
+
+/// SublinkJoin is the join that a subquery becomes before it joins a join tree link: the join without its left side
+/// and conditions, the layout of the row its conditions read, and those conditions.
+type SublinkJoin = (JoinExpr, Vec<Expr>, Vec<Expr>);
+
+/// convert_sublink_to_join returns the join that an `EXISTS`, `NOT EXISTS`, or `IN` subquery becomes when what it
+/// reads of the row is among the available relations, as pull_up_sublinks_qual_recurse chooses the conversion.
+fn convert_sublink_to_join(
+    glob: &mut PlannerGlobal,
+    ctx: &mut Ctx<'_>,
+    qual: &Expr,
+    available_rels: &Relids,
+    rtable: &mut Vec<RangeTblEntry>,
+    output: &[Expr],
+) -> Option<SublinkJoin> {
+    match qual {
+        Expr::AnySubquery(test, plan, false) => {
+            convert_any_sublink_to_join(glob, ctx, test, plan, available_rels, rtable, output)
+        }
+        Expr::Exists(plan) => convert_exists_sublink_to_join(glob, ctx, plan, false, available_rels, rtable, output),
+        Expr::Not(inner) => match &**inner {
+            Expr::Exists(plan) => convert_exists_sublink_to_join(glob, ctx, plan, true, available_rels, rtable, output),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// attach_sublink_join makes a subquery's join the new join tree link, with the old link as its left side, after
+/// pulling up the subqueries of its conditions onto its sides: either side for a semi join, and only the subquery's
+/// side for an anti join.
+fn attach_sublink_join(
+    glob: &mut PlannerGlobal,
+    ctx: &mut Ctx<'_>,
+    (mut j, layout, quals): SublinkJoin,
+    jtlink: &mut JoinTreeNode,
+    available_rels: &Relids,
+    rtable: &mut Vec<RangeTblEntry>,
+) {
+    j.larg = std::mem::replace(jtlink, JoinTreeNode::Rel(0));
+    let child_rels = super::prepjointree::get_relids_in_jointree(&j.rarg, true, true);
+    let quals = match j.jointype {
+        JoinType::Anti => pull_up_sublinks_qual_recurse(
+            glob,
+            ctx,
+            quals,
+            &mut j.rarg,
+            &child_rels,
+            None,
+            &Relids::new(),
+            rtable,
+            &layout,
+        ),
+        _ => pull_up_sublinks_qual_recurse(
+            glob,
+            ctx,
+            quals,
+            &mut j.larg,
+            available_rels,
+            Some(&mut j.rarg),
+            &child_rels,
+            rtable,
+            &layout,
+        ),
+    };
+    let width = layout.len();
+    j.quals = quals.into_iter().map(|c| super::to_vars(process_sublinks(ctx, c, width), &layout)).collect();
+    *jtlink = JoinTreeNode::Join(Box::new(j));
+}
+
+/// output_varnos returns the relations of the Vars of the given columns of a row of `output` columns, as Postgres'
+/// pull_varnos finds them.
+fn output_varnos(glob: &PlannerGlobal, output: &[Expr], columns: impl IntoIterator<Item = usize>) -> Relids {
+    let mut varnos = Relids::new();
+    for c in columns {
+        super::var::visit_columns(&output[c], &mut |id| {
+            if let VarNode::Var(var) = glob.node(id) {
+                varnos.add_member(var.varno);
+                varnos.add_members(&var.varnullingrels);
+            }
+        });
+    }
+    varnos
 }
 
 /// any_convertible reports whether convert_ANY_sublink_to_join turns an `IN` test of a subquery into a semi join:
@@ -527,16 +600,27 @@ fn any_convertible(test: &Expr, plan: &Plan) -> bool {
 }
 
 /// convert_any_sublink_to_join returns the semi join that an `IN` test of a subquery becomes, with the subquery as
-/// its inner side, as Postgres' convert_ANY_sublink_to_join does.
+/// its inner side, when the row's columns that the test reads are of the available relations, as Postgres'
+/// convert_ANY_sublink_to_join does. Its condition reads the row followed by the subquery's value.
 fn convert_any_sublink_to_join(
     glob: &mut PlannerGlobal,
     ctx: &mut Ctx<'_>,
     test: &Expr,
     plan: &Plan,
+    available_rels: &Relids,
     rtable: &mut Vec<RangeTblEntry>,
     output: &[Expr],
-) -> Option<(JoinType, JoinTreeNode, Vec<Expr>)> {
+) -> Option<SublinkJoin> {
     if !any_convertible(test, plan) {
+        return None;
+    }
+    let mut read = Vec::new();
+    test.visit(&mut |e| {
+        if let Expr::Column(c) = e {
+            read.push(*c);
+        }
+    });
+    if !output_varnos(glob, output, read).is_subset(available_rels) {
         return None;
     }
     let plan = match plan {
@@ -545,24 +629,26 @@ fn convert_any_sublink_to_join(
     };
     let mut subquery_vars = Vec::new();
     let rarg = super::build_jointree(glob, ctx, plan.clone(), rtable, &mut subquery_vars);
-    let quals = vec![convert_testexpr(test.clone(), &subquery_vars[0], output)];
-    Some((JoinType::Semi, rarg, quals))
+    let mut layout = output.to_vec();
+    layout.push(subquery_vars.swap_remove(0));
+    let quals = vec![convert_testexpr(test.clone(), output.len())];
+    let larg = JoinTreeNode::Rel(0);
+    Some((JoinExpr { jointype: JoinType::Semi, larg, rarg, quals: Vec::new(), rtindex: 0 }, layout, quals))
 }
 
-/// convert_testexpr rewrites an `IN` test over the enclosing row and the subquery's value into one over their
-/// expressions.
-fn convert_testexpr(e: Expr, value: &Expr, output: &[Expr]) -> Expr {
+/// convert_testexpr rewrites an `IN` test over the enclosing row and the subquery's value into one over the row
+/// followed by the value.
+fn convert_testexpr(e: Expr, value: usize) -> Expr {
     match e {
-        Expr::SubqueryValue => value.clone(),
-        Expr::Column(c) => output[c].clone(),
-        other => other.map_children(&mut |c| convert_testexpr(c, value, output)),
+        Expr::SubqueryValue => Expr::Column(value),
+        other => other.map_children(&mut |c| convert_testexpr(c, value)),
     }
 }
 
 /// exists_parts returns the rows below an `EXISTS` subquery's WHERE clause and that clause's conditions, when
 /// convert_EXISTS_sublink_to_join can turn it into a join: the rows read nothing of the enclosing rows, and the
-/// conditions read the enclosing row and run no volatile function or subquery, as Postgres' simplify_EXISTS_query
-/// and convert_EXISTS_sublink_to_join require.
+/// conditions read the enclosing row and run no volatile function or SubPlan that reads a row beyond its arguments, as
+/// Postgres' simplify_EXISTS_query and convert_EXISTS_sublink_to_join require.
 fn exists_parts(plan: &Plan) -> Option<(&Plan, Vec<&Expr>)> {
     let mut input = plan;
     loop {
@@ -584,10 +670,21 @@ fn exists_parts(plan: &Plan) -> Option<(&Plan, Vec<&Expr>)> {
     }
     let mut reads_enclosing = false;
     for c in &where_clause {
-        if crate::plan::has_subquery(c) || volatile(c) {
+        let mut deep_subplan = false;
+        c.visit(&mut |e| {
+            if matches!(e, Expr::SubPlan(_) | Expr::AlternativeSubPlan(_)) {
+                for plan in e.subqueries() {
+                    let mut read = BTreeSet::new();
+                    deep_subplan |= !crate::indexscan::outer_reads(plan, 2, &mut read) || !read.is_empty();
+                }
+            }
+        });
+        if deep_subplan || volatile(c) {
             return None;
         }
-        c.visit(&mut |e| reads_enclosing |= matches!(e, Expr::Outer(1, _)));
+        let mut read = BTreeSet::new();
+        merge_enclosing_row((*c).clone(), 0, 0, &mut read);
+        reads_enclosing |= !read.is_empty();
     }
     let own = crate::joins::plan_lowest_level(input).is_some_and(|level| level >= 0);
     (reads_enclosing && own).then_some((input, where_clause))
@@ -600,33 +697,52 @@ fn positive_or_null(limit: &Expr) -> bool {
 }
 
 /// convert_exists_sublink_to_join returns the semi join, or anti join under NOT, that an `EXISTS` subquery becomes,
-/// with the rows below its WHERE clause as its inner side and that clause as its condition, as Postgres'
-/// convert_EXISTS_sublink_to_join does.
+/// with the rows below its WHERE clause as its inner side and that clause as its condition, when the enclosing row's
+/// columns that the clause reads are of the available relations, as Postgres' convert_EXISTS_sublink_to_join does. Its
+/// condition reads the subquery's row followed by the enclosing row.
 fn convert_exists_sublink_to_join(
     glob: &mut PlannerGlobal,
     ctx: &mut Ctx<'_>,
     plan: &Plan,
     under_not: bool,
+    available_rels: &Relids,
     rtable: &mut Vec<RangeTblEntry>,
     output: &[Expr],
-) -> Option<(JoinType, JoinTreeNode, Vec<Expr>)> {
+) -> Option<SublinkJoin> {
     let (input, where_clause) = exists_parts(plan)?;
-    let mut subquery_vars = Vec::new();
-    let rarg = super::build_jointree(glob, ctx, input.clone(), rtable, &mut subquery_vars);
-    let quals = where_clause.into_iter().map(|c| pull_up_level(c.clone(), &subquery_vars, output)).collect();
-    Some((if under_not { JoinType::Anti } else { JoinType::Semi }, rarg, quals))
+    let width = input.width();
+    let mut read = BTreeSet::new();
+    let quals = where_clause.into_iter().map(|c| merge_enclosing_row(c.clone(), 0, width, &mut read)).collect();
+    if !output_varnos(glob, output, read).is_subset(available_rels) {
+        return None;
+    }
+    let mut layout = Vec::new();
+    let rarg = super::build_jointree(glob, ctx, input.clone(), rtable, &mut layout);
+    layout.extend_from_slice(output);
+    let jointype = if under_not { JoinType::Anti } else { JoinType::Semi };
+    Some((JoinExpr { jointype, larg: JoinTreeNode::Rel(0), rarg, quals: Vec::new(), rtindex: 0 }, layout, quals))
 }
 
-/// pull_up_level rewrites a condition of a subquery, over its own row and the enclosing ones, into one of the
-/// enclosing query: its own columns become their expressions, the enclosing row's become that row's, and rows
-/// further out come one level closer, as Postgres' IncrementVarSublevelsUp moves them.
-fn pull_up_level(e: Expr, subquery_vars: &[Expr], output: &[Expr]) -> Expr {
-    match e {
-        Expr::Column(c) => subquery_vars[c].clone(),
-        Expr::Outer(1, c) => output[c].clone(),
-        Expr::Outer(depth, c) => Expr::Outer(depth - 1, c),
-        other => other.map_children(&mut |c| pull_up_level(c, subquery_vars, output)),
+/// merge_enclosing_row rewrites an expression `nesting` subqueries deep within an `EXISTS` subquery's WHERE clause,
+/// over the subquery's row of `width` columns and the enclosing ones, into one over the subquery's row followed by the
+/// enclosing row, recording which of the enclosing row's columns it reads. Rows further out come one level closer, as
+/// Postgres' IncrementVarSublevelsUp moves them.
+fn merge_enclosing_row(e: Expr, nesting: usize, width: usize, read: &mut BTreeSet<usize>) -> Expr {
+    let mut e = match e {
+        Expr::Outer(d, c) if d == nesting + 1 => {
+            read.insert(c);
+            return match nesting {
+                0 => Expr::Column(width + c),
+                _ => Expr::Outer(nesting, width + c),
+            };
+        }
+        Expr::Outer(d, c) if d > nesting + 1 => return Expr::Outer(d - 1, c),
+        other => other.map_children(&mut |x| merge_enclosing_row(x, nesting, width, read)),
+    };
+    for plan in e.subqueries_mut() {
+        plan.map_exprs(0, &mut |x, depth| merge_enclosing_row(x, nesting + 1 + depth, width, read));
     }
+    e
 }
 
 /// volatile reports whether an expression of a subquery, before its Vars are built, calls a volatile function.
