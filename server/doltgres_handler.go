@@ -415,6 +415,9 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 	if err != nil {
 		return err
 	}
+	// The root span for the query covers everything until doQuery returns.
+	span, sqlCtx := sqlCtx.Span("query")
+	defer span.End()
 
 	start := time.Now()
 	var queryStrToLog string
