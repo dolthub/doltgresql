@@ -796,8 +796,10 @@ fn offset(dims: &[(i32, i32)], subscripts: &[i32]) -> usize {
 }
 
 /// extend widens a one-dimensional array with NULLs to reach from the lower to the upper subscript.
-fn extend(array: &mut Array, lower: i32, upper: i32) {
+fn extend(array: &mut Array, lower: i32, upper: i32) -> Result<()> {
     let (n, lb) = array.dims[0];
+    let lowest = i64::from(lower.min(lb));
+    check_size(lowest, i64::from(upper).max(i64::from(lb) + i64::from(n) - 1) - lowest + 1)?;
     if lower < lb {
         array.values.splice(0..0, std::iter::repeat_n(Value::Null, (lb - lower) as usize));
         array.dims[0] = (n + lb - lower, lower);
@@ -807,6 +809,19 @@ fn extend(array: &mut Array, lower: i32, upper: i32) {
         array.values.resize((upper - lb + 1) as usize, Value::Null);
         array.dims[0] = (upper - lb + 1, lb);
     }
+    Ok(())
+}
+
+/// check_size fails as Postgres does for a dimension of an array that holds more elements than an array may, or
+/// whose upper bound is past the largest integer.
+fn check_size(lower: i64, length: i64) -> Result<()> {
+    if length > 134217727 {
+        return Err(PgError::new(code::PROGRAM_LIMIT_EXCEEDED, "array size exceeds the maximum allowed (134217727)"));
+    }
+    if lower + length > i64::from(i32::MAX) {
+        return Err(PgError::new(code::PROGRAM_LIMIT_EXCEEDED, format!("array lower bound is too large: {lower}")));
+    }
+    Ok(())
 }
 
 /// assign_element stores a value at the subscripts of an array, starting an empty array there and widening a
@@ -821,7 +836,7 @@ pub fn assign_element(mut array: Array, subscripts: &[i32], value: Value) -> Res
         return Err(subscript_error("wrong number of array subscripts"));
     }
     if array.dims.len() == 1 {
-        extend(&mut array, subscripts[0], subscripts[0]);
+        extend(&mut array, subscripts[0], subscripts[0])?;
     } else if array.dims.iter().zip(subscripts).any(|((n, lower), i)| i < lower || *i >= lower + n) {
         return Err(subscript_error("array subscript out of range"));
     }
@@ -847,7 +862,9 @@ pub fn assign_slice(mut array: Array, bounds: &[(Option<i32>, Option<i32>)], sou
                     ..subscript_error("array slice subscript must provide both boundaries")
                 });
             };
-            dims.push((1 + upper - lower, lower));
+            let length = 1 + i64::from(upper) - i64::from(lower);
+            check_size(i64::from(lower), length)?;
+            dims.push((length as i32, lower));
         }
         let count = dims.iter().map(|(n, _)| (*n).max(0) as usize).product::<usize>();
         if source.values.len() < count {
@@ -873,7 +890,7 @@ pub fn assign_slice(mut array: Array, bounds: &[(Option<i32>, Option<i32>)], sou
         ranges.push((lower, upper));
     }
     if array.dims.len() == 1 {
-        extend(&mut array, ranges[0].0, ranges[0].1);
+        extend(&mut array, ranges[0].0, ranges[0].1)?;
     }
     let count = ranges.iter().map(|(lower, upper)| (upper - lower + 1) as usize).product::<usize>();
     if source.values.len() < count {

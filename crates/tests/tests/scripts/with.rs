@@ -335,3 +335,20 @@ SELECT * FROM foo;"#,
         },
     ]);
 }
+
+#[test]
+fn test_recursive_union_of_unhashable_types() {
+    run_scripts(&[
+        ScriptTest {
+            name: "a recursive UNION over a type without a hash function",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "WITH RECURSIVE t(n) AS (VALUES ('01'::varbit) UNION SELECT n || '10'::varbit FROM t WHERE n < '100'::varbit) SELECT n FROM t;",
+                    expected: Expected::Error(Diagnostic { code: "0A000", message: "could not implement recursive UNION", detail: "All column datatypes must be hashable.", ..E }),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

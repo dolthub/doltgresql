@@ -5860,3 +5860,26 @@ fn test_privilege_functions() {
         },
     ]);
 }
+
+#[test]
+fn test_privilege_functions_of_unknown_role_oids() {
+    run_scripts(&[
+        ScriptTest {
+            name: "privilege checks of a role OID that no role has",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT has_table_privilege(-999999, 'pg_authid', 'update');",
+                    expected: Expected::Rows {
+                        columns: &[Column("has_table_privilege", BOOL)],
+                        rows: &[
+                            &[T("f")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

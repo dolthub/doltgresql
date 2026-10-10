@@ -329,6 +329,12 @@ impl Conn {
                     self.flush()?;
                 }
                 FrontendMessage::Flush => self.flush()?,
+                FrontendMessage::FunctionCall { .. } => {
+                    let err = session.abort(PgError::unsupported("the FunctionCall message"));
+                    self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
+                    self.queue(BackendMessage::ReadyForQuery { tx_status: session.tx_status() });
+                    self.flush()?;
+                }
                 FrontendMessage::Terminate => return Ok(()),
                 message => {
                     let result = self.extended_message(session, &mut extended, message);
@@ -336,6 +342,7 @@ impl Conn {
                     if let Err(err) = result {
                         let err = session.abort(err);
                         self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
+                        self.flush()?;
                         extended.failed = true;
                     }
                     if let Some(binary) = extended.copying.take() {
@@ -347,6 +354,7 @@ impl Conn {
                         self.output.queue_notices(session.take_notices());
                         if let Some(err) = error {
                             self.queue(BackendMessage::ErrorResponse(error_fields(&err)));
+                            self.flush()?;
                             extended.failed = true;
                         }
                     }

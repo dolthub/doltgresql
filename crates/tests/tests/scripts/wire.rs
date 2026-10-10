@@ -4244,3 +4244,31 @@ fn test_wire_types_sending() {
         },
     ]);
 }
+
+#[test]
+fn test_flush_after_bind_error() {
+    run_wire_tests(&[
+        WireTest {
+            name: "an extended query error is sent before the Sync that ends it",
+            steps: &[
+                Step::Send(&[
+                    Send::Parse { name: "", query: "SELECT $1", parameter_oids: &[] },
+                    Send::Bind { portal: "", statement: "", parameter_formats: &[], parameters: &[], result_formats: &[] },
+                    Send::Execute("", 0),
+                    Send::Flush,
+                ]),
+                Step::Receive(&[
+                    Receive::ParseComplete,
+                    Receive::Error(Fields { severity: "ERROR", severity_unlocalized: "ERROR", code: "08P01", message: r#"bind message supplies 0 parameters, but prepared statement "" requires 1"#, ..F }),
+                ]),
+                Step::Send(&[
+                    Send::Sync,
+                ]),
+                Step::Receive(&[
+                    Receive::ReadyForQuery(b'I'),
+                ]),
+            ],
+            ..W
+        },
+    ]);
+}

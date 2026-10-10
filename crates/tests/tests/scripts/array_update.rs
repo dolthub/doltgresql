@@ -259,3 +259,41 @@ fn test_array_subscript_update() {
         },
     ]);
 }
+
+#[test]
+fn test_array_subscript_overflow() {
+    run_scripts(&[
+        ScriptTest {
+            name: "array assignments that would grow past the largest array",
+            set_up_script: &[
+                "CREATE TABLE au_t (pk INT PRIMARY KEY, f1 INT[]);",
+                "INSERT INTO au_t VALUES (10, '[-2147483648:-2147483647]={1,2}');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "UPDATE au_t SET f1[2147483647] = 42 WHERE pk = 10;",
+                    expected: Expected::Error(Diagnostic { code: "54000", message: "array size exceeds the maximum allowed (134217727)", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "UPDATE au_t SET f1[2147483646:2147483647] = ARRAY[4,2] WHERE pk = 10;",
+                    expected: Expected::Error(Diagnostic { code: "54000", message: "array size exceeds the maximum allowed (134217727)", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT f1 FROM au_t;",
+                    expected: Expected::Rows {
+                        columns: &[Column("f1", INT4_ARRAY)],
+                        rows: &[
+                            &[T("[-2147483648:-2147483647]={1,2}")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    skip: Some("arrays keep Go's storage format, which drops lower bounds"),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

@@ -339,15 +339,19 @@ fn range(range: &Range, subtype: u32, seed: Option<u64>) -> Result<u64> {
 
 /// check_hashable fails as Postgres does for a type without a hash function.
 fn check_hashable(type_oid: u32, seed: Option<u64>) -> Result<()> {
-    let hashable = match crate::usertypes::get(type_oid) {
+    if hashable(type_oid) { Ok(()) } else { Err(no_hash(type_oid, seed)) }
+}
+
+/// hashable reports whether a type has a hash function.
+pub(crate) fn hashable(type_oid: u32) -> bool {
+    match crate::usertypes::get(type_oid) {
         Some(user) => !matches!(user.kind, crate::usertypes::Kind::Base(_)),
         None => match type_oid {
             MACADDR | INET | 650 | PG_LSN | 27 => true,
             crate::oid::JSON | crate::oid::XML | crate::oid::BIT | crate::oid::VARBIT => false,
             _ => crate::basetypes::get(type_oid).is_none(),
         },
-    };
-    if hashable { Ok(()) } else { Err(no_hash(type_oid, seed)) }
+    }
 }
 
 /// no_hash is the error of hashing a value of a type without a hash function.

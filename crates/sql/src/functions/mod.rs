@@ -24,7 +24,7 @@ mod binary;
 pub(crate) mod catalog;
 pub mod datetime;
 pub(crate) mod geometry;
-mod hash;
+pub(crate) mod hash;
 pub mod json;
 mod jsonpath;
 mod math;

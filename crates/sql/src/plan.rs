@@ -761,6 +761,12 @@ impl<'b, 'a> Planner<'b, 'a> {
                 });
             }
         }
+        if !query.all && !anchor.types.iter().all(|t| crate::functions::hash::hashable(t.oid)) {
+            return Err(PgError {
+                detail: Some("All column datatypes must be hashable.".into()),
+                ..PgError::new(code::FEATURE_NOT_SUPPORTED, "could not implement recursive UNION")
+            });
+        }
         let plan =
             Plan::Recursive { work_table, anchor: Box::new(anchor.plan), step: Box::new(step.plan), all: query.all };
         Ok(Query { plan, columns: anchor.columns, types: anchor.types })

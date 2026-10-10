@@ -620,6 +620,10 @@ fn has_parameter_privilege(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 
 /// role_id returns the ID of the role that a has_*_privilege function names, the current one when it names none.
 fn role_id(ctx: &mut Ctx<'_>, role: Option<&Value>) -> Result<u64> {
+    let oid_name = match role {
+        None | Some(Value::Text(_)) => None,
+        Some(other) => ctx.role_of_oid(oid_arg(other)),
+    };
     let auth = ctx.auth()?;
     Ok(match role {
         None => auth.role(&ctx.session.role).map_or(0, |r| r.id),
@@ -628,7 +632,7 @@ fn role_id(ctx: &mut Ctx<'_>, role: Option<&Value>) -> Result<u64> {
             Some(role) => role.id,
             None => return Err(PgError::new(code::UNDEFINED_OBJECT, format!("role \"{name}\" does not exist"))),
         },
-        Some(other) => ctx.role_of_oid(oid_arg(other)).and_then(|name| auth.role(&name).map(|r| r.id)).unwrap_or(0),
+        Some(_) => oid_name.and_then(|name| auth.role(&name).map(|r| r.id)).unwrap_or(0),
     })
 }
 
@@ -797,13 +801,17 @@ fn pg_has_role(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
         false => (None, args),
     };
     let role = role_id(ctx, role)?;
+    let oid_name = match &rest[0] {
+        Value::Text(_) => None,
+        other => ctx.role_of_oid(oid_arg(other)),
+    };
     let auth = ctx.auth()?;
     let target = match &rest[0] {
         Value::Text(name) => match auth.role(name) {
             Some(target) => target.id,
             None => return Err(PgError::new(code::UNDEFINED_OBJECT, format!("role \"{name}\" does not exist"))),
         },
-        other => match ctx.role_of_oid(oid_arg(other)).and_then(|name| auth.role(&name).map(|r| r.id)) {
+        _ => match oid_name.and_then(|name| auth.role(&name).map(|r| r.id)) {
             Some(target) => target,
             None => return Ok(Value::Null),
         },
