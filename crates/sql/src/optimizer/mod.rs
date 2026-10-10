@@ -34,6 +34,7 @@ mod joinrels;
 mod knapsack;
 mod nodefuncs;
 pub mod nodes;
+mod orclauses;
 mod pathkeys;
 mod pathnode;
 mod placeholder;
@@ -483,6 +484,7 @@ fn query_planner(root: &mut PlannerInfo<'_, '_>, qp_callback: &mut dyn FnMut(&mu
             continue;
         }
         placeholder::add_placeholders_to_base_rels(root);
+        orclauses::extract_restriction_or_clauses(root);
         return allpaths::make_one_rel(root, &joinlist);
     }
 }
