@@ -538,7 +538,13 @@ fn make_rel_from_joinlist(root: &mut PlannerInfo<'_, '_>, joinlist: &[JoinList])
         [rel] => Some(*rel),
         _ => {
             root.initial_rels = initial_rels.clone();
-            Some(standard_join_search(root, initial_rels))
+            let settings = &root.ctx.session.settings;
+            let enable_geqo = settings.get("geqo").is_none_or(|value| value != "off");
+            let geqo_threshold = settings.get("geqo_threshold").and_then(|value| value.parse().ok()).unwrap_or(12);
+            match enable_geqo && initial_rels.len() >= geqo_threshold {
+                true => Some(super::geqo::geqo(root, initial_rels.len(), initial_rels)),
+                false => Some(standard_join_search(root, initial_rels)),
+            }
         }
     }
 }

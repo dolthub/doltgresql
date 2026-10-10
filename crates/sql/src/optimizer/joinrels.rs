@@ -376,7 +376,7 @@ fn populate_joinrel_with_paths(
 /// have_join_order_restriction reports whether a lateral reference, a PlaceHolderVar, or an outer, semi, or anti
 /// join requires two relations to be joined before either joins anything else, as Postgres' function of the same
 /// name does.
-fn have_join_order_restriction(root: &PlannerInfo<'_, '_>, rel1: usize, rel2: usize) -> bool {
+pub fn have_join_order_restriction(root: &PlannerInfo<'_, '_>, rel1: usize, rel2: usize) -> bool {
     let (r1, r2) = (&root.rels[rel1], &root.rels[rel2]);
     if r1.relids.overlap(&r2.direct_lateral_relids) || r2.relids.overlap(&r1.direct_lateral_relids) {
         return true;

@@ -25,6 +25,7 @@ mod clausesel;
 mod costsize;
 mod createplan;
 mod equivclass;
+mod geqo;
 mod indxpath;
 mod initsplan;
 mod joininfo;
