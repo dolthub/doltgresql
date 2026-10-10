@@ -1234,7 +1234,15 @@ pub fn set_rel_width(root: &mut PlannerInfo<'_, '_>, rel: usize) {
                     Some(table) => (Some(table.columns[var.varattno].ty.oid), table.columns[var.varattno].ty.modifier),
                     None => (root.parse.rte(var.varno).coltypes[var.varattno], -1),
                 };
-                let width = get_typavgwidth(oid, modifier);
+                let stawidth = root.rels[var.varno]
+                    .stats
+                    .as_ref()
+                    .and_then(|s| s.columns.get(var.varattno))
+                    .map_or(0.0, |c| c.width);
+                let width = match stawidth > 0.0 {
+                    true => stawidth,
+                    false => get_typavgwidth(oid, modifier),
+                };
                 root.rels[rel].attr_widths[var.varattno] = width;
                 width
             }

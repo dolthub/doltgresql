@@ -46,6 +46,11 @@ const DEFAULT_SEL: f64 = 0.5;
 pub struct ColumnStats {
     pub null_frac: f64,
     pub distinct: f64,
+    /// The distinct values as Postgres' stadistinct holds them: a count, or the negated share of the rows when the
+    /// count grows with the table, or 0 when unknown.
+    pub stadistinct: f64,
+    /// The average width of the column's values that are not NULL, as Postgres' stawidth is.
+    pub width: f64,
     pub common: Vec<(Value, f64)>,
     pub histogram: Vec<Value>,
     pub correlation: f64,
@@ -99,30 +104,117 @@ fn gather(ctx: &mut Ctx<'_>, table: &TableDef, rows: u64) -> crate::error::Resul
             }
         }
     }
-    let columns = columns.into_iter().map(|values| column_stats(values, rows)).collect();
+    let columns = columns
+        .into_iter()
+        .zip(&table.columns)
+        .map(|(values, column)| column_stats(values, rows, column.ty.oid))
+        .collect();
     Ok(TableStats { rows, columns })
 }
 
+/// WIDTH_THRESHOLD is the width beyond which a value takes no part in the most common values and histogram, as
+/// Postgres' constant of the same name is.
+const WIDTH_THRESHOLD: usize = 1024;
+
 /// column_stats computes a column's statistics from a sample of its values, in the order of the table's rows, in a
-/// table of this many rows, as compute_scalar_stats does: the distinct count by the Haas-Stokes estimator, the values
-/// common enough to stand out as most common values, a histogram of the rest, and the correlation between the
-/// values' order and the rows' order.
-fn column_stats(values: Vec<Value>, rows: u64) -> ColumnStats {
-    let sampled = values.len() as f64;
-    let mut values: Vec<(usize, Value)> = values.into_iter().filter(|v| !v.is_null()).enumerate().collect();
-    if sampled == 0.0 {
-        return ColumnStats::default();
+/// table of this many rows, as Postgres' std_typanalyze chooses how: compute_scalar_stats for a type with an
+/// ordering, compute_distinct_stats for one with only an equality, and compute_trivial_stats otherwise.
+fn column_stats(values: Vec<Value>, rows: u64, oid: u32) -> ColumnStats {
+    let typlen = crate::catalog::builtin_type(oid).map_or(-1, |t| t.definition.typ_length);
+    let mut stats = match oid {
+        crate::oid::JSON | crate::oid::XML => compute_trivial_stats(&values, typlen),
+        _ if crate::optimizer::btree_opfamily(oid).is_none() => compute_distinct_stats(&values, rows, typlen),
+        _ => compute_scalar_stats(values, rows, typlen),
+    };
+    stats.distinct = match stats.stadistinct < 0.0 {
+        true => -stats.stadistinct * rows as f64,
+        false => stats.stadistinct,
+    };
+    let mut sorted: Vec<&(Value, f64)> = stats.common.iter().collect();
+    sorted.sort_by(|a, b| compare_values(&a.0, &b.0));
+    let mut cumulative = 0.0;
+    stats.common_by_value = sorted
+        .into_iter()
+        .map(|(value, share)| {
+            cumulative += share;
+            (value.clone(), cumulative)
+        })
+        .collect();
+    stats
+}
+
+/// value_width returns the bytes that Postgres stores a value of a type of a length in, a variable-length value's
+/// header included, and whether it is too wide for the most common values and histogram.
+fn value_width(value: &Value, typlen: i16) -> (f64, bool) {
+    if typlen > 0 {
+        return (f64::from(typlen), false);
     }
-    let null_frac = 1.0 - values.len() as f64 / sampled;
+    let len = match value {
+        Value::Text(s) | Value::Json(s) | Value::Bit(s) => s.len(),
+        Value::Bytea(b) => b.len(),
+        other => other.output().map_or(0, |s| s.len()),
+    };
+    let header = if typlen == -1 && len + 1 <= 127 {
+        1
+    } else if typlen == -1 {
+        4
+    } else {
+        1
+    };
+    ((len + header) as f64, len > WIDTH_THRESHOLD)
+}
+
+/// distinct_estimate returns Postgres' stadistinct of a column from a sample of `n` values that are not NULL, of which
+/// `d` are distinct and `f1` appear once, in a table of `totalrows` rows with a share of NULLs, by the Haas-Stokes
+/// estimator, rounded, as a negated share of the rows when it is more than a tenth of them.
+fn distinct_estimate(n: f64, d: f64, f1: f64, null_frac: f64, totalrows: f64) -> f64 {
+    let big_n = totalrows * (1.0 - null_frac);
+    let estimate = if big_n > 0.0 { (n * d) / ((n - f1) + f1 * n / big_n) } else { 0.0 };
+    let estimate = (estimate.max(d).min(big_n) + 0.5).floor();
+    match estimate > 0.1 * totalrows {
+        true => -(estimate / totalrows),
+        false => estimate,
+    }
+}
+
+/// compute_scalar_stats computes the statistics of a column whose type has an ordering, as Postgres' function of the
+/// same name does: the share of NULLs, the average width, the distinct values, the values common enough to stand out
+/// as most common values, a histogram of the rest, and the correlation between the values' order and the rows' order.
+fn compute_scalar_stats(sample: Vec<Value>, rows: u64, typlen: i16) -> ColumnStats {
+    let samplerows = sample.len() as f64;
+    let totalrows = rows as f64;
+    let (mut null_cnt, mut nonnull_cnt, mut toowide_cnt, mut total_width) = (0, 0, 0, 0.0);
+    let mut values: Vec<(usize, Value)> = Vec::new();
+    for value in sample {
+        if value.is_null() {
+            null_cnt += 1;
+            continue;
+        }
+        nonnull_cnt += 1;
+        let (width, toowide) = value_width(&value, typlen);
+        total_width += width;
+        if toowide {
+            toowide_cnt += 1;
+            continue;
+        }
+        values.push((values.len(), value));
+    }
+    let null_frac = if samplerows > 0.0 { null_cnt as f64 / samplerows } else { 0.0 };
+    let width = match (nonnull_cnt, typlen > 0) {
+        (_, true) => f64::from(typlen),
+        (0, false) => 0.0,
+        (_, false) => total_width / nonnull_cnt as f64,
+    };
+    if values.is_empty() {
+        let stadistinct = match nonnull_cnt > 0 {
+            true => -(1.0 - null_frac),
+            false => 0.0,
+        };
+        return ColumnStats { null_frac, stadistinct, width, ..Default::default() };
+    }
     values.sort_by(|(a_tupno, a), (b_tupno, b)| compare_values(a, b).then(a_tupno.cmp(b_tupno)));
     let values_cnt = values.len() as f64;
     let corr_xysum: f64 = values.iter().enumerate().map(|(i, (tupno, _))| i as f64 * *tupno as f64).sum();
-    let corr_xsum = (values_cnt - 1.0) * values_cnt / 2.0;
-    let corr_x2sum = (values_cnt - 1.0) * values_cnt * (2.0 * values_cnt - 1.0) / 6.0;
-    let correlation = match values_cnt > 1.0 {
-        true => (values_cnt * corr_xysum - corr_xsum * corr_xsum) / (values_cnt * corr_x2sum - corr_xsum * corr_xsum),
-        false => 0.0,
-    };
     let values: Vec<Value> = values.into_iter().map(|(_, v)| v).collect();
     let mut runs: Vec<(usize, usize)> = Vec::new();
     for (i, value) in values.iter().enumerate() {
@@ -131,52 +223,162 @@ fn column_stats(values: Vec<Value>, rows: u64) -> ColumnStats {
             _ => runs.push((i, 1)),
         }
     }
-    let (n, d) = (values.len() as f64, runs.len() as f64);
-    let total = rows as f64 * (1.0 - null_frac);
-    let singles = runs.iter().filter(|(_, count)| *count == 1).count() as f64;
-    let distinct = if n == 0.0 {
-        0.0
-    } else if singles == d || n >= total {
-        if singles == d { total.max(d) } else { d }
+    let ndistinct = runs.len();
+    let nmultiple = runs.iter().filter(|(_, count)| *count > 1).count();
+    let stadistinct = if nmultiple == 0 {
+        -(1.0 - null_frac)
+    } else if toowide_cnt == 0 && nmultiple == ndistinct {
+        let d = ndistinct as f64;
+        if d > 0.1 * totalrows { -(d / totalrows) } else { d }
     } else {
-        (n * d / (n - singles + singles * n / total)).clamp(d, total)
+        let f1 = (ndistinct - nmultiple + toowide_cnt) as f64;
+        distinct_estimate(samplerows - null_cnt as f64, f1 + nmultiple as f64, f1, null_frac, totalrows)
     };
-    let mut candidates: Vec<(usize, usize)> = runs.iter().copied().filter(|(_, count)| *count > 1).collect();
-    candidates.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
-    let common_count =
-        if candidates.len() as f64 == d && distinct <= 0.1 * rows as f64 && candidates.len() <= STATISTICS_TARGET {
-            candidates.len()
-        } else {
-            let counts: Vec<usize> = candidates.iter().take(STATISTICS_TARGET).map(|(_, count)| *count).collect();
-            analyze_mcv_list(&counts, distinct, null_frac, sampled, rows as f64)
-        };
-    let common_runs: Vec<(usize, usize)> = candidates[..common_count].to_vec();
-    let common: Vec<(Value, f64)> =
-        common_runs.iter().map(|&(start, count)| (values[start].clone(), count as f64 / sampled)).collect();
-    let mut rest: Vec<Value> = Vec::new();
-    let mut rest_distinct = 0;
-    for &(start, count) in &runs {
-        if !common_runs.iter().any(|&(s, _)| s == start) {
-            rest.extend(values[start..start + count].iter().cloned());
-            rest_distinct += 1;
+    let mut track: Vec<(usize, usize)> = runs.iter().copied().filter(|(_, count)| *count > 1).collect();
+    track.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    track.truncate(STATISTICS_TARGET);
+    let num_mcv = if track.len() == ndistinct && toowide_cnt == 0 && stadistinct > 0.0 {
+        track.len()
+    } else {
+        let counts: Vec<usize> = track.iter().map(|(_, count)| *count).collect();
+        let ndistinct_table = if stadistinct < 0.0 { -stadistinct * totalrows } else { stadistinct };
+        match counts.is_empty() {
+            true => 0,
+            false => analyze_mcv_list(&counts, ndistinct_table, null_frac, samplerows, totalrows),
         }
+    };
+    let common_runs: Vec<(usize, usize)> = track[..num_mcv].to_vec();
+    let common: Vec<(Value, f64)> =
+        common_runs.iter().map(|&(start, count)| (values[start].clone(), count as f64 / samplerows)).collect();
+    let mut num_hist = ndistinct - num_mcv;
+    if num_hist > STATISTICS_TARGET {
+        num_hist = STATISTICS_TARGET + 1;
     }
-    let bounds = rest_distinct.min(STATISTICS_TARGET + 1);
-    let histogram = match bounds >= 2 {
-        true => (0..bounds).map(|i| rest[i * (rest.len() - 1) / (bounds - 1)].clone()).collect(),
+    let histogram = match num_hist >= 2 {
+        true => {
+            let mut rest: Vec<&Value> = Vec::new();
+            for &(start, count) in &runs {
+                if !common_runs.iter().any(|&(s, _)| s == start) {
+                    rest.extend(&values[start..start + count]);
+                }
+            }
+            (0..num_hist).map(|i| rest[i * (rest.len() - 1) / (num_hist - 1)].clone()).collect()
+        }
         false => Vec::new(),
     };
-    let mut sorted: Vec<&(Value, f64)> = common.iter().collect();
-    sorted.sort_by(|a, b| compare_values(&a.0, &b.0));
-    let mut cumulative = 0.0;
-    let common_by_value = sorted
-        .into_iter()
-        .map(|(value, share)| {
-            cumulative += share;
-            (value.clone(), cumulative)
-        })
-        .collect();
-    ColumnStats { null_frac, distinct, common, histogram, correlation, common_by_value }
+    let correlation = match values_cnt > 1.0 {
+        true => {
+            let corr_xsum = (values_cnt - 1.0) * values_cnt / 2.0;
+            let corr_x2sum = (values_cnt - 1.0) * values_cnt * (2.0 * values_cnt - 1.0) / 6.0;
+            (values_cnt * corr_xysum - corr_xsum * corr_xsum) / (values_cnt * corr_x2sum - corr_xsum * corr_xsum)
+        }
+        false => 0.0,
+    };
+    ColumnStats { null_frac, stadistinct, width, common, histogram, correlation, ..Default::default() }
+}
+
+/// compute_distinct_stats computes the statistics of a column whose type has an equality but no ordering, as Postgres'
+/// function of the same name does: the share of NULLs, the average width, the distinct values, and the most common
+/// values, which it tracks among twice as many candidates as it keeps.
+fn compute_distinct_stats(sample: &[Value], rows: u64, typlen: i16) -> ColumnStats {
+    let samplerows = sample.len() as f64;
+    let totalrows = rows as f64;
+    let track_max = (2 * STATISTICS_TARGET).max(10);
+    let mut track: Vec<(Value, usize)> = Vec::with_capacity(track_max);
+    let (mut null_cnt, mut nonnull_cnt, mut toowide_cnt, mut total_width) = (0, 0, 0, 0.0);
+    for value in sample {
+        if value.is_null() {
+            null_cnt += 1;
+            continue;
+        }
+        nonnull_cnt += 1;
+        let (width, toowide) = value_width(value, typlen);
+        total_width += width;
+        if toowide {
+            toowide_cnt += 1;
+            continue;
+        }
+        let mut firstcount1 = track.len();
+        let mut found = None;
+        for (j, (tracked, count)) in track.iter().enumerate() {
+            if compare_values(value, tracked) == Ordering::Equal {
+                found = Some(j);
+                break;
+            }
+            if j < firstcount1 && *count == 1 {
+                firstcount1 = j;
+            }
+        }
+        match found {
+            Some(mut j) => {
+                track[j].1 += 1;
+                while j > 0 && track[j].1 > track[j - 1].1 {
+                    track.swap(j, j - 1);
+                    j -= 1;
+                }
+            }
+            None => {
+                if track.len() < track_max {
+                    track.push((Value::Null, 0));
+                }
+                if firstcount1 < track.len() {
+                    for j in (firstcount1 + 1..track.len()).rev() {
+                        track[j] = track[j - 1].clone();
+                    }
+                    track[firstcount1] = (value.clone(), 1);
+                }
+            }
+        }
+    }
+    if nonnull_cnt == 0 {
+        let null_frac = if null_cnt > 0 { 1.0 } else { 0.0 };
+        let width = if typlen > 0 { f64::from(typlen) } else { 0.0 };
+        return ColumnStats { null_frac, width, ..Default::default() };
+    }
+    let null_frac = null_cnt as f64 / samplerows;
+    let width = if typlen > 0 { f64::from(typlen) } else { total_width / nonnull_cnt as f64 };
+    let nmultiple = track.iter().take_while(|(_, count)| *count > 1).count();
+    let summultiple: usize = track[..nmultiple].iter().map(|(_, count)| count).sum();
+    let stadistinct = if nmultiple == 0 {
+        -(1.0 - null_frac)
+    } else if track.len() < track_max && toowide_cnt == 0 && nmultiple == track.len() {
+        let d = track.len() as f64;
+        if d > 0.1 * totalrows { -(d / totalrows) } else { d }
+    } else {
+        let f1 = (nonnull_cnt - summultiple) as f64;
+        distinct_estimate(samplerows - null_cnt as f64, f1 + nmultiple as f64, f1, null_frac, totalrows)
+    };
+    let mut num_mcv = STATISTICS_TARGET;
+    if track.len() < track_max && toowide_cnt == 0 && stadistinct > 0.0 && track.len() <= num_mcv {
+        num_mcv = track.len();
+    } else {
+        num_mcv = num_mcv.min(track.len());
+        if num_mcv > 0 {
+            let counts: Vec<usize> = track[..num_mcv].iter().map(|(_, count)| *count).collect();
+            let ndistinct_table = if stadistinct < 0.0 { -stadistinct * totalrows } else { stadistinct };
+            num_mcv = analyze_mcv_list(&counts, ndistinct_table, null_frac, samplerows, totalrows);
+        }
+    }
+    let common = track[..num_mcv].iter().map(|(value, count)| (value.clone(), *count as f64 / samplerows)).collect();
+    ColumnStats { null_frac, stadistinct, width, common, ..Default::default() }
+}
+
+/// compute_trivial_stats computes the share of NULLs and the average width of a column whose type has no equality, as
+/// Postgres' function of the same name does.
+fn compute_trivial_stats(sample: &[Value], typlen: i16) -> ColumnStats {
+    let samplerows = sample.len() as f64;
+    let nonnull: Vec<&Value> = sample.iter().filter(|v| !v.is_null()).collect();
+    let null_frac = match (nonnull.is_empty(), samplerows > 0.0) {
+        (true, true) => 1.0,
+        (_, true) => 1.0 - nonnull.len() as f64 / samplerows,
+        (_, false) => 0.0,
+    };
+    let width = match (typlen > 0, nonnull.is_empty()) {
+        (true, _) => f64::from(typlen),
+        (false, true) => 0.0,
+        (false, false) => nonnull.iter().map(|v| value_width(v, typlen).0).sum::<f64>() / nonnull.len() as f64,
+    };
+    ColumnStats { null_frac, width, ..Default::default() }
 }
 
 /// analyze_mcv_list returns how many of the most common values of a sample, by their counts in descending order, are
@@ -374,7 +576,7 @@ mod tests {
 
     #[test]
     fn unique_columns_count_every_row_as_distinct() {
-        let stats = column_stats((0..1000).map(Value::Int4).collect(), 10_000);
+        let stats = column_stats((0..1000).map(Value::Int4).collect(), 10_000, crate::oid::INT4);
         assert_eq!(stats.distinct, 10_000.0);
         assert!(stats.common.is_empty());
         assert_eq!(stats.histogram.len(), STATISTICS_TARGET + 1);
@@ -388,7 +590,7 @@ mod tests {
         let mut values: Vec<Value> = (0..900).map(|_| Value::Text("new".into())).collect();
         values.extend((0..100).map(|i| Value::Text(format!("v{}", i % 50))));
         values.extend((0..100).map(|_| Value::Null));
-        let stats = column_stats(values, 1100);
+        let stats = column_stats(values, 1100, crate::oid::TEXT);
         assert!((stats.null_frac - 100.0 / 1100.0).abs() < 1e-9);
         assert_eq!(stats.distinct, 51.0);
         assert!((equal_selectivity(&stats, &Value::Text("new".into())) - 900.0 / 1100.0).abs() < 1e-9);

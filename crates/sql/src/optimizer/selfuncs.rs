@@ -816,7 +816,7 @@ pub fn get_variable_numdistinct(root: &PlannerInfo<'_, '_>, vardata: &VariableSt
     let column = vardata.column();
     let stanullfrac = column.map_or(0.0, |c| c.null_frac);
     let mut stadistinct = match column {
-        Some(c) => c.distinct,
+        Some(c) => c.stadistinct,
         None if vardata.isbool => 2.0,
         None => 0.0,
     };

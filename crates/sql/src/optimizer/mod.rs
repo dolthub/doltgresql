@@ -70,6 +70,7 @@ use crate::plan::{JoinKind, JoinMethod, Plan};
 use crate::query::Ctx;
 use crate::types::Value;
 
+pub(crate) use nodefuncs::btree_opfamily;
 pub(crate) use restrictinfo::or_args;
 
 /// PlannerInfo is the state of planning one query, as Postgres' PlannerInfo holds it. Relations, RestrictInfos,
