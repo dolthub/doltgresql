@@ -10,8 +10,8 @@ import sys
 QUERY_RESPONSE = [
     {"create table test (pk int, \"value\" int, primary key(pk))": []},
     {"describe test": [
-        ('pk', 'integer', 'NO', 'PRI', None, ''),
-        ('value', 'integer', 'YES', '', None, '')
+        ('pk', 'integer', None, 'not null', None),
+        ('value', 'integer', None, '', None)
     ]},
     {"insert into test (pk, value) values (0,0)": ()},
     {"select * from test": [(0, 0)]},

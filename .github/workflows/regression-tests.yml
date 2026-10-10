@@ -52,43 +52,38 @@ jobs:
           git fetch origin ${{ needs.resolve-main.outputs.main_sha }}
           git merge ${{ needs.resolve-main.outputs.main_sha }} --no-commit --no-ff
 
-      - name: Install Go
-        uses: actions/setup-go@v5
+      - name: Set up Rust
+        run: rustup toolchain install
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
         with:
-          go-version-file: go.mod
-          cache: true
+          key: ${{ github.workflow }}-${{ matrix.os }}${{ matrix.platform }}
+
+      - name: Install the Postgres regression suite
+        run: ./scripts/install_regress_suite.sh "$RUNNER_TEMP/regress"
 
       - name: Test PR branch
         continue-on-error: true
         run: |
-          ./postgres/parser/build.sh
-          cd testing/go/regression
           mkdir -p out
-          {
-            echo "pr_head=${{ github.event.pull_request.head.sha }}"
-            echo "main_head=${{ needs.resolve-main.outputs.main_sha }}"
-            echo "merge_base=$(git merge-base HEAD ${{ needs.resolve-main.outputs.main_sha }})"
-            git status --short --branch
-            git diff --cached --stat
-            go version
-            go env
-            go list -m github.com/dolthub/dolt/go github.com/dolthub/go-mysql-server
-          } > out/pr-metadata.txt
-          cd tool
+          cargo build --release -p server 2>&1 | tee out/pr-regress.log
+          cargo build --profile quick -p regress 2>&1 | tee -a out/pr-regress.log
           set +e
-          go test --timeout=90m ./... --count=1 2>&1 | tee ../out/pr-go-test.log
+          timeout 90m target/quick/regress run "$RUNNER_TEMP/regress/suite" \
+            "doltgres:$(pwd)/target/release/doltgres" "$RUNNER_TEMP/regress/psql" out/pr \
+            2>&1 | tee -a out/pr-regress.log
           test_status=${PIPESTATUS[0]}
           set -e
-          if [ -f ../out/results.trackers ]; then
-            cp ../out/results.trackers ../out/results2.trackers
+          if [ "$test_status" = "124" ]; then
+            echo "panic: test timed out" >> out/pr-regress.log
           fi
           exit "$test_status"
 
       - name: Fail if PR regression process deadlocked
         run: |
-          LOG=testing/go/regression/out/pr-go-test.log
-          if [ -f "$LOG" ] && grep -q "panic: test timed out" "$LOG"; then
-            echo "::error::The PR regression test process hung and was killed by the 90m go test timeout. This is NOT a normal per-query test failure -- something deadlocked. See the goroutine dump in pr-go-test.log (uploaded as an artifact) to find what was stuck."
+          if grep -q "panic: test timed out" out/pr-regress.log; then
+            echo "::error::The PR regression run hung and was killed by the 90m timeout. See pr-regress.log (uploaded as an artifact)."
             exit 1
           fi
 
@@ -98,9 +93,8 @@ jobs:
         with:
           name: regression-pr-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            testing/go/regression/out/results2.trackers
-            testing/go/regression/out/pr-go-test.log
-            testing/go/regression/out/pr-metadata.txt
+            out/pr/results.json
+            out/pr-regress.log
           if-no-files-found: warn
           retention-days: 14
           compression-level: 0
@@ -114,42 +108,52 @@ jobs:
       - name: Checkout DoltgreSQL
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Checkout DoltgreSQL main
+        uses: actions/checkout@v6
+        with:
           ref: ${{ needs.resolve-main.outputs.main_sha }}
+          path: main
 
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
-          cache: true
+          go-version-file: main/go.mod
+          cache-dependency-path: main/go.sum
+
+      - name: Set up Rust
+        run: rustup toolchain install
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ github.workflow }}-${{ matrix.os }}${{ matrix.platform }}
+
+      - name: Install the Postgres regression suite
+        run: ./scripts/install_regress_suite.sh "$RUNNER_TEMP/regress"
 
       - name: Test main branch
         continue-on-error: true
         run: |
-          ./postgres/parser/build.sh
-          cd testing/go/regression
           mkdir -p out
-          {
-            echo "main_head=${{ needs.resolve-main.outputs.main_sha }}"
-            git status --short --branch
-            go version
-            go env
-            go list -m github.com/dolthub/dolt/go github.com/dolthub/go-mysql-server
-          } > out/main-metadata.txt
-          cd tool
+          (cd main && ./postgres/parser/build.sh && go build -o "$RUNNER_TEMP/doltgres-main" ./cmd/doltgres) 2>&1 | tee out/main-regress.log
+          cargo build --profile quick -p regress 2>&1 | tee -a out/main-regress.log
           set +e
-          go test --timeout=90m ./... --count=1 2>&1 | tee ../out/main-go-test.log
+          timeout 90m target/quick/regress run "$RUNNER_TEMP/regress/suite" \
+            "doltgres:$RUNNER_TEMP/doltgres-main" "$RUNNER_TEMP/regress/psql" out/main \
+            2>&1 | tee -a out/main-regress.log
           test_status=${PIPESTATUS[0]}
           set -e
-          if [ -f ../out/results.trackers ]; then
-            cp ../out/results.trackers ../out/results1.trackers
+          if [ "$test_status" = "124" ]; then
+            echo "panic: test timed out" >> out/main-regress.log
           fi
           exit "$test_status"
 
       - name: Fail if main regression process deadlocked
         run: |
-          LOG=testing/go/regression/out/main-go-test.log
-          if [ -f "$LOG" ] && grep -q "panic: test timed out" "$LOG"; then
-            echo "::error::The main regression test process hung and was killed by the 90m go test timeout. This is NOT a normal per-query test failure -- something deadlocked. See the goroutine dump in main-go-test.log (uploaded as an artifact) to find what was stuck."
+          if grep -q "panic: test timed out" out/main-regress.log; then
+            echo "::error::The main regression run hung and was killed by the 90m timeout. See main-regress.log (uploaded as an artifact)."
             exit 1
           fi
 
@@ -159,9 +163,8 @@ jobs:
         with:
           name: regression-main-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            testing/go/regression/out/results1.trackers
-            testing/go/regression/out/main-go-test.log
-            testing/go/regression/out/main-metadata.txt
+            out/main/results.json
+            out/main-regress.log
           if-no-files-found: warn
           retention-days: 14
           compression-level: 0
@@ -178,37 +181,37 @@ jobs:
       - name: Checkout DoltgreSQL
         uses: actions/checkout@v6
         with:
-          ref: ${{ needs.resolve-main.outputs.main_sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Install Go
-        uses: actions/setup-go@v5
+      - name: Set up Rust
+        run: rustup toolchain install
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
         with:
-          go-version-file: go.mod
-          cache: true
+          key: ${{ github.workflow }}-${{ matrix.os }}${{ matrix.platform }}
 
       - name: Download PR regression artifacts
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: regression-pr-${{ github.run_id }}-${{ github.run_attempt }}
-          path: testing/go/regression/out
+          path: out/pr
 
       - name: Download main regression artifacts
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: regression-main-${{ github.run_id }}-${{ github.run_attempt }}
-          path: testing/go/regression/out
+          path: out/main
 
-      - name: Check result trackers
-        id: check_trackers
+      - name: Check results
+        id: check_results
         run: |
-          cd testing/go/regression/out
-          if [[ -f "results1.trackers" && -f "results2.trackers" ]]; then
-            echo "trackers_exist=true" >> $GITHUB_OUTPUT
-            echo "trackers exist"
+          if [[ -f out/main/main/results.json && -f out/pr/pr/results.json ]]; then
+            echo "results_exist=true" >> $GITHUB_OUTPUT
           else
-            echo "trackers_exist=false" >> $GITHUB_OUTPUT
+            echo "results_exist=false" >> $GITHUB_OUTPUT
             echo "One of the branches could not successfully complete their tests."
             echo "Please review uploaded regression artifacts for errors, which must be fixed."
             exit 1
@@ -216,13 +219,12 @@ jobs:
 
       - name: Build Regression Test Results Comment
         id: build_results
-        if: steps.check_trackers.outputs.trackers_exist == 'true'
+        if: steps.check_results.outputs.results_exist == 'true'
         run: |
-          ./postgres/parser/build.sh
-          cd testing/go/regression/tool
+          cargo build --profile quick -p regress
           # Pass via file, not $GITHUB_OUTPUT: large output through env trips ARG_MAX in github-script.
-          go run . results1.trackers results2.trackers > "$RUNNER_TEMP/regression-comment.md"
-          cp "$RUNNER_TEMP/regression-comment.md" ../out/regression-comment.md
+          target/quick/regress compare out/main/main/results.json out/pr/pr/results.json > "$RUNNER_TEMP/regression-comment.md"
+          cp "$RUNNER_TEMP/regression-comment.md" out/regression-comment.md
           cat "$RUNNER_TEMP/regression-comment.md"
           if [ -s "$RUNNER_TEMP/regression-comment.md" ]; then
             echo "has_output=true" >> "$GITHUB_OUTPUT"
@@ -235,7 +237,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: regression-comparison-${{ github.run_id }}-${{ github.run_attempt }}
-          path: testing/go/regression/out/regression-comment.md
+          path: out/regression-comment.md
           if-no-files-found: warn
           retention-days: 14
           compression-level: 0

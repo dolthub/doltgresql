@@ -8,7 +8,7 @@ concurrency:
 jobs:
   testing-job:
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 45
     name: Run tests
     steps:
     - name: Check out code

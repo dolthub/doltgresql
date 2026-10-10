@@ -1,0 +1,7 @@
+foo	1
+\N	2
+back\\slash	3
+	4
+a,b	5
+say "hi"	6
+multi\nline	7

@@ -1,0 +1,3 @@
+# These fixtures are Go-written databases and the text that Go oracles printed for them, which the tests compare
+# byte for byte, so line-ending conversion must leave them alone.
+* -text

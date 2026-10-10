@@ -1,0 +1,22 @@
+[package]
+name = "doltgres-tests"
+description = "Tests that drive a doltgres server over the wire, with expectations taken from Postgres"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[test]]
+name = "scripts"
+path = "tests/scripts/main.rs"
+
+[dev-dependencies]
+harness = { path = "../harness" }
+rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
+
+[lints]
+workspace = true

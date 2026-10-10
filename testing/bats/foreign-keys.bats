@@ -41,5 +41,5 @@ teardown() {
 
     run query_server -c "insert into child values (100,100)"
     [ "$status" -ne 0 ]
-    [[ "$output" =~ "violation" ]] || false
+    [[ "$output" =~ "violates foreign key constraint" ]] || false
 }

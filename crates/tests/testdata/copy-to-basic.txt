@@ -1,0 +1,7 @@
+1	foo	10
+2	\N	20
+3	back\\slash	\N
+4		40
+5	a,b	50
+6	say "hi"	60
+7	multi\nline	70

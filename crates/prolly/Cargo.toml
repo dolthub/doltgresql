@@ -1,0 +1,16 @@
+[package]
+name = "prolly"
+description = "Dolt's prolly trees: tree nodes, maps, address maps, and blobs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serial = { path = "../serial" }
+sha2 = "0.10"
+store = { path = "../store" }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+
+[lints]
+workspace = true

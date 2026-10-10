@@ -1,0 +1,20 @@
+[package]
+name = "harness"
+description = "Test harness that drives a doltgres server, or a real Postgres, the same way the Go test suite does"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+base64 = "0.22"
+hmac = "0.12"
+md-5 = "0.10"
+pbkdf2 = "0.12"
+pgproto.workspace = true
+rand = "0.8"
+rustls = "0.23"
+sha2 = "0.10"
+
+[lints]
+workspace = true
