@@ -157,7 +157,7 @@ pub fn get_join_variables(
 ) -> (VariableStatData, VariableStatData, bool) {
     let (vardata1, vardata2) = (examine_variable(root, left, 0), examine_variable(root, right, 0));
     let within = |v: &VariableStatData, relids: &Relids| v.rel.is_some_and(|r| root.rels[r].relids.is_subset(relids));
-    let reversed = within(&vardata1, &sjinfo.syn_righthand) && within(&vardata2, &sjinfo.syn_lefthand);
+    let reversed = within(&vardata1, &sjinfo.syn_righthand) || within(&vardata2, &sjinfo.syn_lefthand);
     (vardata1, vardata2, reversed)
 }
 
@@ -868,9 +868,7 @@ pub fn rowcomparesel(
 /// eqjoinsel returns the selectivity of an equality join clause between two expressions, as Postgres' eqjoinsel
 /// estimates it for the join it is part of.
 pub fn eqjoinsel(root: &PlannerInfo<'_, '_>, left: &Expr, right: &Expr, sjinfo: &SpecialJoinInfo) -> f64 {
-    let (vardata1, vardata2) = (examine_variable(root, left, 0), examine_variable(root, right, 0));
-    let within = |v: &VariableStatData, relids: &Relids| v.rel.is_some_and(|r| relids.is_member(r));
-    let join_is_reversed = within(&vardata1, &sjinfo.syn_righthand) || within(&vardata2, &sjinfo.syn_lefthand);
+    let (vardata1, vardata2, join_is_reversed) = get_join_variables(root, left, right, sjinfo);
     let (nd1, isdefault1) = get_variable_numdistinct(root, &vardata1);
     let (nd2, isdefault2) = get_variable_numdistinct(root, &vardata2);
     let selec_inner = eqjoinsel_inner(&vardata1, &vardata2, nd1, nd2);
@@ -1000,7 +998,7 @@ pub fn estimate_hash_bucket_stats(root: &PlannerInfo<'_, '_>, hashkey: &Expr, nb
     let mcv_freq = vardata.column().and_then(|c| c.common.first()).map_or(0.0, |(_, f)| *f);
     let (mut ndistinct, isdefault) = get_variable_numdistinct(root, &vardata);
     if isdefault {
-        return (mcv_freq, 0.1);
+        return (mcv_freq, mcv_freq.max(0.1));
     }
     let stanullfrac = vardata.column().map_or(0.0, |c| c.null_frac);
     let avgfreq = (1.0 - stanullfrac) / ndistinct;
