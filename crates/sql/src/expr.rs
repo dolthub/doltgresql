@@ -129,6 +129,19 @@ impl PartialEq for Location {
     }
 }
 
+/// SubPlan is a subquery expression whose subquery the planner planned, as Postgres' SubPlan is: its plan reads the
+/// values of its arguments, over the enclosing row, as its enclosing row. An initplan reads no enclosing row and runs
+/// once for the query.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SubPlan {
+    /// The `Exists`, `Scalar`, `ArraySubquery`, or `AnySubquery` expression of the planned subquery.
+    pub link: Expr,
+    pub args: Vec<Expr>,
+    pub init_plan: bool,
+    pub startup_cost: f64,
+    pub per_call_cost: f64,
+}
+
 /// Expr is a bound expression.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -191,6 +204,8 @@ pub enum Expr {
     ArraySubquery(Box<Plan>, u32),
     /// Whether the comparison holds for any, or for all, of the subquery's values.
     AnySubquery(Box<Expr>, Box<Plan>, bool),
+    /// A subquery expression that the planner planned.
+    SubPlan(Box<SubPlan>),
     /// The subquery value a comparison of AnySubquery tests.
     SubqueryValue,
     /// The default of a column of the table being written, by position.
@@ -1359,7 +1374,10 @@ impl<'b, 'a> Binder<'b, 'a> {
                         });
                     }
                     let left = items.iter().map(|n| self.bind(n)).collect::<Result<Vec<_>>>()?;
-                    let subquery = Expr::Scalar(Box::new(query.plan));
+                    let mut subquery = Expr::Scalar(Box::new(query.plan));
+                    if crate::optimizer::enabled() {
+                        subquery = crate::optimizer::make_subplan(self.ctx, subquery, true, self.width());
+                    }
                     let right = (0..items.len())
                         .map(|i| (Expr::Field(Box::new(subquery.clone()), i), query.types[i]))
                         .collect();
@@ -1803,7 +1821,7 @@ impl<'b, 'a> Binder<'b, 'a> {
             T::ExistsSublink => crate::plan::is_simple_exists(select),
             _ => crate::plan::is_simple_subquery(select),
         };
-        let deferred = self.ctx.deferred_sublinks.contains(&link.location) && simple;
+        let deferred = crate::optimizer::enabled() && crate::plan::is_plain_select(select);
         let mut planner = Planner { ctx: &mut *self.ctx, outer: self.scopes.clone() };
         let query = match deferred {
             true => planner.plan_select(select, true),
@@ -1812,15 +1830,23 @@ impl<'b, 'a> Binder<'b, 'a> {
         let inner = std::mem::replace(&mut self.ctx.outer_reach, reach);
         self.ctx.outer_reach = reach.min(inner);
         let mut query = query?;
-        let uncorrelated = inner >= self.scopes.len();
-        if !deferred {
-            query.plan = crate::plan::share_subquery(query.plan, uncorrelated);
+        if !crate::optimizer::enabled() {
+            query.plan = crate::plan::share_subquery(query.plan, inner >= self.scopes.len());
         }
         let (bound, ty) = self.sublink_test(link, kind, query)?;
-        match deferred && !crate::optimizer::sublink_convertible(&bound) {
-            true => Ok((crate::optimizer::plan_sublink(self.ctx, bound, uncorrelated), ty)),
+        let joined = deferred
+            && simple
+            && self.ctx.deferred_sublinks.contains(&link.location)
+            && crate::optimizer::sublink_convertible(&bound);
+        match crate::optimizer::enabled() && !joined {
+            true => Ok((crate::optimizer::make_subplan(self.ctx, bound, !deferred, self.width()), ty)),
             false => Ok((bound, ty)),
         }
+    }
+
+    /// width returns the number of columns of the rows that the current scope's expressions evaluate over.
+    fn width(&self) -> usize {
+        self.scopes.last().map_or(0, |scope| scope.columns.len())
     }
 
     /// sublink_test binds the test of a subquery expression of a kind over its planned query.
@@ -3623,9 +3649,41 @@ impl Expr {
                 };
                 Value::Bool(holds != *negated)
             }
-            Expr::Exists(plan) => Value::Bool(plan.subquery_exists(ctx, row)?),
+            Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) => {
+                self.eval_sublink(ctx, row, row)?
+            }
+            Expr::SubPlan(subplan) => {
+                let args = subplan.args.iter().map(|a| a.eval(ctx, row)).collect::<Result<Vec<Value>>>()?;
+                subplan.link.eval_sublink(ctx, row, &args)?
+            }
+        })
+    }
+
+    /// subquery returns the plan of a subquery expression, planned or not.
+    pub(crate) fn subquery(&self) -> Option<&Plan> {
+        match self {
+            Expr::Exists(p) | Expr::Scalar(p) | Expr::ArraySubquery(p, _) | Expr::AnySubquery(_, p, _) => Some(p),
+            Expr::SubPlan(subplan) => subplan.link.subquery(),
+            _ => None,
+        }
+    }
+
+    /// subquery_mut is subquery for changing the plan.
+    pub(crate) fn subquery_mut(&mut self) -> Option<&mut Plan> {
+        match self {
+            Expr::Exists(p) | Expr::Scalar(p) | Expr::ArraySubquery(p, _) | Expr::AnySubquery(_, p, _) => Some(p),
+            Expr::SubPlan(subplan) => subplan.link.subquery_mut(),
+            _ => None,
+        }
+    }
+
+    /// eval_sublink evaluates a subquery expression whose subquery reads `enclosing` as its enclosing row, and whose
+    /// comparison reads the row.
+    fn eval_sublink(&self, ctx: &mut Ctx<'_>, row: &[Value], enclosing: &[Value]) -> Result<Value> {
+        Ok(match self {
+            Expr::Exists(plan) => Value::Bool(plan.subquery_exists(ctx, enclosing)?),
             Expr::Scalar(plan) => {
-                let rows = &plan.subquery_rows(ctx, row)?.rows;
+                let rows = &plan.subquery_rows(ctx, enclosing)?.rows;
                 if rows.len() > 1 {
                     return Err(PgError::new(
                         code::CARDINALITY_VIOLATION,
@@ -3640,7 +3698,7 @@ impl Expr {
             }
             Expr::ArraySubquery(plan, element) => {
                 let values: Vec<Value> = plan
-                    .subquery_rows(ctx, row)?
+                    .subquery_rows(ctx, enclosing)?
                     .rows
                     .iter()
                     .map(|r| r.first().cloned().unwrap_or(Value::Null))
@@ -3652,7 +3710,7 @@ impl Expr {
                 Value::Array(Box::new(crate::array::Array::one_dimensional(element, values)))
             }
             Expr::AnySubquery(comparison, plan, all) => {
-                let rows = plan.subquery_rows(ctx, row)?;
+                let rows = plan.subquery_rows(ctx, enclosing)?;
                 if let (false, Plan::Once(_), Expr::Compare(CmpOp::Eq, left, right)) = (*all, &**plan, &**comparison)
                     && **right == Expr::SubqueryValue
                     && let Some((keys, null)) = rows.keys()
@@ -3690,6 +3748,7 @@ impl Expr {
                     None => Value::Bool(*all),
                 }
             }
+            _ => unreachable!("a subquery expression"),
         })
     }
 
@@ -3800,6 +3859,12 @@ impl Expr {
             }
             Expr::BoolTest(e, v, n) => Expr::BoolTest(b(e), v, n),
             Expr::AnySubquery(c, p, all) => Expr::AnySubquery(b(c), p, all),
+            Expr::SubPlan(mut subplan) => {
+                subplan.args = std::mem::take(&mut subplan.args).into_iter().map(&mut *f).collect();
+                let link = std::mem::replace(&mut subplan.link, Expr::SubqueryValue);
+                subplan.link = link.map_children(&mut *f);
+                Expr::SubPlan(subplan)
+            }
             Expr::DateTime(op, l, r) => {
                 let l = b(l);
                 Expr::DateTime(op, l, b(r))
@@ -3914,6 +3979,10 @@ impl Expr {
                 f(otherwise);
             }
             Expr::AnySubquery(c, ..) => f(c),
+            Expr::SubPlan(subplan) => {
+                subplan.args.iter().for_each(&mut *f);
+                subplan.link.visit_children(f);
+            }
             _ => {}
         }
     }
@@ -3974,6 +4043,10 @@ impl Expr {
                 otherwise.visit(f);
             }
             Expr::AnySubquery(c, ..) => c.visit(f),
+            Expr::SubPlan(subplan) => {
+                subplan.args.iter().for_each(|a| a.visit(f));
+                subplan.link.visit_children(&mut |c| c.visit(f));
+            }
             _ => {}
         }
     }

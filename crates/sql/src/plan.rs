@@ -2197,6 +2197,16 @@ pub(crate) fn is_simple_exists(select: &SelectStmt) -> bool {
         && !select.target_list.iter().any(|t| has_aggregate(t) || crate::window::has_window(t))
 }
 
+/// is_plain_select reports whether a SELECT is neither a set operation nor VALUES and has no WITH or INTO, which
+/// planning it as one query level can bind without planning it.
+pub(crate) fn is_plain_select(select: &SelectStmt) -> bool {
+    let op = SetOperation::try_from(select.op).unwrap_or(SetOperation::SetopNone);
+    matches!(op, SetOperation::SetopNone | SetOperation::Undefined)
+        && select.with_clause.is_none()
+        && select.into_clause.is_none()
+        && select.values_lists.is_empty()
+}
+
 /// is_simple_subquery reports whether a subquery in FROM is a plain SELECT that a query around it may pull up into
 /// its own join tree, as Postgres' is_simple_subquery requires: no WITH, set operation, VALUES, grouping, aggregate,
 /// window function, DISTINCT, ORDER BY, LIMIT, or locking.
@@ -3304,7 +3314,9 @@ pub(crate) fn push_down(plan: Plan, predicate: Expr) -> Plan {
         c.visit(&mut |e| match e {
             Expr::Column(i) if *i >= width => reads_right = true,
             Expr::Column(_) => reads_left = true,
-            Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) => subquery = true,
+            Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) | Expr::SubPlan(_) => {
+                subquery = true
+            }
             _ => {}
         });
         match (reads_left, reads_right, subquery) {
@@ -3488,7 +3500,9 @@ pub(crate) fn join_keys(condition: &Expr, width: usize) -> (Vec<Expr>, Vec<Expr>
         e.visit(&mut |e| match e {
             Expr::Column(i) if *i >= width => right = true,
             Expr::Column(_) => left = true,
-            Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) => other = true,
+            Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) | Expr::SubPlan(_) => {
+                other = true
+            }
             _ => {}
         });
         match (left, right, other) {
@@ -3533,9 +3547,12 @@ pub(crate) fn index_parts(ctx: &mut Ctx<'_>, predicate: &Expr) -> (Vec<Expr>, Ro
         let (mut column, mut other) = (false, false);
         e.visit(&mut |e| match e {
             Expr::Column(_) => column = true,
-            Expr::Outer(..) | Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..) => {
-                other = true
-            }
+            Expr::Outer(..)
+            | Expr::Exists(_)
+            | Expr::Scalar(_)
+            | Expr::ArraySubquery(..)
+            | Expr::AnySubquery(..)
+            | Expr::SubPlan(_) => other = true,
             _ => {}
         });
         (column, other)
@@ -3635,7 +3652,7 @@ pub(crate) fn share_scans(plan: Plan) -> Plan {
 pub(crate) fn has_subquery(e: &Expr) -> bool {
     let mut found = false;
     e.visit(&mut |e| {
-        if matches!(e, Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..)) {
+        if e.subquery().is_some() {
             found = true;
         }
     });

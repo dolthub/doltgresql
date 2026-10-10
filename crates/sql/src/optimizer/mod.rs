@@ -47,10 +47,10 @@ mod subselect;
 mod tlist;
 mod var;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::rc::Rc;
 
-pub(crate) use subselect::{plan_sublink, sublink_convertible};
+pub(crate) use subselect::{make_subplan, sublink_convertible};
 
 use nodes::{
     EquivalenceClass, EquivalenceMember, FromExpr, JoinDomain, JoinExpr, JoinTreeNode, JoinType, OuterJoinClauseInfo,
@@ -60,7 +60,6 @@ use nodes::{
 
 use crate::expr::Expr;
 use crate::functions::aggregate::AggCall;
-use crate::indexscan::columns_read;
 use crate::plan::{JoinKind, JoinMethod, Plan};
 use crate::query::Ctx;
 
@@ -148,25 +147,39 @@ pub(crate) fn enabled() -> bool {
     *ENABLED.get_or_init(|| std::env::var_os("DOLTGRES_PG_PLANNER").is_some())
 }
 
-/// plannable reports whether query_planner can plan a FROM clause's plan: anything but the empty FROM clause's one
-/// row.
-fn plannable(from: &Plan) -> bool {
-    !matches!(from, Plan::OneRow)
-}
-
 /// planner plans the SELECT that the binder built a plan of, as Postgres' standard_planner does: it turns the plan
 /// back into a Query and plans it.
 pub(crate) fn planner(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
     let mut glob = PlannerGlobal::default();
     let parse = query::unbind(&mut glob, ctx, plan);
-    subquery_planner(ctx, &mut glob, parse, 0.0)
+    subquery_planner(ctx, &mut glob, parse, 0.0).0
+}
+
+/// plan_subselect plans the subquery of a subquery expression for the share of its rows that the expression reads,
+/// simplifying an EXISTS subquery first, and returns its plan and path, as Postgres' make_subplan plans it.
+fn plan_subselect(ctx: &mut Ctx<'_>, plan: Plan, exists: bool, tuple_fraction: f64) -> (Plan, Rc<nodes::Path>) {
+    let mut glob = PlannerGlobal::default();
+    let mut parse = query::unbind(&mut glob, ctx, plan);
+    if exists {
+        subselect::simplify_exists_query(&mut parse);
+    }
+    let (plan, path) = subquery_planner(ctx, &mut glob, parse, tuple_fraction);
+    let mut plan = crate::joins::plan_joins(ctx, plan);
+    crate::indexscan::prune(&mut plan);
+    (plan, path)
 }
 
 /// subquery_planner prepares a query's join tree, pulling up its sublinks and subqueries, reducing its outer joins,
-/// and moving the HAVING conditions that read no aggregate to WHERE, then plans it and makes the plan of its cheapest
-/// path for the rows it reads, whose columns are the query's visible columns, as Postgres' function of the same name
-/// does with standard_planner's choice of the final path.
-fn subquery_planner(ctx: &mut Ctx<'_>, glob: &mut PlannerGlobal, mut parse: Query, tuple_fraction: f64) -> Plan {
+/// and moving the HAVING conditions that read no aggregate to WHERE, then plans it, charges its final paths for its
+/// initplans, and makes the plan of its cheapest path for the rows it reads, whose columns are the query's visible
+/// columns, as Postgres' function of the same name does with standard_planner's choice of the final path, which it
+/// returns too.
+fn subquery_planner(
+    ctx: &mut Ctx<'_>,
+    glob: &mut PlannerGlobal,
+    mut parse: Query,
+    tuple_fraction: f64,
+) -> (Plan, Rc<nodes::Path>) {
     prepjointree::pull_up_subqueries(glob, &mut parse);
     for rte in parse.rtable.iter_mut() {
         if let RteKind::Subquery(_, plan) = &rte.kind {
@@ -230,9 +243,10 @@ fn subquery_planner(ctx: &mut Ctx<'_>, glob: &mut PlannerGlobal, mut parse: Quer
     root.num_ordered_aggs = prepagg::count_ordered_aggs(&root);
     planner::grouping_planner(&mut root, tuple_fraction);
     let final_rel = relnode::fetch_upper_rel(&mut root, nodes::UpperRelationKind::Final);
+    subselect::ss_charge_for_initplans(&mut root, final_rel);
     pathnode::set_cheapest(&mut root.rels[final_rel]);
-    let best_path = planner::get_cheapest_fractional_path(&root.rels[final_rel], root.tuple_fraction);
-    createplan::create_plan(&mut root, &best_path)
+    let best_path = planner::get_cheapest_fractional_path(&root.rels[final_rel], tuple_fraction);
+    (createplan::create_plan(&mut root, &best_path), best_path)
 }
 
 /// preprocess_having moves each HAVING condition that reads no aggregate, runs no volatile function, and has no
@@ -303,10 +317,10 @@ fn plan_subquery(ctx: &mut Ctx<'_>, plan: Plan) -> Plan {
 }
 
 /// decomposable reports whether a join's inputs can join in any order the planner finds: it is not lateral, not
-/// already planned, and has no subquery in its condition.
+/// already planned, and has no subquery expression in its condition that is not a SubPlan yet.
 fn decomposable(join: &Plan) -> bool {
     matches!(join, Plan::Join { condition, lateral: false, method: JoinMethod::Unplanned, .. }
-        if !condition.as_ref().is_some_and(crate::plan::has_subquery))
+        if !condition.as_ref().is_some_and(subselect::has_sublink))
 }
 
 /// query_planner builds the base relations, distributes the join tree's clauses, sets the orders that the upper
@@ -368,8 +382,7 @@ fn query_planner(root: &mut PlannerInfo<'_, '_>, qp_callback: &mut dyn FnMut(&mu
         }
         let jointree = JoinTreeNode::From(Box::new(root.parse.jointree.clone()));
         initsplan::add_base_rels_to_query(root, &jointree);
-        let mut final_tlist: Vec<Expr> = root.parse.upper_exprs();
-        final_tlist.extend(subplan_vars(&root.parse));
+        let final_tlist: Vec<Expr> = root.parse.upper_exprs();
         initsplan::build_base_rel_tlists(root, &final_tlist);
         placeholder::find_placeholders_in_jointree(root);
         let joinlist = initsplan::deconstruct_jointree(root);
@@ -386,16 +399,6 @@ fn query_planner(root: &mut PlannerInfo<'_, '_>, qp_callback: &mut dyn FnMut(&mu
         placeholder::add_placeholders_to_base_rels(root);
         return allpaths::make_one_rel(root, &joinlist);
     }
-}
-
-/// subplan_vars returns the expressions of the FROM clause's columns that the WHERE conditions with subqueries read,
-/// which the join of the query's relations must hold.
-fn subplan_vars(parse: &Query) -> Vec<Expr> {
-    let mut read = BTreeSet::new();
-    for qual in &parse.subplan_quals {
-        read.extend(columns_read([qual]).unwrap_or_else(|| (0..parse.sublink_columns.len()).collect()));
-    }
-    read.into_iter().filter_map(|i| parse.sublink_columns.get(i).cloned()).collect()
 }
 
 /// build_jointree turns a FROM clause's plan into a join tree, as Postgres' parser builds one, adding its inputs to a
@@ -460,11 +463,14 @@ pub(super) fn build_jointree(
                 subquery.target_list.iter().map(|tle| nodefuncs::query_expr_type(glob, &subquery, &tle.expr)).collect();
             push_relation(glob, rtable, output, RteKind::Subquery(Box::new(subquery), original), coltypes)
         }
-        Plan::Filter { input, predicate } if !crate::plan::has_subquery(&predicate) => {
+        Plan::Filter { input, predicate } => {
             let mut columns = Vec::new();
             let node = build_jointree(glob, ctx, *input, rtable, &mut columns);
-            let conjuncts = crate::indexscan::conjuncts(&predicate);
-            let quals = conjuncts.into_iter().map(|c| to_vars(c.clone(), &columns)).collect();
+            let conjuncts = crate::indexscan::conjuncts(&predicate).into_iter().cloned().collect();
+            let (node, conjuncts) = subselect::pull_up_sublinks(glob, ctx, node, conjuncts, rtable, &columns);
+            let width = columns.len();
+            let quals =
+                conjuncts.into_iter().map(|c| to_vars(subselect::process_sublinks(ctx, c, width), &columns)).collect();
             output.extend(columns);
             JoinTreeNode::From(Box::new(FromExpr { fromlist: vec![node], quals }))
         }

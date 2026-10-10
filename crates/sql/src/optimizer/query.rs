@@ -46,26 +46,12 @@ struct Upper {
 /// and its upper clauses.
 pub fn unbind(glob: &mut PlannerGlobal, ctx: &mut Ctx<'_>, plan: Plan) -> Query {
     let (from, upper) = peel(plan);
-    let (from, quals) = match from {
-        Plan::Filter { input, predicate } if super::plannable(&input) => {
-            (*input, crate::indexscan::conjuncts(&predicate).into_iter().cloned().collect())
-        }
-        other => (other, Vec::new()),
-    };
     let (mut rtable, mut columns) = (Vec::new(), Vec::new());
-    let node = super::build_jointree(glob, ctx, from, &mut rtable, &mut columns);
-    let (node, quals) = super::subselect::pull_up_sublinks(glob, ctx, node, quals, &mut rtable, &columns);
-    let (kept, later): (Vec<Expr>, Vec<Expr>) = quals.into_iter().partition(|q| !crate::plan::has_subquery(q));
-    let mut jointree = match node {
-        JoinTreeNode::From(from) if from.quals.is_empty() || !kept.is_empty() => *from,
+    let jointree = match super::build_jointree(glob, ctx, from, &mut rtable, &mut columns) {
+        JoinTreeNode::From(from) => *from,
         other => FromExpr { fromlist: vec![other], quals: Vec::new() },
     };
-    jointree.quals.extend(kept.into_iter().map(|q| super::to_vars(q, &columns)));
     let mut query = Query { rtable, jointree, ..Query::default() };
-    if !later.is_empty() {
-        query.subplan_quals = later;
-        query.sublink_columns = columns.clone();
-    }
     let mut meaning = columns;
     let Some(upper) = upper else {
         query.target_list =

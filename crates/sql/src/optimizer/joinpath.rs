@@ -107,7 +107,7 @@ fn match_unsorted_outer(
 /// create_material_path makes a path that keeps another path's rows in memory, as Postgres' function of the same
 /// name does.
 fn create_material_path(root: &PlannerInfo<'_, '_>, subpath: &Rc<Path>) -> Rc<Path> {
-    let (disabled_nodes, startup_cost, total_cost) = cost_material(root, subpath);
+    let (disabled_nodes, startup_cost, total_cost) = cost_material(&root.enables, subpath);
     Rc::new(Path {
         kind: PathKind::Material(subpath.clone()),
         disabled_nodes,

@@ -405,10 +405,6 @@ pub struct Query {
     pub sort_clause: Vec<SortGroupClause>,
     pub limit_offset: Option<Expr>,
     pub limit_count: Option<Expr>,
-    /// The WHERE conditions with subqueries that sublink pull-up left, over the FROM clause's columns by position,
-    /// which filter the join of the query's relations, and the expression of each of those columns.
-    pub subplan_quals: Vec<Expr>,
-    pub sublink_columns: Vec<Expr>,
 }
 
 impl Query {
@@ -439,7 +435,6 @@ impl Query {
         exprs.extend(self.having_qual.iter_mut());
         exprs.extend(self.limit_offset.iter_mut());
         exprs.extend(self.limit_count.iter_mut());
-        exprs.extend(self.sublink_columns.iter_mut());
         exprs
     }
 

@@ -45,12 +45,12 @@ const DISABLE_COST: f64 = 1.0e10;
 /// headers, aligned, with ITEM_ID the size of a row's pointer on its page.
 const BLCKSZ: f64 = 8192.0;
 const PAGE_HEADER: f64 = 24.0;
-const TUPLE_HEADER: f64 = 24.0;
+pub const TUPLE_HEADER: f64 = 24.0;
 const ITEM_ID: f64 = 4.0;
 
 /// HASH_MEM is the memory that a hash join's table may take, as Postgres' default work_mem times its default
 /// hash_mem_multiplier.
-const HASH_MEM: f64 = 4.0 * 1024.0 * 1024.0 * 2.0;
+pub const HASH_MEM: f64 = 4.0 * 1024.0 * 1024.0 * 2.0;
 
 /// ROUTINE_COST is the cost of a call of a user-defined routine in units of an operator's, as Postgres' default COST
 /// of a function written in SQL or PL/pgSQL.
@@ -128,33 +128,74 @@ pub fn cost_qual_eval(root: &PlannerInfo<'_, '_>, quals: &[RinfoId]) -> QualCost
 }
 
 /// cost_qual_eval_node returns the cost of evaluating one expression, which charges each operator, function, and
-/// cast it calls, as Postgres' cost_qual_eval_walker does.
+/// cast it calls, and the subplans it runs, as Postgres' cost_qual_eval_walker does.
 pub fn cost_qual_eval_node(e: &Expr) -> QualCost {
-    let mut per_tuple = 0.0;
-    e.visit(&mut |x| {
-        per_tuple += match x {
-            Expr::Routine(..) | Expr::Operator(..) => ROUTINE_COST * CPU_OPERATOR_COST,
-            Expr::Func(..)
-            | Expr::Cast(..)
-            | Expr::Arith(..)
-            | Expr::Neg(..)
-            | Expr::Compare(..)
-            | Expr::Concat(..)
-            | Expr::DateTime(..)
-            | Expr::ArrayOp(..)
-            | Expr::DistinctFrom(..)
-            | Expr::NullIf(..)
-            | Expr::MinMax(..)
-            | Expr::Exists(_)
-            | Expr::Scalar(_)
-            | Expr::ArraySubquery(..)
-            | Expr::AnySubquery(..) => CPU_OPERATOR_COST,
-            Expr::AnyArray(..) => CPU_OPERATOR_COST * 0.5 * 10.0,
-            Expr::RowCompare(_, fields, _) => CPU_OPERATOR_COST * fields.len() as f64,
-            _ => 0.0,
+    let mut total = QualCost::default();
+    cost_qual_eval_walker(e, &mut total);
+    total
+}
+
+/// cost_qual_eval_walker adds the cost of evaluating an expression to a total, as Postgres' function of the same name
+/// does: a subplan costs what cost_subplan found, and an initplan costs nothing here, since the query pays for it once.
+fn cost_qual_eval_walker(e: &Expr, total: &mut QualCost) {
+    if let Expr::SubPlan(subplan) = e {
+        if !subplan.init_plan {
+            total.startup += subplan.startup_cost;
+            total.per_tuple += subplan.per_call_cost;
         }
-    });
-    QualCost { startup: 0.0, per_tuple }
+        return;
+    }
+    total.per_tuple += match e {
+        Expr::Routine(..) | Expr::Operator(..) => ROUTINE_COST * CPU_OPERATOR_COST,
+        Expr::Func(..)
+        | Expr::Cast(..)
+        | Expr::Arith(..)
+        | Expr::Neg(..)
+        | Expr::Compare(..)
+        | Expr::Concat(..)
+        | Expr::DateTime(..)
+        | Expr::ArrayOp(..)
+        | Expr::DistinctFrom(..)
+        | Expr::NullIf(..)
+        | Expr::MinMax(..)
+        | Expr::Exists(_)
+        | Expr::Scalar(_)
+        | Expr::ArraySubquery(..)
+        | Expr::AnySubquery(..) => CPU_OPERATOR_COST,
+        Expr::AnyArray(..) => CPU_OPERATOR_COST * 0.5 * 10.0,
+        Expr::RowCompare(_, fields, _) => CPU_OPERATOR_COST * fields.len() as f64,
+        _ => 0.0,
+    };
+    e.visit_children(&mut |c| cost_qual_eval_walker(c, total));
+}
+
+/// cost_subplan sets a subplan's startup and per-call costs from the path of its plan, whose rows it hashes or reads
+/// again for each call, as Postgres' function of the same name does.
+pub fn cost_subplan(subplan: &mut crate::expr::SubPlan, plan: &Path, use_hash_table: bool, materializes: bool) {
+    let mut sp_cost = match &subplan.link {
+        Expr::AnySubquery(test, ..) => cost_qual_eval_node(test),
+        _ => QualCost::default(),
+    };
+    if use_hash_table {
+        sp_cost.startup += plan.total_cost + CPU_OPERATOR_COST * plan.rows;
+    } else {
+        let plan_run_cost = plan.total_cost - plan.startup_cost;
+        match &subplan.link {
+            Expr::Exists(_) => sp_cost.per_tuple += plan_run_cost / clamp_row_est(plan.rows),
+            Expr::AnySubquery(..) => {
+                sp_cost.per_tuple += 0.50 * plan_run_cost;
+                sp_cost.per_tuple += 0.50 * plan.rows * CPU_OPERATOR_COST;
+            }
+            _ => sp_cost.per_tuple += plan_run_cost,
+        }
+        if subplan.args.is_empty() && materializes {
+            sp_cost.startup += plan.startup_cost;
+        } else {
+            sp_cost.per_tuple += plan.startup_cost;
+        }
+    }
+    subplan.startup_cost = sp_cost.startup;
+    subplan.per_call_cost = sp_cost.per_tuple;
 }
 
 /// get_typavgwidth returns the average width of the values of a type and modifier, as Postgres' function of the same
@@ -201,7 +242,7 @@ pub fn estimate_rel_size(rows: f64, width: f64, measured: bool) -> (f64, f64) {
 }
 
 /// maxalign rounds a width up to a multiple of eight bytes, as Postgres' MAXALIGN does.
-fn maxalign(width: f64) -> f64 {
+pub fn maxalign(width: f64) -> f64 {
     (width / 8.0).ceil() * 8.0
 }
 
@@ -554,13 +595,13 @@ pub fn index_pages_fetched(root: &PlannerInfo<'_, '_>, tuples_fetched: f64, page
 
 /// cost_material returns the costs of keeping a path's rows in memory as they are read, as Postgres' function of the
 /// same name does.
-pub fn cost_material(root: &PlannerInfo<'_, '_>, input: &Path) -> Costs {
+pub fn cost_material(enables: &Enables, input: &Path) -> Costs {
     let mut run_cost = input.total_cost - input.startup_cost + 2.0 * CPU_OPERATOR_COST * input.rows;
     let nbytes = relation_byte_size(input.rows, input.width);
     if nbytes > HASH_MEM / 2.0 {
         run_cost += SEQ_PAGE_COST * (nbytes / BLCKSZ).ceil();
     }
-    (input.disabled_nodes + disabled(root.enables.material), input.startup_cost, input.startup_cost + run_cost)
+    (input.disabled_nodes + disabled(enables.material), input.startup_cost, input.startup_cost + run_cost)
 }
 
 /// SORT_MEM is the memory that a sort may take, as Postgres' default work_mem.

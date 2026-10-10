@@ -284,6 +284,7 @@ pub(crate) fn is_constant(e: &Expr) -> bool {
                 | Expr::Scalar(_)
                 | Expr::ArraySubquery(..)
                 | Expr::AnySubquery(..)
+                | Expr::SubPlan(_)
                 | Expr::SubqueryValue
                 | Expr::InputColumn(_)
                 | Expr::AggRef(_)
@@ -2270,6 +2271,9 @@ pub(crate) fn columns_read<'e>(exprs: impl IntoIterator<Item = &'e Expr>) -> Opt
             Expr::Exists(plan) | Expr::Scalar(plan) | Expr::ArraySubquery(plan, _) | Expr::AnySubquery(_, plan, _) => {
                 known &= outer_reads(plan, 1, &mut columns);
             }
+            Expr::SubPlan(subplan) => {
+                known &= outer_reads(subplan.link.subquery().expect("a subquery"), 1, &mut BTreeSet::new())
+            }
             Expr::InputColumn(_) | Expr::AggRef(_) | Expr::Default(_) => known = false,
             _ => {}
         });
@@ -2279,7 +2283,7 @@ pub(crate) fn columns_read<'e>(exprs: impl IntoIterator<Item = &'e Expr>) -> Opt
 
 /// outer_reads adds the columns of the enclosing row `depth` rows out that a plan's expressions read, reporting
 /// whether it could see every expression of the plan.
-fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) -> bool {
+pub(crate) fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) -> bool {
     let mut known = true;
     let mut read = |exprs: &mut dyn Iterator<Item = &Expr>| {
         for expr in exprs {
@@ -2287,9 +2291,7 @@ fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) -> bool {
                 Expr::Outer(d, i) if *d == depth => {
                     out.insert(*i);
                 }
-                Expr::Exists(p) | Expr::Scalar(p) | Expr::ArraySubquery(p, _) | Expr::AnySubquery(_, p, _) => {
-                    known &= outer_reads(p, depth + 1, out);
-                }
+                e if e.subquery().is_some() => known &= outer_reads(e.subquery().expect("a subquery"), depth + 1, out),
                 _ => {}
             });
         }

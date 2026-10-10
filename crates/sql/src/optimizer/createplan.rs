@@ -747,7 +747,7 @@ fn read_lateral_row(e: Expr, depth: usize) -> Expr {
         Expr::Outer(d, i) if d > depth => return Expr::Outer(d + 1, i),
         other => other.map_children(&mut |c| read_lateral_row(c, depth)),
     };
-    if let Expr::Exists(p) | Expr::Scalar(p) | Expr::ArraySubquery(p, _) | Expr::AnySubquery(_, p, _) = &mut e {
+    if let Some(p) = e.subquery_mut() {
         p.map_exprs(0, &mut |x, d| read_lateral_row(x, depth + 1 + d));
     }
     e

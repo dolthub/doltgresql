@@ -385,6 +385,7 @@ impl UserTable {
                         | Expr::Scalar(_)
                         | Expr::ArraySubquery(..)
                         | Expr::AnySubquery(..)
+                        | Expr::SubPlan(_)
                 ) {
                     constant = false;
                 }

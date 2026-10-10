@@ -434,13 +434,7 @@ impl Printer {
         }
         for expr in evaluated {
             expr.visit(&mut |e| {
-                let (Expr::Exists(subquery)
-                | Expr::Scalar(subquery)
-                | Expr::ArraySubquery(subquery, _)
-                | Expr::AnySubquery(_, subquery, _)) = e
-                else {
-                    return;
-                };
+                let Some(subquery) = e.subquery() else { return };
                 self.subplans += 1;
                 self.lines.push(format!("{pad}SubPlan {}", self.subplans));
                 ENCLOSING.with(|e| e.borrow_mut().push(Vec::new()));

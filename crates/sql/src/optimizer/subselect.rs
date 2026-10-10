@@ -12,13 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The sublink conversions of Postgres' optimizer/plan/subselect.c, with pull_up_sublinks from prepjointree.c:
-//! turning `EXISTS`, `NOT EXISTS`, and `IN` subqueries of the WHERE clause into semi and anti joins. A subquery's
-//! columns are its own row's, and the enclosing query's row is one level out, as `Expr::Outer` reads it.
+//! Postgres' optimizer/plan/subselect.c, with pull_up_sublinks from prepjointree.c: turning `EXISTS`, `NOT
+//! EXISTS`, and `IN` subqueries of the WHERE clause into semi and anti joins, and every other subquery expression
+//! into a SubPlan. A subquery's columns are its own row's, and the enclosing query's row is one level out, as
+//! `Expr::Outer` reads it. A SubPlan's subquery reads the values of its arguments as that row, as Postgres' Params.
+
+use std::collections::BTreeSet;
+use std::rc::Rc;
 
 use super::clauses::is_volatile_node;
-use super::nodes::{JoinExpr, JoinTreeNode, JoinType, PlannerGlobal, RangeTblEntry};
-use crate::expr::Expr;
+use super::costsize::{Enables, HASH_MEM, TUPLE_HEADER, cost_material, cost_subplan, maxalign};
+use super::nodes::{FromExpr, JoinExpr, JoinTreeNode, JoinType, Path, PlannerGlobal, Query, RangeTblEntry};
+use crate::expr::{CmpOp, Expr, SubPlan};
 use crate::plan::Plan;
 use crate::query::Ctx;
 
@@ -32,14 +37,225 @@ pub(crate) fn sublink_convertible(e: &Expr) -> bool {
     }
 }
 
-/// plan_sublink plans the subquery of an `EXISTS` or `IN` subquery of the WHERE clause that its binding left
-/// unplanned but that pull_up_sublinks cannot turn into a join, as it runs for each enclosing row.
-pub(crate) fn plan_sublink(ctx: &mut Ctx<'_>, e: Expr, uncorrelated: bool) -> Expr {
-    let mut plan = |p: Box<Plan>| Box::new(crate::plan::share_subquery(super::planner(ctx, *p), uncorrelated));
+/// make_subplan returns the SubPlan of a subquery expression over a row of `width` columns, whose subquery is the
+/// binder's plan, planned already or not, as Postgres' function of the same name does: the subquery's reads of the
+/// enclosing row become reads of the SubPlan's arguments, and an unplanned subquery is planned for the share of its
+/// rows that the expression reads.
+pub(crate) fn make_subplan(ctx: &mut Ctx<'_>, mut link: Expr, planned: bool, width: usize) -> Expr {
+    let plan = link.subquery_mut().expect("a subquery expression");
+    let args = replace_correlation_vars(plan, width);
+    let plan = std::mem::replace(plan, Plan::OneRow);
+    let tuple_fraction = match &link {
+        Expr::Exists(_) => 1.0,
+        Expr::AnySubquery(..) => 0.5,
+        _ => 0.0,
+    };
+    let (plan, path) = match planned {
+        true => (plan, None),
+        false => {
+            let (plan, path) = super::plan_subselect(ctx, plan, matches!(link, Expr::Exists(_)), tuple_fraction);
+            (plan, Some(path))
+        }
+    };
+    build_subplan(ctx, link, plan, path, args)
+}
+
+/// build_subplan makes the SubPlan of a subquery expression from its subquery's plan, the path the planner chose for
+/// it, and its arguments, as Postgres' function of the same name does: a subquery that reads no column of the
+/// enclosing row is an initplan unless it is an ANY or ALL test, an uncorrelated IN test hashes the subquery's rows
+/// when they fit in memory, and the rows of a subquery that reads no enclosing row are kept for every call.
+fn build_subplan(ctx: &Ctx<'_>, mut link: Expr, plan: Plan, mut path: Option<Rc<Path>>, args: Vec<Expr>) -> Expr {
+    let init_plan = args.is_empty() && !matches!(link, Expr::AnySubquery(..));
+    let use_hash_table = match (&link, &path) {
+        (Expr::AnySubquery(test, _, false), Some(path)) => {
+            args.is_empty() && subpath_is_hashable(path) && testexpr_is_hashable(test)
+        }
+        _ => false,
+    };
+    let enables = Enables::read(&ctx.session.settings);
+    let mut materializes = exec_materializes_output(&plan);
+    if args.is_empty() && !init_plan && !use_hash_table && enables.material && !materializes {
+        if let Some(input) = &mut path {
+            let (disabled_nodes, startup_cost, total_cost) = cost_material(&enables, input);
+            *input = Rc::new(Path { disabled_nodes, startup_cost, total_cost, ..(**input).clone() });
+        }
+        materializes = true;
+    }
+    let uncorrelated = args.is_empty() && crate::joins::plan_lowest_level(&plan).is_some_and(|level| level >= 0);
+    *link.subquery_mut().expect("a subquery expression") = crate::plan::share_subquery(plan, uncorrelated);
+    let mut subplan = SubPlan { link, args, init_plan, startup_cost: 0.0, per_call_cost: 0.0 };
+    if let Some(path) = &path {
+        cost_subplan(&mut subplan, path, use_hash_table, materializes);
+    }
+    Expr::SubPlan(Box::new(subplan))
+}
+
+/// exec_materializes_output reports whether a plan's top node keeps its rows for reading again, as Postgres'
+/// ExecMaterializesOutput does.
+fn exec_materializes_output(plan: &Plan) -> bool {
+    matches!(
+        plan,
+        Plan::Sort { .. }
+            | Plan::Function { .. }
+            | Plan::RowsFrom { .. }
+            | Plan::WorkTable(..)
+            | Plan::XmlTable(_)
+            | Plan::JsonTable(_)
+            | Plan::Once(_)
+    )
+}
+
+/// subpath_is_hashable reports whether the rows of an IN test's subquery fit in a hash table's memory, as Postgres'
+/// function of the same name does.
+fn subpath_is_hashable(path: &Path) -> bool {
+    path.rows * (maxalign(path.width) + TUPLE_HEADER) <= HASH_MEM
+}
+
+/// testexpr_is_hashable reports whether an IN test is an equality, or an AND of equalities, that hashing can answer,
+/// as Postgres' function of the same name does.
+fn testexpr_is_hashable(testexpr: &Expr) -> bool {
+    match testexpr {
+        Expr::Compare(..) => test_opexpr_is_hashable(testexpr),
+        Expr::And(..) => crate::indexscan::conjuncts(testexpr)
+            .into_iter()
+            .all(|c| matches!(c, Expr::Compare(..)) && test_opexpr_is_hashable(c)),
+        _ => false,
+    }
+}
+
+/// test_opexpr_is_hashable reports whether a comparison of an IN test is a hashable operator over the enclosing row
+/// on its left and the subquery's value on its right, as Postgres' function of the same name does.
+fn test_opexpr_is_hashable(testexpr: &Expr) -> bool {
+    let Expr::Compare(op, left, right) = testexpr else { return false };
+    let (mut left_reads_value, mut right_reads_row) = (false, false);
+    left.visit(&mut |e| left_reads_value |= matches!(e, Expr::SubqueryValue));
+    right.visit(&mut |e| right_reads_row |= matches!(e, Expr::Column(_)));
+    hash_ok_operator(*op) && !left_reads_value && !right_reads_row
+}
+
+/// hash_ok_operator reports whether a comparison can hash its values, as Postgres' function of the same name does:
+/// equality, which every Doltgres type can hash.
+fn hash_ok_operator(op: CmpOp) -> bool {
+    op == CmpOp::Eq
+}
+
+/// replace_correlation_vars rewrites a subquery's reads of the enclosing row, a row of `width` columns, into reads of
+/// the parameters it returns, each a column of the enclosing row, as Postgres' function of the same name does with
+/// replace_outer_var. A subquery holding a plan whose expressions it cannot see reads every column.
+fn replace_correlation_vars(plan: &mut Plan, width: usize) -> Vec<Expr> {
+    let mut read = BTreeSet::new();
+    if !crate::indexscan::outer_reads(plan, 1, &mut read) {
+        return (0..width).map(Expr::Column).collect();
+    }
+    let params: Vec<usize> = read.into_iter().collect();
+    plan.map_exprs(0, &mut |e, depth| assign_params(e, depth, &params));
+    params.into_iter().map(Expr::Column).collect()
+}
+
+/// assign_params rewrites an expression `nesting` subqueries deep within a subquery to read each column of the
+/// enclosing row as the parameter at that column's position in `params`.
+fn assign_params(e: Expr, nesting: usize, params: &[usize]) -> Expr {
+    let mut e = match e {
+        Expr::Outer(d, c) if d == nesting + 1 => {
+            return Expr::Outer(d, params.binary_search(&c).expect("a parameter"));
+        }
+        other => other.map_children(&mut |x| assign_params(x, nesting, params)),
+    };
+    if let Some(plan) = e.subquery_mut() {
+        plan.map_exprs(0, &mut |x, depth| assign_params(x, nesting + 1 + depth, params));
+    }
+    e
+}
+
+/// process_sublinks turns each subquery expression of an expression over a row of `width` columns into a SubPlan,
+/// as Postgres' SS_process_sublinks does.
+pub fn process_sublinks(ctx: &mut Ctx<'_>, e: Expr, width: usize) -> Expr {
     match e {
-        Expr::Exists(p) => Expr::Exists(plan(p)),
-        Expr::AnySubquery(test, p, all) => Expr::AnySubquery(test, plan(p), all),
-        other => other,
+        link @ (Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..)) => {
+            let link = link.map_children(&mut |c| process_sublinks(ctx, c, width));
+            make_subplan(ctx, link, false, width)
+        }
+        other => other.map_children(&mut |c| process_sublinks(ctx, c, width)),
+    }
+}
+
+/// has_sublink reports whether an expression holds a subquery expression that is not a SubPlan yet.
+pub fn has_sublink(e: &Expr) -> bool {
+    let mut found = false;
+    e.visit(&mut |x| {
+        found |= matches!(x, Expr::Exists(_) | Expr::Scalar(_) | Expr::ArraySubquery(..) | Expr::AnySubquery(..))
+    });
+    found
+}
+
+/// simplify_exists_query drops what an EXISTS subquery's result does not depend on, its target list, grouping,
+/// DISTINCT, ORDER BY, and a positive or NULL constant LIMIT, unless it has aggregates, grouping sets, windows,
+/// set-returning functions, HAVING, or OFFSET, returning whether it did, as Postgres' simplify_EXISTS_query does.
+pub fn simplify_exists_query(query: &mut Query) -> bool {
+    if query.has_aggs()
+        || query.grouping_sets.is_some()
+        || !query.window_funcs.is_empty()
+        || !query.target_srfs.is_empty()
+        || query.having_qual.is_some()
+        || query.limit_offset.is_some()
+    {
+        return false;
+    }
+    if let Some(limit) = &query.limit_count {
+        if !positive_or_null(limit) {
+            return false;
+        }
+        query.limit_count = None;
+    }
+    query.target_list.clear();
+    query.group_clause.clear();
+    query.distinct_clause.clear();
+    query.sort_clause.clear();
+    query.has_distinct_on = false;
+    true
+}
+
+/// ss_charge_for_initplans adds the costs of a query's initplans, which run once for the query, to every path of its
+/// final relation, as Postgres' SS_charge_for_initplans does.
+pub fn ss_charge_for_initplans(root: &mut super::PlannerInfo<'_, '_>, final_rel: usize) {
+    let mut initplan_cost = 0.0;
+    let mut add = |e: &Expr| {
+        e.visit(&mut |x| {
+            if let Expr::SubPlan(subplan) = x
+                && subplan.init_plan
+            {
+                initplan_cost += subplan.startup_cost + subplan.per_call_cost;
+            }
+        })
+    };
+    root.parse.upper_exprs_mut().into_iter().for_each(|e| add(e));
+    root.parse.jointree.fromlist.iter().for_each(|node| jointree_quals(node, &mut add));
+    root.parse.jointree.quals.iter().for_each(&mut add);
+    if initplan_cost == 0.0 {
+        return;
+    }
+    for path in &mut root.rels[final_rel].pathlist {
+        let mut charged = (**path).clone();
+        charged.startup_cost += initplan_cost;
+        charged.total_cost += initplan_cost;
+        *path = Rc::new(charged);
+    }
+}
+
+/// jointree_quals calls a function with each qual of a join tree.
+fn jointree_quals(node: &JoinTreeNode, f: &mut dyn FnMut(&Expr)) {
+    match node {
+        JoinTreeNode::Rel(_) => {}
+        JoinTreeNode::From(from) => {
+            let FromExpr { fromlist, quals } = &**from;
+            fromlist.iter().for_each(|n| jointree_quals(n, f));
+            quals.iter().for_each(&mut *f);
+        }
+        JoinTreeNode::Join(join) => {
+            jointree_quals(&join.larg, f);
+            jointree_quals(&join.rarg, f);
+            join.quals.iter().for_each(&mut *f);
+        }
     }
 }
 
