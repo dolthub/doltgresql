@@ -36,6 +36,6 @@ jobs:
         with:
           key: ${{ github.workflow }}-${{ matrix.os }}${{ matrix.platform }}
       - name: Check formatting
-        run: cargo fmt --check -p admin -p doltdb -p objects -p store -p prolly -p serial -p sql -p blobstores -p remotes -p driver -p harness -p pgproto -p bench -p goport -p regression -p logictest -p server
+        run: cargo fmt --check -p admin -p doltdb -p objects -p store -p prolly -p serial -p sql -p blobstores -p remotes -p driver -p harness -p pgproto -p bench -p goport -p regression -p regress -p logictest -p server
       - name: Run clippy
         run: cargo clippy --profile quick --workspace --all-targets -- -D warnings

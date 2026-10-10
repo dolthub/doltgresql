@@ -77,6 +77,8 @@ pub struct Server {
     /// The port the server listens on at 127.0.0.1.
     pub port: u16,
     child: Child,
+    /// The command that starts the server's process.
+    command: Command,
     directory: PathBuf,
     stop: Option<Command>,
     pg_isready: Option<PathBuf>,
@@ -112,7 +114,13 @@ impl Server {
                 start_postgres(bin_dir, template, &directory, port, postgres_settings)
             }
         };
-        let (child, stop) = match result {
+        let started = result.and_then(|(mut command, stop)| {
+            let child = command
+                .spawn()
+                .map_err(|err| format!("cannot start {}: {err}", command.get_program().to_string_lossy()))?;
+            Ok((child, command, stop))
+        });
+        let (child, command, stop) = match started {
             Ok(started) => started,
             Err(err) => {
                 let _ = std::fs::remove_dir_all(&directory);
@@ -123,7 +131,7 @@ impl Server {
             Target::Postgres { bin_dir, .. } => Some(bin_dir.join("pg_isready")),
             Target::Doltgres { .. } => None,
         };
-        let mut server = Server { port, child, directory, stop, pg_isready };
+        let mut server = Server { port, child, command, directory, stop, pg_isready };
         server.wait_until_listening()?;
         Ok(server)
     }
@@ -166,13 +174,23 @@ impl Server {
     pub fn directory(&self) -> &Path {
         &self.directory
     }
-}
 
-impl Drop for Server {
-    /// drop implements the interface Drop by stopping the server and deleting its directory.
-    fn drop(&mut self) {
-        match self.stop.take() {
-            Some(mut stop) => {
+    /// is_running reports whether the server's process has not exited.
+    pub fn is_running(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
+    }
+
+    /// restart stops the server if it still runs and starts it again in its directory, keeping its data.
+    pub fn restart(&mut self) -> Result<(), String> {
+        self.halt();
+        self.child = self.command.spawn().map_err(|err| format!("cannot restart the server: {err}"))?;
+        self.wait_until_listening()
+    }
+
+    /// halt stops the server's process.
+    fn halt(&mut self) {
+        match self.stop.as_mut() {
+            Some(stop) => {
                 let _ = stop.stdout(Stdio::null()).stderr(Stdio::null()).status();
                 let _ = self.child.wait();
             }
@@ -181,18 +199,25 @@ impl Drop for Server {
                 let _ = self.child.wait();
             }
         }
+    }
+}
+
+impl Drop for Server {
+    /// drop implements the interface Drop by stopping the server and deleting its directory.
+    fn drop(&mut self) {
+        self.halt();
         let _ = std::fs::remove_dir_all(&self.directory);
     }
 }
 
-/// start_doltgres starts a doltgres binary with a config file that listens on the port. The testdata directory is
+/// start_doltgres returns the command that starts a doltgres binary with a config file that listens on the port. The testdata directory is
 /// copied into its working directory, so that relative file paths in statements resolve.
 fn start_doltgres(
     binary: &Path,
     directory: &Path,
     port: u16,
     extra_config: &str,
-) -> Result<(Child, Option<Command>), String> {
+) -> Result<(Command, Option<Command>), String> {
     let config = format!("log_level: warn\n\nlistener:\n  host: 127.0.0.1\n  port: {port}\n{extra_config}");
     let config_path = directory.join("config.yaml");
     std::fs::write(&config_path, config).map_err(|err| err.to_string())?;
@@ -203,7 +228,8 @@ fn start_doltgres(
         copy_dir(&testdata, &directory.join("testdata")).map_err(|err| format!("cannot copy testdata: {err}"))?;
     }
     let log = std::fs::File::create(directory.join("server.log")).map_err(|err| err.to_string())?;
-    let child = Command::new(binary)
+    let mut command = Command::new(binary);
+    command
         .arg("--config")
         .arg(&config_path)
         .arg("--data-dir")
@@ -211,21 +237,19 @@ fn start_doltgres(
         .current_dir(directory)
         .env_remove("DOLTGRES_DATA_DIR")
         .stdout(log.try_clone().map_err(|err| err.to_string())?)
-        .stderr(log)
-        .spawn()
-        .map_err(|err| format!("cannot start {}: {err}", binary.display()))?;
-    Ok((child, None))
+        .stderr(log);
+    Ok((command, None))
 }
 
-/// start_postgres copies the template into a new data directory and starts a postmaster on the port with the extra
-/// settings.
+/// start_postgres copies the template into a new data directory and returns the commands that start a postmaster on
+/// the port with the extra settings and stop it.
 fn start_postgres(
     bin_dir: &Path,
     template: &Path,
     directory: &Path,
     port: u16,
     settings: &[String],
-) -> Result<(Child, Option<Command>), String> {
+) -> Result<(Command, Option<Command>), String> {
     let data_dir = directory.join("data");
     copy_dir(template, &data_dir).map_err(|err| format!("cannot copy {}: {err}", template.display()))?;
     let log = std::fs::File::create(directory.join("server.log")).map_err(|err| err.to_string())?;
@@ -233,7 +257,7 @@ fn start_postgres(
     for setting in settings {
         command.arg("-c").arg(setting);
     }
-    let child = command
+    command
         .arg("-D")
         .arg(&data_dir)
         .arg("-p")
@@ -246,12 +270,10 @@ fn start_postgres(
         .arg("fsync=off")
         .env("LC_ALL", "en_US.UTF-8")
         .stdout(log.try_clone().map_err(|err| err.to_string())?)
-        .stderr(log)
-        .spawn()
-        .map_err(|err| format!("cannot start postgres: {err}"))?;
+        .stderr(log);
     let mut stop = Command::new(bin_dir.join("pg_ctl"));
     stop.arg("stop").arg("-D").arg(&data_dir).arg("-m").arg("immediate").arg("-w");
-    Ok((child, Some(stop)))
+    Ok((command, Some(stop)))
 }
 
 /// copy_dir copies a directory tree, keeping file permissions.

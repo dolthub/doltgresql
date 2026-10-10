@@ -35,6 +35,7 @@ of that, Vitess, GMS, and Dolt included, with a single new implementation that:
 | --- | --- | --- |
 | Ported script tests (`testing/go`, PG15 expectations) | fails many by design | 616 of 616 test functions pass |
 | Postgres regression replay (42,090 statements) | 20,729 (49.25%) | 31,585 (75.04%) |
+| Postgres 18 regression suite (51,577 statements, 2026-10-10) | 17,921 (34.75%) | 31,031 (60.16%) |
 | Dump imports (103 dumps) | 45 | 45 |
 | sqllogictest | 99.317% | above Go |
 | Bats, client-language, compatibility, driver suites | pass | pass |
@@ -277,6 +278,16 @@ Doltgres-specific tests encode (rewrite the expectation, log the bug in `GO_FIND
 No more phase names. Priorities: keep CI green, raise the regression replay (goal at least 75%), close compatibility
 gaps (missing functions, casts, and so on; `testing/go/regression/out/tools/missing_functions.sh` lists the built-in functions Postgres has and
 the server lacks), and move performance toward Postgres 15's.
+
+On 2026-10-10 the owner moved the target from Postgres 15 to Postgres 18, since the rewrite is meant to replace the
+Go server. The recorded replay gave way in CI to Postgres 18's own regression suite, run directly against both servers
+(`crates/regress`, `scripts/install_regress_suite.sh`). The runner feeds each test's script to psql 18 exactly as
+pg_regress does: the same flags, environment variables, and database settings. It splits psql's echoed output into
+one unit per line that sends statements, using psql's own lexing rules (quotes, dollar quotes, comments,
+`BEGIN ATOMIC` bodies, COPY data, the ECHO variable, and skipped empty lines). Then it compares each unit with every
+alternative expected file. Validate a runner like this against a real Postgres first: it should score 100%, and this
+one does, on all 51,577 statements. The first run found crashes and hangs that the replay never reached: a
+self-deadlock on the auth lock, a Flush that never delivered a queued error, and an unanswered FunctionCall.
 
 The loop that drives this work:
 

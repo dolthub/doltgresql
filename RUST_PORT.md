@@ -42,6 +42,7 @@ stay as they are, since they drive the `doltgres` binary.
 | `testing/go` script, wire, flow, transaction, replication tests | ~118 files, ~12.5k assertions | 244 `Skip: true` |
 | `testing/go/extensions` (pgvector, uuid-ossp) | 6 files, ~900 assertions | 52 skips |
 | Postgres regression replay | 205 files, 42,090 statements | 20,608 pass (48.96%), 10 files fully pass |
+| Postgres 18 regression suite (`crates/regress`, the CI comparison since 2026-10-10) | 231 tests, 51,577 statements | 17,921 pass (34.75%) |
 | Dump imports (`TestImportingDumps`, unskipped) | 103 dumps | 45 pass, 46 fail, 12 hang (3-minute timeout) |
 | sqllogictest | 5,675,180 tests | 99.317% ok (README, v1.0.0) |
 | Enginetests: Dolt version-control script sets only | merge, conflicts, revert, reset, branch, tag, stash, commit, rm, history, diff functions, ... | currently passing queries |
@@ -139,6 +140,10 @@ least 75%, close quick compatibility gaps (missing functions, casts, and the lik
 Postgres 15's speed rather than Go's, without losing compatibility. `GO_REWRITE_GUIDE.md` records how this rewrite was
 done, for a possible Go rewrite to compare against.
 
+Since 2026-10-10 the Rust server is meant to become the primary Doltgres, so expectations move from Postgres 15 to
+Postgres 18. The CI comparison runs Postgres 18's own regression suite (`src/test/regress`) through psql 18 against
+Go on `main` and Rust on this branch, in place of the recorded Postgres 15 replay.
+
 ## Phase 0 status
 
 Done:
@@ -158,6 +163,8 @@ Done:
 - Round trip: every Postgres-sourced assertion passes against a real Postgres 15.
 - Client traffic: the Rust suite sends the same frontend messages as the pgx recordings of the Go suite for 2,022
   scripts. The 21 that differ are deliberate input changes and testdata paths.
+- `regress`: runs Postgres' regression suite through psql as pg_regress does and compares each statement's output
+  with the expected files and their alternatives. It scores 100% against a real Postgres 18.6.
 - `regression`: the Postgres regression replay, with pgx's cell decoding emulated so that rows match exactly when the
   Go replay's rows match. Every distinct cell of the recordings and of the Go server's responses decodes like the Go
   replay (a kept fixture test). Against the Go binary it gives the Go replay's result for all 42,090 statements,
