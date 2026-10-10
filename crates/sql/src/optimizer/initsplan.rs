@@ -17,17 +17,21 @@
 //! the outer joins that constrain their join order, with the clones of outer join clauses that let outer joins
 //! commute.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use super::PlannerInfo;
 use super::clauses::{contain_volatile_functions, find_nonnullable_rels};
 use super::equivclass::process_equivalence;
+use super::nodefuncs::{btree_opfamily, expr_type};
 use super::nodes::{
-    JoinDomain, JoinTreeNode, JoinType, OuterJoinClauseInfo, RelOptKind, Relids, RestrictInfo, RinfoId, SjId,
+    JoinDomain, JoinTreeNode, JoinType, OuterJoinClauseInfo, RelOptKind, Relids, RestrictInfo, RinfoId, RteKind, SjId,
     SpecialJoinInfo, VarNode,
 };
 use super::pathkeys::initialize_mergeclause_eclasses;
 use super::placeholder::{contain_placeholder_references_to, find_placeholder_info};
 use super::relnode::build_simple_rel;
 use super::restrictinfo::{RestrictInfoArgs, binary_op_args, make_restrictinfo, restriction_is_or_clause};
+use super::tlist::get_sortgroupclause_expr;
 use super::var::{add_nulling_relids, pull_var_clause, pull_varnos, pull_varnos_list, remove_nulling_relids_fn};
 use crate::expr::{CmpOp, Expr};
 
@@ -55,6 +59,75 @@ pub fn add_base_rels_to_query(root: &mut PlannerInfo<'_, '_>, node: &JoinTreeNod
             add_base_rels_to_query(root, &j.rarg);
         }
     }
+}
+
+/// remove_useless_groupby_columns drops the GROUP BY columns of a table that its other GROUP BY columns determine,
+/// since those hold every column of a unique index whose columns are NOT NULL, as Postgres' function of the same name
+/// does.
+pub fn remove_useless_groupby_columns(root: &mut PlannerInfo<'_, '_>) {
+    if root.processed_group_clause.len() < 2 || root.parse.grouping_sets.is_some() {
+        return;
+    }
+    let mut groupbycols: BTreeMap<usize, Vec<(usize, Option<u32>)>> = BTreeMap::new();
+    let mut tryremove = false;
+    for sgc in &root.processed_group_clause {
+        let expr = get_sortgroupclause_expr(sgc, &root.parse.target_list);
+        let Expr::Column(id) = expr else { continue };
+        let VarNode::Var(var) = root.glob.node(id) else { continue };
+        let eq_opfamily = expr_type(root, &expr).and_then(btree_opfamily);
+        let cols = groupbycols.entry(var.varno).or_default();
+        tryremove |= cols.iter().any(|&(attno, _)| attno != var.varattno);
+        cols.push((var.varattno, eq_opfamily));
+    }
+    if !tryremove {
+        return;
+    }
+    let mut surplusvars: BTreeMap<usize, BTreeSet<usize>> = BTreeMap::new();
+    for (&relid, cols) in &groupbycols {
+        if !matches!(root.parse.rte(relid).kind, RteKind::Relation(..)) {
+            continue;
+        }
+        let relattnos: BTreeSet<usize> = cols.iter().map(|&(attno, _)| attno).collect();
+        if relattnos.len() < 2 {
+            continue;
+        }
+        let rel = &root.rels[relid];
+        let mut best_keycolumns: Option<(usize, BTreeSet<usize>)> = None;
+        for index in &rel.indexlist {
+            if !index.unique || !index.indpred.is_empty() || !index.indexprs.is_empty() {
+                continue;
+            }
+            let mut ind_attnos = BTreeSet::new();
+            let index_check_ok = (0..index.nkeycolumns).all(|i| {
+                let Some(attno) = index.indexkeys[i] else { return false };
+                let matched = rel.notnullattnums.contains(&attno)
+                    && cols.iter().any(|&(a, family)| a == attno && family.is_some() && family == index.opfamily[i]);
+                ind_attnos.insert(attno);
+                matched
+            });
+            if !index_check_ok || ind_attnos.len() >= relattnos.len() || !ind_attnos.is_subset(&relattnos) {
+                continue;
+            }
+            if best_keycolumns.as_ref().is_none_or(|(n, _)| index.nkeycolumns < *n) {
+                best_keycolumns = Some((index.nkeycolumns, ind_attnos));
+            }
+        }
+        if let Some((_, keycolumns)) = best_keycolumns {
+            surplusvars.insert(relid, relattnos.difference(&keycolumns).copied().collect());
+        }
+    }
+    if surplusvars.is_empty() {
+        return;
+    }
+    let target_list = &root.parse.target_list;
+    let glob = &root.glob;
+    root.processed_group_clause.retain(|sgc| match get_sortgroupclause_expr(sgc, target_list) {
+        Expr::Column(id) => match glob.node(id) {
+            VarNode::Var(var) => !surplusvars.get(&var.varno).is_some_and(|vars| vars.contains(&var.varattno)),
+            VarNode::PlaceHolderVar(_) => true,
+        },
+        _ => true,
+    });
 }
 
 /// build_base_rel_tlists marks the Vars of the query's output as needed by it, as Postgres' function of the same

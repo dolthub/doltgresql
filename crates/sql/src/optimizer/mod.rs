@@ -491,6 +491,7 @@ fn query_planner(root: &mut PlannerInfo<'_, '_>, qp_callback: &mut dyn FnMut(&mu
         }
         let jointree = JoinTreeNode::From(Box::new(root.parse.jointree.clone()));
         initsplan::add_base_rels_to_query(root, &jointree);
+        initsplan::remove_useless_groupby_columns(root);
         let final_tlist: Vec<Expr> = root.parse.upper_exprs();
         initsplan::build_base_rel_tlists(root, &final_tlist);
         placeholder::find_placeholders_in_jointree(root);

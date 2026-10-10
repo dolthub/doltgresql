@@ -740,3 +740,59 @@ fn test_pulled_up_subqueries() {
         },
     ]);
 }
+
+#[test]
+fn test_group_by_unique_columns() {
+    run_scripts(&[
+        ScriptTest {
+            name: "GROUP BY columns that a unique index's columns determine",
+            set_up_script: &[
+                "CREATE TABLE gk_t (id INT PRIMARY KEY, a INT, b TEXT);",
+                "CREATE TABLE gk_u (k INT NOT NULL, j INT NOT NULL, c INT, UNIQUE (k, j));",
+                "INSERT INTO gk_t SELECT i, i % 5, 'x' || (i % 3) FROM generate_series(1, 50) i;",
+                "INSERT INTO gk_u SELECT i, i % 4, i % 6 FROM generate_series(1, 40) i;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT id, a, b, count(*) FROM gk_t GROUP BY id, a, b ORDER BY id LIMIT 3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("a", INT4), Column("b", TEXT), Column("count", INT8)],
+                        rows: &[
+                            &[T("1"), T("1"), T("x1"), T("1")],
+                            &[T("2"), T("2"), T("x2"), T("1")],
+                            &[T("3"), T("3"), T("x0"), T("1")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT k, j, c, count(*) FROM gk_u GROUP BY k, j, c ORDER BY k LIMIT 3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("k", INT4), Column("j", INT4), Column("c", INT4), Column("count", INT8)],
+                        rows: &[
+                            &[T("1"), T("1"), T("1"), T("1")],
+                            &[T("2"), T("2"), T("2"), T("1")],
+                            &[T("3"), T("3"), T("3"), T("1")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a, b, count(*) FROM gk_t GROUP BY a, b ORDER BY a, b LIMIT 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("b", TEXT), Column("count", INT8)],
+                        rows: &[
+                            &[T("0"), T("x0"), T("3")],
+                            &[T("0"), T("x1"), T("3")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
