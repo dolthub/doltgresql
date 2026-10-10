@@ -199,6 +199,12 @@ pub enum Plan {
     /// The rows of a WITH query that every reference to it reads, computed once for the statement, or read as they
     /// are computed by the one reference to a recursive query, which a LIMIT may stop reading.
     CteScan(std::sync::Arc<CteDef>),
+    /// The rows of the input when a condition that reads no row holds, which a Postgres Result tests once as its
+    /// one-time filter.
+    OneTimeFilter {
+        input: Box<Plan>,
+        condition: Expr,
+    },
     /// The rows of the right input of a join that reads its left rows, cached by the keys' values over the left row
     /// (its enclosing row), compared by their bytes when `binary`, as a Postgres Memoize node.
     Memoize {
@@ -3060,6 +3066,10 @@ impl Plan {
                 keys.iter_mut().for_each(|e| map(e, depth));
                 inputs.push((input, depth));
             }
+            Plan::OneTimeFilter { input, condition } => {
+                map(condition, depth);
+                inputs.push((input, depth));
+            }
             Plan::Recursive { anchor, step, .. } => {
                 inputs.push((anchor, depth));
                 inputs.push((step, depth));
@@ -3122,7 +3132,7 @@ impl Plan {
             }
             Plan::SetOp { left, .. } => left.width(),
             Plan::MergeAppend { inputs, .. } => inputs.first().map_or(0, Plan::width),
-            Plan::Memoize { input, .. } => input.width(),
+            Plan::Memoize { input, .. } | Plan::OneTimeFilter { input, .. } => input.width(),
             Plan::Once(input) => input.width(),
         }
     }

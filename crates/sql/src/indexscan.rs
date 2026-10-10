@@ -2369,6 +2369,10 @@ pub(crate) fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) 
             read(&mut keys.iter().map(|k| &k.expr));
             inputs.iter().map(|input| (input, depth)).collect()
         }
+        Plan::OneTimeFilter { input, condition } => {
+            read(&mut std::iter::once(condition));
+            vec![(input, depth)]
+        }
         Plan::Memoize { input, keys, .. } => {
             read(&mut keys.iter());
             vec![(input, depth)]

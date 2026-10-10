@@ -48,6 +48,7 @@ fn expr_text(e: &Expr, columns: &[String]) -> String {
         Expr::Column(i) => columns.get(*i).cloned().unwrap_or_else(|| "?".into()),
         Expr::Const(Value::Null) => "NULL".into(),
         Expr::Const(Value::Text(t)) => format!("'{}'::text", t.replace('\'', "''")),
+        Expr::Const(Value::Bool(b)) => b.to_string(),
         Expr::Const(v) => v.output().unwrap_or_default(),
         Expr::Param(i) => format!("${}", i + 1),
         Expr::Compare(op, l, r) => format!("({} {} {})", text(l), cmp_text(*op), text(r)),
@@ -55,8 +56,14 @@ fn expr_text(e: &Expr, columns: &[String]) -> String {
             let row = |fields: &[Expr]| fields.iter().map(text).collect::<Vec<String>>().join(", ");
             format!("(ROW({}) {} ROW({}))", row(l), cmp_text(*op), row(r))
         }
-        Expr::And(l, r) => format!("({} AND {})", text(l), text(r)),
-        Expr::Or(l, r) => format!("({} OR {})", text(l), text(r)),
+        Expr::And(..) => {
+            let args: Vec<String> = crate::indexscan::conjuncts(e).into_iter().map(text).collect();
+            format!("({})", args.join(" AND "))
+        }
+        Expr::Or(..) => {
+            let args: Vec<String> = crate::optimizer::or_args(e).into_iter().map(text).collect();
+            format!("({})", args.join(" OR "))
+        }
         Expr::Not(inner) => format!("(NOT {})", text(inner)),
         Expr::Spread(inner) => format!("VARIADIC {}", text(inner)),
         Expr::IsNull(inner, negated) => format!("({} IS {}NULL)", text(inner), if *negated { "NOT " } else { "" }),
@@ -136,7 +143,7 @@ fn name_relations(plan: &Plan, names: &mut HashMap<usize, String>, taken: &mut H
             name_relations(right, names, taken);
         }
         Plan::MergeAppend { inputs, .. } => inputs.iter().for_each(|input| name_relations(input, names, taken)),
-        Plan::Memoize { input, .. } => name_relations(input, names, taken),
+        Plan::Memoize { input, .. } | Plan::OneTimeFilter { input, .. } => name_relations(input, names, taken),
         Plan::Recursive { anchor, step, .. } => {
             name_relations(anchor, names, taken);
             name_relations(step, names, taken);
@@ -197,6 +204,7 @@ fn columns(plan: &Plan) -> Vec<String> {
         | Plan::Limit { input, .. }
         | Plan::Distinct { input, .. }
         | Plan::Memoize { input, .. }
+        | Plan::OneTimeFilter { input, .. }
         | Plan::Once(input) => columns(input),
         Plan::Project { input, exprs } => {
             let names = columns(input);
@@ -418,6 +426,14 @@ impl Printer {
             }
             Plan::Memoize { input, keys, binary } => {
                 ("Memoize".into(), memoize_properties(keys, *binary), vec![Child::Plan(input)])
+            }
+            Plan::OneTimeFilter { input, condition } => {
+                let children = match &**input {
+                    Plan::OneRow => Vec::new(),
+                    Plan::Project { input, .. } if **input == Plan::OneRow => Vec::new(),
+                    input => vec![Child::Plan(input)],
+                };
+                ("Result".into(), vec![format!("One-Time Filter: {}", expr_text(condition, &[]))], children)
             }
             Plan::MergeAppend { inputs, keys } => {
                 let names = columns(plan);

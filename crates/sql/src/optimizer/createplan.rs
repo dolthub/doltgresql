@@ -213,7 +213,7 @@ fn create_upper_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Vec<
             let quals = quals.iter().map(|q| positional(root, q.clone(), &[]));
             let predicate = quals.reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
             let plan = match predicate {
-                Some(predicate) => Plan::Filter { input: Box::new(Plan::OneRow), predicate },
+                Some(condition) => Plan::OneTimeFilter { input: Box::new(Plan::OneRow), condition },
                 None => Plan::OneRow,
             };
             project(root, plan, Vec::new(), path)
@@ -408,7 +408,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
             let quals = quals.iter().map(|q| positional(root, q.clone(), &[]));
             let predicate = quals.reduce(|a, b| Expr::And(Box::new(a), Box::new(b)));
             match predicate {
-                Some(predicate) => (Plan::Filter { input: Box::new(Plan::OneRow), predicate }, Vec::new()),
+                Some(condition) => (Plan::OneTimeFilter { input: Box::new(Plan::OneRow), condition }, Vec::new()),
                 None => (Plan::OneRow, Vec::new()),
             }
         }
@@ -436,7 +436,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
             let layout: Vec<Slot> = root.rels[path.parent].reltarget.exprs.iter().map(|e| slot(root, e)).collect();
             let nulls =
                 Plan::Project { input: Box::new(Plan::OneRow), exprs: vec![Expr::Const(Value::Null); layout.len()] };
-            (Plan::Filter { input: Box::new(nulls), predicate: Expr::Const(Value::Bool(false)) }, layout)
+            (Plan::OneTimeFilter { input: Box::new(nulls), condition: Expr::Const(Value::Bool(false)) }, layout)
         }
         PathKind::Material(subpath) => return create_plan_recurse(root, subpath),
         PathKind::Memoize(mpath) => return create_plan_recurse(root, &mpath.subpath),
@@ -485,13 +485,10 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 }
             }
             let layout = [outer_layout.as_slice(), inner_layout.as_slice()].concat();
+            let actual = join.joinrestrictinfo.iter().copied().filter(|&r| !root.rinfos[r].pseudoconstant);
             let (mut joinquals, otherquals): (Vec<RinfoId>, Vec<RinfoId>) = match join.jointype.is_outer() {
-                true => join
-                    .joinrestrictinfo
-                    .iter()
-                    .copied()
-                    .partition(|&r| !rinfo_is_pushed_down(&root.rinfos[r], &path.relids)),
-                false => (join.joinrestrictinfo.clone(), Vec::new()),
+                true => actual.partition(|&r| !rinfo_is_pushed_down(&root.rinfos[r], &path.relids)),
+                false => (actual.collect(), Vec::new()),
             };
             if !lateral && let Some(ppi) = super::relnode::get_baserel_parampathinfo(root, inner.parent, &inner.param) {
                 joinquals.extend(ppi.ppi_clauses.into_iter().filter(|r| !join.joinrestrictinfo.contains(r)));
@@ -574,6 +571,17 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
             (filtered(root, plan, &otherquals, &layout), layout)
         }
     };
+    let gating_clauses = match &path.kind {
+        PathKind::Result(_) | PathKind::Append(_) => Vec::new(),
+        kind => match kind.join() {
+            Some(join) => get_gating_quals(root, join.joinrestrictinfo.clone()),
+            None => get_gating_quals(root, root.rels[path.parent].baserestrictinfo.clone()),
+        },
+    };
+    let plan = match gating_clauses.is_empty() {
+        true => plan,
+        false => create_gating_plan(root, plan, &gating_clauses),
+    };
     let (plan, layout) = add_placeholders(root, path.parent, plan, layout);
     (fix_alternative_subplans(root, plan, path.rows), layout)
 }
@@ -618,6 +626,32 @@ fn create_unique_plan(
             (Plan::Distinct { input: Box::new(sorted), keys: Some(groups) }, layout)
         }
     }
+}
+
+/// actual_clauses returns the clauses of a list that are not pseudoconstant, which a gating plan tests instead, as
+/// Postgres' extract_actual_clauses does.
+fn actual_clauses(root: &PlannerInfo<'_, '_>, rinfos: &[RinfoId]) -> Vec<RinfoId> {
+    rinfos.iter().copied().filter(|&r| !root.rinfos[r].pseudoconstant).collect()
+}
+
+/// get_gating_quals returns the pseudoconstant clauses of a node's quals in the order to test them, as Postgres'
+/// function of the same name does.
+fn get_gating_quals(root: &PlannerInfo<'_, '_>, quals: Vec<RinfoId>) -> Vec<RinfoId> {
+    if !root.has_pseudo_constant_quals {
+        return Vec::new();
+    }
+    order_qual_clauses(root, quals).into_iter().filter(|&r| root.rinfos[r].pseudoconstant).collect()
+}
+
+/// create_gating_plan returns a plan under a Result that tests pseudoconstant clauses once, as Postgres' function of
+/// the same name does.
+fn create_gating_plan(root: &PlannerInfo<'_, '_>, plan: Plan, gating_quals: &[RinfoId]) -> Plan {
+    let condition = gating_quals
+        .iter()
+        .map(|&r| positional(root, root.rinfos[r].clause.clone(), &[]))
+        .reduce(|a, b| Expr::And(Box::new(a), Box::new(b)))
+        .expect("a gating plan has clauses");
+    Plan::OneTimeFilter { input: Box::new(plan), condition }
 }
 
 /// fix_alternative_subplans replaces each AlternativeSubPlan of a path's plan by the SubPlan that costs least for the
@@ -678,7 +712,7 @@ fn add_placeholders(root: &PlannerInfo<'_, '_>, rel: usize, plan: Plan, mut layo
 /// under a filter, the one row of a RESULT relation, or its own plan with the restrictions pushed into it, where an
 /// index of a system catalog may answer them.
 fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<Slot>) {
-    let restrictinfo = order_qual_clauses(root, root.rels[rel].baserestrictinfo.clone());
+    let restrictinfo = order_qual_clauses(root, actual_clauses(root, &root.rels[rel].baserestrictinfo));
     match root.parse.rte(rel).kind.clone() {
         RteKind::Relation(plan, _) => {
             let layout = base_slots(rel, plan.width());
@@ -706,7 +740,7 @@ fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<Sl
 /// subquery's final paths and tests the restrictions that the subquery did not take, as Postgres' function of the
 /// same name does.
 fn create_subqueryscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, subplan: usize) -> (Plan, Vec<Slot>) {
-    let scan_clauses = order_qual_clauses(root, root.rels[rel].baserestrictinfo.clone());
+    let scan_clauses = order_qual_clauses(root, actual_clauses(root, &root.rels[rel].baserestrictinfo));
     let plan = root.rels[rel].subplans[subplan].plan.clone();
     let layout = base_slots(rel, plan.width());
     (filtered(root, plan, &scan_clauses, &layout), layout)
@@ -733,7 +767,7 @@ fn create_indexscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, best_path: 
         Some(found) => found,
         None => (scan_of(root, None).expect("a scan of every entry is always possible").0, false),
     };
-    let qpqual: Vec<RinfoId> = scan_clauses
+    let qpqual: Vec<RinfoId> = actual_clauses(root, &scan_clauses)
         .into_iter()
         .filter(|&r| !exact || !best_path.indexclauses.iter().any(|iclause| iclause.rinfo == r && !iclause.lossy))
         .collect();

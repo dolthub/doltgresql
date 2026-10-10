@@ -13,9 +13,9 @@
 // limitations under the License.
 
 //! The parts of Postgres' optimizer/util/clauses.c that the planner calls: which functions an expression runs,
-//! which of its relations and Vars it can only be true with when they are not NULL, and simplifying its constant parts. Doltgres' built-in operators and
-//! casts are strict, as Postgres' are, and its user-defined routines are volatile unless marked otherwise, which is
-//! Postgres' default.
+//! which of its relations and Vars it can only be true with when they are not NULL, and simplifying its constant
+//! parts. Doltgres' built-in operators and casts are strict, as Postgres' are, and its user-defined routines are
+//! volatile unless marked otherwise, which is Postgres' default.
 
 use super::nodes::{PlannerGlobal, Relids, VarNode};
 use crate::expr::Expr;

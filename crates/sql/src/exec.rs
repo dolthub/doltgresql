@@ -1898,6 +1898,10 @@ impl Plan {
                 seen: Groups::new(),
             }),
             Plan::Memoize { input, .. } => input.open(ctx)?,
+            Plan::OneTimeFilter { input, condition } => match condition.is_true(ctx, &[])? {
+                true => input.open(ctx)?,
+                false => collected(Vec::new()),
+            },
             Plan::MergeAppend { inputs, keys } => {
                 let mut heads = Vec::with_capacity(inputs.len());
                 for input in inputs {
