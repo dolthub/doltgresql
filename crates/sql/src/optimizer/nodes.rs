@@ -521,6 +521,8 @@ pub struct RestrictInfo {
     pub outer_is_left: Cell<bool>,
     /// Whether the clause is an equality that a hash join can use.
     pub hashjoinable: bool,
+    /// The shares of the sides that merge joins in each order read.
+    pub scansel_cache: std::cell::RefCell<Vec<MergeScanSelCache>>,
 }
 
 /// SpecialJoinInfo describes an outer, semi, or anti join, which restricts the orders in which the planner can join
@@ -699,6 +701,19 @@ pub enum PathKind {
     NestLoop(JoinPath),
     /// A hash join probing a hash table of the inner path with the outer path's rows.
     HashJoin(JoinPath),
+    /// A merge join of an outer path and an inner one sorted by its merge clauses.
+    MergeJoin(Box<MergePath>),
+}
+
+impl PathKind {
+    /// join returns the inputs and clauses of a join path.
+    pub fn join(&self) -> Option<&JoinPath> {
+        match self {
+            PathKind::NestLoop(join) | PathKind::HashJoin(join) => Some(join),
+            PathKind::MergeJoin(mpath) => Some(&mpath.jpath),
+            _ => None,
+        }
+    }
 }
 
 /// BitmapPath is the index scans that a BitmapAnd or BitmapOr combines, with the share of the table's rows whose keys
@@ -717,6 +732,34 @@ pub struct JoinPath {
     pub inner: Rc<Path>,
     /// The clauses the join evaluates.
     pub joinrestrictinfo: Vec<RinfoId>,
+}
+
+/// MergePath is a merge join of two paths, as Postgres' MergePath is: the join clauses it merges by, in the order of
+/// the outer path's sort, and the pathkeys that each side is sorted by first, empty for a side whose path is in that
+/// order already.
+#[derive(Clone, Debug)]
+pub struct MergePath {
+    pub jpath: JoinPath,
+    pub path_mergeclauses: Vec<RinfoId>,
+    pub outersortkeys: Vec<PkId>,
+    pub innersortkeys: Vec<PkId>,
+    /// Whether the join never reads an inner row again, so the inner side needs no mark and restore.
+    pub skip_mark_restore: bool,
+    /// Whether the inner side's rows are kept in memory so they can be read again.
+    pub materialize_inner: bool,
+}
+
+/// MergeScanSelCache is the shares of a merge clause's sides that a merge join in an order reads, as
+/// mergejoinscansel estimates them, which Postgres' MergeScanSelCache keeps for each order.
+#[derive(Clone, Debug)]
+pub struct MergeScanSelCache {
+    pub opfamily: u32,
+    pub descending: bool,
+    pub nulls_first: bool,
+    pub leftstartsel: f64,
+    pub leftendsel: f64,
+    pub rightstartsel: f64,
+    pub rightendsel: f64,
 }
 
 /// Path is a way to produce a relation's rows, with its estimated row count and costs.

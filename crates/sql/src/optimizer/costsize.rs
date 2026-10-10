@@ -20,7 +20,9 @@ use std::rc::Rc;
 
 use super::PlannerInfo;
 use super::clausesel::{self, clause_selectivity, clauselist_selectivity};
-use super::nodes::{JoinType, Path, PathKind, Relids, RinfoId, SpecialJoinInfo};
+use super::nodes::{
+    JoinType, MergePath, MergeScanSelCache, Path, PathKey, PathKind, PkId, Relids, RinfoId, SpecialJoinInfo,
+};
 use super::restrictinfo::{join_clause_is_movable_into, rinfo_is_pushed_down};
 use crate::expr::Expr;
 use crate::types::Value;
@@ -66,6 +68,7 @@ pub struct Enables {
     pub bitmapscan: bool,
     pub nestloop: bool,
     pub hashjoin: bool,
+    pub mergejoin: bool,
     pub material: bool,
     pub sort: bool,
     pub incremental_sort: bool,
@@ -84,6 +87,7 @@ impl Enables {
             bitmapscan: on("enable_bitmapscan"),
             nestloop: on("enable_nestloop"),
             hashjoin: on("enable_hashjoin"),
+            mergejoin: on("enable_mergejoin"),
             material: on("enable_material"),
             sort: on("enable_sort"),
             incremental_sort: on("enable_incremental_sort"),
@@ -660,8 +664,26 @@ pub struct SemiAntiJoinFactors {
 /// JoinPathExtraData is what every path of a join of two relations shares, as Postgres' JoinPathExtraData holds it.
 pub struct JoinPathExtraData {
     pub restrictlist: Vec<RinfoId>,
+    pub mergeclause_list: Vec<RinfoId>,
     pub inner_unique: bool,
+    pub sjinfo: SpecialJoinInfo,
     pub semifactors: SemiAntiJoinFactors,
+}
+
+/// JoinCostWorkspace is what initial_cost_mergejoin estimates for final_cost_mergejoin, as Postgres'
+/// JoinCostWorkspace holds it: the costs before the CPU costs of the join's clauses, the run costs of the outer and
+/// inner sides, and the rows of each side that the join reads and skips.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct JoinCostWorkspace {
+    pub disabled_nodes: usize,
+    pub startup_cost: f64,
+    pub total_cost: f64,
+    pub run_cost: f64,
+    pub inner_run_cost: f64,
+    pub outer_rows: f64,
+    pub inner_rows: f64,
+    pub outer_skip_rows: f64,
+    pub inner_skip_rows: f64,
 }
 
 /// cost_nestloop returns the costs of a nested loop of an inner path over an outer one, as
@@ -759,6 +781,180 @@ pub fn has_indexed_join_quals(
         }
     }
     found_one
+}
+
+/// initial_cost_mergejoin estimates the costs of a merge join of two paths that are sorted first by the given
+/// pathkeys when those are given, before the CPU costs of its clauses, as Postgres' function of the same name does:
+/// the join stops reading a side once the other runs out of values that can match, and skips the rows of each side
+/// before the other's first value.
+#[allow(clippy::too_many_arguments)]
+pub fn initial_cost_mergejoin(
+    root: &mut PlannerInfo<'_, '_>,
+    jointype: JoinType,
+    mergeclauses: &[RinfoId],
+    outer_path: &Path,
+    inner_path: &Path,
+    outersortkeys: &[PkId],
+    innersortkeys: &[PkId],
+    outer_presorted_keys: usize,
+) -> JoinCostWorkspace {
+    let mut startup_cost = 0.0;
+    let mut run_cost = 0.0;
+    let outer_path_rows = if outer_path.rows <= 0.0 { 1.0 } else { outer_path.rows };
+    let inner_path_rows = if inner_path.rows <= 0.0 { 1.0 } else { inner_path.rows };
+    let (mut outerstartsel, mut outerendsel, mut innerstartsel, mut innerendsel);
+    if let Some(&firstclause) = mergeclauses.first()
+        && jointype != JoinType::Full
+    {
+        let opathkeys = if outersortkeys.is_empty() { &outer_path.pathkeys } else { outersortkeys };
+        let ipathkeys = if innersortkeys.is_empty() { &inner_path.pathkeys } else { innersortkeys };
+        let (opathkey, ipathkey) = (root.canon_pathkeys[opathkeys[0]].clone(), &root.canon_pathkeys[ipathkeys[0]]);
+        assert!(
+            opathkey.pk_opfamily == ipathkey.pk_opfamily
+                && opathkey.pk_descending == ipathkey.pk_descending
+                && opathkey.pk_nulls_first == ipathkey.pk_nulls_first,
+            "left and right pathkeys do not match in mergejoin"
+        );
+        let cache = cached_scansel(root, firstclause, &opathkey);
+        if root.rinfos[firstclause].left_relids.is_subset(&root.rels[outer_path.parent].relids) {
+            (outerstartsel, outerendsel) = (cache.leftstartsel, cache.leftendsel);
+            (innerstartsel, innerendsel) = (cache.rightstartsel, cache.rightendsel);
+        } else {
+            (outerstartsel, outerendsel) = (cache.rightstartsel, cache.rightendsel);
+            (innerstartsel, innerendsel) = (cache.leftstartsel, cache.leftendsel);
+        }
+        match jointype {
+            JoinType::Left | JoinType::Anti => (outerstartsel, outerendsel) = (0.0, 1.0),
+            JoinType::Right => (innerstartsel, innerendsel) = (0.0, 1.0),
+            _ => {}
+        }
+    } else {
+        (outerstartsel, innerstartsel) = (0.0, 0.0);
+        (outerendsel, innerendsel) = (1.0, 1.0);
+    }
+    let outer_skip_rows = (outer_path_rows * outerstartsel).round_ties_even();
+    let inner_skip_rows = (inner_path_rows * innerstartsel).round_ties_even();
+    let outer_rows = clamp_row_est(outer_path_rows * outerendsel);
+    let inner_rows = clamp_row_est(inner_path_rows * innerendsel);
+    outerstartsel = outer_skip_rows / outer_path_rows;
+    innerstartsel = inner_skip_rows / inner_path_rows;
+    outerendsel = outer_rows / outer_path_rows;
+    innerendsel = inner_rows / inner_path_rows;
+    let mut disabled_nodes = disabled(root.enables.mergejoin);
+    let (outer_disabled, outer_startup, outer_total) = match outersortkeys.is_empty() {
+        true => (outer_path.disabled_nodes, outer_path.startup_cost, outer_path.total_cost),
+        false if root.enables.incremental_sort && outer_presorted_keys > 0 => {
+            cost_incremental_sort(root, outersortkeys, outer_presorted_keys, outer_path, -1.0)
+        }
+        false => cost_sort(root, outer_path, -1.0),
+    };
+    disabled_nodes += outer_disabled;
+    startup_cost += outer_startup;
+    startup_cost += (outer_total - outer_startup) * outerstartsel;
+    run_cost += (outer_total - outer_startup) * (outerendsel - outerstartsel);
+    let (inner_disabled, inner_startup, inner_total) = match innersortkeys.is_empty() {
+        true => (inner_path.disabled_nodes, inner_path.startup_cost, inner_path.total_cost),
+        false => cost_sort(root, inner_path, -1.0),
+    };
+    disabled_nodes += inner_disabled;
+    startup_cost += inner_startup;
+    startup_cost += (inner_total - inner_startup) * innerstartsel;
+    let inner_run_cost = (inner_total - inner_startup) * (innerendsel - innerstartsel);
+    JoinCostWorkspace {
+        disabled_nodes,
+        startup_cost,
+        total_cost: startup_cost + run_cost + inner_run_cost,
+        run_cost,
+        inner_run_cost,
+        outer_rows,
+        inner_rows,
+        outer_skip_rows,
+        inner_skip_rows,
+    }
+}
+
+/// final_cost_mergejoin returns the costs of a merge join from what initial_cost_mergejoin estimated, deciding whether
+/// the join keeps the inner rows in memory to read them again for outer rows with equal keys, as Postgres' function
+/// of the same name does.
+pub fn final_cost_mergejoin(
+    root: &PlannerInfo<'_, '_>,
+    path: &mut MergePath,
+    workspace: &JoinCostWorkspace,
+    extra: &JoinPathExtraData,
+) -> Costs {
+    let (outer_path, inner_path) = (&path.jpath.outer, &path.jpath.inner);
+    let inner_path_rows = if inner_path.rows <= 0.0 { 1.0 } else { inner_path.rows };
+    let (mut startup_cost, mut run_cost) = (workspace.startup_cost, workspace.run_cost);
+    let merge_qual_cost = cost_qual_eval(root, &path.path_mergeclauses);
+    let mut qp_qual_cost = cost_qual_eval(root, &path.jpath.joinrestrictinfo);
+    qp_qual_cost.startup -= merge_qual_cost.startup;
+    qp_qual_cost.per_tuple -= merge_qual_cost.per_tuple;
+    path.skip_mark_restore = (matches!(path.jpath.jointype, JoinType::Semi | JoinType::Anti) || extra.inner_unique)
+        && path.jpath.joinrestrictinfo.len() == path.path_mergeclauses.len();
+    let mergejointuples = approx_tuple_count(root, outer_path, inner_path, &path.path_mergeclauses);
+    //TODO: an outer path made unique by create_unique_path reads no inner row again, once that is ported.
+    let rescannedtuples = match path.skip_mark_restore {
+        true => 0.0,
+        false => (mergejointuples - inner_path_rows).max(0.0),
+    };
+    let rescanratio = 1.0 + rescannedtuples / workspace.inner_rows;
+    let bare_inner_cost = workspace.inner_run_cost * rescanratio;
+    let mat_inner_cost = workspace.inner_run_cost + CPU_OPERATOR_COST * workspace.inner_rows * rescanratio;
+    path.materialize_inner = !path.skip_mark_restore
+        && ((root.enables.material && mat_inner_cost < bare_inner_cost)
+            || (path.innersortkeys.is_empty() && !exec_supports_mark_restore(inner_path))
+            || (root.enables.material
+                && !path.innersortkeys.is_empty()
+                && relation_byte_size(inner_path_rows, inner_path.width) > SORT_MEM));
+    run_cost += if path.materialize_inner { mat_inner_cost } else { bare_inner_cost };
+    startup_cost += merge_qual_cost.startup;
+    startup_cost += merge_qual_cost.per_tuple * (workspace.outer_skip_rows + workspace.inner_skip_rows * rescanratio);
+    run_cost += merge_qual_cost.per_tuple
+        * ((workspace.outer_rows - workspace.outer_skip_rows)
+            + (workspace.inner_rows - workspace.inner_skip_rows) * rescanratio);
+    startup_cost += qp_qual_cost.startup;
+    run_cost += (CPU_TUPLE_COST + qp_qual_cost.per_tuple) * mergejointuples;
+    (workspace.disabled_nodes, startup_cost, startup_cost + run_cost)
+}
+
+/// cached_scansel returns the shares of a merge clause's sides that a merge join in a pathkey's order reads, estimating
+/// them once for each order, as Postgres' function of the same name does.
+fn cached_scansel(root: &PlannerInfo<'_, '_>, rinfo: RinfoId, pathkey: &PathKey) -> MergeScanSelCache {
+    let r = &root.rinfos[rinfo];
+    if let Some(cache) = r.scansel_cache.borrow().iter().find(|c| {
+        c.opfamily == pathkey.pk_opfamily
+            && c.descending == pathkey.pk_descending
+            && c.nulls_first == pathkey.pk_nulls_first
+    }) {
+        return cache.clone();
+    }
+    let [leftstartsel, leftendsel, rightstartsel, rightendsel] =
+        super::selfuncs::mergejoinscansel(root, &r.clause, pathkey.pk_descending, pathkey.pk_nulls_first);
+    let cache = MergeScanSelCache {
+        opfamily: pathkey.pk_opfamily,
+        descending: pathkey.pk_descending,
+        nulls_first: pathkey.pk_nulls_first,
+        leftstartsel,
+        leftendsel,
+        rightstartsel,
+        rightendsel,
+    };
+    r.scansel_cache.borrow_mut().push(cache.clone());
+    cache
+}
+
+/// exec_supports_mark_restore reports whether a path's plan can return to a marked row, which a merge join reads the
+/// inner rows of equal keys again from, as Postgres' ExecSupportsMarkRestore does.
+fn exec_supports_mark_restore(path: &Path) -> bool {
+    match &path.kind {
+        PathKind::IndexScan(_) | PathKind::Material(_) | PathKind::Sort(_) => true,
+        PathKind::Projection(subpath) => exec_supports_mark_restore(subpath),
+        PathKind::Append(subpaths) | PathKind::MergeAppend(subpaths) => match subpaths.as_slice() {
+            [subpath] => exec_supports_mark_restore(subpath),
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 /// exec_choose_hash_table_size returns the buckets and batches of a hash table of a number of rows of a width, as
@@ -1115,7 +1311,7 @@ pub fn cost_incremental_sort(
         presorted_exprs.push(expr);
     }
     if !unknown_varno {
-        input_groups = super::selfuncs::estimate_num_groups(root, &presorted_exprs, input_tuples, None);
+        input_groups = super::selfuncs::estimate_num_groups(root, &presorted_exprs, input_tuples, None, None);
     }
     let group_tuples = input_tuples / input_groups;
     let group_input_run_cost = input_run_cost / input_groups;
@@ -1313,13 +1509,13 @@ fn get_windowclause_startup_tuples(root: &mut PlannerInfo<'_, '_>, call: usize, 
     let wc = root.parse.window_funcs[call].clone();
     let partition_tuples = match wc.partition.is_empty() {
         true => input_tuples,
-        false => input_tuples / super::selfuncs::estimate_num_groups(root, &wc.partition, input_tuples, None),
+        false => input_tuples / super::selfuncs::estimate_num_groups(root, &wc.partition, input_tuples, None, None),
     };
     let peer_tuples = match wc.order.is_empty() {
         true => 1.0,
         false => {
             let orderexprs: Vec<Expr> = wc.order.iter().map(|k| k.expr.clone()).collect();
-            partition_tuples / super::selfuncs::estimate_num_groups(root, &orderexprs, partition_tuples, None)
+            partition_tuples / super::selfuncs::estimate_num_groups(root, &orderexprs, partition_tuples, None, None)
         }
     };
     let options = wc.options;

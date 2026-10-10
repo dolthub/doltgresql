@@ -193,7 +193,12 @@ fn generate_union_paths(root: &mut PlannerInfo<'_, '_>, op: &SetOperationStmt) -
     for (rel, _, _) in &children {
         cheapest_pathlist.push(root.rels[*rel].cheapest_total_path.clone().expect("a path of a union's child"));
         if try_sorted {
-            match super::pathkeys::get_cheapest_path_for_pathkeys(&root.rels[*rel].pathlist, &union_pathkeys) {
+            match super::pathkeys::get_cheapest_path_for_pathkeys(
+                &root.rels[*rel].pathlist,
+                &union_pathkeys,
+                &Relids::new(),
+                super::pathnode::CostSelector::Total,
+            ) {
                 Some(path) => ordered_pathlist.push(path),
                 None => try_sorted = false,
             }
@@ -292,8 +297,12 @@ fn generate_nonunion_paths(root: &mut PlannerInfo<'_, '_>, op: &SetOperationStmt
             sorted.push(match super::pathkeys::pathkeys_contained_in(&pathkeys, &path.pathkeys) {
                 true => path.clone(),
                 false => {
-                    match super::pathkeys::get_cheapest_path_for_pathkeys(&root.rels[rel].pathlist, &nonunion_pathkeys)
-                    {
+                    match super::pathkeys::get_cheapest_path_for_pathkeys(
+                        &root.rels[rel].pathlist,
+                        &nonunion_pathkeys,
+                        &Relids::new(),
+                        super::pathnode::CostSelector::Total,
+                    ) {
                         Some(sorted) => sorted,
                         None => super::pathnode::create_sort_path(root, rel, path.clone(), pathkeys, -1.0),
                     }

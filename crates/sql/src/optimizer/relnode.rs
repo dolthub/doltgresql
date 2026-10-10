@@ -274,15 +274,15 @@ pub fn get_param_path_clause_serials(root: &mut PlannerInfo<'_, '_>, path: &Path
     if path.param.is_empty() {
         return Relids::new();
     }
-    match &path.kind {
-        PathKind::NestLoop(join) | PathKind::HashJoin(join) => {
-            let mut pserials = get_param_path_clause_serials(root, &join.outer);
-            pserials.add_members(&get_param_path_clause_serials(root, &join.inner));
-            for &r in &join.joinrestrictinfo {
-                pserials.add_member(root.rinfos[r].rinfo_serial);
-            }
-            pserials
+    if let Some(join) = path.kind.join() {
+        let mut pserials = get_param_path_clause_serials(root, &join.outer);
+        pserials.add_members(&get_param_path_clause_serials(root, &join.inner));
+        for &r in &join.joinrestrictinfo {
+            pserials.add_member(root.rinfos[r].rinfo_serial);
         }
+        return pserials;
+    }
+    match &path.kind {
         PathKind::Append(subpaths) => {
             let mut serials = subpaths.iter().map(|subpath| get_param_path_clause_serials(root, subpath));
             let first = serials.next().unwrap_or_default();

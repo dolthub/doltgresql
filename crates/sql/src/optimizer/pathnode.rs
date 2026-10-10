@@ -19,8 +19,13 @@ use std::cmp::Ordering;
 use std::rc::Rc;
 
 use super::PlannerInfo;
-use super::costsize::{Costs, cost_bitmap_and_node, cost_bitmap_heap_scan, cost_bitmap_or_node};
-use super::nodes::{BitmapPath, JoinPath, Path, PathKind, PkId, RelOptInfo, Relids, SubsetCompare};
+use super::costsize::{
+    Costs, JoinCostWorkspace, JoinPathExtraData, cost_bitmap_and_node, cost_bitmap_heap_scan, cost_bitmap_or_node,
+    final_cost_mergejoin,
+};
+use super::nodes::{
+    BitmapPath, JoinPath, JoinType, MergePath, Path, PathKind, PkId, RelOptInfo, Relids, RinfoId, SubsetCompare,
+};
 use super::pathkeys::{PathKeysComparison, compare_pathkeys};
 
 /// STD_FUZZ_FACTOR is how much cheaper one path must be than another to count as cheaper, as Postgres' constant of
@@ -240,14 +245,14 @@ pub fn add_path(parent_rel: &mut RelOptInfo, new_path: Rc<Path>) {
 pub fn create_join_path(
     joinrel: usize,
     rel: &RelOptInfo,
-    kind: fn(JoinPath) -> PathKind,
-    join: JoinPath,
+    kind: PathKind,
     (disabled_nodes, startup_cost, total_cost): Costs,
     pathkeys: Vec<PkId>,
 ) -> Rc<Path> {
+    let join = kind.join().expect("a join path");
     let param = join.outer.param.union(&join.inner.param).difference(&rel.relids);
     Rc::new(Path {
-        kind: kind(join),
+        kind,
         parent: joinrel,
         relids: rel.relids.clone(),
         param,
@@ -259,6 +264,92 @@ pub fn create_join_path(
         total_cost,
         pathtarget: None,
     })
+}
+
+/// create_mergejoin_path makes the path of a merge join of two paths by merge clauses, sorting each side first by
+/// its sort keys when those are given, as Postgres' function of the same name does.
+#[allow(clippy::too_many_arguments)]
+pub fn create_mergejoin_path(
+    root: &PlannerInfo<'_, '_>,
+    joinrel: usize,
+    jointype: JoinType,
+    workspace: &JoinCostWorkspace,
+    extra: &JoinPathExtraData,
+    outer_path: Rc<Path>,
+    inner_path: Rc<Path>,
+    restrict_clauses: Vec<RinfoId>,
+    pathkeys: Vec<PkId>,
+    mergeclauses: Vec<RinfoId>,
+    outersortkeys: Vec<PkId>,
+    innersortkeys: Vec<PkId>,
+) -> Rc<Path> {
+    let jpath = JoinPath { jointype, outer: outer_path, inner: inner_path, joinrestrictinfo: restrict_clauses };
+    let mut pathnode = MergePath {
+        jpath,
+        path_mergeclauses: mergeclauses,
+        outersortkeys,
+        innersortkeys,
+        skip_mark_restore: false,
+        materialize_inner: false,
+    };
+    let cost = final_cost_mergejoin(root, &mut pathnode, workspace, extra);
+    create_join_path(joinrel, &root.rels[joinrel], PathKind::MergeJoin(Box::new(pathnode)), cost, pathkeys)
+}
+
+/// add_path_precheck reports whether a path of these costs and order could be added to a relation's paths, before
+/// it is built, as Postgres' function of the same name does: false when a path that costs no more in total, starts
+/// as cheaply where that matters, and is as well ordered needs the same outer relations.
+pub fn add_path_precheck(
+    parent_rel: &RelOptInfo,
+    disabled_nodes: usize,
+    startup_cost: f64,
+    total_cost: f64,
+    pathkeys: &[PkId],
+    required_outer: &Relids,
+) -> bool {
+    let new_path_pathkeys: &[PkId] = if required_outer.is_empty() { pathkeys } else { &[] };
+    let consider_startup = match required_outer.is_empty() {
+        true => parent_rel.consider_startup,
+        false => parent_rel.consider_param_startup,
+    };
+    for old_path in &parent_rel.pathlist {
+        if old_path.disabled_nodes != disabled_nodes {
+            if disabled_nodes < old_path.disabled_nodes {
+                break;
+            }
+        } else if total_cost <= old_path.total_cost * STD_FUZZ_FACTOR {
+            break;
+        }
+        if startup_cost > old_path.startup_cost * STD_FUZZ_FACTOR || !consider_startup {
+            let old_path_pathkeys: &[PkId] = if old_path.param.is_empty() { &old_path.pathkeys } else { &[] };
+            let keyscmp = compare_pathkeys(new_path_pathkeys, old_path_pathkeys);
+            if matches!(keyscmp, PathKeysComparison::Equal | PathKeysComparison::Better2)
+                && *required_outer == old_path.param
+            {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// calc_nestloop_required_outer returns the relations that a nested loop of two paths needs rows of from outside it,
+/// which the outer path supplies to the inner one, as Postgres' function of the same name does.
+pub fn calc_nestloop_required_outer(
+    outerrelids: &Relids,
+    outer_paramrels: &Relids,
+    inner_paramrels: &Relids,
+) -> Relids {
+    if inner_paramrels.is_empty() {
+        return outer_paramrels.clone();
+    }
+    outer_paramrels.union(inner_paramrels).difference(outerrelids)
+}
+
+/// calc_non_nestloop_required_outer returns the relations that a merge or hash join of two paths needs rows of from
+/// outside it, as Postgres' function of the same name does.
+pub fn calc_non_nestloop_required_outer(outer_path: &Path, inner_path: &Path) -> Relids {
+    outer_path.param.union(&inner_path.param)
 }
 
 /// create_bitmap_heap_path makes the path of a scan of a base relation's rows whose keys a tree of index scans finds,

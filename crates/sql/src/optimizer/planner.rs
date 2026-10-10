@@ -902,14 +902,14 @@ fn get_number_of_groups(
     if !root.parse.group_clause.is_empty() {
         let Some(gd) = gd else {
             let group_exprs = tlist::get_sortgrouplist_exprs(&root.processed_group_clause, target_list);
-            return super::selfuncs::estimate_num_groups(root, &group_exprs, path_rows, None);
+            return super::selfuncs::estimate_num_groups(root, &group_exprs, path_rows, None, None);
         };
         let mut d_num_groups = 0.0;
         for rollup in &mut gd.rollups {
             let group_exprs = tlist::get_sortgrouplist_exprs(&rollup.group_clause, target_list);
             rollup.num_groups = 0.0;
             for (gset, gs) in rollup.gsets.iter().zip(&mut rollup.gsets_data) {
-                let num_groups = super::selfuncs::estimate_num_groups(root, &group_exprs, path_rows, Some(gset));
+                let num_groups = super::selfuncs::estimate_num_groups(root, &group_exprs, path_rows, Some(gset), None);
                 gs.num_groups = num_groups;
                 rollup.num_groups += num_groups;
             }
@@ -919,7 +919,7 @@ fn get_number_of_groups(
             gd.d_num_hash_groups = 0.0;
             let group_exprs = tlist::get_sortgrouplist_exprs(&root.parse.group_clause, target_list);
             for (gset, gs) in gd.hash_sets_idx.iter().zip(&mut gd.unsortable_sets) {
-                let num_groups = super::selfuncs::estimate_num_groups(root, &group_exprs, path_rows, Some(gset));
+                let num_groups = super::selfuncs::estimate_num_groups(root, &group_exprs, path_rows, Some(gset), None);
                 gs.num_groups = num_groups;
                 gd.d_num_hash_groups += num_groups;
             }
@@ -1072,7 +1072,7 @@ fn create_final_distinct_paths(root: &mut PlannerInfo<'_, '_>, input_rel: usize,
         && !root.parse.has_aggs
         && !root.has_having_qual
     {
-        true => super::selfuncs::estimate_num_groups(root, &distinct_exprs, cheapest_input_path.rows, None),
+        true => super::selfuncs::estimate_num_groups(root, &distinct_exprs, cheapest_input_path.rows, None, None),
         false => cheapest_input_path.rows,
     };
     let sortable = tlist::grouping_is_sortable(&root.parse.distinct_clause);

@@ -12,25 +12,38 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The parts of Postgres' utils/adt/selfuncs.c that the planner calls for joins: the statistics of a join clause's
-//! Vars, the selectivity of equality joins, and the share of a hash table's rows in one bucket. Restriction clauses
-//! use the selectivity of `colstats`, which ports selfuncs.c's restriction estimates.
+//! Postgres' utils/adt/selfuncs.c: the selectivity of restriction and join clauses from the statistics of their
+//! Vars, the number of distinct groups of expressions, the share of a hash table's rows in one bucket, and the cost of
+//! an index scan. Doltgres' statistics hold what pg_statistic does: each column's NULL share, distinct count, most
+//! common values with their shares, and histogram bounds, in the order of the column's type, where the C collation
+//! orders text.
 
+use std::cmp::Ordering;
 use std::sync::Arc;
 
 use super::PlannerInfo;
+use super::clausesel::DEFAULT_INEQ_SEL;
 use super::costsize::clamp_row_est;
 use super::nodes::{IndexClause, IndexOptInfo, IndexPath, JoinType, Relids, RinfoId, SpecialJoinInfo, VarNode};
 use crate::colstats::{ColumnStats, TableStats};
-use crate::expr::Expr;
+use crate::expr::{CmpOp, Expr};
 use crate::types::Value;
 
 /// DEFAULT_NUM_DISTINCT is how many distinct values Postgres assumes a column holds without statistics.
 const DEFAULT_NUM_DISTINCT: f64 = 200.0;
 
-/// VariableStatData is what the planner knows of an expression's values, as Postgres' VariableStatData holds it:
-/// the base relation whose Var it is, that Var's statistics, and whether a unique index makes its values distinct.
+/// The selectivities that Postgres assumes without statistics: of an equality, IS NULL and IS NOT NULL, and of a
+/// boolean function.
+const DEFAULT_EQ_SEL: f64 = 0.005;
+const DEFAULT_UNK_SEL: f64 = 0.005;
+const DEFAULT_NOT_UNK_SEL: f64 = 1.0 - DEFAULT_UNK_SEL;
+const DEFAULT_FUNCTION_SEL: f64 = 0.3333333;
+
+/// VariableStatData is what the planner knows of an expression's values, as Postgres' VariableStatData holds it: the
+/// expression without its PlaceHolderVars, the base or join relation whose Vars it reads, the statistics of its Var,
+/// and whether a unique index makes its values distinct.
 pub struct VariableStatData {
+    pub var: Expr,
     pub rel: Option<usize>,
     stats: Option<(Arc<TableStats>, usize)>,
     isunique: bool,
@@ -44,31 +57,757 @@ impl VariableStatData {
     }
 }
 
-/// examine_variable finds what the planner knows of an expression's values, as Postgres' examine_variable does: the
-/// statistics of a Var of a table, maybe under a cast, and nothing of any other expression.
-pub fn examine_variable(root: &PlannerInfo<'_, '_>, e: &Expr) -> VariableStatData {
-    let inner = match e {
-        Expr::Cast(inner, ..) => inner,
-        other => other,
-    };
-    let Expr::Column(id) = *inner else {
-        return VariableStatData { rel: None, stats: None, isunique: false, isbool: false };
-    };
-    let VarNode::Var(var) = root.glob.node(id) else {
-        return VariableStatData { rel: None, stats: None, isunique: false, isbool: false };
-    };
-    let (varno, attno) = (var.varno, var.varattno);
-    if varno == 0 {
-        return VariableStatData { rel: None, stats: None, isunique: false, isbool: false };
+/// examine_variable finds what the planner knows of an expression's values, as Postgres' function of the same name
+/// does: the statistics of a Var of a table, under casts, and the relation of an expression of one relation's Vars,
+/// or of a join's when `varrelid` is zero, where only the Vars of the relation that `varrelid` names are variables
+/// when it is not. Doltgres gathers no statistics of index expressions or extended statistics.
+pub fn examine_variable(root: &PlannerInfo<'_, '_>, node: &Expr, varrelid: usize) -> VariableStatData {
+    let mut basenode = strip_all_phvs_deep(root, node);
+    while let Expr::Cast(inner, ..) = basenode {
+        basenode = *inner;
     }
-    let Some(table) = root.parse.rte(varno).table() else {
-        return VariableStatData { rel: Some(varno), stats: None, isunique: false, isbool: false };
-    };
-    let isunique = (table.key_columns == [attno] && !table.keyless())
+    let mut vardata = VariableStatData { var: node.clone(), rel: None, stats: None, isunique: false, isbool: false };
+    if let Expr::Column(id) = basenode
+        && let VarNode::Var(var) = root.glob.node(id)
+        && (varrelid == 0 || varrelid == var.varno)
+        && var.varno != 0
+    {
+        vardata.var = basenode;
+        vardata.rel = Some(var.varno);
+        examine_simple_variable(root, var.varno, var.varattno, &mut vardata);
+        return vardata;
+    }
+    let varnos = super::var::pull_varnos(root, &basenode);
+    let basevarnos = varnos.difference(&root.outer_join_rels);
+    if !basevarnos.is_empty() {
+        match basevarnos.singleton_member() {
+            Some(relid) if varrelid == 0 || varrelid == relid => {
+                vardata.rel = Some(relid);
+                vardata.var = basenode;
+            }
+            Some(_) => {}
+            None if varrelid == 0 => {
+                vardata.rel = root.find_rel(&varnos);
+                vardata.var = basenode;
+            }
+            None if varnos.is_member(varrelid) => {
+                vardata.rel = Some(varrelid);
+                vardata.var = basenode;
+            }
+            None => {}
+        }
+    }
+    vardata
+}
+
+/// examine_simple_variable finds the statistics of a Var of a base relation, and whether a unique index makes its
+/// values distinct, as Postgres' function of the same name does for a table. Doltgres keeps no statistics of a
+/// subquery's output.
+fn examine_simple_variable(root: &PlannerInfo<'_, '_>, varno: usize, attno: usize, vardata: &mut VariableStatData) {
+    let Some(table) = root.parse.rte(varno).table() else { return };
+    vardata.isunique = (table.key_columns == [attno] && !table.keyless())
         || table.indexes.iter().any(|i| i.unique && i.predicate.is_empty() && i.columns == [attno]);
-    let isbool = table.columns.get(attno).is_some_and(|c| c.ty.oid == crate::oid::BOOL);
-    let stats = root.rels[varno].stats.clone().map(|stats| (stats, attno));
-    VariableStatData { rel: Some(varno), stats, isunique, isbool }
+    vardata.isbool = table.columns.get(attno).is_some_and(|c| c.ty.oid == crate::oid::BOOL);
+    vardata.stats = root.rels[varno].stats.clone().map(|stats| (stats, attno));
+}
+
+/// strip_all_phvs_deep returns an expression with each PlaceHolderVar replaced by its expression, as Postgres'
+/// function of the same name does.
+fn strip_all_phvs_deep(root: &PlannerInfo<'_, '_>, e: &Expr) -> Expr {
+    match e {
+        Expr::Column(id) => match root.glob.node(*id) {
+            VarNode::PlaceHolderVar(phv) => strip_all_phvs_deep(root, &root.glob.placeholder(phv.phid).phexpr),
+            VarNode::Var(_) => e.clone(),
+        },
+        other => other.clone().map_children(&mut |c| strip_all_phvs_deep(root, &c)),
+    }
+}
+
+/// estimate_expression_value returns an expression with the parts it can evaluate now folded into constants, as
+/// Postgres' function of the same name does, which the binder did already for the expressions that read no Var.
+pub fn estimate_expression_value(e: &Expr) -> Expr {
+    e.clone()
+}
+
+/// get_restriction_variable returns the statistics of the variable side of a binary clause and its other side,
+/// with whether the variable is on the left, when one side reads the relation's Vars and the other reads none, as
+/// Postgres' function of the same name does.
+pub fn get_restriction_variable(
+    root: &PlannerInfo<'_, '_>,
+    left: &Expr,
+    right: &Expr,
+    varrelid: usize,
+) -> Option<(VariableStatData, Expr, bool)> {
+    let vardata = examine_variable(root, left, varrelid);
+    let rdata = examine_variable(root, right, varrelid);
+    match (vardata.rel, rdata.rel) {
+        (Some(_), None) => Some((vardata, estimate_expression_value(&rdata.var), true)),
+        (None, Some(_)) => Some((rdata, estimate_expression_value(&vardata.var), false)),
+        _ => None,
+    }
+}
+
+/// get_join_variables returns the statistics of the two sides of a join clause, with whether they are reversed
+/// from the join's own sides, as Postgres' function of the same name does.
+pub fn get_join_variables(
+    root: &PlannerInfo<'_, '_>,
+    left: &Expr,
+    right: &Expr,
+    sjinfo: &SpecialJoinInfo,
+) -> (VariableStatData, VariableStatData, bool) {
+    let (vardata1, vardata2) = (examine_variable(root, left, 0), examine_variable(root, right, 0));
+    let within = |v: &VariableStatData, relids: &Relids| v.rel.is_some_and(|r| root.rels[r].relids.is_subset(relids));
+    let reversed = within(&vardata1, &sjinfo.syn_righthand) && within(&vardata2, &sjinfo.syn_lefthand);
+    (vardata1, vardata2, reversed)
+}
+
+/// restriction_selectivity returns the selectivity of a comparison of two expressions as a restriction of a
+/// relation, by the comparison's restriction estimator, as Postgres' function of the same name calls its operator's
+/// oprrest: eqsel, neqsel, or scalarltsel and its kin.
+pub fn restriction_selectivity(
+    root: &PlannerInfo<'_, '_>,
+    op: CmpOp,
+    left: &Expr,
+    right: &Expr,
+    varrelid: usize,
+) -> f64 {
+    match op {
+        CmpOp::Eq => eqsel_internal(root, left, right, varrelid, false),
+        CmpOp::Ne => eqsel_internal(root, left, right, varrelid, true),
+        CmpOp::Lt => scalarineqsel_wrapper(root, left, right, varrelid, false, false),
+        CmpOp::Le => scalarineqsel_wrapper(root, left, right, varrelid, false, true),
+        CmpOp::Gt => scalarineqsel_wrapper(root, left, right, varrelid, true, false),
+        CmpOp::Ge => scalarineqsel_wrapper(root, left, right, varrelid, true, true),
+    }
+}
+
+/// join_selectivity returns the selectivity of a comparison of two expressions as a join clause, by the
+/// comparison's join estimator, as Postgres' function of the same name calls its operator's oprjoin: eqjoinsel,
+/// neqjoinsel, or scalarltjoinsel and its kin.
+pub fn join_selectivity(
+    root: &PlannerInfo<'_, '_>,
+    op: CmpOp,
+    left: &Expr,
+    right: &Expr,
+    jointype: JoinType,
+    sjinfo: &SpecialJoinInfo,
+) -> f64 {
+    match op {
+        CmpOp::Eq => eqjoinsel(root, left, right, sjinfo),
+        CmpOp::Ne => neqjoinsel(root, left, right, jointype, sjinfo),
+        _ => DEFAULT_INEQ_SEL,
+    }
+}
+
+/// function_selectivity returns the selectivity of a boolean function call, as Postgres' function of the same name
+/// does for a function without a support function.
+pub fn function_selectivity() -> f64 {
+    DEFAULT_FUNCTION_SEL
+}
+
+/// eqsel_internal returns the selectivity of an equality, or of an inequality when `negate` asks, as Postgres'
+/// function of the same name does.
+fn eqsel_internal(root: &PlannerInfo<'_, '_>, left: &Expr, right: &Expr, varrelid: usize, negate: bool) -> f64 {
+    let Some((vardata, other, varonleft)) = get_restriction_variable(root, left, right, varrelid) else {
+        return if negate { 1.0 - DEFAULT_EQ_SEL } else { DEFAULT_EQ_SEL };
+    };
+    match &other {
+        Expr::Const(value) => var_eq_const(root, &vardata, value, varonleft, negate),
+        _ => var_eq_non_const(root, &vardata, negate),
+    }
+}
+
+/// var_eq_const returns the selectivity of an equality of a variable and a constant, or of their inequality, as
+/// Postgres' function of the same name does: the constant's share when it is a most common value, and otherwise an
+/// even share of what the most common values leave over the other distinct values.
+pub fn var_eq_const(
+    root: &PlannerInfo<'_, '_>,
+    vardata: &VariableStatData,
+    constval: &Value,
+    _varonleft: bool,
+    negate: bool,
+) -> f64 {
+    if constval.is_null() {
+        return 0.0;
+    }
+    let nullfrac = vardata.column().map_or(0.0, |c| c.null_frac);
+    let tuples = vardata.rel.map_or(0.0, |r| root.rels[r].tuples);
+    let mut selec = if vardata.isunique && tuples >= 1.0 {
+        1.0 / tuples
+    } else if let Some(column) = vardata.column() {
+        match column.common.iter().find(|(v, _)| compare_values(v, constval) == Some(Ordering::Equal)) {
+            Some((_, freq)) => *freq,
+            None => {
+                let sumcommon: f64 = column.common.iter().map(|(_, f)| f).sum();
+                let mut selec = (1.0 - sumcommon - nullfrac).clamp(0.0, 1.0);
+                let otherdistinct = get_variable_numdistinct(root, vardata).0 - column.common.len() as f64;
+                if otherdistinct > 1.0 {
+                    selec /= otherdistinct;
+                }
+                if let Some((_, least)) = column.common.last()
+                    && selec > *least
+                {
+                    selec = *least;
+                }
+                selec
+            }
+        }
+    } else {
+        1.0 / get_variable_numdistinct(root, vardata).0
+    };
+    if negate {
+        selec = 1.0 - selec - nullfrac;
+    }
+    selec.clamp(0.0, 1.0)
+}
+
+/// var_eq_non_const returns the selectivity of an equality of a variable and an expression whose value is unknown,
+/// or of their inequality, as Postgres' function of the same name does.
+fn var_eq_non_const(root: &PlannerInfo<'_, '_>, vardata: &VariableStatData, negate: bool) -> f64 {
+    let nullfrac = vardata.column().map_or(0.0, |c| c.null_frac);
+    let tuples = vardata.rel.map_or(0.0, |r| root.rels[r].tuples);
+    let mut selec = if vardata.isunique && tuples >= 1.0 {
+        1.0 / tuples
+    } else if let Some(column) = vardata.column() {
+        let mut selec = 1.0 - nullfrac;
+        let ndistinct = get_variable_numdistinct(root, vardata).0;
+        if ndistinct > 1.0 {
+            selec /= ndistinct;
+        }
+        if let Some((_, most)) = column.common.first()
+            && selec > *most
+        {
+            selec = *most;
+        }
+        selec
+    } else {
+        1.0 / get_variable_numdistinct(root, vardata).0
+    };
+    if negate {
+        selec = 1.0 - selec - nullfrac;
+    }
+    selec.clamp(0.0, 1.0)
+}
+
+/// scalarineqsel_wrapper returns the selectivity of an inequality, putting the variable on the left, as Postgres'
+/// function of the same name does.
+fn scalarineqsel_wrapper(
+    root: &PlannerInfo<'_, '_>,
+    left: &Expr,
+    right: &Expr,
+    varrelid: usize,
+    isgt: bool,
+    iseq: bool,
+) -> f64 {
+    let Some((vardata, other, varonleft)) = get_restriction_variable(root, left, right, varrelid) else {
+        return DEFAULT_INEQ_SEL;
+    };
+    let Expr::Const(constval) = &other else { return DEFAULT_INEQ_SEL };
+    if constval.is_null() {
+        return 0.0;
+    }
+    let isgt = if varonleft { isgt } else { !isgt };
+    scalarineqsel(root, isgt, iseq, &vardata, constval)
+}
+
+/// scalarineqsel returns the share of rows whose variable compares with a constant as `var < const`, `var <= const`,
+/// `var > const`, or `var >= const` asks, as Postgres' function of the same name does: the shares of the most common
+/// values that pass, plus the histogram's share of what they leave.
+pub fn scalarineqsel(
+    root: &PlannerInfo<'_, '_>,
+    isgt: bool,
+    iseq: bool,
+    vardata: &VariableStatData,
+    constval: &Value,
+) -> f64 {
+    let Some(column) = vardata.column() else { return DEFAULT_INEQ_SEL };
+    let op = match (isgt, iseq) {
+        (false, false) => CmpOp::Lt,
+        (false, true) => CmpOp::Le,
+        (true, false) => CmpOp::Gt,
+        (true, true) => CmpOp::Ge,
+    };
+    let (mcv_selec, sumcommon) = mcv_selectivity(vardata, op, constval, true);
+    let hist_selec = ineq_histogram_selectivity(root, vardata, isgt, iseq, constval);
+    let mut selec = 1.0 - column.null_frac - sumcommon;
+    match hist_selec >= 0.0 {
+        true => selec *= hist_selec,
+        false => selec *= 0.5,
+    }
+    selec += mcv_selec;
+    selec.clamp(0.0, 1.0)
+}
+
+/// mcv_selectivity returns the total share of the most common values that a comparison with a constant keeps, and
+/// the total share of all of them, as Postgres' function of the same name does.
+fn mcv_selectivity(vardata: &VariableStatData, op: CmpOp, constval: &Value, varonleft: bool) -> (f64, f64) {
+    let (mut mcv_selec, mut sumcommon) = (0.0, 0.0);
+    for (value, freq) in vardata.column().map_or(&[][..], |c| c.common.as_slice()) {
+        let passes = match varonleft {
+            true => apply_comparison(op, value, constval),
+            false => apply_comparison(op, constval, value),
+        };
+        if passes == Some(true) {
+            mcv_selec += freq;
+        }
+        sumcommon += freq;
+    }
+    (mcv_selec, sumcommon)
+}
+
+/// ineq_histogram_selectivity returns the share of the histogram's population that an inequality with a constant
+/// keeps, interpolating within the bin that holds the constant, or -1 without a histogram, as Postgres' function of
+/// the same name does. Doltgres does not probe an index for a column's actual extremes, which Postgres'
+/// get_actual_variable_range reads.
+fn ineq_histogram_selectivity(
+    root: &PlannerInfo<'_, '_>,
+    vardata: &VariableStatData,
+    isgt: bool,
+    iseq: bool,
+    constval: &Value,
+) -> f64 {
+    let Some(column) = vardata.column() else { return -1.0 };
+    let values = &column.histogram;
+    if values.len() <= 1 {
+        return -1.0;
+    }
+    let op = match iseq {
+        true => CmpOp::Le,
+        false => CmpOp::Lt,
+    };
+    let (mut lobound, mut hibound) = (0, values.len());
+    while lobound < hibound {
+        let probe = (lobound + hibound) / 2;
+        let mut ltcmp = apply_comparison(op, &values[probe], constval).unwrap_or(false);
+        if isgt {
+            ltcmp = !ltcmp;
+        }
+        match ltcmp {
+            true => lobound = probe + 1,
+            false => hibound = probe,
+        }
+    }
+    let histfrac = if lobound == 0 {
+        0.0
+    } else if lobound >= values.len() {
+        1.0
+    } else {
+        let i = lobound;
+        let mut eq_selec = 0.0;
+        if i == 1 || isgt == iseq {
+            let otherdistinct = get_variable_numdistinct(root, vardata).0 - column.common.len() as f64;
+            if otherdistinct > 1.0 {
+                eq_selec = 1.0 / otherdistinct;
+            }
+        }
+        let binfrac = match convert_to_scalar(constval, &values[i - 1], &values[i]) {
+            Some((val, low, high)) => {
+                if high <= low {
+                    0.5
+                } else if val <= low {
+                    0.0
+                } else if val >= high {
+                    1.0
+                } else {
+                    let binfrac = (val - low) / (high - low);
+                    if binfrac.is_nan() || !(0.0..=1.0).contains(&binfrac) { 0.5 } else { binfrac }
+                }
+            }
+            None => 0.5,
+        };
+        let mut histfrac = ((i - 1) as f64 + binfrac) / (values.len() - 1) as f64;
+        if i == 1 {
+            histfrac += eq_selec * (1.0 - binfrac);
+        }
+        if isgt == iseq {
+            histfrac -= eq_selec;
+        }
+        histfrac
+    };
+    let hist_selec = if isgt { 1.0 - histfrac } else { histfrac };
+    let cutoff = 0.01 / (values.len() - 1) as f64;
+    hist_selec.clamp(cutoff, 1.0 - cutoff)
+}
+
+/// compare_values compares two values of the statistics or of a clause, when they are of comparable kinds.
+fn compare_values(a: &Value, b: &Value) -> Option<Ordering> {
+    match a.is_null() || b.is_null() {
+        true => None,
+        false => Some(crate::expr::compare_values(a, b)),
+    }
+}
+
+/// apply_comparison returns what a comparison of two values gives, as Postgres calls a comparison operator's
+/// function on the values of statistics.
+fn apply_comparison(op: CmpOp, a: &Value, b: &Value) -> Option<bool> {
+    let ordering = compare_values(a, b)?;
+    Some(match op {
+        CmpOp::Eq => ordering.is_eq(),
+        CmpOp::Ne => ordering.is_ne(),
+        CmpOp::Lt => ordering.is_lt(),
+        CmpOp::Le => ordering.is_le(),
+        CmpOp::Gt => ordering.is_gt(),
+        CmpOp::Ge => ordering.is_ge(),
+    })
+}
+
+/// boolvarsel returns the selectivity of a boolean expression, as Postgres' function of the same name does: as the
+/// equality `expression = true` when its Var has statistics, and otherwise one half.
+pub fn boolvarsel(root: &PlannerInfo<'_, '_>, arg: &Expr, varrelid: usize) -> f64 {
+    let vardata = examine_variable(root, arg, varrelid);
+    match vardata.column() {
+        Some(_) => var_eq_const(root, &vardata, &Value::Bool(true), true, false),
+        None => 0.5,
+    }
+}
+
+/// booltestsel returns the selectivity of an IS TRUE, IS FALSE, or IS UNKNOWN test, or their negations, as Postgres'
+/// function of the same name does.
+pub fn booltestsel(
+    root: &PlannerInfo<'_, '_>,
+    value: Option<bool>,
+    negated: bool,
+    arg: &Expr,
+    varrelid: usize,
+    jointype: JoinType,
+    sjinfo: Option<&SpecialJoinInfo>,
+) -> f64 {
+    let vardata = examine_variable(root, arg, varrelid);
+    let selec = match vardata.column() {
+        Some(column) => {
+            let freq_null = column.null_frac;
+            match column.common.first() {
+                Some((first, freq)) => {
+                    let freq_true = match first {
+                        Value::Bool(true) => *freq,
+                        _ => 1.0 - freq - freq_null,
+                    };
+                    let freq_false = 1.0 - freq_true - freq_null;
+                    match (value, negated) {
+                        (None, false) => freq_null,
+                        (None, true) => 1.0 - freq_null,
+                        (Some(true), false) => freq_true,
+                        (Some(true), true) => 1.0 - freq_true,
+                        (Some(false), false) => freq_false,
+                        (Some(false), true) => 1.0 - freq_false,
+                    }
+                }
+                None => match (value, negated) {
+                    (None, false) => freq_null,
+                    (None, true) => 1.0 - freq_null,
+                    (Some(_), false) => (1.0 - freq_null) / 2.0,
+                    (Some(_), true) => (freq_null + 1.0) / 2.0,
+                },
+            }
+        }
+        None => match (value, negated) {
+            (None, false) => DEFAULT_UNK_SEL,
+            (None, true) => DEFAULT_NOT_UNK_SEL,
+            (Some(true), false) | (Some(false), true) => {
+                super::clausesel::clause_selectivity(root, arg, None, varrelid, jointype, sjinfo)
+            }
+            (Some(false), false) | (Some(true), true) => {
+                1.0 - super::clausesel::clause_selectivity(root, arg, None, varrelid, jointype, sjinfo)
+            }
+        },
+    };
+    selec.clamp(0.0, 1.0)
+}
+
+/// nulltestsel returns the selectivity of an IS NULL or IS NOT NULL test, as Postgres' function of the same name
+/// does.
+pub fn nulltestsel(root: &PlannerInfo<'_, '_>, negated: bool, arg: &Expr, varrelid: usize) -> f64 {
+    let vardata = examine_variable(root, arg, varrelid);
+    let selec = match (vardata.column(), negated) {
+        (Some(column), false) => column.null_frac,
+        (Some(column), true) => 1.0 - column.null_frac,
+        (None, false) => DEFAULT_UNK_SEL,
+        (None, true) => DEFAULT_NOT_UNK_SEL,
+    };
+    selec.clamp(0.0, 1.0)
+}
+
+/// scalararraysel returns the selectivity of a comparison with any, or every, element of an array, as Postgres'
+/// function of the same name does: combining the comparison's selectivity with each element of a constant array or
+/// array expression, as disjoint events for an equality with any element, and otherwise assuming ten elements. Doltgres
+/// gathers no statistics of array columns, which scalararraysel_containment reads.
+#[allow(clippy::too_many_arguments)]
+pub fn scalararraysel(
+    root: &PlannerInfo<'_, '_>,
+    comparison: &Expr,
+    array: &Expr,
+    use_or: bool,
+    is_join_clause: bool,
+    varrelid: usize,
+    jointype: JoinType,
+    sjinfo: Option<&SpecialJoinInfo>,
+) -> f64 {
+    let Expr::Compare(op, left, right) = comparison else { return 0.5 };
+    let (is_equality, is_inequality) = (*op == CmpOp::Eq, *op == CmpOp::Ne);
+    let element_sel = |element: &Expr| {
+        let substitute = |e: &Expr| match e {
+            Expr::SubqueryValue => element.clone(),
+            other => estimate_expression_value(other),
+        };
+        let (l, r) = (substitute(left), substitute(right));
+        match (is_join_clause, sjinfo) {
+            (true, Some(sjinfo)) => join_selectivity(root, *op, &l, &r, jointype, sjinfo),
+            _ => restriction_selectivity(root, *op, &l, &r, varrelid),
+        }
+    };
+    let elements: Option<Vec<Expr>> = match estimate_expression_value(array) {
+        Expr::Const(Value::Null) => return 0.0,
+        Expr::Const(Value::Array(array)) => Some(array.values.iter().cloned().map(Expr::Const).collect()),
+        Expr::Array(_, items, _) => Some(items),
+        _ => None,
+    };
+    let mut s1 = if use_or { 0.0 } else { 1.0 };
+    match elements {
+        Some(elements) => {
+            let mut s1disjoint = s1;
+            for element in &elements {
+                let s2 = element_sel(element);
+                if use_or {
+                    s1 = s1 + s2 - s1 * s2;
+                    if is_equality {
+                        s1disjoint += s2;
+                    }
+                } else {
+                    s1 *= s2;
+                    if is_inequality {
+                        s1disjoint += s2 - 1.0;
+                    }
+                }
+            }
+            if (if use_or { is_equality } else { is_inequality }) && (0.0..=1.0).contains(&s1disjoint) {
+                s1 = s1disjoint;
+            }
+        }
+        None => {
+            let s2 = element_sel(&Expr::Param(usize::MAX));
+            for _ in 0..10 {
+                s1 = if use_or { s1 + s2 - s1 * s2 } else { s1 * s2 };
+            }
+        }
+    }
+    s1.clamp(0.0, 1.0)
+}
+
+/// neqjoinsel returns the selectivity of an inequality join clause, as Postgres' function of the same name does: the
+/// share of rows that are not NULL for a semi or anti join, and otherwise the complement of the equality's.
+fn neqjoinsel(
+    root: &PlannerInfo<'_, '_>,
+    left: &Expr,
+    right: &Expr,
+    jointype: JoinType,
+    sjinfo: &SpecialJoinInfo,
+) -> f64 {
+    match jointype {
+        JoinType::Semi | JoinType::Anti => {
+            let (leftvar, rightvar, reversed) = get_join_variables(root, left, right, sjinfo);
+            let vardata = if reversed { &rightvar } else { &leftvar };
+            1.0 - vardata.column().map_or(0.0, |c| c.null_frac)
+        }
+        _ => 1.0 - eqjoinsel(root, left, right, sjinfo),
+    }
+}
+
+/// mergejoinscansel returns the shares of each side's rows, in a merge join's order, that come before the first row
+/// that can match and up to the last one, as the left start, left end, right start, and right end, from the range of
+/// the other side's values, as Postgres' function of the same name does.
+pub fn mergejoinscansel(root: &PlannerInfo<'_, '_>, clause: &Expr, descending: bool, nulls_first: bool) -> [f64; 4] {
+    let (mut leftstart, mut leftend, mut rightstart, mut rightend) = (0.0, 1.0, 0.0, 1.0);
+    let Expr::Compare(CmpOp::Eq, left, right) = clause else { return [leftstart, leftend, rightstart, rightend] };
+    let (leftvar, rightvar) = (examine_variable(root, left, 0), examine_variable(root, right, 0));
+    let (Some((leftmin, leftmax)), Some((rightmin, rightmax))) =
+        (get_variable_range(&leftvar), get_variable_range(&rightvar))
+    else {
+        return [leftstart, leftend, rightstart, rightend];
+    };
+    let isgt = descending;
+    let ((leftmin, leftmax), (rightmin, rightmax)) = match isgt {
+        false => ((leftmin, leftmax), (rightmin, rightmax)),
+        true => ((leftmax, leftmin), (rightmax, rightmin)),
+    };
+    let selec = scalarineqsel(root, isgt, true, &leftvar, &rightmax);
+    if selec != DEFAULT_INEQ_SEL {
+        leftend = selec;
+    }
+    let selec = scalarineqsel(root, isgt, true, &rightvar, &leftmax);
+    if selec != DEFAULT_INEQ_SEL {
+        rightend = selec;
+    }
+    if leftend > rightend {
+        leftend = 1.0;
+    } else if leftend < rightend {
+        rightend = 1.0;
+    } else {
+        (leftend, rightend) = (1.0, 1.0);
+    }
+    let selec = scalarineqsel(root, isgt, false, &leftvar, &rightmin);
+    if selec != DEFAULT_INEQ_SEL {
+        leftstart = selec;
+    }
+    let selec = scalarineqsel(root, isgt, false, &rightvar, &leftmin);
+    if selec != DEFAULT_INEQ_SEL {
+        rightstart = selec;
+    }
+    if leftstart < rightstart {
+        leftstart = 0.0;
+    } else if leftstart > rightstart {
+        rightstart = 0.0;
+    } else {
+        (leftstart, rightstart) = (0.0, 0.0);
+    }
+    if nulls_first {
+        if let Some(column) = leftvar.column() {
+            leftstart = (leftstart + column.null_frac).clamp(0.0, 1.0);
+            leftend = (leftend + column.null_frac).clamp(0.0, 1.0);
+        }
+        if let Some(column) = rightvar.column() {
+            rightstart = (rightstart + column.null_frac).clamp(0.0, 1.0);
+            rightend = (rightend + column.null_frac).clamp(0.0, 1.0);
+        }
+    }
+    if leftstart >= leftend {
+        (leftstart, leftend) = (0.0, 1.0);
+    }
+    if rightstart >= rightend {
+        (rightstart, rightend) = (0.0, 1.0);
+    }
+    [leftstart, leftend, rightstart, rightend]
+}
+
+/// convert_to_scalar returns a value and the bounds of its histogram bin as numbers on one scale, which
+/// interpolation can place the value between, as Postgres' function of the same name does for the numeric, string,
+/// bytea, and date and time types, or None for any other.
+fn convert_to_scalar(value: &Value, lobound: &Value, hibound: &Value) -> Option<(f64, f64, f64)> {
+    match (value, lobound, hibound) {
+        (Value::Text(v), Value::Text(lo), Value::Text(hi)) => {
+            Some(convert_string_to_scalar(v.as_bytes(), lo.as_bytes(), hi.as_bytes()))
+        }
+        (Value::Bytea(v), Value::Bytea(lo), Value::Bytea(hi)) => Some(convert_bytea_to_scalar(v, lo, hi)),
+        _ => {
+            let scalar = |v: &Value| convert_numeric_to_scalar(v).or_else(|| convert_timevalue_to_scalar(v));
+            Some((scalar(value)?, scalar(lobound)?, scalar(hibound)?))
+        }
+    }
+}
+
+/// convert_numeric_to_scalar returns a value of a numeric type, a boolean, or an object identifier as a number, as
+/// Postgres' function of the same name does.
+fn convert_numeric_to_scalar(value: &Value) -> Option<f64> {
+    Some(match value {
+        Value::Bool(b) => f64::from(u8::from(*b)),
+        Value::Int2(v) => f64::from(*v),
+        Value::Int4(v) => f64::from(*v),
+        Value::Int8(v) => *v as f64,
+        Value::Float4(v) => f64::from(*v),
+        Value::Float8(v) => *v,
+        Value::Numeric(n) => n.to_f64(),
+        Value::Oid(o) => f64::from(*o),
+        _ => return None,
+    })
+}
+
+/// convert_timevalue_to_scalar returns a value of a date or time type as microseconds, as Postgres' function of the
+/// same name does.
+fn convert_timevalue_to_scalar(value: &Value) -> Option<f64> {
+    const USECS_PER_DAY: f64 = 86_400_000_000.0;
+    Some(match value {
+        Value::Timestamp(t) | Value::TimestampTz(t) | Value::Time(t) => *t as f64,
+        Value::Date(d) => f64::from(*d) * USECS_PER_DAY,
+        Value::Interval(iv) => {
+            iv.micros as f64
+                + f64::from(iv.days) * USECS_PER_DAY
+                + f64::from(iv.months) * ((365.25 / 12.0) * USECS_PER_DAY)
+        }
+        Value::TimeTz(t, zone) => *t as f64 + f64::from(*zone) * 1_000_000.0,
+        _ => return None,
+    })
+}
+
+/// convert_string_to_scalar returns three strings as numbers on one scale, over the range of the characters they
+/// use after their common prefix, as Postgres' function of the same name does.
+fn convert_string_to_scalar(value: &[u8], lobound: &[u8], hibound: &[u8]) -> (f64, f64, f64) {
+    let (mut rangelo, mut rangehi) = match hibound.first() {
+        Some(&c) => (i32::from(c), i32::from(c)),
+        None => (0, 0),
+    };
+    for &c in lobound.iter().chain(hibound) {
+        rangelo = rangelo.min(i32::from(c));
+        rangehi = rangehi.max(i32::from(c));
+    }
+    for (lo, hi) in [(b'A', b'Z'), (b'a', b'z'), (b'0', b'9')] {
+        if rangelo <= i32::from(hi) && rangehi >= i32::from(lo) {
+            rangelo = rangelo.min(i32::from(lo));
+            rangehi = rangehi.max(i32::from(hi));
+        }
+    }
+    if rangehi - rangelo < 9 {
+        rangelo = i32::from(b' ');
+        rangehi = 127;
+    }
+    let prefix = lobound.iter().zip(hibound).zip(value).take_while(|((l, h), v)| l == h && l == v).count();
+    let convert = |s: &[u8]| convert_one_string_to_scalar(&s[prefix.min(s.len())..], rangelo, rangehi);
+    (convert(value), convert(lobound), convert(hibound))
+}
+
+/// convert_one_string_to_scalar returns a string as a fraction in base of its character range, from its first
+/// twelve characters, as Postgres' function of the same name does.
+fn convert_one_string_to_scalar(value: &[u8], rangelo: i32, rangehi: i32) -> f64 {
+    let base = f64::from(rangehi - rangelo + 1);
+    let (mut num, mut denom) = (0.0, base);
+    for &c in value.iter().take(12) {
+        let ch = i32::from(c).clamp(rangelo - 1, rangehi + 1);
+        num += f64::from(ch - rangelo) / denom;
+        denom *= base;
+    }
+    num
+}
+
+/// convert_bytea_to_scalar returns three byte strings as numbers on one scale after their common prefix, as Postgres'
+/// function of the same name does.
+fn convert_bytea_to_scalar(value: &[u8], lobound: &[u8], hibound: &[u8]) -> (f64, f64, f64) {
+    let prefix = lobound.iter().zip(hibound).zip(value).take_while(|((l, h), v)| l == h && l == v).count();
+    let convert = |s: &[u8]| convert_one_bytea_to_scalar(&s[prefix.min(s.len())..], 0, 255);
+    (convert(value), convert(lobound), convert(hibound))
+}
+
+/// convert_one_bytea_to_scalar returns a byte string as a fraction in base 256, from its first ten bytes, as
+/// Postgres' function of the same name does.
+fn convert_one_bytea_to_scalar(value: &[u8], rangelo: i32, rangehi: i32) -> f64 {
+    let base = f64::from(rangehi - rangelo + 1);
+    let (mut num, mut denom) = (0.0, base);
+    for &c in value.iter().take(10) {
+        num += f64::from(i32::from(c) - rangelo) / denom;
+        denom *= base;
+    }
+    num
+}
+
+/// get_variable_range returns the smallest and largest values of a variable that its statistics know, from its
+/// histogram's ends and its most common values, as Postgres' function of the same name does.
+pub fn get_variable_range(vardata: &VariableStatData) -> Option<(Value, Value)> {
+    let column = vardata.column()?;
+    let mut range = match (column.histogram.first(), column.histogram.last()) {
+        (Some(min), Some(max)) => Some((min.clone(), max.clone())),
+        _ => None,
+    };
+    let sumcommon: f64 = column.common.iter().map(|(_, f)| f).sum();
+    if range.is_some() || sumcommon + column.null_frac > 0.99999 {
+        for (value, _) in &column.common {
+            range = Some(match range {
+                None => (value.clone(), value.clone()),
+                Some((min, max)) => {
+                    let min = if compare_values(value, &min) == Some(Ordering::Less) { value.clone() } else { min };
+                    let max = if compare_values(value, &max) == Some(Ordering::Greater) { value.clone() } else { max };
+                    (min, max)
+                }
+            });
+        }
+    }
+    range
 }
 
 /// get_variable_numdistinct returns about how many distinct values an expression takes, and whether that is only
@@ -129,7 +868,7 @@ pub fn rowcomparesel(
 /// eqjoinsel returns the selectivity of an equality join clause between two expressions, as Postgres' eqjoinsel
 /// estimates it for the join it is part of.
 pub fn eqjoinsel(root: &PlannerInfo<'_, '_>, left: &Expr, right: &Expr, sjinfo: &SpecialJoinInfo) -> f64 {
-    let (vardata1, vardata2) = (examine_variable(root, left), examine_variable(root, right));
+    let (vardata1, vardata2) = (examine_variable(root, left, 0), examine_variable(root, right, 0));
     let within = |v: &VariableStatData, relids: &Relids| v.rel.is_some_and(|r| relids.is_member(r));
     let join_is_reversed = within(&vardata1, &sjinfo.syn_righthand) || within(&vardata2, &sjinfo.syn_lefthand);
     let (nd1, isdefault1) = get_variable_numdistinct(root, &vardata1);
@@ -257,7 +996,7 @@ fn eqjoinsel_semi(
 /// hashed rows that one bucket of a hash table of a number of buckets holds, as Postgres' function of the same name
 /// estimates them.
 pub fn estimate_hash_bucket_stats(root: &PlannerInfo<'_, '_>, hashkey: &Expr, nbuckets: f64) -> (f64, f64) {
-    let vardata = examine_variable(root, hashkey);
+    let vardata = examine_variable(root, hashkey, 0);
     let mcv_freq = vardata.column().and_then(|c| c.common.first()).map_or(0.0, |(_, f)| *f);
     let (mut ndistinct, isdefault) = get_variable_numdistinct(root, &vardata);
     if isdefault {
@@ -404,9 +1143,15 @@ fn examine_indexcol_variable(
             });
             let isbool = table.and_then(|t| t.columns.get(attno)).is_some_and(|c| c.ty.oid == crate::oid::BOOL);
             let stats = root.rels[rel].stats.clone().map(|stats| (stats, attno));
-            VariableStatData { rel: Some(rel), stats, isunique, isbool }
+            VariableStatData { var: Expr::Column(attno), rel: Some(rel), stats, isunique, isbool }
         }
-        None => VariableStatData { rel: Some(rel), stats: None, isunique: false, isbool: false },
+        None => VariableStatData {
+            var: Expr::Const(Value::Null),
+            rel: Some(rel),
+            stats: None,
+            isunique: false,
+            isbool: false,
+        },
     }
 }
 
@@ -540,6 +1285,15 @@ struct GroupVarInfo {
     var: Expr,
     rel: Option<usize>,
     ndistinct: f64,
+    /// Whether the distinct values are only the default estimate.
+    isdefault: bool,
+}
+
+/// EstimationInfo is what estimate_num_groups reports about its estimate, as Postgres' EstimationInfo does: whether
+/// it used a default estimate for some Var, Postgres' SELFLAG_USED_DEFAULT.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct EstimationInfo {
+    pub used_default: bool,
 }
 
 /// estimate_num_groups estimates the groups that grouping rows by expressions makes, or of a grouping set's
@@ -551,7 +1305,11 @@ pub fn estimate_num_groups(
     group_exprs: &[Expr],
     input_rows: f64,
     pgset: Option<&[usize]>,
+    mut estinfo: Option<&mut EstimationInfo>,
 ) -> f64 {
+    if let Some(estinfo) = estinfo.as_deref_mut() {
+        *estinfo = EstimationInfo::default();
+    }
     let input_rows = clamp_row_est(input_rows);
     if group_exprs.is_empty() || pgset.is_some_and(|s| s.is_empty()) {
         return 1.0;
@@ -568,7 +1326,7 @@ pub fn estimate_num_groups(
             numdistinct *= 2.0;
             continue;
         }
-        let vardata = examine_variable(root, groupexpr);
+        let vardata = examine_variable(root, groupexpr, 0);
         if vardata.stats.is_some() || vardata.isunique {
             add_unique_group_var(root, &mut varinfos, groupexpr.clone(), &vardata);
             continue;
@@ -582,7 +1340,7 @@ pub fn estimate_num_groups(
         }
         for var in varshere {
             let var = Expr::Column(var);
-            let vardata = examine_variable(root, &var);
+            let vardata = examine_variable(root, &var, 0);
             add_unique_group_var(root, &mut varinfos, var, &vardata);
         }
     }
@@ -599,6 +1357,11 @@ pub fn estimate_num_groups(
         for varinfo in &relvarinfos {
             reldistinct *= varinfo.ndistinct;
             relmaxndistinct = f64::max(relmaxndistinct, varinfo.ndistinct);
+            if let Some(estinfo) = estinfo.as_deref_mut()
+                && varinfo.isdefault
+            {
+                estinfo.used_default = true;
+            }
         }
         if let Some(rel) = rel.map(|r| &root.rels[r])
             && rel.tuples > 0.0
@@ -629,7 +1392,7 @@ fn add_unique_group_var(
     var: Expr,
     vardata: &VariableStatData,
 ) {
-    let (ndistinct, _) = get_variable_numdistinct(root, vardata);
+    let (ndistinct, isdefault) = get_variable_numdistinct(root, vardata);
     let base = |e: &Expr| match e {
         Expr::Column(id) => match root.glob.node(*id) {
             VarNode::Var(v) => Some((v.varno, v.varattno)),
@@ -652,7 +1415,7 @@ fn add_unique_group_var(
         }
         i += 1;
     }
-    varinfos.push(GroupVarInfo { var, rel: vardata.rel, ndistinct });
+    varinfos.push(GroupVarInfo { var, rel: vardata.rel, ndistinct, isdefault });
 }
 
 /// estimate_hashagg_tablesize estimates the memory that a hashed aggregation of a path's rows into a number of groups

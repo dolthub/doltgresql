@@ -121,6 +121,7 @@ pub fn make_plain_restrictinfo(
         right_em: None,
         outer_is_left: Cell::new(false),
         hashjoinable: false,
+        scansel_cache: Default::default(),
     };
     root.rinfos.push(rinfo);
     root.rinfos.len() - 1

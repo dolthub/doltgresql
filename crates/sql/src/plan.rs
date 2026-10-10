@@ -70,6 +70,9 @@ pub enum JoinMethod {
     CatalogLookup { index: &'static crate::pgcatalog::indexes::CatalogIndex, keys: Vec<Expr> },
     /// The right rows are hashed by their side of the condition's equalities.
     Hash,
+    /// A Postgres merge join by the condition's first conjuncts, whose inner input is kept in memory when
+    /// `materialized`. Doltgres runs it as a hash join, which keeps the order of the left rows.
+    Merge { clauses: usize, materialized: bool },
     /// Each left row is compared with every right row.
     NestedLoop,
     /// Each left row is compared with every right row, as a nested loop over a Postgres Materialize node of the right

@@ -175,7 +175,7 @@ pub fn plan_subquery_rel(
             false => {
                 let exprs: Vec<Expr> =
                     parse.target_list.iter().filter(|tle| !tle.resjunk).map(|tle| tle.expr.clone()).collect();
-                super::selfuncs::estimate_num_groups(&subroot, &exprs, cheapest.rows, None)
+                super::selfuncs::estimate_num_groups(&subroot, &exprs, cheapest.rows, None, None)
             }
         };
         let mut subplans = Vec::new();

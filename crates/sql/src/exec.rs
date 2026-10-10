@@ -1775,7 +1775,7 @@ impl Plan {
                     JoinKind::Inner if unplanned => {
                         ProbeRows::open(ctx, left, right, condition)?.map(|p| Box::new(p) as _)
                     }
-                    JoinKind::Anti if unplanned || *method == JoinMethod::Hash => {
+                    JoinKind::Anti if unplanned || matches!(method, JoinMethod::Hash | JoinMethod::Merge { .. }) => {
                         AntiRows::open(ctx, left, right, condition)?.map(|a| Box::new(a) as _)
                     }
                     _ => None,

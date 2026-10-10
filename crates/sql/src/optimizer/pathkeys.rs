@@ -17,7 +17,7 @@
 
 use super::PlannerInfo;
 use super::equivclass::{eclass_useful_for_merging, get_eclass_for_sort_expr};
-use super::nodes::{EcId, PathKey, PkId, RinfoId, SubqueryOrderKey, VarNode};
+use super::nodes::{EcId, PathKey, PkId, Relids, RinfoId, SubqueryOrderKey, VarNode};
 use super::restrictinfo::binary_op_args;
 use crate::expr::Expr;
 use crate::plan::SortKey;
@@ -190,6 +190,183 @@ pub fn initialize_mergeclause_eclasses(root: &mut PlannerInfo<'_, '_>, rinfo: Ri
     (r.left_ec, r.right_ec) = (left_ec, right_ec);
 }
 
+/// update_mergeclause_eclasses points the sides of a mergejoinable clause at the classes that theirs were merged into,
+/// as Postgres' function of the same name does.
+pub fn update_mergeclause_eclasses(root: &mut PlannerInfo<'_, '_>, rinfo: RinfoId) {
+    let (left_ec, right_ec) = (root.rinfos[rinfo].left_ec, root.rinfos[rinfo].right_ec);
+    let (left_ec, right_ec) = (left_ec.map(|ec| root.canonical_ec(ec)), right_ec.map(|ec| root.canonical_ec(ec)));
+    (root.rinfos[rinfo].left_ec, root.rinfos[rinfo].right_ec) = (left_ec, right_ec);
+}
+
+/// find_mergeclauses_for_outer_pathkeys returns the mergejoinable clauses that an outer path's order lets a merge join
+/// use, in that order, stopping at the first pathkey that no clause matches, as Postgres' function of the same name
+/// does.
+pub fn find_mergeclauses_for_outer_pathkeys(
+    root: &mut PlannerInfo<'_, '_>,
+    pathkeys: &[PkId],
+    restrictinfos: &[RinfoId],
+) -> Vec<RinfoId> {
+    for &rinfo in restrictinfos {
+        update_mergeclause_eclasses(root, rinfo);
+    }
+    let mut mergeclauses = Vec::new();
+    for &pk in pathkeys {
+        let pathkey_ec = root.canon_pathkeys[pk].pk_eclass;
+        let matched_restrictinfos: Vec<RinfoId> = restrictinfos
+            .iter()
+            .copied()
+            .filter(|&r| {
+                let rinfo = &root.rinfos[r];
+                let clause_ec = if rinfo.outer_is_left.get() { rinfo.left_ec } else { rinfo.right_ec };
+                clause_ec == Some(pathkey_ec)
+            })
+            .collect();
+        if matched_restrictinfos.is_empty() {
+            break;
+        }
+        mergeclauses.extend(matched_restrictinfos);
+    }
+    mergeclauses
+}
+
+/// select_outer_pathkeys_for_merge returns the order to sort a merge join's outer side by, so that it can use every
+/// mergejoinable clause: the query's order when the clauses cover it, and otherwise the classes that the most other
+/// relations join with first, as Postgres' function of the same name does.
+pub fn select_outer_pathkeys_for_merge(
+    root: &mut PlannerInfo<'_, '_>,
+    mergeclauses: &[RinfoId],
+    joinrel: usize,
+) -> Vec<PkId> {
+    if mergeclauses.is_empty() {
+        return Vec::new();
+    }
+    let n_clauses = mergeclauses.len();
+    let mut ecs: Vec<EcId> = Vec::with_capacity(n_clauses);
+    let mut scores: Vec<i64> = Vec::with_capacity(n_clauses);
+    for &rinfo in mergeclauses {
+        update_mergeclause_eclasses(root, rinfo);
+        let r = &root.rinfos[rinfo];
+        let oeclass = if r.outer_is_left.get() { r.left_ec } else { r.right_ec }.expect("a merge clause has classes");
+        if ecs.contains(&oeclass) {
+            continue;
+        }
+        let joinrelids = &root.rels[joinrel].relids;
+        let score = root.eq_classes[oeclass]
+            .ec_members
+            .iter()
+            .filter(|&&em| {
+                let em = &root.eq_members[em];
+                !em.em_is_const && !em.em_relids.overlap(joinrelids)
+            })
+            .count();
+        ecs.push(oeclass);
+        scores.push(score as i64);
+    }
+    let mut pathkeys = Vec::new();
+    if !root.query_pathkeys.is_empty() {
+        let query_ecs: Vec<EcId> = root.query_pathkeys.iter().map(|&pk| root.canon_pathkeys[pk].pk_eclass).collect();
+        let matches = query_ecs.iter().take_while(|ec| ecs.contains(ec)).count();
+        if matches == query_ecs.len() {
+            pathkeys = root.query_pathkeys.clone();
+            for query_ec in &query_ecs {
+                if let Some(j) = ecs.iter().position(|ec| ec == query_ec) {
+                    scores[j] = -1;
+                }
+            }
+        } else if matches == n_clauses {
+            return root.query_pathkeys[..matches].to_vec();
+        }
+    }
+    loop {
+        let (mut best_j, mut best_score) = (0, scores[0]);
+        for (j, &score) in scores.iter().enumerate().skip(1) {
+            if score > best_score {
+                (best_j, best_score) = (j, score);
+            }
+        }
+        if best_score < 0 {
+            break;
+        }
+        let ec = ecs[best_j];
+        scores[best_j] = -1;
+        let opfamily = root.eq_classes[ec].ec_opfamilies[0];
+        let pathkey = make_canonical_pathkey(root, ec, opfamily, false, false);
+        pathkeys.push(pathkey);
+    }
+    pathkeys
+}
+
+/// make_inner_pathkeys_for_merge returns the order that a merge join's inner side must be sorted by to match the outer
+/// side's order by the merge clauses, as Postgres' function of the same name does.
+pub fn make_inner_pathkeys_for_merge(
+    root: &mut PlannerInfo<'_, '_>,
+    mergeclauses: &[RinfoId],
+    outer_pathkeys: &[PkId],
+) -> Vec<PkId> {
+    let mut pathkeys = Vec::new();
+    let mut lastoeclass = None;
+    let mut opathkey = None;
+    let mut lop = outer_pathkeys.iter();
+    for &rinfo in mergeclauses {
+        update_mergeclause_eclasses(root, rinfo);
+        let r = &root.rinfos[rinfo];
+        let (oeclass, ieclass) = match r.outer_is_left.get() {
+            true => (r.left_ec, r.right_ec),
+            false => (r.right_ec, r.left_ec),
+        };
+        if oeclass != lastoeclass {
+            let pk = *lop.next().expect("too few pathkeys for mergeclauses");
+            opathkey = Some(pk);
+            lastoeclass = Some(root.canon_pathkeys[pk].pk_eclass);
+            assert!(oeclass == lastoeclass, "outer pathkeys do not match mergeclause");
+        }
+        let opathkey = opathkey.expect("the outer pathkey of a merge clause");
+        let pathkey = match ieclass == oeclass {
+            true => opathkey,
+            false => {
+                let PathKey { pk_opfamily, pk_descending, pk_nulls_first, .. } = root.canon_pathkeys[opathkey];
+                let ieclass = ieclass.expect("a merge clause has classes");
+                make_canonical_pathkey(root, ieclass, pk_opfamily, pk_descending, pk_nulls_first)
+            }
+        };
+        if !pathkey_is_redundant(root, pathkey, &pathkeys) {
+            pathkeys.push(pathkey);
+        }
+    }
+    pathkeys
+}
+
+/// trim_mergeclauses_for_inner_pathkeys returns the leading merge clauses that an inner path's order, a prefix of
+/// the order the clauses need, can merge by, as Postgres' function of the same name does.
+pub fn trim_mergeclauses_for_inner_pathkeys(
+    root: &PlannerInfo<'_, '_>,
+    mergeclauses: &[RinfoId],
+    pathkeys: &[PkId],
+) -> Vec<RinfoId> {
+    let mut new_mergeclauses = Vec::new();
+    let mut lip = pathkeys.iter();
+    let Some(&first) = lip.next() else { return new_mergeclauses };
+    let mut pathkey_ec = root.canon_pathkeys[first].pk_eclass;
+    let mut matched_pathkey = false;
+    for &rinfo in mergeclauses {
+        let r = &root.rinfos[rinfo];
+        let clause_ec = if r.outer_is_left.get() { r.right_ec } else { r.left_ec };
+        if clause_ec != Some(pathkey_ec) {
+            if !matched_pathkey {
+                break;
+            }
+            let Some(&next) = lip.next() else { break };
+            pathkey_ec = root.canon_pathkeys[next].pk_eclass;
+        }
+        if clause_ec != Some(pathkey_ec) {
+            break;
+        }
+        new_mergeclauses.push(rinfo);
+        matched_pathkey = true;
+    }
+    new_mergeclauses
+}
+
 /// pathkeys_useful_for_merging counts the leading pathkeys of an order that a merge join of a relation could use, as
 /// Postgres' function of the same name does.
 fn pathkeys_useful_for_merging(root: &PlannerInfo<'_, '_>, rel: usize, pathkeys: &[PkId]) -> usize {
@@ -314,20 +491,22 @@ fn find_var_for_subquery_tle(root: &PlannerInfo<'_, '_>, rel: usize, column: usi
         .cloned()
 }
 
-/// get_cheapest_path_for_pathkeys returns the cheapest path in total of a list whose rows are in the order of pathkeys
-/// and that are not parameterized, as Postgres' function of the same name does.
+/// get_cheapest_path_for_pathkeys returns the cheapest path of a list by a cost criterion whose rows are in the order
+/// of pathkeys and that needs no relations other than the required ones, as Postgres' function of the same name does.
 pub fn get_cheapest_path_for_pathkeys(
     paths: &[std::rc::Rc<super::nodes::Path>],
     pathkeys: &[PkId],
+    required_outer: &Relids,
+    cost_criterion: super::pathnode::CostSelector,
 ) -> Option<std::rc::Rc<super::nodes::Path>> {
     let mut matched_path: Option<&std::rc::Rc<super::nodes::Path>> = None;
     for path in paths {
         if let Some(matched) = matched_path
-            && super::pathnode::compare_path_costs(matched, path, super::pathnode::CostSelector::Total).is_le()
+            && super::pathnode::compare_path_costs(matched, path, cost_criterion).is_le()
         {
             continue;
         }
-        if pathkeys_contained_in(pathkeys, &path.pathkeys) && path.param.is_empty() {
+        if pathkeys_contained_in(pathkeys, &path.pathkeys) && path.param.is_subset(required_outer) {
             matched_path = Some(path);
         }
     }

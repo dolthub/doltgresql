@@ -17,8 +17,8 @@
 use super::PlannerInfo;
 use super::clauses::contain_volatile_functions;
 use super::nodes::{JoinType, RestrictInfo, RinfoId, SpecialJoinInfo, VarNode};
+use super::selfuncs;
 use super::var::pull_varnos;
-use crate::colstats::TableStats;
 use crate::expr::{CmpOp, Expr};
 use crate::types::Value;
 
@@ -181,13 +181,19 @@ fn clause_selectivity_uncached(
     jointype: JoinType,
     sjinfo: Option<&SpecialJoinInfo>,
 ) -> f64 {
-    let treat_as_join_clause = || {
-        let relids = rinfo.map_or_else(|| pull_varnos(root, clause), |r| r.clause_relids.clone());
-        varrelid == 0 && sjinfo.is_some() && relids.num_members() > 1
-    };
+    let is_join = || treat_as_join_clause(root, clause, rinfo, varrelid, sjinfo);
     match clause {
+        Expr::Column(id) => match root.glob.node(*id) {
+            VarNode::Var(var) if varrelid == 0 || varrelid == var.varno => selfuncs::boolvarsel(root, clause, varrelid),
+            VarNode::Var(_) => 0.5,
+            VarNode::PlaceHolderVar(phv) => {
+                let phexpr = root.glob.placeholder(phv.phid).phexpr.clone();
+                clause_selectivity(root, &phexpr, None, varrelid, jointype, sjinfo)
+            }
+        },
         Expr::Const(Value::Bool(b)) => f64::from(u8::from(*b)),
         Expr::Const(Value::Null) => 0.0,
+        Expr::Param(_) | Expr::Outer(..) => 0.5,
         Expr::Not(inner) => 1.0 - clause_selectivity(root, inner, None, varrelid, jointype, sjinfo),
         Expr::And(..) => {
             let args: Vec<(&Expr, Option<&RestrictInfo>)> =
@@ -199,46 +205,52 @@ fn clause_selectivity_uncached(
             let s2 = clause_selectivity(root, b, None, varrelid, jointype, sjinfo);
             s1 + s2 - s1 * s2
         }
+        Expr::Compare(op, l, r) => match (is_join(), sjinfo) {
+            (true, Some(sjinfo)) => selfuncs::join_selectivity(root, *op, l, r, jointype, sjinfo),
+            _ => selfuncs::restriction_selectivity(root, *op, l, r, varrelid),
+        },
+        Expr::DistinctFrom(l, r, negated) => {
+            let s1 = match (is_join(), sjinfo) {
+                (true, Some(sjinfo)) => selfuncs::join_selectivity(root, CmpOp::Eq, l, r, jointype, sjinfo),
+                _ => selfuncs::restriction_selectivity(root, CmpOp::Eq, l, r, varrelid),
+            };
+            match negated {
+                true => s1,
+                false => 1.0 - s1,
+            }
+        }
+        Expr::Func(..) | Expr::Routine(..) => selfuncs::function_selectivity(),
+        Expr::AnyArray(comparison, array, all) => {
+            selfuncs::scalararraysel(root, comparison, array, !all, is_join(), varrelid, jointype, sjinfo)
+        }
         Expr::RowCompare(op, l, r) => {
             super::selfuncs::rowcomparesel(root, *op, (&l[0], &r[0]), varrelid, jointype, sjinfo)
         }
-        Expr::Compare(op, l, r) if treat_as_join_clause() => {
-            let sjinfo = sjinfo.expect("join clauses have a join");
-            match op {
-                CmpOp::Eq => super::selfuncs::eqjoinsel(root, l, r, sjinfo),
-                CmpOp::Ne => 1.0 - super::selfuncs::eqjoinsel(root, l, r, sjinfo),
-                _ => DEFAULT_INEQ_SEL,
-            }
+        Expr::IsNull(arg, negated) => selfuncs::nulltestsel(root, *negated, arg, varrelid),
+        Expr::BoolTest(arg, value, negated) => {
+            selfuncs::booltestsel(root, *value, *negated, arg, varrelid, jointype, sjinfo)
         }
-        other => restriction_selectivity(root, other, varrelid),
+        Expr::Cast(inner, ty, _) if super::nodefuncs::expr_type(root, inner) == Some(ty.oid) => {
+            clause_selectivity(root, inner, None, varrelid, jointype, sjinfo)
+        }
+        Expr::Cast(..) => selfuncs::function_selectivity(),
+        other => selfuncs::boolvarsel(root, other, varrelid),
     }
 }
 
-/// restriction_selectivity returns the share of a relation's rows that a clause keeps, from the statistics of the
-/// relation at the range table index, or of the one relation that the clause reads when it is zero, as Postgres'
-/// restriction estimators find them, where the Vars of other relations are unknown values.
-fn restriction_selectivity(root: &PlannerInfo<'_, '_>, clause: &Expr, varrelid: usize) -> f64 {
-    let relids = pull_varnos(root, clause).difference(&root.outer_join_rels);
-    let varno = match varrelid {
-        0 => relids.singleton_member().unwrap_or(0),
-        varrelid => varrelid,
-    };
-    let stats = (varno != 0).then(|| root.rels[varno].stats.clone()).flatten();
-    let local = to_attnos(root, clause.clone(), varno);
-    match stats {
-        Some(stats) => crate::colstats::selectivity(&stats, &local),
-        None => crate::colstats::selectivity(&TableStats::default(), &local),
+/// treat_as_join_clause reports whether to estimate a clause as a join clause, as Postgres' function of the same
+/// name decides: when no relation is being restricted, a join is given, and the clause reads more than one base
+/// relation.
+fn treat_as_join_clause(
+    root: &PlannerInfo<'_, '_>,
+    clause: &Expr,
+    rinfo: Option<&RestrictInfo>,
+    varrelid: usize,
+    sjinfo: Option<&SpecialJoinInfo>,
+) -> bool {
+    if varrelid != 0 || sjinfo.is_none() {
+        return false;
     }
-}
-
-/// to_attnos rewrites a clause's Vars of the relation at a range table index into columns of its rows, and the
-/// Vars of other relations into parameters, whose values are unknown.
-fn to_attnos(root: &PlannerInfo<'_, '_>, e: Expr, varno: usize) -> Expr {
-    match e {
-        Expr::Column(id) => match root.glob.node(id) {
-            VarNode::Var(var) if var.varno == varno => Expr::Column(var.varattno),
-            _ => Expr::Param(usize::MAX),
-        },
-        other => other.map_children(&mut |c| to_attnos(root, c, varno)),
-    }
+    let relids = rinfo.map_or_else(|| pull_varnos(root, clause), |r| r.clause_relids.clone());
+    relids.difference(&root.outer_join_rels).num_members() > 1
 }

@@ -325,6 +325,14 @@ impl Printer {
                 names.extend(columns(right));
                 let printed =
                     |key: &str| condition.iter().map(|c| format!("{key}: {}", expr_text(c, &names))).collect();
+                let conditions = |(key, clauses): (&str, Vec<&Expr>)| {
+                    let texts: Vec<String> = clauses.into_iter().map(|c| expr_text(c, &names)).collect();
+                    match texts.as_slice() {
+                        [] => None,
+                        [one] => Some(format!("{key}: {one}")),
+                        many => Some(format!("{key}: ({})", many.join(" AND "))),
+                    }
+                };
                 match method {
                     JoinMethod::Hash => {
                         let width = left.width();
@@ -332,19 +340,23 @@ impl Printer {
                             .iter()
                             .flat_map(crate::indexscan::conjuncts)
                             .partition(|c| !crate::plan::join_keys(c, width).0.is_empty());
-                        let mut properties = Vec::new();
-                        for (key, clauses) in [("Hash Cond", hashed), ("Join Filter", rest)] {
-                            let texts: Vec<String> = clauses.into_iter().map(|c| expr_text(c, &names)).collect();
-                            match texts.as_slice() {
-                                [] => {}
-                                [one] => properties.push(format!("{key}: {one}")),
-                                many => properties.push(format!("{key}: ({})", many.join(" AND "))),
-                            }
-                        }
                         (
                             format!("Hash {}", if kind.is_empty() { "Join" } else { kind.trim_start() }),
-                            properties,
+                            [("Hash Cond", hashed), ("Join Filter", rest)].into_iter().flat_map(conditions).collect(),
                             vec![Child::Plan(left), Child::Held("Hash", right)],
+                        )
+                    }
+                    JoinMethod::Merge { clauses, materialized } => {
+                        let mut merged: Vec<&Expr> = condition.iter().flat_map(crate::indexscan::conjuncts).collect();
+                        let rest = merged.split_off(*clauses);
+                        let right = match materialized {
+                            true => Child::Held("Materialize", right),
+                            false => Child::Plan(right),
+                        };
+                        (
+                            format!("Merge {}", if kind.is_empty() { "Join" } else { kind.trim_start() }),
+                            [("Merge Cond", merged), ("Join Filter", rest)].into_iter().flat_map(conditions).collect(),
+                            vec![Child::Plan(left), right],
                         )
                     }
                     JoinMethod::Lookup { .. } | JoinMethod::CatalogLookup { .. } => {
