@@ -403,6 +403,9 @@ pub struct Column<'a> {
     /// Whether the column is an identity column, `a` for GENERATED ALWAYS and `d` for BY DEFAULT, or 0, which Doltgres
     /// adds past Dolt's fields.
     pub identity: u8,
+    /// The name of the column's NOT NULL constraint when it is not the one Postgres derives, which Doltgres adds past
+    /// Dolt's fields.
+    pub not_null_name: &'a [u8],
 }
 
 /// Index is the clustered index or a secondary index of a table schema.
@@ -486,6 +489,7 @@ impl<'a> TableSchema<'a> {
                     hidden_system: t.bool(15, false)?,
                     adaptive_encoding_breaking_change: t.bool(16, false)?,
                     identity: t.u8(20, 0)?,
+                    not_null_name: t.string(21)?.unwrap_or_default(),
                 })
             })
             .collect()

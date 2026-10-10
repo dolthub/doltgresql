@@ -910,7 +910,6 @@ fn test_create_table() {
                         ],
                         tag: "SELECT 5",
                     },
-                    skip: Some("NOT NULL constraints take generated names until their names are stored with their tables"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -2015,24 +2014,23 @@ fn test_create_table_like_rules() {
                     ..A
                 },
                 ScriptTestAssertion {
-                    query: "SELECT conrelid::regclass, conname, contype, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid IN ('l1'::regclass, 'l2'::regclass, 'l3'::regclass) ORDER BY 1::text, 2;",
+                    query: "SELECT conrelid::regclass, conname, contype, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid IN ('l1'::regclass, 'l2'::regclass, 'l3'::regclass) ORDER BY conrelid::regclass::text, conname;",
                     expected: Expected::Rows {
                         columns: &[Column("conrelid", REGCLASS), Column("conname", NAME), Column("contype", CHAR), Column("pg_get_constraintdef", TEXT)],
                         rows: &[
+                            &[T("l1"), T("src_a_not_null"), T("n"), T("NOT NULL a")],
+                            &[T("l1"), T("src_id_not_null"), T("n"), T("NOT NULL id")],
                             &[T("l2"), T("l2_pkey"), T("p"), T("PRIMARY KEY (id)")],
                             &[T("l2"), T("l2_u_key"), T("u"), T("UNIQUE (u)")],
-                            &[T("l1"), T("src_a_not_null"), T("n"), T("NOT NULL a")],
                             &[T("l2"), T("src_a_not_null"), T("n"), T("NOT NULL a")],
-                            &[T("l3"), T("src_a_not_null"), T("n"), T("NOT NULL a")],
-                            &[T("l3"), T("src_b_check"), T("c"), T("CHECK ((b > 0))")],
                             &[T("l2"), T("src_b_check"), T("c"), T("CHECK ((b > 0))")],
                             &[T("l2"), T("src_id_not_null"), T("n"), T("NOT NULL id")],
-                            &[T("l1"), T("src_id_not_null"), T("n"), T("NOT NULL id")],
+                            &[T("l3"), T("src_a_not_null"), T("n"), T("NOT NULL a")],
+                            &[T("l3"), T("src_b_check"), T("c"), T("CHECK ((b > 0))")],
                             &[T("l3"), T("src_id_not_null"), T("n"), T("NOT NULL id")],
                         ],
                         tag: "SELECT 10",
                     },
-                    skip: Some("NOT NULL constraints take generated names until their names are stored with their tables"),
                     ..A
                 },
                 ScriptTestAssertion {

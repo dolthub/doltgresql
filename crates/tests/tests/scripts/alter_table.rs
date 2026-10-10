@@ -2741,5 +2741,92 @@ ORDER BY schema_name, table_name;"#,
             ],
             ..S
         },
+        ScriptTest {
+            name: "NOT NULL constraint names",
+            set_up_script: &[
+                "CREATE TABLE nn1 (id INT PRIMARY KEY, a INT NOT NULL);",
+                "CREATE TABLE nn2 (id INT CONSTRAINT keep NOT NULL, PRIMARY KEY (id));",
+                "CREATE TABLE nn3 (LIKE nn1);",
+                "ALTER TABLE nn1 RENAME COLUMN a TO b;",
+                "ALTER TABLE nn1 RENAME TO nn4;",
+                "CREATE TABLE nn1 (x INT);",
+                "ALTER TABLE nn1 ADD CONSTRAINT xx NOT NULL x;",
+                "ALTER TABLE nn1 ALTER x DROP NOT NULL;",
+                "ALTER TABLE nn1 ALTER x SET NOT NULL;",
+                "CREATE TABLE nn5 (a INT NOT NULL, b INT, c INT PRIMARY KEY);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT conrelid::regclass, conname, contype FROM pg_constraint WHERE conrelid IN ('nn1'::regclass, 'nn2'::regclass, 'nn3'::regclass, 'nn4'::regclass) ORDER BY conrelid::regclass::text, conname;",
+                    expected: Expected::Rows {
+                        columns: &[Column("conrelid", REGCLASS), Column("conname", NAME), Column("contype", CHAR)],
+                        rows: &[
+                            &[T("nn1"), T("nn1_x_not_null"), T("n")],
+                            &[T("nn2"), T("keep"), T("n")],
+                            &[T("nn2"), T("nn2_pkey"), T("p")],
+                            &[T("nn3"), T("nn1_a_not_null"), T("n")],
+                            &[T("nn3"), T("nn1_id_not_null"), T("n")],
+                            &[T("nn4"), T("nn1_a_not_null"), T("n")],
+                            &[T("nn4"), T("nn1_id_not_null"), T("n")],
+                            &[T("nn4"), T("nn1_pkey"), T("p")],
+                        ],
+                        tag: "SELECT 8",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE nn5 ADD CONSTRAINT other NOT NULL a;",
+                    expected: Expected::Error(Diagnostic { code: "55000", message: r#"cannot create not-null constraint "other" on column "a" of table "nn5""#, detail: r#"A not-null constraint named "nn5_a_not_null" already exists for this column."#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE nn5 ADD CONSTRAINT bnn NOT NULL b;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE nn5 RENAME CONSTRAINT bnn TO bnn2;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT conname FROM pg_constraint WHERE conrelid = 'nn5'::regclass AND contype = 'n' ORDER BY 1;",
+                    expected: Expected::Rows {
+                        columns: &[Column("conname", NAME)],
+                        rows: &[
+                            &[T("bnn2")],
+                            &[T("nn5_a_not_null")],
+                            &[T("nn5_c_not_null")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE nn5 DROP CONSTRAINT nn5_c_not_null;",
+                    expected: Expected::Error(Diagnostic { code: "42P16", message: r#"column "c" is in a primary key"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ALTER TABLE nn5 DROP CONSTRAINT bnn2;",
+                    expected: Expected::Tag("ALTER TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT attname, attnotnull FROM pg_attribute WHERE attrelid = 'nn5'::regclass AND attnum > 0 ORDER BY attnum;",
+                    expected: Expected::Rows {
+                        columns: &[Column("attname", NAME), Column("attnotnull", BOOL)],
+                        rows: &[
+                            &[T("a"), T("t")],
+                            &[T("b"), T("f")],
+                            &[T("c"), T("t")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
     ]);
 }

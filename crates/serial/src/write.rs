@@ -427,6 +427,8 @@ pub struct ColumnFields<'a> {
     pub hidden_system: bool,
     /// Whether the column is an identity column, `a` for GENERATED ALWAYS and `d` for BY DEFAULT, or 0.
     pub identity: u8,
+    /// The name of the column's NOT NULL constraint when it is not the one Postgres derives, or empty.
+    pub not_null_name: &'a [u8],
 }
 
 /// IndexFields is a secondary index of a TableSchema message, whose columns are positions in the columns.
@@ -519,13 +521,21 @@ fn write_columns(b: &mut Builder, s: &SchemaFields<'_>) -> u32 {
         let on_update = b.create_string(c.on_update);
         let sql_type = b.create_string(c.sql_type);
         let name = b.create_string(c.name);
-        b.start_object(if c.identity == 0 { 17 } else { 21 });
+        let not_null_name = if c.not_null_name.is_empty() { 0 } else { b.create_string(c.not_null_name) };
+        b.start_object(if not_null_name != 0 {
+            22
+        } else if c.identity != 0 {
+            21
+        } else {
+            17
+        });
         b.add_offset(0, name);
         b.add_offset(1, sql_type);
         b.add_offset(2, default);
         b.add_offset(3, comment);
         b.add_i16(4, i as i16, 0);
         b.add_u8(20, c.identity, 0);
+        b.add_offset(21, not_null_name);
         b.add_u64(5, c.tag, 0);
         b.add_u8(6, c.encoding, 0);
         b.add_bool(7, c.primary_key, false);

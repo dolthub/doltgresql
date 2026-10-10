@@ -74,7 +74,7 @@ These came from the owner and should carry over unchanged, apart from swapping "
 - **Storage format extensions.** Postgres metadata that Go's formats lack goes into optional fields written only when
   present, so an old Go reader fails only on data that uses the new feature. When no such field fits, encode it Go's
   way and record the gap.
-- **Tests.** Every check becomes a kept test. Expectations come from a real Postgres 15, recorded by tooling and never
+- **Tests.** Every check becomes a kept test. Expectations come from a real Postgres 18, recorded by tooling and never
   written by hand. A known divergence stays as a skipped test with a reason, never deleted. New tests go after every
   existing test in a file.
 - **Process.** Commit locally as you go (one capitalized past-tense subject line, Oxford commas, no body, no agent

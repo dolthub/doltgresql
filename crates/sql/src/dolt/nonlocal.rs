@@ -84,6 +84,7 @@ pub fn table(ctx: &mut Ctx<'_>) -> Result<TableDef> {
             mysql_type: COLUMN_TYPE.into(),
             comment: String::new(),
             identity: 0,
+            not_null_name: String::new(),
             legacy_array: false,
         })
         .collect();

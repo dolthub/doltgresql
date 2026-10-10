@@ -23,10 +23,12 @@ use pg_query::{Node, NodeEnum};
 
 use crate::Outcome;
 use crate::catalog::table::{Check, HIDDEN_BASE, IndexDef, Primary, TableDef};
-use crate::ddl::{TableParts, check_column, choose_relation_name, constraint_type, expression_text, new_index};
+use crate::ddl::{
+    TableParts, check_column, choose_relation_name, constraint_type, expression_text, new_index, stored_not_null_name,
+};
 use crate::dml::{parse_expression, table_scope, write_rows};
 use crate::error::{ErrorObjects, PgError, Result, code};
-use crate::expr::{Binder, Expr, Scope, assign, coerce, resolve_type_name};
+use crate::expr::{Binder, Expr, Scope, assign, coerce, node_name, resolve_type_name};
 use crate::query::{Ctx, scan};
 use crate::types::Value;
 
@@ -236,18 +238,7 @@ impl Ctx<'_> {
             }
             AlterTableType::AtSetNotNull => {
                 let i = self.column_index(&alteration.table, &cmd.name)?;
-                if self.rows(alteration)?.iter().any(|r| r[i].is_null()) {
-                    let table = &alteration.table;
-                    return Err(PgError {
-                        objects: table_objects(table, Some(&cmd.name), None),
-                        ..PgError::new(
-                            code::NOT_NULL_VIOLATION,
-                            format!("column \"{}\" of relation \"{}\" contains null values", cmd.name, table.name),
-                        )
-                    });
-                }
-                alteration.table.columns[i].nullable = false;
-                Ok(())
+                self.set_not_null(alteration, i)
             }
             AlterTableType::AtDropNotNull => {
                 let i = self.column_index(&alteration.table, &cmd.name)?;
@@ -258,6 +249,7 @@ impl Ctx<'_> {
                     ));
                 }
                 alteration.table.columns[i].nullable = true;
+                alteration.table.columns[i].not_null_name = String::new();
                 Ok(())
             }
             AlterTableType::AtAlterColumnType => self.alter_column_type(alteration, cmd),
@@ -660,6 +652,34 @@ impl Ctx<'_> {
                 alteration.foreign.push(constraint.clone());
                 Ok(())
             }
+            ConstrType::ConstrNotnull => {
+                for key in constraint.keys.iter().filter_map(node_name) {
+                    let i = self.column_index(&alteration.table, key)?;
+                    let table = &alteration.table;
+                    if !table.columns[i].nullable {
+                        let existing = table.not_null_name(&table.columns[i]);
+                        if constraint.conname.is_empty() || constraint.conname == existing {
+                            continue;
+                        }
+                        return Err(PgError {
+                            detail: Some(format!(
+                                "A not-null constraint named \"{existing}\" already exists for this column."
+                            )),
+                            ..PgError::new(
+                                code::OBJECT_NOT_IN_PREREQUISITE_STATE,
+                                format!(
+                                    "cannot create not-null constraint \"{}\" on column \"{key}\" of table \"{}\"",
+                                    constraint.conname, table.name
+                                ),
+                            )
+                        });
+                    }
+                    self.set_not_null(alteration, i)?;
+                    let table = &mut alteration.table;
+                    table.columns[i].not_null_name = stored_not_null_name(&table.name, key, &constraint.conname);
+                }
+                Ok(())
+            }
             other => Err(PgError::unsupported(format!("ADD CONSTRAINT {other:?}"))),
         }
     }
@@ -873,12 +893,41 @@ impl Ctx<'_> {
             alteration.rebuild = true;
             return Ok(());
         }
+        let table = &mut alteration.table;
+        if let Some(i) = table.columns.iter().position(|c| !c.nullable && table.not_null_name(c) == name) {
+            if table.columns[i].primary_key {
+                return Err(PgError::new(
+                    code::INVALID_TABLE_DEFINITION,
+                    format!("column \"{}\" is in a primary key", table.columns[i].name),
+                ));
+            }
+            table.columns[i].nullable = true;
+            table.columns[i].not_null_name = String::new();
+            return Ok(());
+        }
         let message = format!("constraint \"{name}\" of relation \"{}\" does not exist", alteration.table.name);
         if missing_ok {
             self.session.notice(PgError::notice("00000", format!("{message}, skipping")));
             return Ok(());
         }
         Err(PgError::new(code::UNDEFINED_OBJECT, message))
+    }
+
+    /// set_not_null makes a column NOT NULL, failing as Postgres does when a row holds NULL in it.
+    fn set_not_null(&mut self, alteration: &mut Alteration, i: usize) -> Result<()> {
+        if self.rows(alteration)?.iter().any(|r| r[i].is_null()) {
+            let table = &alteration.table;
+            let name = &table.columns[i].name;
+            return Err(PgError {
+                objects: table_objects(table, Some(name), None),
+                ..PgError::new(
+                    code::NOT_NULL_VIOLATION,
+                    format!("column \"{name}\" of relation \"{}\" contains null values", table.name),
+                )
+            });
+        }
+        alteration.table.columns[i].nullable = false;
+        Ok(())
     }
 
     /// finish_alteration writes the altered table: its schema alone, or a rebuilt table with its rows.
@@ -957,6 +1006,18 @@ impl Ctx<'_> {
                         format!("relation \"{}\" already exists", stmt.newname),
                     ));
                 }
+                let table = &mut alteration.table;
+                let primary = !table.key_columns.is_empty() && table.primary.name.is_empty();
+                if primary || table.columns.iter().any(|c| !c.nullable && c.not_null_name.is_empty()) {
+                    let names: Vec<String> = table.columns.iter().map(|c| table.not_null_name(c)).collect();
+                    for (column, name) in table.columns.iter_mut().zip(names).filter(|(c, _)| !c.nullable) {
+                        column.not_null_name = name;
+                    }
+                    if primary {
+                        table.primary.name = table.primary_name();
+                    }
+                    self.finish_alteration(alteration)?;
+                }
                 let fks = self.foreign_keys()?;
                 let address = self.txn.root.table(self.db, &schema, &old)?;
                 self.txn.root.put_table(self.db, &schema, &old, None)?;
@@ -981,7 +1042,11 @@ impl Ctx<'_> {
                         format!("column \"{}\" of relation \"{}\" already exists", stmt.newname, alteration.table.name),
                     ));
                 }
-                alteration.table.columns[i].name = stmt.newname.clone();
+                let table = &mut alteration.table;
+                if !table.columns[i].nullable {
+                    table.columns[i].not_null_name = table.not_null_name(&table.columns[i]);
+                }
+                table.columns[i].name = stmt.newname.clone();
                 for check in &mut alteration.table.checks {
                     check.expression = rename_in_expression(&check.expression, &stmt.subname, &stmt.newname)?;
                 }
@@ -1015,6 +1080,11 @@ impl Ctx<'_> {
                 } else if !table.key_columns.is_empty() && stmt.subname == table.primary_name() {
                     let default = stmt.newname == format!("{}_pkey", table.name);
                     table.primary.name = if default { String::new() } else { stmt.newname.clone() };
+                } else if let Some(i) =
+                    table.columns.iter().position(|c| !c.nullable && table.not_null_name(c) == stmt.subname)
+                {
+                    table.columns[i].not_null_name =
+                        stored_not_null_name(&table.name, &table.columns[i].name, &stmt.newname);
                 } else {
                     return Err(PgError::new(
                         code::UNDEFINED_OBJECT,

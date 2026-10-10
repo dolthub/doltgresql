@@ -228,6 +228,7 @@ fn rewrite_schema(message: Message<'_>) -> Vec<u8> {
                     hidden: c.hidden,
                     hidden_system: c.hidden_system,
                     identity: c.identity,
+                    not_null_name: c.not_null_name,
                 }
             })
             .collect(),

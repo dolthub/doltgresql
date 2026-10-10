@@ -53,6 +53,7 @@ fn dolt_schemas_schema() -> Vec<u8> {
         hidden: false,
         hidden_system: false,
         identity: 0,
+        not_null_name: b"",
     };
     write_schema(&SchemaFields {
         columns: vec![

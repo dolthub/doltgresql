@@ -231,6 +231,7 @@ impl TableParts {
             mysql_type: String::new(),
             comment: String::new(),
             identity: 0,
+            not_null_name: String::new(),
             legacy_array: false,
         };
         check_constraint_attributes(&def.constraints)?;
@@ -242,8 +243,14 @@ impl TableParts {
                 | ConstrType::ConstrAttrNotDeferrable
                 | ConstrType::ConstrAttrImmediate
                 | ConstrType::ConstrAttrDeferred => {}
-                ConstrType::ConstrNotnull => column.nullable = false,
-                ConstrType::ConstrNull => column.nullable = true,
+                ConstrType::ConstrNotnull => {
+                    column.nullable = false;
+                    column.not_null_name = stored_not_null_name(table, &column.name, &constraint.conname);
+                }
+                ConstrType::ConstrNull => {
+                    column.nullable = true;
+                    column.not_null_name = String::new();
+                }
                 ConstrType::ConstrPrimary => {
                     if !self.primary_key.is_empty() {
                         return Err(multiple_primary_keys(table, constraint.location));
@@ -340,6 +347,13 @@ impl TableParts {
                 let expr = constraint.raw_expr.as_deref().ok_or_else(|| PgError::internal("an empty CHECK"))?;
                 self.checks.push((constraint.conname.clone(), expr.clone()));
             }
+            ConstrType::ConstrNotnull => {
+                for key in self.key_columns(constraint)? {
+                    let column = &mut self.columns[key];
+                    column.nullable = false;
+                    column.not_null_name = stored_not_null_name(table, &column.name, &constraint.conname);
+                }
+            }
             ConstrType::ConstrUnique => {
                 let keys = self.key_columns(constraint)?;
                 self.uniques.push((constraint.conname.clone(), keys, deferral(constraint)));
@@ -368,6 +382,31 @@ impl TableParts {
 fn primary(table: &str, name: &str, (deferrable, initially_deferred): Deferral) -> Primary {
     let name = if name == format!("{table}_pkey") { String::new() } else { name.to_string() };
     Primary { name, deferrable, initially_deferred }
+}
+
+/// name_not_nulls names the NOT NULL constraint of each column definition among table elements, by the name that
+/// `name` gives for the column.
+fn name_not_nulls(elements: &mut [Node], name: impl Fn(&str) -> Option<String>) {
+    for element in elements {
+        let Some(NodeEnum::ColumnDef(def)) = element.node.as_mut() else { continue };
+        let Some(name) = name(&def.colname) else { continue };
+        for constraint in &mut def.constraints {
+            if let Some(NodeEnum::Constraint(constraint)) = constraint.node.as_mut()
+                && constraint_type(constraint) == ConstrType::ConstrNotnull
+            {
+                constraint.conname = name.clone();
+            }
+        }
+    }
+}
+
+/// stored_not_null_name returns the stored name of a column's NOT NULL constraint with a name, which is empty when the
+/// name is the one Postgres derives from the table and column names.
+pub(crate) fn stored_not_null_name(table: &str, column: &str, name: &str) -> String {
+    match name == make_object_name(table, column, "not_null") {
+        true => String::new(),
+        false => name.to_string(),
+    }
 }
 
 /// serial_type returns the integer type of a serial pseudo-type name, or None for any other type.
@@ -634,11 +673,14 @@ impl Ctx<'_> {
         }
         let parsed = pg_query::parse(&format!("CREATE TABLE liked ({})", definitions.join(", ")), 0)
             .map_err(PgError::internal)?;
-        let Some(NodeEnum::CreateStmt(liked)) =
+        let Some(NodeEnum::CreateStmt(mut liked)) =
             parsed.protobuf.stmts.into_iter().next().and_then(|s| s.stmt).and_then(|s| s.node)
         else {
             return Err(PgError::internal("the columns of LIKE"));
         };
+        name_not_nulls(&mut liked.table_elts, |name| {
+            table.columns.iter().find(|c| c.name == name).map(|c| table.not_null_name(c))
+        });
         Ok(liked.table_elts)
     }
 
@@ -653,7 +695,8 @@ impl Ctx<'_> {
             _ => None,
         }) {
             let parent = self.resolve_table(relation).map_err(|err| PgError { position: None, ..err })?;
-            for column in parent.columns {
+            let names: Vec<String> = parent.columns.iter().map(|c| parent.not_null_name(c)).collect();
+            for (column, name) in parent.columns.into_iter().zip(names) {
                 match columns.iter_mut().find(|c| c.name == column.name) {
                     Some(existing) => {
                         self.session.notice(PgError::notice(
@@ -661,9 +704,12 @@ impl Ctx<'_> {
                             format!("merging multiple inherited definitions of column \"{}\"", column.name),
                         ));
                         type_conflict("inherited column", &column.name, existing.ty, column.ty)?;
+                        if existing.nullable && !column.nullable {
+                            existing.not_null_name = name;
+                        }
                         existing.nullable &= column.nullable;
                     }
-                    None => columns.push(ColumnDef { primary_key: false, ..column }),
+                    None => columns.push(ColumnDef { primary_key: false, not_null_name: name, ..column }),
                 }
             }
             checks.extend(
@@ -686,6 +732,7 @@ impl Ctx<'_> {
             return Err(PgError::internal("the inherited columns"));
         };
         let mut elements = inherited.table_elts;
+        name_not_nulls(&mut elements, |name| columns.iter().find(|c| c.name == name).map(|c| c.not_null_name.clone()));
         let mut local = Vec::new();
         for element in &create.table_elts {
             let Some(NodeEnum::ColumnDef(def)) = element.node.as_ref() else {
@@ -982,6 +1029,7 @@ impl Ctx<'_> {
                     mysql_type: String::new(),
                     comment: String::new(),
                     identity: 0,
+                    not_null_name: String::new(),
                     legacy_array: false,
                 }
             })
@@ -1505,6 +1553,7 @@ impl Ctx<'_> {
                 mysql_type: String::new(),
                 comment: String::new(),
                 identity: 0,
+                not_null_name: String::new(),
                 legacy_array: false,
             });
         }

@@ -53,6 +53,9 @@ pub struct ColumnDef {
     /// Whether the column is an identity column, `a` for GENERATED ALWAYS and `d` for BY DEFAULT, or 0, as
     /// pg_attribute's attidentity says.
     pub identity: u8,
+    /// The name of the column's NOT NULL constraint when it is not the one Postgres derives from the table and column
+    /// names, which is empty otherwise.
+    pub not_null_name: String,
     /// Whether the column's array type has the version that older versions wrote, which cannot hold multidimensional
     /// values until ALTER COLUMN TYPE upgrades it.
     pub legacy_array: bool,
@@ -290,6 +293,7 @@ impl TableDef {
                 },
                 comment: String::from_utf8_lossy(c.comment).into_owned(),
                 identity: c.identity,
+                not_null_name: String::from_utf8_lossy(c.not_null_name).into_owned(),
                 legacy_array,
             };
             if c.hidden_system && c.is_virtual {
@@ -501,6 +505,15 @@ impl TableDef {
         if self.primary.name.is_empty() { format!("{}_pkey", self.name) } else { self.primary.name.clone() }
     }
 
+    /// not_null_name returns the name of a column's NOT NULL constraint, which is the stored one or the one Postgres
+    /// derives from the table and column names.
+    pub fn not_null_name(&self, column: &ColumnDef) -> String {
+        match column.not_null_name.is_empty() {
+            true => crate::ddl::make_object_name(&self.name, &column.name, "not_null"),
+            false => column.not_null_name.clone(),
+        }
+    }
+
     /// schema_message writes the table's Dolt schema.
     pub fn schema_message(&self) -> Result<Vec<u8>> {
         schema_message(
@@ -705,6 +718,7 @@ pub fn schema_message(
             hidden: false,
             hidden_system: is_hidden,
             identity: c.identity,
+            not_null_name: c.not_null_name.as_bytes(),
         })
         .collect();
     let stored = |i: usize| i.checked_sub(HIDDEN_BASE).map_or(i, |k| columns.len() + k) as u16;
