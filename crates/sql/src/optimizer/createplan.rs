@@ -294,6 +294,7 @@ fn window_call(
 fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Vec<Slot>) {
     let (plan, layout) = match &path.kind {
         PathKind::SeqScan | PathKind::Lookup(_) => create_scan_plan(root, path.parent),
+        PathKind::SubqueryScan(subplan) => create_subqueryscan_plan(root, path.parent, *subplan),
         PathKind::Result(_) if path.pathtarget.is_some() => {
             let (plan, layout) = create_upper_plan(root, path);
             return (fix_alternative_subplans(root, plan, path.rows), layout);
@@ -513,6 +514,16 @@ fn create_scan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize) -> (Plan, Vec<Sl
         }
         RteKind::Subquery(..) | RteKind::Join(_) => unreachable!("only base relations are scanned"),
     }
+}
+
+/// create_subqueryscan_plan makes the plan that reads a subquery relation's rows from the plan of one of its
+/// subquery's final paths and tests the restrictions that the subquery did not take, as Postgres' function of the
+/// same name does.
+fn create_subqueryscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, subplan: usize) -> (Plan, Vec<Slot>) {
+    let scan_clauses = order_qual_clauses(root, root.rels[rel].baserestrictinfo.clone());
+    let plan = root.rels[rel].subplans[subplan].plan.clone();
+    let layout = base_slots(rel, plan.width());
+    (filtered(root, plan, &scan_clauses, &layout), layout)
 }
 
 /// create_indexscan_plan makes the plan of a scan of an index, reading the ranges that its index clauses give and

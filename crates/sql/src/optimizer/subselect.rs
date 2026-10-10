@@ -350,7 +350,7 @@ pub fn has_sublink(e: &Expr) -> bool {
 /// DISTINCT, ORDER BY, and a positive or NULL constant LIMIT, unless it has aggregates, grouping sets, windows,
 /// set-returning functions, HAVING, or OFFSET, returning whether it did, as Postgres' simplify_EXISTS_query does.
 pub fn simplify_exists_query(query: &mut Query) -> bool {
-    if query.has_aggs()
+    if query.has_aggs
         || query.grouping_sets.is_some()
         || !query.window_funcs.is_empty()
         || !query.target_srfs.is_empty()

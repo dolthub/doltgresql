@@ -61,7 +61,8 @@ pub fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, relid: usize) {
         }
         RteKind::Plan(plan) => rel.tuples = crate::joins::estimate(root.ctx, plan),
         RteKind::Result => rel.tuples = 1.0,
-        RteKind::Subquery(..) | RteKind::Join(_) => unreachable!("only base relations are built"),
+        RteKind::Subquery(..) => {}
+        RteKind::Join(_) => unreachable!("only base relations are built"),
     }
     root.rels[relid] = rel;
     if let RteKind::Relation(_, table) = &rte.kind {

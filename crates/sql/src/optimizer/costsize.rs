@@ -889,6 +889,60 @@ pub fn set_baserel_size_estimates(root: &mut PlannerInfo<'_, '_>, rel: usize) {
     set_rel_width(root, rel);
 }
 
+/// set_subquery_size_estimates estimates the size of a subquery relation from the rows of its subquery's cheapest
+/// path and the widths of its output columns, as Postgres' function of the same name does.
+pub fn set_subquery_size_estimates(root: &mut PlannerInfo<'_, '_>, rel: usize, tuples: f64, attr_widths: Vec<f64>) {
+    root.rels[rel].tuples = tuples;
+    for (i, width) in attr_widths.into_iter().enumerate() {
+        if let Some(w) = root.rels[rel].attr_widths.get_mut(i) {
+            *w = width;
+        }
+    }
+    set_baserel_size_estimates(root, rel);
+}
+
+/// subquery_attr_widths returns the widths that a planned subquery estimated for its output columns that are plain
+/// Vars, and zero for the others, as set_subquery_size_estimates reads them.
+pub fn subquery_attr_widths(subroot: &PlannerInfo<'_, '_>) -> Vec<f64> {
+    let visible = subroot.parse.target_list.iter().filter(|tle| !tle.resjunk);
+    visible
+        .map(|tle| match &tle.expr {
+            Expr::Column(id) => match subroot.glob.node(*id) {
+                super::nodes::VarNode::Var(var) => subroot.rels[var.varno].attr_widths[var.varattno],
+                super::nodes::VarNode::PlaceHolderVar(_) => 0.0,
+            },
+            _ => 0.0,
+        })
+        .collect()
+}
+
+/// cost_subqueryscan returns the rows and costs of a scan of a subquery relation's rows from a path of its subquery,
+/// as Postgres' function of the same name does: the subquery path's costs, and those of testing the relation's
+/// restrictions and computing its target unless there are none and the target is the subquery's columns.
+pub fn cost_subqueryscan(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: &Path,
+    trivial_pathtarget: bool,
+) -> (f64, Costs) {
+    let baserel = &root.rels[rel];
+    let qpquals = &baserel.baserestrictinfo;
+    let rows = clamp_row_est(subpath.rows * clauselist_selectivity(root, qpquals, 0, JoinType::Inner, None));
+    let (mut startup_cost, mut total_cost) = (subpath.startup_cost, subpath.total_cost);
+    if qpquals.is_empty() && trivial_pathtarget {
+        return (rows, (subpath.disabled_nodes, startup_cost, total_cost));
+    }
+    let qpqual_cost = get_restriction_qual_cost(root, rel, None);
+    let mut startup = qpqual_cost.startup;
+    let cpu_per_tuple = CPU_TUPLE_COST + qpqual_cost.per_tuple;
+    let mut run_cost = cpu_per_tuple * subpath.rows;
+    startup += baserel.reltarget.cost.startup;
+    run_cost += baserel.reltarget.cost.per_tuple * rows;
+    startup_cost += startup;
+    total_cost += startup + run_cost;
+    (rows, (subpath.disabled_nodes, startup_cost, total_cost))
+}
+
 /// set_rel_width estimates the width of a base relation's rows from the columns and PlaceHolderVars of its target,
 /// as Postgres' function of the same name does.
 pub fn set_rel_width(root: &mut PlannerInfo<'_, '_>, rel: usize) {
@@ -896,6 +950,9 @@ pub fn set_rel_width(root: &mut PlannerInfo<'_, '_>, rel: usize) {
     for e in root.rels[rel].reltarget.exprs.clone() {
         let Expr::Column(id) = e else { continue };
         tuple_width += match root.glob.node(id) {
+            super::nodes::VarNode::Var(var) if root.rels[rel].attr_widths[var.varattno] > 0.0 => {
+                root.rels[rel].attr_widths[var.varattno]
+            }
             super::nodes::VarNode::Var(var) => {
                 let (oid, modifier) = match root.parse.rte(var.varno).table() {
                     Some(table) => (Some(table.columns[var.varattno].ty.oid), table.columns[var.varattno].ty.modifier),

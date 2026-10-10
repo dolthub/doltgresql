@@ -703,3 +703,31 @@ pub fn create_append_path(root: &mut PlannerInfo<'_, '_>, rel: usize, subpaths: 
         (disabled_nodes, startup_cost, total_cost),
     )
 }
+
+/// create_subqueryscan_path returns the path of a scan of a subquery relation's rows from one of its subquery's final
+/// paths, by its position among the relation's `subplans`, as Postgres' function of the same name does.
+pub fn create_subqueryscan_path(
+    root: &PlannerInfo<'_, '_>,
+    rel: usize,
+    subplan: usize,
+    trivial_pathtarget: bool,
+    pathkeys: Vec<PkId>,
+) -> Rc<Path> {
+    let parent = &root.rels[rel];
+    let subpath = &parent.subplans[subplan].path;
+    let (rows, (disabled_nodes, startup_cost, total_cost)) =
+        super::costsize::cost_subqueryscan(root, rel, subpath, trivial_pathtarget);
+    Rc::new(Path {
+        kind: PathKind::SubqueryScan(subplan),
+        parent: rel,
+        relids: parent.relids.clone(),
+        param: parent.lateral_relids.clone(),
+        pathkeys,
+        rows,
+        width: parent.reltarget.width,
+        disabled_nodes,
+        startup_cost,
+        total_cost,
+        pathtarget: None,
+    })
+}

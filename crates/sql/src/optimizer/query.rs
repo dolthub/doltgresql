@@ -62,6 +62,7 @@ pub fn unbind(glob: &mut PlannerGlobal, ctx: &mut Ctx<'_>, plan: Plan) -> Query 
     if let Some((groups, aggregates, sets)) = upper.aggregation {
         group_exprs = groups.into_iter().map(|g| replace(&g, &meaning)).collect::<Vec<Expr>>();
         query.aggregates = aggregates.into_iter().map(|call| map_call(call, &meaning)).collect();
+        query.has_aggs = !query.aggregates.is_empty();
         meaning = group_exprs.clone();
         meaning.extend((0..query.aggregates.len()).map(Expr::AggRef));
         if sets.is_some() {
@@ -150,6 +151,13 @@ pub fn unbind(glob: &mut PlannerGlobal, ctx: &mut Ctx<'_>, plan: Plan) -> Query 
     query
 }
 
+impl Upper {
+    /// is_empty reports whether the upper clauses peeled off nothing below the projection of the select list.
+    fn is_empty(&self) -> bool {
+        self.srfs.is_empty() && self.windows.is_empty() && self.having.is_none() && self.aggregation.is_none()
+    }
+}
+
 /// peel returns a SELECT's FROM and WHERE plan with the upper clauses above it, or None when the plan has no layers
 /// above a projection of its select list.
 fn peel(plan: Plan) -> (Plan, Option<Upper>) {
@@ -169,7 +177,7 @@ fn peel(plan: Plan) -> (Plan, Option<Upper>) {
         plan = *input;
     }
     plan = match plan {
-        Plan::Sort { input, keys } if matches!(*input, Plan::Distinct { .. } | Plan::Project { .. }) => {
+        Plan::Sort { input, keys } if !matches!(*input, Plan::Window { .. }) => {
             upper.sort = keys;
             *input
         }
@@ -189,12 +197,13 @@ fn peel(plan: Plan) -> (Plan, Option<Upper>) {
         other => other,
     };
     let Plan::Project { input, exprs } = plan else {
-        if upper.limit.is_some() || !upper.sort.is_empty() || upper.distinct.is_some() {
-            let width = plan.width();
-            upper.target = (0..width).map(Expr::Column).collect();
-            return peel_from(plan, upper);
-        }
-        return (plan, None);
+        let width = plan.width();
+        upper.target = (0..width).map(Expr::Column).collect();
+        let peeled = upper.limit.is_some() || !upper.sort.is_empty() || upper.distinct.is_some();
+        return match peel_from(plan, upper) {
+            (plan, Some(upper)) if !peeled && upper.is_empty() => (plan, None),
+            peeled => peeled,
+        };
     };
     upper.target = exprs;
     peel_from(*input, upper)

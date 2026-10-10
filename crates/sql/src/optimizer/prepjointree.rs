@@ -123,11 +123,20 @@ fn pull_up_simple_subquery(glob: &mut PlannerGlobal, parse: &mut Query, varno: u
 }
 
 /// is_simple_subquery reports whether a subquery can be pulled up into its parent, as Postgres' function of the same
-/// name decides: the subqueries that Doltgres' binder leaves unplanned have no grouping, sorting, set operations, or
-/// LIMIT, and the planner pulls one up unless its output runs a volatile function, or has a subquery, whose plan reads
-/// its enclosing rows by position.
+/// name decides: it has no aggregates, windows, set-returning functions, grouping, HAVING, ORDER BY, DISTINCT, or
+/// LIMIT, and its output runs no volatile function.
 fn is_simple_subquery(glob: &PlannerGlobal, subquery: &Query) -> bool {
-    !subquery.target_list.iter().any(|tle| contain_volatile_functions(glob, &tle.expr) || contain_subplans(&tle.expr))
+    !(subquery.has_aggs
+        || !subquery.window_funcs.is_empty()
+        || !subquery.target_srfs.is_empty()
+        || !subquery.group_clause.is_empty()
+        || subquery.grouping_sets.is_some()
+        || subquery.having_qual.is_some()
+        || !subquery.sort_clause.is_empty()
+        || !subquery.distinct_clause.is_empty()
+        || subquery.limit_offset.is_some()
+        || subquery.limit_count.is_some())
+        && !subquery.target_list.iter().any(|tle| contain_volatile_functions(glob, &tle.expr))
 }
 
 /// pull_up_simple_values replaces the query's only relation, a VALUES list of one row, by its expressions, as

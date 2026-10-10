@@ -61,7 +61,7 @@ pub fn grouping_planner(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) {
     root.limit_tuples = match !parse.group_clause.is_empty()
         || parse.grouping_sets.is_some()
         || !parse.distinct_clause.is_empty()
-        || parse.has_aggs()
+        || parse.has_aggs
         || !parse.window_funcs.is_empty()
         || !parse.target_srfs.is_empty()
         || root.has_having_qual
@@ -83,7 +83,7 @@ pub fn grouping_planner(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) {
     };
     let parse = &root.parse;
     let have_grouping =
-        !parse.group_clause.is_empty() || parse.grouping_sets.is_some() || parse.has_aggs() || root.has_having_qual;
+        !parse.group_clause.is_empty() || parse.grouping_sets.is_some() || parse.has_aggs || root.has_having_qual;
     let scanjoin_target = match have_grouping {
         true => Rc::new(make_group_input_target(root, &final_target)),
         false => grouping_target.clone(),
@@ -351,7 +351,7 @@ fn make_grouping_rel(root: &mut PlannerInfo<'_, '_>, input_rel: usize, target: R
 /// row or none for each grouping set, as Postgres' function of the same name does.
 fn is_degenerate_grouping(root: &PlannerInfo<'_, '_>) -> bool {
     (root.has_having_qual || root.parse.grouping_sets.is_some())
-        && !root.parse.has_aggs()
+        && !root.parse.has_aggs
         && root.parse.group_clause.is_empty()
 }
 
@@ -411,7 +411,7 @@ fn add_paths_to_grouping_rel(
                 else {
                     continue;
                 };
-                let new_path = if root.parse.has_aggs() {
+                let new_path = if root.parse.has_aggs {
                     let strategy = match root.parse.group_clause.is_empty() {
                         true => AggStrategy::Plain,
                         false => AggStrategy::Sorted,
@@ -643,7 +643,7 @@ fn create_final_distinct_paths(root: &mut PlannerInfo<'_, '_>, input_rel: usize,
     let distinct_exprs = tlist::get_sortgrouplist_exprs(&root.parse.distinct_clause, &root.parse.target_list);
     let num_distinct_rows = match root.parse.group_clause.is_empty()
         && root.parse.grouping_sets.is_none()
-        && !root.parse.has_aggs()
+        && !root.parse.has_aggs
         && !root.has_having_qual
     {
         true => super::selfuncs::estimate_num_groups(root, &distinct_exprs, cheapest_input_path.rows, None),

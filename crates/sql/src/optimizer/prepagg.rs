@@ -18,7 +18,54 @@
 
 use super::PlannerInfo;
 use super::costsize::{CPU_OPERATOR_COST, QualCost, cost_qual_eval_node};
+use super::nodes::{PlannerGlobal, Query};
+use crate::expr::Expr;
 use crate::functions::aggregate::{AGGREGATES, AggCall};
+
+/// preprocess_aggrefs keeps the aggregate calls that the query's expressions read, in the order it first reads them,
+/// sharing one call among identical ones, and renumbers its reads of them, as Postgres' function of the same name
+/// gathers the query's AggInfos with preprocess_aggref.
+pub fn preprocess_aggrefs(glob: &PlannerGlobal, parse: &mut Query) {
+    if parse.aggregates.is_empty() {
+        return;
+    }
+    let mut kept: Vec<AggCall> = Vec::new();
+    let mut mapping: Vec<Option<usize>> = vec![None; parse.aggregates.len()];
+    let aggregates = std::mem::take(&mut parse.aggregates);
+    for e in parse.upper_exprs_mut() {
+        e.visit(&mut |x| {
+            let Expr::AggRef(k) = x else { return };
+            if mapping[*k].is_none() {
+                mapping[*k] = Some(find_compatible_agg(glob, &kept, &aggregates[*k]).unwrap_or_else(|| {
+                    kept.push(aggregates[*k].clone());
+                    kept.len() - 1
+                }));
+            }
+        });
+    }
+    for e in parse.upper_exprs_mut() {
+        *e = renumber_aggrefs(std::mem::replace(e, Expr::SubqueryValue), &mapping);
+    }
+    parse.aggregates = kept;
+}
+
+/// find_compatible_agg returns the position of a kept aggregate call identical to another, which the query computes
+/// once, unless it runs a volatile function, as Postgres' function of the same name does.
+fn find_compatible_agg(glob: &PlannerGlobal, kept: &[AggCall], call: &AggCall) -> Option<usize> {
+    let volatile = call.args.iter().chain(&call.filter).any(|e| super::clauses::contain_volatile_functions(glob, e));
+    match volatile {
+        true => None,
+        false => kept.iter().position(|k| k == call),
+    }
+}
+
+/// renumber_aggrefs rewrites each aggregate reference of an expression to the position its call keeps.
+fn renumber_aggrefs(e: Expr, mapping: &[Option<usize>]) -> Expr {
+    match e {
+        Expr::AggRef(k) => Expr::AggRef(mapping[k].expect("a referenced aggregate")),
+        other => other.map_children(&mut |c| renumber_aggrefs(c, mapping)),
+    }
+}
 
 /// AggClauseCosts are the costs of a query's aggregate calls, as Postgres' AggClauseCosts holds them: of their
 /// transition functions and arguments for each row, of their final functions for each group, and the memory of their

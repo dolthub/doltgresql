@@ -1433,7 +1433,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             });
         };
         let mut planner = Planner { ctx: self.ctx, outer: self.outer.clone() };
-        let query = match crate::optimizer::enabled() && is_simple_subquery(select) {
+        let query = match crate::optimizer::enabled() && is_plain_select(select) {
             true => planner.plan_select(select, true)?,
             false => planner.plan_query(select)?,
         };

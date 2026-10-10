@@ -395,6 +395,9 @@ pub struct Query {
     pub jointree: FromExpr,
     pub target_list: Vec<TargetEntry>,
     pub aggregates: Vec<crate::functions::aggregate::AggCall>,
+    /// Whether the query's SELECT calls aggregates, as Postgres' hasAggs records, which stays so when planning drops
+    /// the calls that nothing reads.
+    pub has_aggs: bool,
     pub window_funcs: Vec<crate::window::WindowCall>,
     pub target_srfs: Vec<Expr>,
     pub group_clause: Vec<SortGroupClause>,
@@ -442,11 +445,6 @@ impl Query {
     pub fn upper_exprs(&self) -> Vec<Expr> {
         let mut query = self.clone();
         query.upper_exprs_mut().into_iter().map(|e| e.clone()).collect()
-    }
-
-    /// has_aggs reports whether the query calls aggregates, as Postgres' hasAggs does.
-    pub fn has_aggs(&self) -> bool {
-        !self.aggregates.is_empty()
     }
 }
 
@@ -619,6 +617,9 @@ pub struct PathTarget {
 pub enum PathKind {
     /// A sequential scan of a base relation, or the opaque plan of a non-table entry.
     SeqScan,
+    /// A scan of a subquery relation's rows that one of its final paths returns, by the path's position among the
+    /// relation's `subplans`, as Postgres' SubqueryScanPath is.
+    SubqueryScan(usize),
     /// The one row of a relation without columns, under its quals, as Postgres' GroupResultPath is.
     Result(Vec<Expr>),
     /// The rows of each of the paths in turn, where no paths make an empty relation, as Postgres' AppendPath is.
@@ -849,6 +850,29 @@ pub struct RelOptInfo {
     pub joininfo: Vec<RinfoId>,
     /// Whether an equivalence class may give the relation join clauses.
     pub has_eclass_joins: bool,
+    /// The plans of the final paths of a subquery relation, which its SubqueryScan paths read, in place of Postgres'
+    /// subroot.
+    pub subplans: Vec<SubqueryPlan>,
+}
+
+/// SubqueryPlan is one of the final paths of a subquery that the query around it reads, with its plan and the order
+/// of its rows by the subquery's output columns.
+#[derive(Clone, Debug)]
+pub struct SubqueryPlan {
+    pub path: Rc<Path>,
+    pub plan: crate::plan::Plan,
+    pub order: Vec<SubqueryOrderKey>,
+}
+
+/// SubqueryOrderKey is a pathkey of a subquery's path by the subquery's output columns: the columns that hold a
+/// member of the pathkey's class, the operator family and type that it sorts by, and its direction.
+#[derive(Clone, Debug)]
+pub struct SubqueryOrderKey {
+    pub columns: Vec<usize>,
+    pub opfamily: u32,
+    pub datatype: u32,
+    pub descending: bool,
+    pub nulls_first: bool,
 }
 
 /// AggStrategy is how an aggregation finds its groups, as Postgres' AggStrategy is: all rows in one group, a run of

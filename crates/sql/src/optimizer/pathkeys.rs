@@ -17,8 +17,9 @@
 
 use super::PlannerInfo;
 use super::equivclass::{eclass_useful_for_merging, get_eclass_for_sort_expr};
-use super::nodes::{EcId, PathKey, PkId, RinfoId};
+use super::nodes::{EcId, PathKey, PkId, RinfoId, SubqueryOrderKey, VarNode};
 use super::restrictinfo::binary_op_args;
+use crate::expr::Expr;
 use crate::plan::SortKey;
 
 /// PathKeysComparison is how the orders of two paths' rows compare, as Postgres' PathKeysComparison is.
@@ -237,4 +238,78 @@ pub fn truncate_useless_pathkeys(root: &PlannerInfo<'_, '_>, rel: usize, pathkey
 /// query's order, as Postgres' function of the same name does.
 pub fn has_useful_pathkeys(root: &PlannerInfo<'_, '_>, rel: usize) -> bool {
     !root.rels[rel].joininfo.is_empty() || root.rels[rel].has_eclass_joins || !root.query_pathkeys.is_empty()
+}
+
+/// subquery_output_order returns a subquery's pathkeys by its output columns, the half of Postgres'
+/// convert_subquery_pathkeys that reads the subquery's equivalence classes: for each pathkey, the visible columns
+/// that hold a member of its class, or the column of its sort clause for a class of a volatile expression.
+pub fn subquery_output_order(subroot: &PlannerInfo<'_, '_>, pathkeys: &[PkId]) -> Vec<SubqueryOrderKey> {
+    let tlist = &subroot.parse.target_list;
+    pathkeys
+        .iter()
+        .map(|&pk| {
+            let pathkey = &subroot.canon_pathkeys[pk];
+            let ec = &subroot.eq_classes[pathkey.pk_eclass];
+            let members: Vec<&super::nodes::EquivalenceMember> =
+                ec.ec_members.iter().map(|&em| &subroot.eq_members[em]).collect();
+            let columns = match ec.ec_has_volatile {
+                true => tlist.iter().position(|tle| tle.ressortgroupref == ec.ec_sortref).into_iter().collect(),
+                false => (0..tlist.len())
+                    .filter(|&k| !tlist[k].resjunk && members.iter().any(|em| em.em_expr == tlist[k].expr))
+                    .collect(),
+            };
+            SubqueryOrderKey {
+                columns,
+                opfamily: pathkey.pk_opfamily,
+                datatype: members.first().map_or(0, |em| em.em_datatype),
+                descending: pathkey.pk_descending,
+                nulls_first: pathkey.pk_nulls_first,
+            }
+        })
+        .collect()
+}
+
+/// convert_subquery_pathkeys returns the pathkeys of a subquery relation's rows in the query around it, from the
+/// order of a subquery's path by its output columns, as Postgres' function of the same name does: each key becomes
+/// the pathkey of the relation's column that the query's equivalence classes have, preferring the class with the
+/// most members and the one the query's order asks for next, and the order stops at a key that none represents.
+pub fn convert_subquery_pathkeys(root: &mut PlannerInfo<'_, '_>, rel: usize, order: &[SubqueryOrderKey]) -> Vec<PkId> {
+    let mut retval: Vec<PkId> = Vec::new();
+    for key in order {
+        let mut best: Option<(PkId, usize)> = None;
+        for &column in &key.columns {
+            let Some(outer_var) = find_var_for_subquery_tle(root, rel, column) else { continue };
+            let Some(outer_ec) = get_eclass_for_sort_expr(root, outer_var, &[key.opfamily], key.datatype, 0, false)
+            else {
+                continue;
+            };
+            let outer_pk = make_canonical_pathkey(root, outer_ec, key.opfamily, key.descending, key.nulls_first);
+            let mut score = root.eq_classes[outer_ec].ec_members.len() - 1;
+            if root.query_pathkeys.get(retval.len()) == Some(&outer_pk) {
+                score += 1;
+            }
+            if best.is_none_or(|(_, best_score)| score > best_score) {
+                best = Some((outer_pk, score));
+            }
+        }
+        let Some((best_pathkey, _)) = best else { break };
+        if !pathkey_is_redundant(root, best_pathkey, &retval) {
+            retval.push(best_pathkey);
+        }
+    }
+    retval
+}
+
+/// find_var_for_subquery_tle returns the Var of a subquery relation's column that the relation's target holds, as
+/// Postgres' function of the same name does.
+fn find_var_for_subquery_tle(root: &PlannerInfo<'_, '_>, rel: usize, column: usize) -> Option<Expr> {
+    root.rels[rel]
+        .reltarget
+        .exprs
+        .iter()
+        .find(|e| match e {
+            Expr::Column(id) => matches!(root.glob.node(*id), VarNode::Var(var) if var.varattno == column),
+            _ => false,
+        })
+        .cloned()
 }
