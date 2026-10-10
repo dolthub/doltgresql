@@ -875,3 +875,93 @@ pub fn create_minmaxagg_path(
     let kind = PathKind::MinMaxAgg(Box::new(super::nodes::MinMaxAggPath { mmaggregates, quals }));
     upper_path(root, rel, kind, Some(target), Vec::new(), 1.0, (disabled_nodes, startup_cost, total_cost))
 }
+
+/// create_groupingsets_path returns the path of an aggregation by grouping sets over a path's rows, in rollups that
+/// are sorted or hashed, under the HAVING conditions, as Postgres' function of the same name does: the first rollup
+/// costs an aggregation of the path's rows, each sorted rollup after the first sorted one a sort and an aggregation of
+/// them, and each other one an aggregation of them.
+pub fn create_groupingsets_path(
+    root: &mut PlannerInfo<'_, '_>,
+    rel: usize,
+    subpath: Rc<Path>,
+    having_qual: Vec<crate::expr::Expr>,
+    aggstrategy: super::nodes::AggStrategy,
+    rollups: Vec<super::nodes::RollupData>,
+    agg_costs: &super::prepagg::AggClauseCosts,
+) -> Rc<Path> {
+    use super::nodes::AggStrategy;
+    let target = Rc::new(root.rels[rel].reltarget.clone());
+    let mut aggstrategy = aggstrategy;
+    if aggstrategy == AggStrategy::Sorted && rollups.len() == 1 && rollups[0].group_clause.is_empty() {
+        aggstrategy = AggStrategy::Plain;
+    }
+    if aggstrategy == AggStrategy::Mixed && rollups.len() == 1 {
+        aggstrategy = AggStrategy::Hashed;
+    }
+    let pathkeys = match aggstrategy == AggStrategy::Sorted && rollups.len() == 1 {
+        true => root.group_pathkeys.clone(),
+        false => Vec::new(),
+    };
+    let input_width = path_target(root, &subpath).width;
+    let (mut rows, (mut disabled_nodes, mut startup_cost, mut total_cost)) = (0.0, (0, 0.0, 0.0));
+    let mut is_first_sort = true;
+    for (i, rollup) in rollups.iter().enumerate() {
+        let num_group_cols = rollup.gsets.first().map_or(0, Vec::len);
+        if i == 0 {
+            let input = (subpath.disabled_nodes, subpath.startup_cost, subpath.total_cost);
+            (rows, (disabled_nodes, startup_cost, total_cost)) = super::costsize::cost_agg(
+                root,
+                aggstrategy,
+                agg_costs,
+                num_group_cols,
+                rollup.num_groups,
+                &having_qual,
+                input,
+                subpath.rows,
+                input_width,
+            );
+            if !rollup.is_hashed {
+                is_first_sort = false;
+            }
+            continue;
+        }
+        let (agg_rows, (agg_disabled, _, agg_total)) = if rollup.is_hashed || is_first_sort {
+            let strategy = if rollup.is_hashed { AggStrategy::Hashed } else { AggStrategy::Sorted };
+            if !rollup.is_hashed {
+                is_first_sort = false;
+            }
+            super::costsize::cost_agg(
+                root,
+                strategy,
+                agg_costs,
+                num_group_cols,
+                rollup.num_groups,
+                &having_qual,
+                (0, 0.0, 0.0),
+                subpath.rows,
+                input_width,
+            )
+        } else {
+            let (sort_startup, sort_run) = super::costsize::cost_tuplesort(subpath.rows, input_width, 0.0, -1.0);
+            let sort_disabled = usize::from(!root.enables.sort);
+            super::costsize::cost_agg(
+                root,
+                AggStrategy::Sorted,
+                agg_costs,
+                num_group_cols,
+                rollup.num_groups,
+                &having_qual,
+                (sort_disabled, sort_startup, sort_startup + sort_run),
+                subpath.rows,
+                input_width,
+            )
+        };
+        disabled_nodes += agg_disabled;
+        total_cost += agg_total;
+        rows += agg_rows;
+    }
+    startup_cost += target.cost.startup;
+    total_cost += target.cost.startup + target.cost.per_tuple * rows;
+    let kind = PathKind::GroupingSets(Box::new(super::nodes::GroupingSetsPath { subpath, rollups, qual: having_qual }));
+    upper_path(root, rel, kind, Some(target), pathkeys, rows, (disabled_nodes, startup_cost, total_cost))
+}

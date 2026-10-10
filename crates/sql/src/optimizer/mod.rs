@@ -19,6 +19,7 @@
 
 mod allpaths;
 mod analyzejoins;
+mod bipartite_match;
 mod clauses;
 mod clausesel;
 mod costsize;
@@ -29,6 +30,7 @@ mod initsplan;
 mod joininfo;
 mod joinpath;
 mod joinrels;
+mod knapsack;
 mod nodefuncs;
 pub mod nodes;
 mod pathkeys;

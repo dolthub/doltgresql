@@ -332,7 +332,9 @@ fn peel_from(plan: Plan, mut upper: Upper) -> (Plan, Option<Upper>) {
 fn replace(e: &Expr, meaning: &[Expr]) -> Expr {
     match e {
         Expr::Column(c) => meaning[*c].clone(),
-        Expr::Grouping(args, locations, _) => Expr::Grouping(args.clone(), locations.clone(), None),
+        Expr::Grouping(args, locations, _) => {
+            Expr::Grouping(args.iter().map(|a| replace(a, meaning)).collect(), locations.clone(), None)
+        }
         other => other.clone().map_children(&mut |c| replace(&c, meaning)),
     }
 }

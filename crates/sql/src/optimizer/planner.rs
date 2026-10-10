@@ -15,11 +15,13 @@
 //! Postgres' optimizer/plan/planner.c: planning a query, from preparing its join tree to the paths of its upper
 //! processing: grouping and aggregation, windows, DISTINCT, ORDER BY, and LIMIT.
 
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use super::PlannerInfo;
 use super::nodes::{
-    AggStrategy, Path, PathTarget, PkId, Query, RelOptInfo, Relids, SortGroupClause, TargetEntry, UpperRelationKind,
+    AggStrategy, GroupingSetData, Path, PathTarget, PkId, Query, RelOptInfo, Relids, RollupData, SortGroupClause,
+    TargetEntry, UpperRelationKind,
 };
 use super::pathkeys::{pathkeys_contained_in, pathkeys_count_contained_in};
 use super::pathnode::{add_path, compare_fractional_path_costs, set_cheapest};
@@ -32,14 +34,29 @@ use crate::types::Value;
 const DEFAULT_LIMIT_FRACTION: f64 = 0.10;
 
 /// QpExtra is what standard_qp_callback needs besides the query, as Postgres' standard_qp_extra holds it: the windows
-/// to evaluate, in order, as the positions of their calls in the query's window calls.
+/// to evaluate, in order, as the positions of their calls in the query's window calls, and the group clauses of the
+/// first rollup of the query's grouping sets.
 struct QpExtra {
     active_windows: Vec<Vec<usize>>,
+    gset_group_clause: Option<Vec<SortGroupClause>>,
 }
 
-/// grouping_planner plans a query's join tree and then its upper processing, adding the paths of its final
-/// relation, as Postgres' function of the same name does for a query without set operations. A LIMIT's row count
-/// becomes the share of rows that the query reads.
+/// GroupingSetsData is what preprocess_grouping_sets finds of a query's grouping sets, as Postgres'
+/// grouping_sets_data holds it: the rollups that sorted aggregations compute, the sets that only hashing could, by
+/// their keys' positions among the group clauses, and their estimated groups, whether any rollup can be hashed, and
+/// the clause numbers of the group keys that cannot be.
+struct GroupingSetsData {
+    rollups: Vec<RollupData>,
+    hash_sets_idx: Vec<Vec<usize>>,
+    d_num_hash_groups: f64,
+    any_hashable: bool,
+    unhashable_refs: BTreeSet<usize>,
+    unsortable_sets: Vec<GroupingSetData>,
+}
+
+/// grouping_planner plans a query's join tree, or its set operations, and then its upper processing, adding the paths
+/// of its final relation, as Postgres' function of the same name does. A LIMIT's row count becomes the share of rows
+/// that the query reads.
 pub fn grouping_planner(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) {
     let mut tuple_fraction = tuple_fraction;
     let (mut offset_est, mut count_est) = (0i64, 0i64);
@@ -51,8 +68,11 @@ pub fn grouping_planner(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) {
         }
     }
     root.tuple_fraction = tuple_fraction;
-    if !root.parse.group_clause.is_empty() && root.parse.grouping_sets.is_none() {
-        root.processed_group_clause = preprocess_groupclause(root);
+    let mut gset_data = None;
+    if root.parse.grouping_sets.is_some() {
+        gset_data = Some(preprocess_grouping_sets(root));
+    } else if !root.parse.group_clause.is_empty() {
+        root.processed_group_clause = preprocess_groupclause(root, None);
     }
     root.processed_tlist = root.parse.target_list.clone();
     let active_windows = match root.parse.window_funcs.is_empty() {
@@ -91,7 +111,10 @@ pub fn grouping_planner(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) {
     if root.parse.has_aggs {
         super::planagg::preprocess_minmax_aggregates(root);
     }
-    let qp_extra = QpExtra { active_windows: active_windows.clone() };
+    let gset_group_clause = gset_data
+        .as_ref()
+        .map(|gd: &GroupingSetsData| gd.rollups.first().map(|r| r.group_clause.clone()).unwrap_or_default());
+    let qp_extra = QpExtra { active_windows: active_windows.clone(), gset_group_clause };
     let mut current_rel = super::query_planner(root, &mut |root| standard_qp_callback(root, &qp_extra));
     let final_target = Rc::new(tlist::create_pathtarget(root, &root.processed_tlist));
     let mut have_postponed_srfs = false;
@@ -144,7 +167,7 @@ pub fn grouping_planner(root: &mut PlannerInfo<'_, '_>, tuple_fraction: f64) {
         scanjoin_target_same_exprs,
     );
     if have_grouping {
-        current_rel = create_grouping_paths(root, current_rel, grouping_target.clone());
+        current_rel = create_grouping_paths(root, current_rel, grouping_target.clone(), gset_data.as_mut());
         if srfs {
             adjust_paths_for_srfs(root, current_rel, &mut grouping_targets);
         }
@@ -270,9 +293,15 @@ pub fn limit_needed(parse: &Query) -> bool {
 }
 
 /// preprocess_groupclause returns a query's group clauses in the order of its ORDER BY as far as it lists them, then
-/// the rest, as Postgres' function of the same name does.
-fn preprocess_groupclause(root: &PlannerInfo<'_, '_>) -> Vec<SortGroupClause> {
+/// the rest, or in the order of a grouping set's clause numbers, as Postgres' function of the same name does.
+fn preprocess_groupclause(root: &PlannerInfo<'_, '_>, force: Option<&[usize]>) -> Vec<SortGroupClause> {
     let parse = &root.parse;
+    if let Some(force) = force {
+        return force
+            .iter()
+            .map(|&r| *parse.group_clause.iter().find(|gc| gc.tle_sort_group_ref == r).expect("a group clause"))
+            .collect();
+    }
     if parse.sort_clause.is_empty() {
         return parse.group_clause.clone();
     }
@@ -294,11 +323,322 @@ fn preprocess_groupclause(root: &PlannerInfo<'_, '_>) -> Vec<SortGroupClause> {
     new_groupclause
 }
 
+/// preprocess_grouping_sets chains the query's grouping sets into rollups that sorted aggregations compute, each set
+/// of a rollup a prefix of the next, as Postgres' function of the same name does. Every Doltgres type can be sorted.
+fn preprocess_grouping_sets(root: &mut PlannerInfo<'_, '_>) -> GroupingSetsData {
+    let parse = &root.parse;
+    root.processed_group_clause = parse.group_clause.clone();
+    let unhashable_refs: BTreeSet<usize> =
+        parse.group_clause.iter().filter(|gc| !gc.hashable).map(|gc| gc.tle_sort_group_ref).collect();
+    let mut grouping_sets: Vec<Vec<usize>> = parse
+        .grouping_sets
+        .iter()
+        .flatten()
+        .map(|set| set.iter().map(|&p| parse.group_clause[p].tle_sort_group_ref).collect())
+        .collect();
+    grouping_sets.sort_by_key(Vec::len);
+    let sets = extract_rollup_sets(grouping_sets);
+    let mut gd = GroupingSetsData {
+        rollups: Vec::new(),
+        hash_sets_idx: Vec::new(),
+        d_num_hash_groups: 0.0,
+        any_hashable: false,
+        unhashable_refs,
+        unsortable_sets: Vec::new(),
+    };
+    let only_one = sets.len() == 1;
+    for current_sets in sets {
+        let sort_clause = match only_one {
+            true => root.parse.sort_clause.clone(),
+            false => Vec::new(),
+        };
+        let current_sets = reorder_grouping_sets(current_sets, &sort_clause);
+        let gs = &current_sets[0];
+        let group_clause = match gs.set.is_empty() {
+            true => Vec::new(),
+            false => preprocess_groupclause(root, Some(&gs.set)),
+        };
+        let hashable = !gs.set.is_empty() && !gs.set.iter().any(|r| gd.unhashable_refs.contains(r));
+        gd.any_hashable |= hashable;
+        let gsets = remap_to_groupclause_idx(&group_clause, &current_sets);
+        gd.rollups.push(RollupData {
+            group_clause,
+            gsets,
+            gsets_data: current_sets,
+            num_groups: 0.0,
+            hashable,
+            is_hashed: false,
+        });
+    }
+    gd
+}
+
+/// remap_to_groupclause_idx returns each grouping set as the positions of its keys among group clauses, as Postgres'
+/// function of the same name does.
+fn remap_to_groupclause_idx(group_clause: &[SortGroupClause], gsets: &[GroupingSetData]) -> Vec<Vec<usize>> {
+    let position = |r: &usize| group_clause.iter().position(|gc| gc.tle_sort_group_ref == *r).expect("a group key");
+    gsets.iter().map(|gs| gs.set.iter().map(position).collect()).collect()
+}
+
+/// extract_rollup_sets splits grouping sets, sorted by size, into the fewest chains of sets that each contain the one
+/// before, keeping the empty sets with the first chain, as Postgres' function of the same name does with a maximum
+/// matching of the graph of which sets contain which.
+fn extract_rollup_sets(grouping_sets: Vec<Vec<usize>>) -> Vec<Vec<Vec<usize>>> {
+    let num_empty = grouping_sets.iter().take_while(|s| s.is_empty()).count();
+    if num_empty == grouping_sets.len() {
+        return vec![grouping_sets];
+    }
+    let mut orig_sets: Vec<Vec<Vec<usize>>> = vec![Vec::new()];
+    let mut set_masks: Vec<BTreeSet<usize>> = vec![BTreeSet::new()];
+    let mut adjacency: Vec<Vec<usize>> = vec![Vec::new()];
+    let (mut j_size, mut j) = (0, 0);
+    for candidate in grouping_sets.into_iter().skip(num_empty) {
+        let candidate_set: BTreeSet<usize> = candidate.iter().copied().collect();
+        let i = orig_sets.len();
+        let mut dup_of = None;
+        if j_size == candidate.len() {
+            dup_of = (j..i).find(|&k| set_masks[k] == candidate_set);
+        } else if j_size < candidate.len() {
+            j_size = candidate.len();
+            j = i;
+        }
+        match dup_of {
+            Some(k) => orig_sets[k].push(candidate),
+            None => {
+                orig_sets.push(vec![candidate]);
+                adjacency.push((1..j).rev().filter(|&k| set_masks[k].is_subset(&candidate_set)).collect());
+                set_masks.push(candidate_set);
+            }
+        }
+    }
+    let num_sets = orig_sets.len() - 1;
+    let state = super::bipartite_match::bipartite_match(num_sets, num_sets, &adjacency);
+    let mut chains = vec![0; num_sets + 1];
+    let mut num_chains = 0;
+    for i in 1..=num_sets {
+        let (u, v) = (state.pair_vu[i], state.pair_uv[i]);
+        chains[i] = if u > 0 && u < i {
+            chains[u]
+        } else if v > 0 && v < i {
+            chains[v]
+        } else {
+            num_chains += 1;
+            num_chains
+        };
+    }
+    let mut results: Vec<Vec<Vec<usize>>> = vec![Vec::new(); num_chains + 1];
+    for (i, sets) in orig_sets.into_iter().enumerate().skip(1) {
+        results[chains[i]].extend(sets);
+    }
+    for _ in 0..num_empty {
+        results[1].insert(0, Vec::new());
+    }
+    results.into_iter().skip(1).collect()
+}
+
+/// reorder_grouping_sets orders the keys of each set of a chain of grouping sets so that each set is a prefix of the
+/// next, following the ORDER BY's keys as far as it can, and returns the sets largest first, as Postgres' function of
+/// the same name does.
+fn reorder_grouping_sets(grouping_sets: Vec<Vec<usize>>, sortclause: &[SortGroupClause]) -> Vec<GroupingSetData> {
+    let mut sortclause = sortclause;
+    let mut previous: Vec<usize> = Vec::new();
+    let mut result = Vec::new();
+    for candidate in grouping_sets {
+        let mut new_elems: Vec<usize> = candidate.into_iter().filter(|r| !previous.contains(r)).collect();
+        while sortclause.len() > previous.len() && !new_elems.is_empty() {
+            let r = sortclause[previous.len()].tle_sort_group_ref;
+            match new_elems.iter().position(|&e| e == r) {
+                Some(p) => {
+                    previous.push(r);
+                    new_elems.remove(p);
+                }
+                None => {
+                    sortclause = &[];
+                    break;
+                }
+            }
+        }
+        previous.extend(new_elems);
+        result.insert(0, GroupingSetData { set: previous.clone(), num_groups: 0.0 });
+    }
+    result
+}
+
+/// consider_groupingsets_paths adds the paths of an aggregation by grouping sets over a path, as Postgres' function
+/// of the same name does: over an unsorted path, hashing every set that it can, with the first rollup sorted when
+/// the path is in its order; over a sorted path, hashing the rollups that fit in memory beside sorting the others,
+/// and sorting every rollup.
+#[allow(clippy::too_many_arguments)]
+fn consider_groupingsets_paths(
+    root: &mut PlannerInfo<'_, '_>,
+    grouped_rel: usize,
+    path: Rc<Path>,
+    is_sorted: bool,
+    can_hash: bool,
+    gd: &GroupingSetsData,
+    agg_costs: &super::prepagg::AggClauseCosts,
+    d_num_groups: f64,
+) {
+    let hash_mem_limit = super::costsize::HASH_MEM;
+    let having: Vec<Expr> = root.parse.having_qual.iter().flat_map(crate::indexscan::conjuncts).cloned().collect();
+    let hashed_rollup = |root: &PlannerInfo<'_, '_>, gs: &GroupingSetData| {
+        let group_clause = preprocess_groupclause(root, Some(&gs.set));
+        let gsets = remap_to_groupclause_idx(&group_clause, std::slice::from_ref(gs));
+        RollupData {
+            group_clause,
+            gsets,
+            gsets_data: vec![gs.clone()],
+            num_groups: gs.num_groups,
+            hashable: true,
+            is_hashed: true,
+        }
+    };
+    if !is_sorted {
+        let mut new_rollups = Vec::new();
+        let mut unhashed_rollup = None;
+        let mut l_start = 0;
+        let mut strat = AggStrategy::Hashed;
+        let mut exclude_groups = 0.0;
+        if let Some(first) = gd.rollups.first()
+            && super::pathkeys::pathkeys_contained_in(&root.group_pathkeys, &path.pathkeys)
+        {
+            unhashed_rollup = Some(first.clone());
+            exclude_groups = first.num_groups;
+            l_start = 1;
+        }
+        let hashsize =
+            super::selfuncs::estimate_hashagg_tablesize(root, &path, agg_costs, d_num_groups - exclude_groups);
+        if hashsize > hash_mem_limit && !gd.rollups.is_empty() {
+            return;
+        }
+        let mut sets_data = gd.unsortable_sets.clone();
+        for rollup in &gd.rollups[l_start..] {
+            if !rollup.hashable {
+                return;
+            }
+            sets_data.extend(rollup.gsets_data.iter().cloned());
+        }
+        let (mut empty_sets_data, mut empty_sets) = (Vec::new(), Vec::new());
+        for gs in sets_data {
+            match gs.set.is_empty() {
+                true => {
+                    empty_sets_data.push(gs);
+                    empty_sets.push(Vec::new());
+                }
+                false => new_rollups.push(hashed_rollup(root, &gs)),
+            }
+        }
+        if new_rollups.is_empty() {
+            return;
+        }
+        if let Some(unhashed_rollup) = unhashed_rollup {
+            new_rollups.push(unhashed_rollup);
+            strat = AggStrategy::Mixed;
+        } else if !empty_sets.is_empty() {
+            new_rollups.push(RollupData {
+                group_clause: Vec::new(),
+                num_groups: empty_sets.len() as f64,
+                gsets: empty_sets,
+                gsets_data: empty_sets_data,
+                hashable: false,
+                is_hashed: false,
+            });
+            strat = AggStrategy::Mixed;
+        }
+        let path =
+            super::pathnode::create_groupingsets_path(root, grouped_rel, path, having, strat, new_rollups, agg_costs);
+        add_path(&mut root.rels[grouped_rel], path);
+        return;
+    }
+    if gd.rollups.is_empty() {
+        return;
+    }
+    if can_hash && gd.any_hashable {
+        let mut rollups: Vec<RollupData> = Vec::new();
+        let mut hash_sets = gd.unsortable_sets.clone();
+        let availspace =
+            hash_mem_limit - super::selfuncs::estimate_hashagg_tablesize(root, &path, agg_costs, gd.d_num_hash_groups);
+        if availspace > 0.0 && gd.rollups.len() > 1 {
+            let num_rollups = gd.rollups.len();
+            let scale = (availspace / (20.0 * num_rollups as f64)).max(1.0);
+            let k_capacity = (availspace / scale).floor() as usize;
+            let mut k_weights = Vec::new();
+            for rollup in gd.rollups[1..].iter().filter(|r| r.hashable) {
+                let sz = super::selfuncs::estimate_hashagg_tablesize(root, &path, agg_costs, rollup.num_groups);
+                k_weights.push((sz / scale).floor().min(k_capacity as f64 + 1.0) as usize);
+            }
+            if !k_weights.is_empty() {
+                let hash_items = super::knapsack::discrete_knapsack(k_capacity, &k_weights, None);
+                if !hash_items.is_empty() {
+                    rollups.push(gd.rollups[0].clone());
+                    let mut i = 0;
+                    for rollup in &gd.rollups[1..] {
+                        if rollup.hashable {
+                            match hash_items.contains(&i) {
+                                true => hash_sets.extend(rollup.gsets_data.iter().cloned()),
+                                false => rollups.push(rollup.clone()),
+                            }
+                            i += 1;
+                        } else {
+                            rollups.push(rollup.clone());
+                        }
+                    }
+                }
+            }
+        }
+        if rollups.is_empty() && !hash_sets.is_empty() {
+            rollups = gd.rollups.clone();
+        }
+        for gs in &hash_sets {
+            rollups.insert(0, hashed_rollup(root, gs));
+        }
+        if !rollups.is_empty() {
+            let path = super::pathnode::create_groupingsets_path(
+                root,
+                grouped_rel,
+                path.clone(),
+                having.clone(),
+                AggStrategy::Mixed,
+                rollups,
+                agg_costs,
+            );
+            add_path(&mut root.rels[grouped_rel], path);
+        }
+    }
+    if gd.unsortable_sets.is_empty() {
+        let rollups = gd.rollups.clone();
+        let path = super::pathnode::create_groupingsets_path(
+            root,
+            grouped_rel,
+            path,
+            having,
+            AggStrategy::Sorted,
+            rollups,
+            agg_costs,
+        );
+        add_path(&mut root.rels[grouped_rel], path);
+    }
+}
+
 /// standard_qp_callback sets the orders that the query's upper processing asks for, and the order that the join of
 /// its relations should give, as Postgres' function of the same name does.
 fn standard_qp_callback(root: &mut PlannerInfo<'_, '_>, qp_extra: &QpExtra) {
     let tlist = root.processed_tlist.clone();
-    if !root.processed_group_clause.is_empty() {
+    if let Some(group_clause) = &qp_extra.gset_group_clause {
+        match tlist::grouping_is_sortable(group_clause)
+            .then(|| make_pathkeys_for_sortclauses(root, group_clause, &tlist))
+            .flatten()
+        {
+            Some(pathkeys) => {
+                root.num_groupby_pathkeys = pathkeys.len();
+                root.group_pathkeys = pathkeys;
+            }
+            None => {
+                root.group_pathkeys = Vec::new();
+                root.num_groupby_pathkeys = 0;
+            }
+        }
+    } else if !root.processed_group_clause.is_empty() {
         let clauses = root.processed_group_clause.clone();
         match make_pathkeys_for_sortclauses(root, &clauses, &tlist) {
             Some(pathkeys) => {
@@ -358,7 +698,12 @@ pub fn make_pathkeys_for_sortclauses(
 
 /// create_grouping_paths returns the relation of the query's grouped rows, with its paths over the paths of the
 /// join of its relations, as Postgres' function of the same name does.
-fn create_grouping_paths(root: &mut PlannerInfo<'_, '_>, input_rel: usize, target: Rc<PathTarget>) -> usize {
+fn create_grouping_paths(
+    root: &mut PlannerInfo<'_, '_>,
+    input_rel: usize,
+    target: Rc<PathTarget>,
+    gd: Option<&mut GroupingSetsData>,
+) -> usize {
     let agg_costs = super::prepagg::get_agg_clause_costs(root);
     let grouped_rel = make_grouping_rel(root, input_rel, target);
     if !root.minmax_aggs.is_empty() {
@@ -371,12 +716,15 @@ fn create_grouping_paths(root: &mut PlannerInfo<'_, '_>, input_rel: usize, targe
     if is_degenerate_grouping(root) {
         create_degenerate_grouping_paths(root, grouped_rel);
     } else {
-        let can_sort = tlist::grouping_is_sortable(&root.processed_group_clause);
+        let can_sort = gd.as_ref().is_some_and(|gd| !gd.rollups.is_empty())
+            || tlist::grouping_is_sortable(&root.processed_group_clause);
         let can_hash = !root.parse.group_clause.is_empty()
             && root.num_ordered_aggs == 0
-            && root.parse.grouping_sets.is_none()
-            && tlist::grouping_is_hashable(&root.processed_group_clause);
-        create_ordinary_grouping_paths(root, input_rel, grouped_rel, &agg_costs, can_sort, can_hash);
+            && match &gd {
+                Some(gd) => gd.any_hashable,
+                None => tlist::grouping_is_hashable(&root.processed_group_clause),
+            };
+        create_ordinary_grouping_paths(root, input_rel, grouped_rel, &agg_costs, gd, can_sort, can_hash);
     }
     set_cheapest(&mut root.rels[grouped_rel]);
     grouped_rel
@@ -425,22 +773,25 @@ fn create_ordinary_grouping_paths(
     input_rel: usize,
     grouped_rel: usize,
     agg_costs: &super::prepagg::AggClauseCosts,
+    mut gd: Option<&mut GroupingSetsData>,
     can_sort: bool,
     can_hash: bool,
 ) {
     let cheapest_path = root.rels[input_rel].cheapest_total_path.clone().expect("every relation has a path");
     let target_list = root.parse.target_list.clone();
-    let d_num_groups = get_number_of_groups(root, cheapest_path.rows, &target_list);
-    add_paths_to_grouping_rel(root, input_rel, grouped_rel, agg_costs, d_num_groups, can_sort, can_hash);
+    let d_num_groups = get_number_of_groups(root, cheapest_path.rows, gd.as_deref_mut(), &target_list);
+    add_paths_to_grouping_rel(root, input_rel, grouped_rel, agg_costs, gd.as_deref(), d_num_groups, can_sort, can_hash);
 }
 
 /// add_paths_to_grouping_rel adds sorted aggregations over each of the join's paths, sorted as the group keys need,
 /// and a hashed aggregation over its cheapest path, as Postgres' function of the same name does.
+#[allow(clippy::too_many_arguments)]
 fn add_paths_to_grouping_rel(
     root: &mut PlannerInfo<'_, '_>,
     input_rel: usize,
     grouped_rel: usize,
     agg_costs: &super::prepagg::AggClauseCosts,
+    gd: Option<&GroupingSetsData>,
     d_num_groups: f64,
     can_sort: bool,
     can_hash: bool,
@@ -455,6 +806,10 @@ fn add_paths_to_grouping_rel(
                 else {
                     continue;
                 };
+                if let Some(gd) = gd {
+                    consider_groupingsets_paths(root, grouped_rel, path, true, can_hash, gd, agg_costs, d_num_groups);
+                    continue;
+                }
                 let new_path = if root.parse.has_aggs {
                     let strategy = match root.parse.group_clause.is_empty() {
                         true => AggStrategy::Plain,
@@ -480,7 +835,9 @@ fn add_paths_to_grouping_rel(
             }
         }
     }
-    if can_hash {
+    if can_hash && let Some(gd) = gd {
+        consider_groupingsets_paths(root, grouped_rel, cheapest_path, false, true, gd, agg_costs, d_num_groups);
+    } else if can_hash {
         let clauses = root.processed_group_clause.clone();
         let path = super::pathnode::create_agg_path(
             root,
@@ -534,16 +891,41 @@ fn make_ordered_path(
     })
 }
 
-/// get_number_of_groups estimates the groups of a query's grouping of a number of rows, as Postgres' function of the
-/// same name does without grouping sets.
+/// get_number_of_groups estimates the groups of a query's grouping of a number of rows, setting the estimate of each
+/// grouping set and rollup, as Postgres' function of the same name does.
 fn get_number_of_groups(
     root: &mut PlannerInfo<'_, '_>,
     path_rows: f64,
+    gd: Option<&mut GroupingSetsData>,
     target_list: &[super::nodes::TargetEntry],
 ) -> f64 {
     if !root.parse.group_clause.is_empty() {
-        let group_exprs = tlist::get_sortgrouplist_exprs(&root.processed_group_clause, target_list);
-        return super::selfuncs::estimate_num_groups(root, &group_exprs, path_rows, None);
+        let Some(gd) = gd else {
+            let group_exprs = tlist::get_sortgrouplist_exprs(&root.processed_group_clause, target_list);
+            return super::selfuncs::estimate_num_groups(root, &group_exprs, path_rows, None);
+        };
+        let mut d_num_groups = 0.0;
+        for rollup in &mut gd.rollups {
+            let group_exprs = tlist::get_sortgrouplist_exprs(&rollup.group_clause, target_list);
+            rollup.num_groups = 0.0;
+            for (gset, gs) in rollup.gsets.iter().zip(&mut rollup.gsets_data) {
+                let num_groups = super::selfuncs::estimate_num_groups(root, &group_exprs, path_rows, Some(gset));
+                gs.num_groups = num_groups;
+                rollup.num_groups += num_groups;
+            }
+            d_num_groups += rollup.num_groups;
+        }
+        if !gd.hash_sets_idx.is_empty() {
+            gd.d_num_hash_groups = 0.0;
+            let group_exprs = tlist::get_sortgrouplist_exprs(&root.parse.group_clause, target_list);
+            for (gset, gs) in gd.hash_sets_idx.iter().zip(&mut gd.unsortable_sets) {
+                let num_groups = super::selfuncs::estimate_num_groups(root, &group_exprs, path_rows, Some(gset));
+                gs.num_groups = num_groups;
+                gd.d_num_hash_groups += num_groups;
+            }
+            d_num_groups += gd.d_num_hash_groups;
+        }
+        return d_num_groups;
     }
     match &root.parse.grouping_sets {
         Some(sets) => sets.len() as f64,

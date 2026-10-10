@@ -150,12 +150,13 @@ fn create_upper_plan(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Vec<
         }
         PathKind::Agg(apath) => {
             let group_exprs = tlist_exprs(root, &apath.group_clause);
-            create_agg_plan(root, path, &apath.subpath, group_exprs, &apath.qual, true)
+            create_agg_plan(root, path, &apath.subpath, group_exprs, &apath.qual, true, None)
         }
         PathKind::Group(gpath) => {
             let group_exprs = tlist_exprs(root, &gpath.group_clause);
-            create_agg_plan(root, path, &gpath.subpath, group_exprs, &gpath.qual, false)
+            create_agg_plan(root, path, &gpath.subpath, group_exprs, &gpath.qual, false, None)
         }
+        PathKind::GroupingSets(gspath) => create_groupingsets_plan(root, path, gspath),
         PathKind::WindowAgg(wpath) => {
             let (plan, mut layout) = create_plan_recurse(root, &wpath.subpath);
             let calls: Vec<crate::window::WindowCall> =
@@ -299,6 +300,7 @@ fn create_agg_plan(
     group_exprs: Vec<Expr>,
     qual: &[Expr],
     with_aggregates: bool,
+    sets: Option<Vec<Vec<usize>>>,
 ) -> (Plan, Vec<Slot>) {
     let (plan, layout) = create_plan_recurse(root, subpath);
     let groups = group_exprs.iter().map(|g| positional(root, g.clone(), &layout)).collect();
@@ -308,9 +310,9 @@ fn create_agg_plan(
     };
     let mut agg_layout: Vec<Slot> = group_exprs.iter().map(|g| expr_slot(root, g)).collect();
     agg_layout.extend((0..aggregates.len()).map(|k| Slot::Expr(Expr::AggRef(k))));
-    let mut plan =
-        Plan::Aggregate { input: Box::new(plan), groups, aggregates, sets: root.parse.grouping_sets.clone() };
-    if root.parse.grouping_sets.is_some() {
+    let grouping_sets = sets.is_some();
+    let mut plan = Plan::Aggregate { input: Box::new(plan), groups, aggregates, sets };
+    if grouping_sets {
         agg_layout.push(Slot::Expr(Expr::Const(Value::Text("grouping mask".into()))));
     }
     let predicate = qual
@@ -328,6 +330,26 @@ fn create_agg_plan(
         other => other,
     };
     (plan, slots)
+}
+
+/// create_groupingsets_plan makes the plan of an aggregation by grouping sets: one aggregation of every rollup's sets
+/// over the query's group keys, which Doltgres' executor computes in one pass whether Postgres would sort or hash each
+/// rollup, as Postgres' function of the same name makes a chain of them.
+fn create_groupingsets_plan(
+    root: &mut PlannerInfo<'_, '_>,
+    path: &Path,
+    gspath: &super::nodes::GroupingSetsPath,
+) -> (Plan, Vec<Slot>) {
+    let group_clause = root.processed_group_clause.clone();
+    let position = |r: &usize| group_clause.iter().position(|gc| gc.tle_sort_group_ref == *r).expect("a group key");
+    let sets = gspath
+        .rollups
+        .iter()
+        .flat_map(|rollup| rollup.gsets_data.iter().map(|gs| gs.set.iter().map(position).collect()))
+        .collect();
+    let group_exprs = tlist_exprs(root, &group_clause);
+    let with_aggregates = root.parse.has_aggs;
+    create_agg_plan(root, path, &gspath.subpath, group_exprs, &gspath.qual, with_aggregates, Some(sets))
 }
 
 /// grouping_mask points the GROUPING calls of an expression over an aggregation's rows at the column of the mask that
@@ -398,6 +420,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
         | PathKind::IncrementalSort(_)
         | PathKind::ProjectSet(_)
         | PathKind::Agg(_)
+        | PathKind::GroupingSets(_)
         | PathKind::Group(_)
         | PathKind::Unique(..)
         | PathKind::WindowAgg(_)

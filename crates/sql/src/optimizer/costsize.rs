@@ -1131,7 +1131,7 @@ pub fn cost_incremental_sort(
 
 /// hash_agg_entry_size returns the memory that one group of a hashed aggregation takes, as Postgres' function of the
 /// same name estimates it for its transition states and grouped tuple.
-fn hash_agg_entry_size(num_trans: usize, tuple_width: f64, transition_space: f64) -> f64 {
+pub fn hash_agg_entry_size(num_trans: usize, tuple_width: f64, transition_space: f64) -> f64 {
     const CHUNKHDRSZ: f64 = 8.0;
     let tuple_size = 16.0 + tuple_width;
     let pergroup_size = num_trans as f64 * 16.0;

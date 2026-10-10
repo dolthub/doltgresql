@@ -654,3 +654,17 @@ fn add_unique_group_var(
     }
     varinfos.push(GroupVarInfo { var, rel: vardata.rel, ndistinct });
 }
+
+/// estimate_hashagg_tablesize estimates the memory that a hashed aggregation of a path's rows into a number of groups
+/// takes, as Postgres' function of the same name does.
+pub fn estimate_hashagg_tablesize(
+    root: &PlannerInfo<'_, '_>,
+    path: &super::nodes::Path,
+    agg_costs: &super::prepagg::AggClauseCosts,
+    num_groups: f64,
+) -> f64 {
+    let width = super::pathnode::path_target(root, path).width;
+    let hashentrysize =
+        super::costsize::hash_agg_entry_size(root.parse.aggregates.len(), width, agg_costs.transition_space);
+    hashentrysize * num_groups
+}

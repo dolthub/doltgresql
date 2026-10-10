@@ -657,6 +657,8 @@ pub enum PathKind {
     RecursiveUnion(Box<RecursiveUnionPath>),
     /// A query's MIN and MAX aggregates read from indexes, as Postgres' MinMaxAggPath is.
     MinMaxAgg(Box<MinMaxAggPath>),
+    /// An aggregation by grouping sets, as Postgres' GroupingSetsPath is.
+    GroupingSets(Box<GroupingSetsPath>),
     /// A scan of an index of a base relation, which a nested loop runs again for each outer row when the path is
     /// parameterized.
     IndexScan(Box<IndexPath>),
@@ -944,6 +946,37 @@ pub struct GroupPath {
 pub struct WindowAggPath {
     pub subpath: Rc<Path>,
     pub calls: Vec<usize>,
+}
+
+/// GroupingSetData is a grouping set, by the clause numbers of its group keys, with its estimated number of groups, as
+/// Postgres' GroupingSetData holds it.
+#[derive(Clone, Debug)]
+pub struct GroupingSetData {
+    pub set: Vec<usize>,
+    pub num_groups: f64,
+}
+
+/// RollupData is a list of grouping sets, each a prefix of the next, that one sorted or hashed aggregation computes, as
+/// Postgres' RollupData holds it: the group clauses in the order of its largest set, each set by its keys' positions
+/// in that order, the sets themselves, their estimated groups, and whether the aggregation can and does hash them.
+#[derive(Clone, Debug)]
+pub struct RollupData {
+    pub group_clause: Vec<SortGroupClause>,
+    pub gsets: Vec<Vec<usize>>,
+    pub gsets_data: Vec<GroupingSetData>,
+    pub num_groups: f64,
+    pub hashable: bool,
+    pub is_hashed: bool,
+}
+
+/// GroupingSetsPath is an aggregation of another path's rows by grouping sets, in rollups that are sorted or hashed,
+/// under the HAVING conditions, as Postgres' GroupingSetsPath holds it. Doltgres' executor computes them the same way
+/// whichever strategy the planner costed.
+#[derive(Clone, Debug)]
+pub struct GroupingSetsPath {
+    pub subpath: Rc<Path>,
+    pub rollups: Vec<RollupData>,
+    pub qual: Vec<Expr>,
 }
 
 /// MinMaxAggInfo is a MIN or MAX aggregate that an index answers, as Postgres' MinMaxAggInfo holds it: its position
