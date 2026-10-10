@@ -85,7 +85,11 @@ pub fn grouping_planner(
     root.processed_tlist = root.parse.target_list.clone();
     let active_windows = match root.parse.window_funcs.is_empty() {
         true => Vec::new(),
-        false => select_active_windows(root),
+        false => {
+            let mut clauses = window_clauses(root);
+            optimize_window_clauses(root, &mut clauses);
+            select_active_windows(root, clauses)
+        }
     };
     let parse = &root.parse;
     root.limit_tuples = match !parse.group_clause.is_empty()
@@ -1067,11 +1071,9 @@ fn get_number_of_groups(
     }
 }
 
-/// select_active_windows returns the query's windows, each as the positions of the window calls that share its
-/// partition and order, in the order that sorts their rows least, as Postgres' function of the same name does: a
-/// window whose sort keys lead another's comes after it.
-fn select_active_windows(root: &PlannerInfo<'_, '_>) -> Vec<Vec<usize>> {
-    let mut actives: Vec<(Vec<crate::plan::SortKey>, Vec<usize>)> = Vec::new();
+/// window_clauses returns the query's windows in the order that the query names them, each as the positions of the
+/// window calls that share it, as Postgres' parser makes a WindowClause of each distinct window.
+fn window_clauses(root: &PlannerInfo<'_, '_>) -> Vec<Vec<usize>> {
     let mut appearance = Vec::new();
     for tle in &root.parse.target_list {
         tle.expr.visit(&mut |e| {
@@ -1083,13 +1085,51 @@ fn select_active_windows(root: &PlannerInfo<'_, '_>) -> Vec<Vec<usize>> {
         });
     }
     appearance.extend((0..root.parse.window_funcs.len()).filter(|k| !appearance.contains(k)).collect::<Vec<_>>());
+    let calls = &root.parse.window_funcs;
+    let mut clauses: Vec<Vec<usize>> = Vec::new();
     for k in appearance {
-        let unique_order = window_unique_order(&root.parse.window_funcs[k]);
-        match actives.iter_mut().find(|(order, _)| *order == unique_order) {
-            Some((_, members)) => members.push(k),
-            None => actives.push((unique_order, vec![k])),
+        match clauses.iter_mut().find(|clause| calls[clause[0]].same_window(&calls[k])) {
+            Some(clause) => clause.push(k),
+            None => clauses.push(vec![k]),
         }
     }
+    clauses
+}
+
+/// optimize_window_clauses gives each window whose calls all compute the same values in any frame the frame ROWS
+/// BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW, and merges it into a window that it then equals, as Postgres'
+/// function of the same name does.
+fn optimize_window_clauses(root: &mut PlannerInfo<'_, '_>, clauses: &mut Vec<Vec<usize>>) {
+    use crate::window::{Bound, frame};
+    let optimized = frame::NONDEFAULT | frame::ROWS | frame::START_UNBOUNDED_PRECEDING | frame::END_CURRENT_ROW;
+    let mut i = 0;
+    while i < clauses.len() {
+        let calls = &mut root.parse.window_funcs;
+        if !clauses[i].iter().all(|&k| calls[k].ignores_frame()) || calls[clauses[i][0]].options == optimized {
+            i += 1;
+            continue;
+        }
+        for &k in &clauses[i] {
+            (calls[k].options, calls[k].start, calls[k].end, calls[k].range) =
+                (optimized, Bound::UnboundedPreceding, Bound::CurrentRow, None);
+        }
+        let first = clauses[i][0];
+        match (0..clauses.len()).find(|&j| j != i && calls[clauses[j][0]].same_window(&calls[first])) {
+            Some(j) => {
+                let merged = clauses.remove(i);
+                let j = if j > i { j - 1 } else { j };
+                clauses[j].extend(merged);
+            }
+            None => i += 1,
+        }
+    }
+}
+
+/// select_active_windows returns the query's windows in the order that sorts their rows least, as Postgres' function
+/// of the same name does: a window whose sort keys lead another's comes after it.
+fn select_active_windows(root: &PlannerInfo<'_, '_>, clauses: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+    let mut actives: Vec<(Vec<crate::plan::SortKey>, Vec<usize>)> =
+        clauses.into_iter().map(|clause| (window_unique_order(&root.parse.window_funcs[clause[0]]), clause)).collect();
     let tlist = &root.parse.target_list;
     let mut refs: Vec<Expr> =
         root.parse.sort_clause.iter().map(|c| tlist::get_sortgroupclause_expr(c, tlist)).collect();

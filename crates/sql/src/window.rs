@@ -30,11 +30,14 @@ use crate::types::Value;
 
 /// Frame option bits of a window definition, as Postgres' parser sets them.
 pub mod frame {
+    pub const NONDEFAULT: i32 = 0x1;
     pub const RANGE: i32 = 0x2;
     pub const ROWS: i32 = 0x4;
     pub const GROUPS: i32 = 0x8;
+    pub const START_UNBOUNDED_PRECEDING: i32 = 0x20;
     pub const END_UNBOUNDED_FOLLOWING: i32 = 0x100;
     pub const START_CURRENT_ROW: i32 = 0x200;
+    pub const END_CURRENT_ROW: i32 = 0x400;
     pub const START_OFFSET_PRECEDING: i32 = 0x800;
     pub const END_OFFSET_PRECEDING: i32 = 0x1000;
     pub const START_OFFSET_FOLLOWING: i32 = 0x2000;
@@ -539,6 +542,30 @@ impl WindowCall {
             }
             _ => Monotonic::default(),
         }
+    }
+
+    /// ignores_frame reports whether the call's value is the same in any frame, so that its window's frame can become
+    /// ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW, as the support functions of Postgres' ranking functions answer
+    /// SupportRequestOptimizeWindowClause.
+    pub fn ignores_frame(&self) -> bool {
+        matches!(
+            self.kind,
+            WindowKind::RowNumber
+                | WindowKind::Rank
+                | WindowKind::DenseRank
+                | WindowKind::PercentRank
+                | WindowKind::CumeDist
+                | WindowKind::Ntile
+        )
+    }
+
+    /// same_window reports whether two calls share their window: its partition, order, and frame.
+    pub fn same_window(&self, other: &WindowCall) -> bool {
+        self.partition == other.partition
+            && self.order == other.order
+            && self.options == other.options
+            && self.start == other.start
+            && self.end == other.end
     }
 
     /// name returns the name of the call's function.

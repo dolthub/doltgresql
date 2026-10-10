@@ -919,3 +919,33 @@ fn test_planned_views_and_inlined_functions() {
         },
     ]);
 }
+
+#[test]
+fn test_window_clause_frames() {
+    run_scripts(&[
+        ScriptTest {
+            name: "ranking functions and aggregates over windows of different frames",
+            set_up_script: &[
+                "CREATE TABLE wf_t (id INT PRIMARY KEY, p INT, o INT);",
+                "INSERT INTO wf_t SELECT i, i % 3, i % 7 FROM generate_series(1, 20) i;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT id, row_number() OVER (ORDER BY o, id), sum(o) OVER (ORDER BY o, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), rank() OVER (ORDER BY o) FROM wf_t ORDER BY id LIMIT 4;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("row_number", INT8), Column("sum", INT8), Column("rank", INT8)],
+                        rows: &[
+                            &[T("1"), T("3"), T("1"), T("3")],
+                            &[T("2"), T("6"), T("5"), T("6")],
+                            &[T("3"), T("9"), T("12"), T("9")],
+                            &[T("4"), T("12"), T("22"), T("12")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
