@@ -253,10 +253,23 @@ fn numeric_with_micros(micros: i128) -> Numeric {
     .unwrap_or(Numeric::NaN)
 }
 
-/// extract_field computes a field of a datetime value as a numeric, as Postgres' extract does.
+/// extract_field computes a field of a datetime value as a numeric, as Postgres' extract does, which is NaN for a
+/// field that an infinite value lacks.
 fn extract_field(unit_text: &str, value: &Value) -> Result<Numeric> {
     let unit = unit_name(unit_text).ok_or_else(|| unrecognized_unit(unit_text, value))?;
     let int = |n: i64| Numeric::from_i64(n);
+    if let Value::Interval(iv) = value
+        && !iv.is_finite()
+    {
+        return Ok(match unit {
+            "microseconds" | "milliseconds" | "second" | "minute" | "week" | "month" | "quarter" => Numeric::NaN,
+            "hour" | "day" | "year" | "decade" | "century" | "millennium" | "epoch" if *iv == Interval::INFINITY => {
+                Numeric::Infinity
+            }
+            "hour" | "day" | "year" | "decade" | "century" | "millennium" | "epoch" => Numeric::NegativeInfinity,
+            _ => return Err(unsupported_unit(unit_text, value)),
+        });
+    }
     let infinite = match value {
         Value::Date(d) => *d == DATE_NOBEGIN || *d == DATE_NOEND,
         Value::Timestamp(t) | Value::TimestampTz(t) => *t == TIMESTAMP_NOBEGIN || *t == TIMESTAMP_NOEND,
@@ -405,12 +418,18 @@ fn extract_field(unit_text: &str, value: &Value) -> Result<Numeric> {
 
 /// extract returns a field of a datetime value as a numeric.
 fn extract(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(Value::Numeric(extract_field(text(&args[0]), &args[1])?))
+    Ok(match extract_field(text(&args[0]), &args[1])? {
+        Numeric::NaN => Value::Null,
+        field => Value::Numeric(field),
+    })
 }
 
 /// date_part returns a field of a datetime value as a float.
 fn date_part(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    Ok(Value::Float8(extract_field(text(&args[0]), &args[1])?.to_f64()))
+    Ok(match extract_field(text(&args[0]), &args[1])? {
+        Numeric::NaN => Value::Null,
+        field => Value::Float8(field.to_f64()),
+    })
 }
 
 /// truncate_fields truncates broken-down fields to a unit.
@@ -510,6 +529,11 @@ fn date_trunc(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             };
             Ok(Value::TimestampTz(utc))
         }
+        Value::Interval(iv) if !iv.is_finite() => match unit {
+            "millennium" | "century" | "decade" | "year" | "quarter" | "month" | "day" | "hour" | "minute"
+            | "second" | "milliseconds" | "microseconds" => Ok(value.clone()),
+            _ => Err(unsupported_unit(unit_text, value)),
+        },
         Value::Interval(iv) => {
             let (mut years, mut months) = (iv.months / 12, iv.months % 12);
             let (mut days, mut micros) = (iv.days, iv.micros);
@@ -610,10 +634,29 @@ fn age_between(a: i64, b: i64) -> Interval {
 fn age(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let (a, b) = match (&args[0], &args[1]) {
         (Value::Timestamp(a), Value::Timestamp(b)) => (*a, *b),
-        (Value::TimestampTz(a), Value::TimestampTz(b)) => (*a + zone_offset(*a), *b + zone_offset(*b)),
+        (Value::TimestampTz(a), Value::TimestampTz(b)) => (*a, *b),
         _ => return Ok(Value::Null),
     };
+    if let Some(infinite) = infinite_difference(a, b)? {
+        return Ok(Value::Interval(infinite));
+    }
+    if matches!(args[0], Value::TimestampTz(_)) {
+        return Ok(Value::Interval(age_between(a + zone_offset(a), b + zone_offset(b))));
+    }
     Ok(Value::Interval(age_between(a, b)))
+}
+
+/// infinite_difference returns the infinite interval between two timestamps when either is infinite, failing as
+/// Postgres does for infinity minus infinity, or None when both are finite.
+pub fn infinite_difference(a: i64, b: i64) -> Result<Option<Interval>> {
+    Ok(Some(match (a, b) {
+        (TIMESTAMP_NOBEGIN, TIMESTAMP_NOBEGIN) | (TIMESTAMP_NOEND, TIMESTAMP_NOEND) => {
+            return Err(interval_out_of_range());
+        }
+        (TIMESTAMP_NOBEGIN, _) | (_, TIMESTAMP_NOEND) => Interval::NEG_INFINITY,
+        (TIMESTAMP_NOEND, _) | (_, TIMESTAMP_NOBEGIN) => Interval::INFINITY,
+        _ => return Ok(None),
+    }))
 }
 
 /// age_now returns the symbolic difference from a timestamp to midnight of the current date.
@@ -621,10 +664,13 @@ fn age_now(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let start = ctx.txn.started;
     let today = (start + zone_offset(start)).div_euclid(USECS_PER_DAY) * USECS_PER_DAY;
     let b = match &args[0] {
-        Value::Timestamp(b) => *b,
-        Value::TimestampTz(b) => *b + zone_offset(*b),
+        Value::Timestamp(b) | Value::TimestampTz(b) => *b,
         _ => return Ok(Value::Null),
     };
+    if let Some(infinite) = infinite_difference(today, b)? {
+        return Ok(Value::Interval(infinite));
+    }
+    let b = if matches!(args[0], Value::TimestampTz(_)) { b + zone_offset(b) } else { b };
     Ok(Value::Interval(age_between(today, b)))
 }
 
@@ -734,7 +780,11 @@ fn make_interval(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let days = part(2)?.checked_mul(7).and_then(|d| d.checked_add(part(3).ok()?)).ok_or_else(out_of_range)?;
     let micros = int(&args[4]) * USECS_PER_HOUR + int(&args[5]) * USECS_PER_MINUTE;
     let micros = micros.checked_add(seconds as i64).ok_or_else(out_of_range)?;
-    Ok(Value::Interval(Interval { months, days, micros }))
+    let result = Interval { months, days, micros };
+    if !result.is_finite() {
+        return Err(out_of_range());
+    }
+    Ok(Value::Interval(result))
 }
 
 /// to_timestamp_epoch converts Unix seconds to a timestamptz.
@@ -766,6 +816,9 @@ fn interval_of(value: &Value) -> Interval {
 
 /// justify_days_of turns each 30 days into a month.
 pub fn justify_days_of(iv: Interval) -> Result<Interval> {
+    if !iv.is_finite() {
+        return Ok(iv);
+    }
     let mut result = iv;
     let whole = result.days / 30;
     result.days -= whole * 30;
@@ -782,6 +835,9 @@ pub fn justify_days_of(iv: Interval) -> Result<Interval> {
 
 /// justify_hours_of turns each 24 hours into a day.
 pub fn justify_hours_of(iv: Interval) -> Result<Interval> {
+    if !iv.is_finite() {
+        return Ok(iv);
+    }
     let mut result = iv;
     let whole = result.micros / USECS_PER_DAY;
     result.micros -= whole * USECS_PER_DAY;
@@ -814,6 +870,9 @@ fn justify_hours(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// justify_interval justifies days and hours together.
 fn justify_interval(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     let mut result = interval_of(&args[0]);
+    if !result.is_finite() {
+        return Ok(Value::Interval(result));
+    }
     if (result.days > 0 && result.micros > 0) || (result.days < 0 && result.micros < 0) {
         let whole_months = result.days / 30;
         result.days -= whole_months * 30;
@@ -847,6 +906,7 @@ fn isfinite(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     Ok(Value::Bool(match &args[0] {
         Value::Date(d) => *d != DATE_NOBEGIN && *d != DATE_NOEND,
         Value::Timestamp(t) | Value::TimestampTz(t) => *t != TIMESTAMP_NOBEGIN && *t != TIMESTAMP_NOEND,
+        Value::Interval(iv) => iv.is_finite(),
         _ => true,
     }))
 }
@@ -854,6 +914,10 @@ fn isfinite(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// argument_zone returns the zone an AT TIME ZONE argument names: a zone name or an interval offset.
 fn argument_zone(value: &Value) -> Result<Zone> {
     match value {
+        Value::Interval(iv) if !iv.is_finite() => {
+            let shown = value.output().unwrap_or_default();
+            Err(PgError::new(code::INVALID_PARAMETER_VALUE, format!("interval time zone \"{shown}\" must be finite")))
+        }
         Value::Interval(iv) => Ok(Zone::Fixed { offset: (iv.micros / USECS_PER_SEC) as i32, name: String::new() }),
         other => named_zone(text(other)),
     }
@@ -861,21 +925,21 @@ fn argument_zone(value: &Value) -> Result<Zone> {
 
 /// timezone_of_timestamptz returns a timestamptz's local time in a zone, for AT TIME ZONE.
 fn timezone_of_timestamptz(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    let zone = argument_zone(&args[0])?;
     let Value::TimestampTz(ts) = args[1] else { return Ok(Value::Null) };
     if ts == TIMESTAMP_NOBEGIN || ts == TIMESTAMP_NOEND {
         return Ok(Value::Timestamp(ts));
     }
+    let zone = argument_zone(&args[0])?;
     Ok(Value::Timestamp(ts + zone.offset_at(ts).0 as i64 * USECS_PER_SEC))
 }
 
 /// timezone_of_timestamp interprets a timestamp as local time in a zone, for AT TIME ZONE.
 fn timezone_of_timestamp(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
-    let zone = argument_zone(&args[0])?;
     let Value::Timestamp(ts) = args[1] else { return Ok(Value::Null) };
     if ts == TIMESTAMP_NOBEGIN || ts == TIMESTAMP_NOEND {
         return Ok(Value::TimestampTz(ts));
     }
+    let zone = argument_zone(&args[0])?;
     Ok(Value::TimestampTz(ts - zone.offset_for_local(ts) as i64 * USECS_PER_SEC))
 }
 
@@ -883,6 +947,7 @@ fn timezone_of_timestamp(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
 /// for a zone that has daylight saving time.
 fn timezone_of_timetz(ctx: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     if let Value::Interval(iv) = &args[0]
+        && iv.is_finite()
         && (iv.months != 0 || iv.days != 0)
     {
         let shown = Value::Interval(*iv).output().unwrap_or_default();
@@ -906,8 +971,14 @@ fn date_bin(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     else {
         return Ok(Value::Null);
     };
-    if [*ts, *origin].iter().any(|t| *t == TIMESTAMP_NOBEGIN || *t == TIMESTAMP_NOEND) {
-        return Err(PgError::new(code::FEATURE_NOT_SUPPORTED, "timestamps cannot be binned into infinite intervals"));
+    if *ts == TIMESTAMP_NOBEGIN || *ts == TIMESTAMP_NOEND {
+        return Ok(args[1].clone());
+    }
+    if *origin == TIMESTAMP_NOBEGIN || *origin == TIMESTAMP_NOEND {
+        return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "origin out of range"));
+    }
+    if !stride.is_finite() {
+        return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "timestamps cannot be binned into infinite intervals"));
     }
     if stride.months != 0 {
         return Err(PgError::new(
@@ -915,17 +986,21 @@ fn date_bin(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
             "timestamps cannot be binned into intervals containing months or years",
         ));
     }
-    let stride = stride.days as i64 * USECS_PER_DAY + stride.micros;
+    let out_of_range = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range");
+    let stride = (stride.days as i64).checked_mul(USECS_PER_DAY).and_then(|d| d.checked_add(stride.micros));
+    let stride = stride.ok_or_else(out_of_range)?;
     if stride <= 0 {
         return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "stride must be greater than zero"));
     }
-    let out_of_range = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range");
     let difference = ts.checked_sub(*origin).ok_or_else(out_of_range)?;
-    let mut delta = difference - difference % stride;
-    if origin > ts && stride > 1 {
-        delta -= stride;
+    let modulo = difference % stride;
+    let mut result = origin + (difference - modulo);
+    if modulo < 0 {
+        result = result
+            .checked_sub(stride)
+            .filter(|r| (-211_813_488_000_000_000..9_223_371_331_200_000_000).contains(r))
+            .ok_or_else(timestamp_out_of_range)?;
     }
-    let result = origin.checked_add(delta).ok_or_else(timestamp_out_of_range)?;
     Ok(if matches!(args[1], Value::TimestampTz(_)) { Value::TimestampTz(result) } else { Value::Timestamp(result) })
 }
 
@@ -948,8 +1023,14 @@ pub fn add_months_days(local: i64, months: i32, days: i32) -> Result<i64> {
 /// timestamp_plus_interval adds an interval to a timestamp, adding months and days in the session's local time for
 /// a timestamptz.
 pub fn timestamp_plus_interval(ts: i64, iv: Interval, with_zone: bool) -> Result<i64> {
-    if ts == TIMESTAMP_NOBEGIN || ts == TIMESTAMP_NOEND {
-        return Ok(ts);
+    match (iv, ts) {
+        (Interval::NEG_INFINITY, TIMESTAMP_NOEND) | (Interval::INFINITY, TIMESTAMP_NOBEGIN) => {
+            return Err(timestamp_out_of_range());
+        }
+        (Interval::NEG_INFINITY, _) => return Ok(TIMESTAMP_NOBEGIN),
+        (Interval::INFINITY, _) => return Ok(TIMESTAMP_NOEND),
+        (_, TIMESTAMP_NOBEGIN | TIMESTAMP_NOEND) => return Ok(ts),
+        _ => {}
     }
     let mut result = ts;
     if iv.months != 0 || iv.days != 0 {
@@ -969,12 +1050,64 @@ pub fn timestamp_plus_interval(ts: i64, iv: Interval, with_zone: bool) -> Result
 
 /// negate_interval negates an interval, failing on overflow.
 pub fn negate_interval(iv: Interval) -> Result<Interval> {
-    let overflow = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range");
-    Ok(Interval {
-        months: iv.months.checked_neg().ok_or_else(overflow)?,
-        days: iv.days.checked_neg().ok_or_else(overflow)?,
-        micros: iv.micros.checked_neg().ok_or_else(overflow)?,
-    })
+    match iv {
+        Interval::INFINITY => return Ok(Interval::NEG_INFINITY),
+        Interval::NEG_INFINITY => return Ok(Interval::INFINITY),
+        _ => {}
+    }
+    let negated = (|| {
+        Some(Interval {
+            months: iv.months.checked_neg()?,
+            days: iv.days.checked_neg()?,
+            micros: iv.micros.checked_neg()?,
+        })
+    })();
+    negated.filter(Interval::is_finite).ok_or_else(interval_out_of_range)
+}
+
+/// add_intervals adds two intervals, where an infinity wins over a finite interval, and opposite infinities or a
+/// finite sum that overflows are out of range, as Postgres' interval_pl does.
+pub fn add_intervals(a: Interval, b: Interval) -> Result<Interval> {
+    match (a, b) {
+        (Interval::NEG_INFINITY, Interval::INFINITY) | (Interval::INFINITY, Interval::NEG_INFINITY) => {
+            Err(interval_out_of_range())
+        }
+        (Interval::NEG_INFINITY | Interval::INFINITY, _) => Ok(a),
+        (_, Interval::NEG_INFINITY | Interval::INFINITY) => Ok(b),
+        _ => {
+            let sum = (|| {
+                Some(Interval {
+                    months: a.months.checked_add(b.months)?,
+                    days: a.days.checked_add(b.days)?,
+                    micros: a.micros.checked_add(b.micros)?,
+                })
+            })();
+            sum.filter(Interval::is_finite).ok_or_else(interval_out_of_range)
+        }
+    }
+}
+
+/// subtract_intervals subtracts an interval from another, where an infinity wins over a finite interval, and
+/// subtracting an infinity from itself or a finite difference that overflows is out of range, as Postgres'
+/// interval_mi does.
+pub fn subtract_intervals(a: Interval, b: Interval) -> Result<Interval> {
+    match (a, b) {
+        (Interval::NEG_INFINITY, Interval::NEG_INFINITY) | (Interval::INFINITY, Interval::INFINITY) => {
+            Err(interval_out_of_range())
+        }
+        (Interval::NEG_INFINITY | Interval::INFINITY, _) => Ok(a),
+        (_, Interval::NEG_INFINITY | Interval::INFINITY) => negate_interval(b),
+        _ => {
+            let difference = (|| {
+                Some(Interval {
+                    months: a.months.checked_sub(b.months)?,
+                    days: a.days.checked_sub(b.days)?,
+                    micros: a.micros.checked_sub(b.micros)?,
+                })
+            })();
+            difference.filter(Interval::is_finite).ok_or_else(interval_out_of_range)
+        }
+    }
 }
 
 /// ts_round rounds to microsecond precision as Postgres' TSROUND does.
@@ -988,6 +1121,22 @@ pub fn interval_multiply(iv: Interval, factor: f64, divide: bool) -> Result<Inte
     let scale = |x: f64| if divide { x / factor } else { x * factor };
     if divide && factor == 0.0 {
         return Err(PgError::new(code::DIVISION_BY_ZERO, "division by zero"));
+    }
+    if factor.is_nan() {
+        return Err(interval_out_of_range());
+    }
+    if !iv.is_finite() {
+        if (divide && factor.is_infinite()) || (!divide && factor == 0.0) {
+            return Err(interval_out_of_range());
+        }
+        return if factor < 0.0 { negate_interval(iv) } else { Ok(iv) };
+    }
+    if !divide && factor.is_infinite() {
+        let sign = match iv.cmp_key().signum() {
+            0 => return Err(interval_out_of_range()),
+            sign => sign as f64,
+        };
+        return Ok(if factor * sign < 0.0 { Interval::NEG_INFINITY } else { Interval::INFINITY });
     }
     let months_exact = scale(iv.months as f64);
     let days_exact = scale(iv.days as f64);
@@ -1008,7 +1157,7 @@ pub fn interval_multiply(iv: Interval, factor: f64, divide: bool) -> Result<Inte
     if !micros.is_finite() || micros.abs() >= 9.2e18 {
         return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range"));
     }
-    Ok(Interval { months, days, micros: micros as i64 })
+    Some(Interval { months, days, micros: micros as i64 }).filter(Interval::is_finite).ok_or_else(interval_out_of_range)
 }
 
 /// to_timestamp reads text with a template as a timestamptz.

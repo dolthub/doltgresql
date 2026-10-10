@@ -62,6 +62,17 @@ pub struct Interval {
 }
 
 impl Interval {
+    /// INFINITY is the interval that follows every other, which has every field at its largest value.
+    pub const INFINITY: Interval = Interval { months: i32::MAX, days: i32::MAX, micros: i64::MAX };
+
+    /// NEG_INFINITY is the interval that precedes every other, which has every field at its smallest value.
+    pub const NEG_INFINITY: Interval = Interval { months: i32::MIN, days: i32::MIN, micros: i64::MIN };
+
+    /// is_finite reports whether the interval is neither infinity.
+    pub fn is_finite(&self) -> bool {
+        *self != Interval::INFINITY && *self != Interval::NEG_INFINITY
+    }
+
     /// cmp_key returns the value Postgres compares intervals by: their length with 30-day months and 24-hour days.
     pub fn cmp_key(&self) -> i128 {
         self.months as i128 * 30 * USECS_PER_DAY as i128
@@ -694,6 +705,9 @@ fn signed_seconds(seconds: i64, micros: i64, pad: bool) -> String {
 
 /// format_interval prints an interval in the IntervalStyle, as Postgres' EncodeInterval does.
 pub fn format_interval(iv: &Interval, style: IntervalStyle) -> String {
+    if !iv.is_finite() {
+        return if *iv == Interval::INFINITY { "infinity" } else { "-infinity" }.to_string();
+    }
     let (year, mon, mday, hour, min, sec, fsec) = interval_fields(iv);
     match style {
         IntervalStyle::Postgres => {
@@ -2211,6 +2225,11 @@ pub fn parse_interval(text: &str) -> Result<Interval> {
 /// parse_interval_with_modifier reads an interval as `parse_interval` does, where a number without a unit counts the
 /// last field of the modifier's range, or seconds without one.
 pub fn parse_interval_with_modifier(text: &str, modifier: i32) -> Result<Interval> {
+    match text.trim().to_lowercase().as_str() {
+        "infinity" | "+infinity" => return Ok(Interval::INFINITY),
+        "-infinity" => return Ok(Interval::NEG_INFINITY),
+        _ => {}
+    }
     let range = if modifier >= 0 { modifier >> 16 & 0x7fff } else { INTERVAL_FULL_RANGE };
     let sql_standard = with_format(|f| f.interval_style == IntervalStyle::SqlStandard);
     let mut parts = date_fields(text).and_then(|fields| decode_interval(&fields, range, sql_standard));

@@ -18,6 +18,7 @@ use std::cmp::Ordering;
 
 use super::money::MONEY;
 use crate::cast::type_display;
+use crate::datetime::Interval;
 use crate::error::{PgError, Result, code};
 use crate::expr::{Expr, compare_values, position};
 use crate::numeric::Numeric;
@@ -736,7 +737,7 @@ fn sum(values: &[Value], ret: u32) -> Result<Value> {
         }
         FLOAT4 => Value::Float4(values.iter().map(|v| float_of(v) as f32).sum()),
         FLOAT8 => Value::Float8(values.iter().map(float_of).sum()),
-        INTERVAL => Value::Interval(interval_sum(values)?),
+        INTERVAL => Value::Interval(interval_sum(values)?.0),
         MONEY => values
             .iter()
             .try_fold(0i64, |total, v| total.checked_add(super::money::cents(v)))
@@ -746,26 +747,38 @@ fn sum(values: &[Value], ret: u32) -> Result<Value> {
     })
 }
 
-/// interval_sum adds intervals field by field, failing as Postgres' interval_pl does when a field overflows.
-fn interval_sum(values: &[Value]) -> Result<crate::datetime::Interval> {
-    let overflow = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range");
-    let mut total = crate::datetime::Interval::default();
+/// interval_sum adds intervals as Postgres' interval_sum does, where infinities of one sign make that infinity and
+/// infinities of both signs are out of range, and also returns how many of the intervals are finite.
+fn interval_sum(values: &[Value]) -> Result<(Interval, usize)> {
+    let (mut total, mut finite, mut positive, mut negative) = (Interval::default(), 0, false, false);
     for value in values {
-        if let Value::Interval(iv) = value {
-            total.months = total.months.checked_add(iv.months).ok_or_else(overflow)?;
-            total.days = total.days.checked_add(iv.days).ok_or_else(overflow)?;
-            total.micros = total.micros.checked_add(iv.micros).ok_or_else(overflow)?;
+        match value {
+            Value::Interval(Interval::INFINITY) => positive = true,
+            Value::Interval(Interval::NEG_INFINITY) => negative = true,
+            Value::Interval(iv) => {
+                total = super::datetime::add_intervals(total, *iv)?;
+                finite += 1;
+            }
+            _ => {}
         }
     }
-    Ok(total)
+    match (positive, negative) {
+        (true, true) => Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range")),
+        (true, false) => Ok((Interval::INFINITY, finite)),
+        (false, true) => Ok((Interval::NEG_INFINITY, finite)),
+        (false, false) => Ok((total, finite)),
+    }
 }
 
 /// avg returns the mean, as numeric for integers and numerics, as float8 for floats, and as an interval for
 /// intervals.
 fn avg(values: &[Value], ret: u32) -> Result<Value> {
     if ret == INTERVAL {
-        let total = interval_sum(values)?;
-        return Ok(Value::Interval(super::datetime::interval_multiply(total, values.len() as f64, true)?));
+        let (total, finite) = interval_sum(values)?;
+        if !total.is_finite() {
+            return Ok(Value::Interval(total));
+        }
+        return Ok(Value::Interval(super::datetime::interval_multiply(total, finite as f64, true)?));
     }
     if ret == FLOAT8 {
         let total: f64 = values.iter().map(float_of).sum();

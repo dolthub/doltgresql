@@ -4093,7 +4093,10 @@ impl Expr {
 /// date_op applies a date and time operator to two non-NULL values.
 pub(crate) fn date_op(op: DateOp, l: Value, r: Value) -> Result<Value> {
     use crate::datetime::{self as dt, USECS_PER_DAY};
-    use crate::functions::datetime::{interval_multiply, justify_hours_of, negate_interval, timestamp_plus_interval};
+    use crate::functions::datetime::{
+        add_intervals, infinite_difference, interval_multiply, justify_hours_of, negate_interval, subtract_intervals,
+        timestamp_plus_interval,
+    };
     let date_range = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "date out of range");
     let interval_range = || PgError::new(code::DATETIME_FIELD_OVERFLOW, "interval out of range");
     let float = |v: &Value| match v {
@@ -4142,11 +4145,19 @@ pub(crate) fn date_op(op: DateOp, l: Value, r: Value) -> Result<Value> {
             Value::Timestamp(a) | Value::TimestampTz(a),
             Value::Timestamp(b) | Value::TimestampTz(b),
         ) => {
-            if [a, b].iter().any(|t| *t == dt::TIMESTAMP_NOBEGIN || *t == dt::TIMESTAMP_NOEND) {
-                return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "cannot subtract infinite timestamps"));
+            if let Some(infinite) = infinite_difference(a, b)? {
+                return Ok(Value::Interval(infinite));
             }
             let micros = a.checked_sub(b).ok_or_else(interval_range)?;
             Value::Interval(justify_hours_of(dt::Interval { months: 0, days: 0, micros })?)
+        }
+        (DateOp::TimePlusInterval, _, Value::Interval(iv)) | (DateOp::TimePlusInterval, Value::Interval(iv), _)
+            if !iv.is_finite() =>
+        {
+            return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "cannot add infinite interval to time"));
+        }
+        (DateOp::TimeMinusInterval, _, Value::Interval(iv)) if !iv.is_finite() => {
+            return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "cannot subtract infinite interval from time"));
         }
         (DateOp::TimePlusInterval, Value::Time(t), Value::Interval(iv))
         | (DateOp::TimePlusInterval, Value::Interval(iv), Value::Time(t)) => {
@@ -4165,16 +4176,10 @@ pub(crate) fn date_op(op: DateOp, l: Value, r: Value) -> Result<Value> {
         (DateOp::TimeMinusTime, Value::Time(a), Value::Time(b)) => {
             Value::Interval(dt::Interval { months: 0, days: 0, micros: a - b })
         }
-        (DateOp::IntervalPlusInterval, Value::Interval(a), Value::Interval(b)) => Value::Interval(dt::Interval {
-            months: a.months.checked_add(b.months).ok_or_else(interval_range)?,
-            days: a.days.checked_add(b.days).ok_or_else(interval_range)?,
-            micros: a.micros.checked_add(b.micros).ok_or_else(interval_range)?,
-        }),
-        (DateOp::IntervalMinusInterval, Value::Interval(a), Value::Interval(b)) => Value::Interval(dt::Interval {
-            months: a.months.checked_sub(b.months).ok_or_else(interval_range)?,
-            days: a.days.checked_sub(b.days).ok_or_else(interval_range)?,
-            micros: a.micros.checked_sub(b.micros).ok_or_else(interval_range)?,
-        }),
+        (DateOp::IntervalPlusInterval, Value::Interval(a), Value::Interval(b)) => Value::Interval(add_intervals(a, b)?),
+        (DateOp::IntervalMinusInterval, Value::Interval(a), Value::Interval(b)) => {
+            Value::Interval(subtract_intervals(a, b)?)
+        }
         (DateOp::IntervalTimesFloat, Value::Interval(iv), f) | (DateOp::IntervalTimesFloat, f, Value::Interval(iv)) => {
             Value::Interval(interval_multiply(iv, float(&f), false)?)
         }

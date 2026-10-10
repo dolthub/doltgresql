@@ -722,7 +722,8 @@ impl WindowCall {
     }
 
     /// range_edge returns the first position of a RANGE frame with an offset start, or the last position of one with an
-    /// offset end, where the rows of a NULL ordering value frame only their peers, as Postgres' window aggregation does.
+    /// offset end, where the rows of a NULL ordering value frame only their peers, and an infinite offset from the
+    /// opposite infinity takes in every row, as Postgres' window aggregation does.
     fn range_edge(
         &self,
         ctx: &mut Ctx<'_>,
@@ -735,7 +736,8 @@ impl WindowCall {
         let part = p.part;
         let sums = self.range.as_ref().and_then(|r| if starting { r.start.as_ref() } else { r.end.as_ref() });
         let (sum, at_most) = sums.ok_or_else(|| PgError::internal("a RANGE frame bound without an offset"))?;
-        let negative = match offset.eval(ctx, row)? {
+        let offset = offset.eval(ctx, row)?;
+        let negative = match &offset {
             Value::Null => {
                 let which = if starting { "starting" } else { "ending" };
                 return Err(PgError::new(
@@ -743,8 +745,8 @@ impl WindowCall {
                     format!("frame {which} offset must not be null"),
                 ));
             }
-            Value::Int8(n) => n < 0,
-            Value::Float8(f) => f.is_nan() || f < 0.0,
+            Value::Int8(n) => *n < 0,
+            Value::Float8(f) => f.is_nan() || *f < 0.0,
             Value::Numeric(n) => n.is_negative() || matches!(n, crate::numeric::Numeric::NaN),
             Value::Interval(iv) => iv.cmp_key() < 0,
             _ => false,
@@ -759,14 +761,17 @@ impl WindowCall {
             let (first, last) = p.peers(position);
             return Ok(if starting { first } else { last } as isize);
         }
-        let bound = sum.eval(ctx, row)?;
+        let bound = match sum.eval(ctx, row) {
+            Err(_) if offset == Value::Interval(crate::datetime::Interval::INFINITY) => None,
+            bound => Some(bound?),
+        };
         let k = self.order.len();
         let lo = part.iter().position(|p| !p.1[k].is_null()).unwrap_or(part.len());
         let hi = part.iter().rposition(|p| !p.1[k].is_null()).map_or(lo, |i| i + 1);
-        let inside = |p: &(Vec<Value>, Vec<Value>, usize)| match compare_values(&p.1[k], &bound) {
-            Ordering::Greater => !at_most,
-            Ordering::Less => *at_most,
-            Ordering::Equal => true,
+        let inside = |p: &(Vec<Value>, Vec<Value>, usize)| match bound.as_ref().map(|b| compare_values(&p.1[k], b)) {
+            Some(Ordering::Greater) => !at_most,
+            Some(Ordering::Less) => *at_most,
+            Some(Ordering::Equal) | None => true,
         };
         let rows = &part[lo..hi];
         Ok(match starting {

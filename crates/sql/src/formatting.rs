@@ -668,9 +668,9 @@ pub fn timestamp_to_char(local: i64, zone: Option<(i32, String)>, template: &str
     write_template(&parse_format(template), &tm, false).map(Some)
 }
 
-/// interval_to_char writes an interval with a template, returning None for an empty template.
+/// interval_to_char writes an interval with a template, returning None for an empty template or an infinite interval.
 pub fn interval_to_char(interval: &Interval, template: &str) -> Result<Option<String>> {
-    if template.is_empty() {
+    if template.is_empty() || !interval.is_finite() {
         return Ok(None);
     }
     let micros = interval.micros;

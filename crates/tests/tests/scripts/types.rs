@@ -11234,7 +11234,6 @@ fn test_interval_input() {
                         tag: "SELECT 1",
                     },
                     flow: Flow::Query,
-                    skip: Some("infinite intervals are not supported yet"),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -11558,6 +11557,108 @@ fn test_interval_input() {
                     query: "SELECT sum(x) FROM (VALUES (INTERVAL '2147483647 days'), (INTERVAL '1 day')) v(x);",
                     expected: Expected::Error(Diagnostic { code: "22008", message: "interval out of range", ..E }),
                     flow: Flow::Query,
+                    ..A
+                },
+            ],
+            ..S
+        },
+        ScriptTest {
+            name: "infinite intervals",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'infinity', INTERVAL '-infinity', '+Infinity'::interval;",
+                    expected: Expected::Rows {
+                        columns: &[Column("interval", INTERVAL), Column("interval", INTERVAL), Column("interval", INTERVAL)],
+                        rows: &[
+                            &[T("178956970 years 7 mons 2147483647 days 2562047788:00:54.775807"), T("-178956970 years -8 mons -2147483648 days -2562047788:00:54.775808"), T("178956970 years 7 mons 2147483647 days 2562047788:00:54.775807")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'infinity'::interval + '1 day', '-infinity'::interval - '1 day', -'infinity'::interval, 'infinity'::interval * 2, 'infinity'::interval / -2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", INTERVAL), Column("?column?", INTERVAL), Column("?column?", INTERVAL), Column("?column?", INTERVAL), Column("?column?", INTERVAL)],
+                        rows: &[
+                            &[T("178956970 years 7 mons 2147483647 days 2562047788:00:54.775807"), T("-178956970 years -8 mons -2147483648 days -2562047788:00:54.775808"), T("-178956970 years -8 mons -2147483648 days -2562047788:00:54.775808"), T("178956970 years 7 mons 2147483647 days 2562047788:00:54.775807"), T("-178956970 years -8 mons -2147483648 days -2562047788:00:54.775808")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT 'infinity'::interval + '-infinity'::interval;",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"interval out of range"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT TIMESTAMP '2020-01-01' + INTERVAL 'infinity', TIMESTAMP 'infinity' - TIMESTAMP '2020-01-01', age(TIMESTAMP '-infinity', TIMESTAMP '2020-01-01');",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", TIMESTAMP), Column("?column?", INTERVAL), Column("age", INTERVAL)],
+                        rows: &[
+                            &[T("infinity"), T("178956970 years 7 mons 2147483647 days 2562047788:00:54.775807"), T("-178956970 years -8 mons -2147483648 days -2562047788:00:54.775808")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT isfinite(INTERVAL 'infinity'), extract(hour FROM INTERVAL '-infinity'), date_part('month', INTERVAL 'infinity') IS NULL, extract(month FROM TIMESTAMP 'infinity') IS NULL, date_trunc('hour', INTERVAL 'infinity'), justify_days(INTERVAL '-infinity');",
+                    expected: Expected::Rows {
+                        columns: &[Column("isfinite", BOOL), Column("extract", NUMERIC), Column("?column?", BOOL), Column("?column?", BOOL), Column("date_trunc", INTERVAL), Column("justify_days", INTERVAL)],
+                        rows: &[
+                            &[T("f"), T("-Infinity"), T("t"), T("t"), T("178956970 years 7 mons 2147483647 days 2562047788:00:54.775807"), T("-178956970 years -8 mons -2147483648 days -2562047788:00:54.775808")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT sum(v), avg(v) FROM (VALUES (INTERVAL '1 day'), (INTERVAL 'infinity')) t(v);",
+                    expected: Expected::Rows {
+                        columns: &[Column("sum", INTERVAL), Column("avg", INTERVAL)],
+                        rows: &[
+                            &[T("178956970 years 7 mons 2147483647 days 2562047788:00:54.775807"), T("178956970 years 7 mons 2147483647 days 2562047788:00:54.775807")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT TIME '12:00' + INTERVAL 'infinity';",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"cannot add infinite interval to time"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT CAST(INTERVAL 'infinity' AS time);",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"cannot convert infinite interval to time"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT to_char(INTERVAL 'infinity', 'HH24') IS NULL;",
+                    expected: Expected::Rows {
+                        columns: &[Column("?column?", BOOL)],
+                        rows: &[
+                            &[T("t")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM generate_series(TIMESTAMP '2020-01-01', TIMESTAMP '2020-01-02', INTERVAL 'infinity');",
+                    expected: Expected::Error(Diagnostic { code: "22023", message: r#"step size cannot be infinite"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT date_bin(INTERVAL 'infinity', TIMESTAMP '2020-01-01', TIMESTAMP '2000-01-01');",
+                    expected: Expected::Error(Diagnostic { code: "22008", message: r#"timestamps cannot be binned into infinite intervals"#, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT INTERVAL 'infinity ago';",
+                    expected: Expected::Error(Diagnostic { code: "22007", message: r#"invalid input syntax for type interval: "infinity ago""#, position: 17, ..E }),
                     ..A
                 },
             ],

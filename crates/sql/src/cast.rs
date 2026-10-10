@@ -526,6 +526,9 @@ fn cast_datetime(value: Value, to: ColumnType) -> Result<Value> {
         (Value::TimeTz(t, _), oid::TIME) => Value::Time(t),
         (Value::Timestamp(ts), oid::TIME) => Value::Time(ts.rem_euclid(USECS_PER_DAY)),
         (Value::TimestampTz(ts), oid::TIME) => Value::Time((ts + zone_offset(ts)).rem_euclid(USECS_PER_DAY)),
+        (Value::Interval(iv), oid::TIME) if !iv.is_finite() => {
+            return Err(PgError::new(code::DATETIME_FIELD_OVERFLOW, "cannot convert infinite interval to time"));
+        }
         (Value::Interval(iv), oid::TIME) => Value::Time(iv.micros.rem_euclid(USECS_PER_DAY)),
         (Value::Time(t), oid::TIMETZ) => Value::TimeTz(t, -(zone_offset(dt::now().timestamp) / USECS_PER_SEC) as i32),
         (v @ Value::TimeTz(..), oid::TIMETZ) => v,
@@ -542,7 +545,7 @@ fn cast_datetime(value: Value, to: ColumnType) -> Result<Value> {
         Value::TimestampTz(ts) if finite(ts) => Value::TimestampTz(round_micros(ts, to.modifier)),
         Value::Time(t) => Value::Time(round_micros(t, to.modifier)),
         Value::TimeTz(t, z) => Value::TimeTz(round_micros(t, to.modifier), z),
-        Value::Interval(iv) => {
+        Value::Interval(iv) if iv.is_finite() => {
             let iv = dt::adjust_interval(iv, to.modifier);
             Value::Interval(dt::Interval { micros: round_micros(iv.micros, to.modifier & 0xffff), ..iv })
         }

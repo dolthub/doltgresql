@@ -116,6 +116,9 @@ fn series_timestamp(_: &mut Ctx<'_>, args: &[Value]) -> Result<Value> {
     if direction == 0 {
         return Err(PgError::new(code::INVALID_PARAMETER_VALUE, "step size cannot equal zero"));
     }
+    if !step.is_finite() {
+        return Err(PgError::new(code::INVALID_PARAMETER_VALUE, "step size cannot be infinite"));
+    }
     let mut out = Vec::new();
     let mut i = *start;
     while (direction > 0 && i <= *stop) || (direction < 0 && i >= *stop) {
