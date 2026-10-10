@@ -858,7 +858,7 @@ pub fn cost_nestloop(
     let inner_rescan_run_cost = inner_rescan_total_cost - inner_rescan_start_cost;
     let inner_rows = inner.rows.max(1.0);
     let ntuples = if matches!(jointype, JoinType::Semi | JoinType::Anti) || extra.inner_unique {
-        let mut outer_matched_rows = (outer.rows * extra.semifactors.outer_match_frac).round();
+        let mut outer_matched_rows = (outer.rows * extra.semifactors.outer_match_frac).round_ties_even();
         let mut outer_unmatched_rows = outer.rows - outer_matched_rows;
         let inner_scan_frac = 2.0 / (extra.semifactors.match_count + 1.0);
         let mut ntuples = outer_matched_rows * inner_rows * inner_scan_frac;
@@ -1106,20 +1106,53 @@ fn exec_supports_mark_restore(path: &Path) -> bool {
 }
 
 /// exec_choose_hash_table_size returns the buckets and batches of a hash table of a number of rows of a width, as
-/// Postgres' ExecChooseHashTableSize chooses them without skew optimization.
+/// Postgres' ExecChooseHashTableSize chooses them for a hash join that may keep skew buckets for the outer side's most
+/// common values, without parallel workers.
 fn exec_choose_hash_table_size(ntuples: f64, width: f64) -> (f64, f64) {
-    let tupsize = 16.0 + 16.0 + maxalign(width);
-    let inner_rel_bytes = ntuples * tupsize;
-    let max_pointers = (HASH_MEM / 8.0).floor();
-    let dbuckets = ntuples.ceil().min(max_pointers);
-    let nbuckets = dbuckets.max(1.0).log2().ceil().exp2().max(1024.0);
-    if inner_rel_bytes + 8.0 * nbuckets <= HASH_MEM {
-        return (nbuckets, 1.0);
+    const HJTUPLE_OVERHEAD: u64 = 16;
+    const SIZEOF_MINIMAL_TUPLE_HEADER: u64 = 16;
+    const POINTER: u64 = 8;
+    const SKEW_BUCKET_OVERHEAD: u64 = 16;
+    const SKEW_HASH_MEM_PERCENT: u64 = 2;
+    const MAX_ALLOC_SIZE: u64 = 0x3fff_ffff;
+    let ntuples = if ntuples <= 0.0 { 1000.0 } else { ntuples };
+    let tupsize = HJTUPLE_OVERHEAD + SIZEOF_MINIMAL_TUPLE_HEADER + maxalign(width) as u64;
+    let inner_rel_bytes = ntuples * tupsize as f64;
+    let mut hash_table_bytes = HASH_MEM as u64;
+    let mut space_allowed = hash_table_bytes;
+    let bytes_per_mcv = tupsize + 8 * POINTER + 4 + SKEW_BUCKET_OVERHEAD;
+    let skew_mcvs = (hash_table_bytes / bytes_per_mcv) * SKEW_HASH_MEM_PERCENT / 100;
+    hash_table_bytes -= skew_mcvs * bytes_per_mcv;
+    let prevpower2 = |n: u64| if n == 0 { 0 } else { 1u64 << (63 - n.leading_zeros()) };
+    let max_pointers =
+        prevpower2((hash_table_bytes / POINTER).min(MAX_ALLOC_SIZE / POINTER)).min(i32::MAX as u64 / 2 + 1);
+    let dbuckets = ntuples.ceil().min(max_pointers as f64);
+    let mut nbuckets = (dbuckets as u64).max(1024).next_power_of_two();
+    let mut nbatch: u64 = 1;
+    let bucket_bytes = POINTER * nbuckets;
+    if inner_rel_bytes + bucket_bytes as f64 > hash_table_bytes as f64 {
+        let bucket_size = tupsize + POINTER;
+        let sbuckets = match hash_table_bytes <= bucket_size {
+            true => 1,
+            false => (hash_table_bytes / bucket_size).next_power_of_two(),
+        };
+        nbuckets = sbuckets.min(max_pointers).next_power_of_two();
+        let bucket_bytes = nbuckets * POINTER;
+        let dbatch = (inner_rel_bytes / (hash_table_bytes - bucket_bytes) as f64).ceil().min(max_pointers as f64);
+        nbatch = (dbatch as u64).max(2).next_power_of_two();
     }
-    let bucket_size = tupsize + 8.0;
-    let nbuckets = (HASH_MEM / bucket_size).log2().floor().exp2().min(max_pointers).max(1024.0);
-    let dbatch = (inner_rel_bytes / (HASH_MEM - 8.0 * nbuckets)).ceil().min(max_pointers);
-    (nbuckets, dbatch.max(1.0).log2().ceil().exp2())
+    while nbatch > 1 {
+        if nbuckets > MAX_ALLOC_SIZE / POINTER / 2
+            || space_allowed > u64::MAX / 2
+            || nbatch < space_allowed / BLCKSZ as u64
+        {
+            break;
+        }
+        nbuckets *= 2;
+        space_allowed *= 2;
+        nbatch /= 2;
+    }
+    (nbuckets as f64, nbatch as f64)
 }
 
 /// cost_hashjoin returns the costs of a hash join that hashes the inner path's rows by the hash
@@ -1145,8 +1178,11 @@ pub fn cost_hashjoin(
         run_cost += SEQ_PAGE_COST * (innerpages + 2.0 * outerpages);
     }
     let virtualbuckets = numbuckets * numbatches;
-    let (mut innerbucketsize, mut innermcvfreq) = (1.0f64, 1.0f64);
-    for &rinfo in hashclauses {
+    let (mut innerbucketsize, mut innermcvfreq) = match inner.kind {
+        PathKind::UniquePath(_) => (1.0 / virtualbuckets, 0.0),
+        _ => (1.0f64, 1.0f64),
+    };
+    for &rinfo in hashclauses.iter().filter(|_| !matches!(inner.kind, PathKind::UniquePath(_))) {
         let rinfo = &root.rinfos[rinfo];
         let Expr::Compare(_, l, r) = &rinfo.clause else { continue };
         let key = if rinfo.right_relids.is_subset(&inner.relids) { r } else { l };
@@ -1163,7 +1199,7 @@ pub fn cost_hashjoin(
     qp_qual_cost.per_tuple -= hash_qual_cost.per_tuple;
     startup_cost += hash_qual_cost.startup;
     let hashjointuples = if matches!(jointype, JoinType::Semi | JoinType::Anti) || extra.inner_unique {
-        let outer_matched_rows = (outer.rows * extra.semifactors.outer_match_frac).round();
+        let outer_matched_rows = (outer.rows * extra.semifactors.outer_match_frac).round_ties_even();
         let inner_scan_frac = 2.0 / (extra.semifactors.match_count + 1.0);
         run_cost += hash_qual_cost.per_tuple
             * outer_matched_rows
