@@ -172,6 +172,29 @@ pub fn is_volatile(function: &str) -> bool {
         .contains(function)
 }
 
+/// function_rows returns the rows that a built-in set-returning function is assumed to return for each call, the
+/// largest prorows of its set-returning forms in pg_proc, or None when it has none.
+pub fn function_rows(function: &str) -> Option<f64> {
+    static ROWS: std::sync::OnceLock<std::collections::HashMap<String, f64>> = OnceLock::new();
+    ROWS.get_or_init(|| {
+        let mut rows = std::collections::HashMap::new();
+        let Some(proc) = lookup("pg_catalog", "pg_proc") else { return rows };
+        let (Some(name), Some(retset), Some(prorows)) =
+            (proc.column("proname"), proc.column("proretset"), proc.column("prorows"))
+        else {
+            return rows;
+        };
+        for r in builtin::rows(proc).iter().filter(|r| r[retset] == Value::Bool(true)) {
+            let count = r[prorows].output().unwrap_or_default().parse::<f64>().unwrap_or(1000.0);
+            let entry = rows.entry(r[name].output().unwrap_or_default()).or_insert(count);
+            *entry = entry.max(count);
+        }
+        rows
+    })
+    .get(function)
+    .copied()
+}
+
 /// is_mutable reports whether a built-in function has a form that is not immutable, as pg_proc's provolatile shows
 /// them.
 pub fn is_mutable(function: &str) -> bool {

@@ -73,10 +73,32 @@ fn set_rel_size(root: &mut PlannerInfo<'_, '_>, rti: usize) {
         set_subquery_pathlist(root, rti);
         return;
     }
-    if matches!(root.parse.rte(rti).kind, RteKind::Relation(..)) {
-        check_index_predicates(root, rti);
+    match &root.parse.rte(rti).kind {
+        RteKind::Relation(..) => {
+            check_index_predicates(root, rti);
+            set_baserel_size_estimates(root, rti);
+        }
+        RteKind::Plan(Plan::Function { call, .. }) => {
+            let functions = vec![call.clone()];
+            super::costsize::set_function_size_estimates(root, rti, &functions);
+        }
+        RteKind::Plan(Plan::RowsFrom { calls, .. }) => {
+            let functions = calls.clone();
+            super::costsize::set_function_size_estimates(root, rti, &functions);
+        }
+        RteKind::Plan(Plan::Values(rows)) => {
+            let rows = rows.len();
+            super::costsize::set_values_size_estimates(root, rti, rows);
+        }
+        RteKind::Plan(Plan::CteScan(def)) if def.shared.get().is_some() => {
+            let cte_rows = def.shared.get().map_or(0.0, |(_, rows)| *rows);
+            super::costsize::set_cte_size_estimates(root, rti, cte_rows);
+        }
+        RteKind::Plan(Plan::XmlTable(_) | Plan::JsonTable(_)) => {
+            super::costsize::set_tablefunc_size_estimates(root, rti)
+        }
+        _ => set_baserel_size_estimates(root, rti),
     }
-    set_baserel_size_estimates(root, rti);
 }
 
 /// set_dummy_rel_pathlist marks a base relation as returning no rows, as Postgres' function of the same name does.
@@ -487,8 +509,16 @@ fn set_rel_pathlist(root: &mut PlannerInfo<'_, '_>, rel: usize) {
                 add_scan_path(root, rel, PathKind::SeqScan, costs);
             }
             RteKind::Plan(plan) => {
-                let catalog = matches!(plan, Plan::Catalog(_));
-                let costs = cost_opaque_scan(root, rel, catalog);
+                let costs = match plan {
+                    Plan::Function { call, .. } => {
+                        super::costsize::cost_functionscan(root, rel, std::slice::from_ref(call))
+                    }
+                    Plan::RowsFrom { calls, .. } => super::costsize::cost_functionscan(root, rel, calls),
+                    Plan::XmlTable(_) | Plan::JsonTable(_) => super::costsize::cost_functionscan(root, rel, &[]),
+                    Plan::Values(_) => super::costsize::cost_valuesscan(root, rel),
+                    Plan::CteScan(_) => super::costsize::cost_ctescan(root, rel),
+                    plan => cost_opaque_scan(root, rel, matches!(plan, Plan::Catalog(_))),
+                };
                 add_scan_path(root, rel, PathKind::SeqScan, costs);
                 create_index_paths(root, rel);
             }

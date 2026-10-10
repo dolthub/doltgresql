@@ -115,3 +115,35 @@ pub fn get_relation_foreign_keys(root: &mut PlannerInfo<'_, '_>, rel: usize, tab
         }
     }
 }
+
+/// get_function_rows returns the rows that a call of a set-returning function returns, as Postgres' function of the
+/// same name finds them: from the support functions of generate_series and unnest when their arguments are constants,
+/// and otherwise from the function's prorows.
+pub fn get_function_rows(name: &str, args: &[crate::expr::Expr], prorows: f64) -> f64 {
+    use crate::expr::Expr;
+    use crate::types::Value;
+    let number = |e: &Expr| match e {
+        Expr::Const(Value::Int2(v)) => Some(f64::from(*v)),
+        Expr::Const(Value::Int4(v)) => Some(f64::from(*v)),
+        Expr::Const(Value::Int8(v)) => Some(*v as f64),
+        Expr::Const(Value::Numeric(n)) => Some(n.to_f64()),
+        _ => None,
+    };
+    match (name, args) {
+        ("generate_series", [start, finish, step @ ..]) if step.len() <= 1 => {
+            if args.iter().any(|a| matches!(a, Expr::Const(Value::Null))) {
+                return 0.0;
+            }
+            let step = match step.first() {
+                Some(step) => number(step),
+                None => Some(1.0),
+            };
+            match (number(start), number(finish), step) {
+                (Some(start), Some(finish), Some(step)) if step != 0.0 => ((finish - start + step) / step).floor(),
+                _ => prorows,
+            }
+        }
+        ("unnest", [array]) => super::selfuncs::estimate_array_length(array),
+        _ => prorows,
+    }
+}

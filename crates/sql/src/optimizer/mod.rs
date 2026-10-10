@@ -216,6 +216,12 @@ fn preprocess_query_expressions(ctx: &mut Ctx<'_>, parse: &mut Query) {
     }
     for rte in &mut parse.rtable {
         if let RteKind::Plan(plan) = &mut rte.kind {
+            if matches!(plan, Plan::Function { .. } | Plan::RowsFrom { .. } | Plan::Values(_)) {
+                plan.map_exprs(0, &mut |e, depth| match depth {
+                    0 => clauses::eval_const_expressions(ctx, e),
+                    _ => e,
+                });
+            }
             plan.map_exprs(0, &mut |e, _| subselect::preprocess_subplans(ctx, e));
         }
     }

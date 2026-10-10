@@ -266,10 +266,18 @@ pub fn expression_returns_set(e: &Expr) -> bool {
 }
 
 /// expression_returns_set_rows estimates the rows that a set-returning function returns for each input row, or one
-/// for any other expression, as Postgres' function of the same name does with each function's default of 1000.
-pub fn expression_returns_set_rows(_root: &super::PlannerInfo<'_, '_>, e: &Expr) -> f64 {
+/// for any other expression, as Postgres' function of the same name does.
+pub fn expression_returns_set_rows(root: &super::PlannerInfo<'_, '_>, e: &Expr) -> f64 {
     match e {
-        Expr::SetRef(_) => 1000.0,
+        Expr::SetRef(i) => root.parse.target_srfs.get(*i).map_or(1000.0, |srf| expression_returns_set_rows(root, srf)),
+        Expr::Func(index, args) => match crate::pgcatalog::function_rows(crate::functions::function(*index).name) {
+            Some(prorows) => {
+                let rows = super::plancat::get_function_rows(crate::functions::function(*index).name, args, prorows);
+                super::costsize::clamp_row_est(rows)
+            }
+            None => 1.0,
+        },
+        Expr::Routine(routine, _) if routine.set_of => 1000.0,
         _ => 1.0,
     }
 }

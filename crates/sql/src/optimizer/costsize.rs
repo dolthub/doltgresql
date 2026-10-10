@@ -294,6 +294,65 @@ pub fn cost_opaque_scan(root: &PlannerInfo<'_, '_>, rel: usize, catalog: bool) -
     (disabled(root.enables.seqscan || !catalog), startup, total)
 }
 
+/// cost_functionscan returns the costs of the rows of a FROM clause's set-returning calls, which run in full before
+/// the first row, under the relation's restrictions, as Postgres' function of the same name does.
+pub fn cost_functionscan(root: &PlannerInfo<'_, '_>, rel: usize, functions: &[Expr]) -> Costs {
+    let mut exprcost = QualCost::default();
+    for function in functions {
+        let cost = cost_qual_eval_node(function);
+        exprcost.startup += cost.startup;
+        exprcost.per_tuple += cost.per_tuple;
+    }
+    let qpqual_cost = get_restriction_qual_cost(root, rel, None);
+    let startup_cost = exprcost.startup + exprcost.per_tuple + qpqual_cost.startup;
+    let run_cost = (CPU_TUPLE_COST + qpqual_cost.per_tuple) * root.rels[rel].tuples;
+    (0, startup_cost, startup_cost + run_cost)
+}
+
+/// cost_valuesscan returns the costs of the rows of a VALUES list under the relation's restrictions, as Postgres'
+/// function of the same name does.
+pub fn cost_valuesscan(root: &PlannerInfo<'_, '_>, rel: usize) -> Costs {
+    let qpqual_cost = get_restriction_qual_cost(root, rel, None);
+    let cpu_per_tuple = CPU_OPERATOR_COST + CPU_TUPLE_COST + qpqual_cost.per_tuple;
+    (0, qpqual_cost.startup, qpqual_cost.startup + cpu_per_tuple * root.rels[rel].tuples)
+}
+
+/// cost_ctescan returns the costs of reading a WITH query's rows under the relation's restrictions, as Postgres'
+/// function of the same name does, which charges cpu_tuple_cost twice for each row.
+pub fn cost_ctescan(root: &PlannerInfo<'_, '_>, rel: usize) -> Costs {
+    let qpqual_cost = get_restriction_qual_cost(root, rel, None);
+    let cpu_per_tuple = CPU_TUPLE_COST + CPU_TUPLE_COST + qpqual_cost.per_tuple;
+    (0, qpqual_cost.startup, qpqual_cost.startup + cpu_per_tuple * root.rels[rel].tuples)
+}
+
+/// set_function_size_estimates sizes a relation of set-returning calls by the most rows that one of them returns, as
+/// Postgres' function of the same name does.
+pub fn set_function_size_estimates(root: &mut PlannerInfo<'_, '_>, rel: usize, functions: &[Expr]) {
+    let tuples = functions.iter().map(|f| super::clauses::expression_returns_set_rows(root, f)).fold(0.0, f64::max);
+    root.rels[rel].tuples = tuples;
+    set_baserel_size_estimates(root, rel);
+}
+
+/// set_values_size_estimates sizes a VALUES relation by its rows, as Postgres' function of the same name does.
+pub fn set_values_size_estimates(root: &mut PlannerInfo<'_, '_>, rel: usize, rows: usize) {
+    root.rels[rel].tuples = rows as f64;
+    set_baserel_size_estimates(root, rel);
+}
+
+/// set_cte_size_estimates sizes a relation that reads a WITH query by the query's rows, as Postgres' function of the
+/// same name does.
+pub fn set_cte_size_estimates(root: &mut PlannerInfo<'_, '_>, rel: usize, cte_rows: f64) {
+    root.rels[rel].tuples = cte_rows;
+    set_baserel_size_estimates(root, rel);
+}
+
+/// set_tablefunc_size_estimates sizes an XMLTABLE or JSON_TABLE relation at the 100 rows that Postgres' function of
+/// the same name assumes.
+pub fn set_tablefunc_size_estimates(root: &mut PlannerInfo<'_, '_>, rel: usize) {
+    root.rels[rel].tuples = 100.0;
+    set_baserel_size_estimates(root, rel);
+}
+
 /// cost_resultscan returns the costs of the one row of a RESULT relation under its restrictions, as Postgres'
 /// function of the same name does.
 pub fn cost_resultscan(root: &PlannerInfo<'_, '_>, rel: usize) -> Costs {
