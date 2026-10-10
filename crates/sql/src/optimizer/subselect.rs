@@ -68,15 +68,28 @@ fn convert_values_to_any(ctx: &mut Ctx<'_>, e: &Expr) -> Option<Expr> {
 /// make_subplan returns the SubPlan of a subquery expression over a row of `width` columns, whose subquery is the
 /// binder's plan, planned already or not, as Postgres' function of the same name does: the subquery's reads of the
 /// enclosing row become reads of the SubPlan's arguments, and an unplanned subquery is planned for the share of its
-/// rows that the expression reads. A correlated EXISTS whose conditions convert_EXISTS_to_ANY turns into an IN test
-/// becomes an AlternativeSubPlan of both, which the plan around it picks from.
+/// rows that the expression reads, once the planner plans the SELECT around it when that SELECT is being bound.
 pub(crate) fn make_subplan(ctx: &mut Ctx<'_>, mut link: Expr, planned: bool, width: usize) -> Expr {
     let plan = link.subquery_mut().expect("a subquery expression");
     let args = replace_correlation_vars(plan, width);
-    let plan = std::mem::replace(plan, Plan::OneRow);
     if planned {
+        let plan = std::mem::replace(plan, Plan::OneRow);
         return Expr::SubPlan(Box::new(build_subplan(ctx, link, plan, None, args)));
     }
+    let subplan = SubPlan { link, args, init_plan: false, planned: false, startup_cost: 0.0, per_call_cost: 0.0 };
+    match ctx.defer_subplans {
+        true => Expr::SubPlan(Box::new(subplan)),
+        false => plan_subplan(ctx, subplan),
+    }
+}
+
+/// plan_subplan plans the subquery of a SubPlan that its binding left unplanned, as the rest of Postgres'
+/// make_subplan does, after the SubPlan's test. A correlated EXISTS whose conditions convert_EXISTS_to_ANY turns into
+/// an IN test becomes an AlternativeSubPlan of both, which the plan around it picks from.
+fn plan_subplan(ctx: &mut Ctx<'_>, subplan: SubPlan) -> Expr {
+    let SubPlan { mut link, args, .. } = subplan;
+    link = link.map_children(&mut |c| preprocess_subplans(ctx, c));
+    let plan = std::mem::replace(link.subquery_mut().expect("a subquery expression"), Plan::OneRow);
     let tuple_fraction = match &link {
         Expr::Exists(_) => 1.0,
         Expr::AnySubquery(..) => 0.5,
@@ -106,6 +119,15 @@ pub(crate) fn make_subplan(ctx: &mut Ctx<'_>, mut link: Expr, planned: bool, wid
     Expr::AlternativeSubPlan(vec![result, hashplan])
 }
 
+/// preprocess_subplans plans each SubPlan of an expression that its binding left unplanned, as Postgres'
+/// preprocess_expression turns a query's sublinks into SubPlans.
+pub fn preprocess_subplans(ctx: &mut Ctx<'_>, e: Expr) -> Expr {
+    match e {
+        Expr::SubPlan(subplan) if !subplan.planned => plan_subplan(ctx, *subplan),
+        other => other.map_children(&mut |c| preprocess_subplans(ctx, c)),
+    }
+}
+
 /// build_subplan makes the SubPlan of a subquery expression from its subquery's plan, the path the planner chose for
 /// it, and its arguments, as Postgres' function of the same name does: a subquery that reads no column of the
 /// enclosing row is an initplan unless it is an ANY or ALL test, an uncorrelated IN test hashes the subquery's rows
@@ -129,7 +151,7 @@ fn build_subplan(ctx: &Ctx<'_>, mut link: Expr, plan: Plan, mut path: Option<Rc<
     }
     let uncorrelated = args.is_empty() && crate::joins::plan_lowest_level(&plan).is_some_and(|level| level >= 0);
     *link.subquery_mut().expect("a subquery expression") = crate::plan::share_subquery(plan, uncorrelated);
-    let mut subplan = SubPlan { link, args, init_plan, startup_cost: 0.0, per_call_cost: 0.0 };
+    let mut subplan = SubPlan { link, args, init_plan, planned: true, startup_cost: 0.0, per_call_cost: 0.0 };
     if let Some(path) = &path {
         cost_subplan(&mut subplan, path, use_hash_table, materializes);
     }
@@ -379,6 +401,39 @@ pub fn query_exprs(query: &mut Query, f: &mut dyn FnMut(&Expr)) {
     query.upper_exprs_mut().into_iter().for_each(|e| e.visit(f));
     query.jointree.fromlist.iter().for_each(|node| jointree_quals(node, &mut |q| q.visit(f)));
     query.jointree.quals.iter().for_each(|q| q.visit(f));
+}
+
+/// preprocess_query_subplans plans the SubPlans of a query's expressions and of its range table's inputs that their
+/// binding left unplanned, as Postgres' subquery_planner preprocesses each expression of a query.
+pub fn preprocess_query_subplans(ctx: &mut Ctx<'_>, parse: &mut Query) {
+    let mut process = |e: &mut Expr| {
+        let old = std::mem::replace(e, Expr::SubqueryValue);
+        *e = preprocess_subplans(ctx, old);
+    };
+    parse.upper_exprs_mut().into_iter().for_each(&mut process);
+    parse.jointree.fromlist.iter_mut().for_each(|node| jointree_quals_mut(node, &mut process));
+    parse.jointree.quals.iter_mut().for_each(&mut process);
+    for rte in &mut parse.rtable {
+        if let super::nodes::RteKind::Plan(plan) = &mut rte.kind {
+            plan.map_exprs(0, &mut |e, _| preprocess_subplans(ctx, e));
+        }
+    }
+}
+
+/// jointree_quals_mut is jointree_quals for changing the quals.
+fn jointree_quals_mut(node: &mut JoinTreeNode, f: &mut dyn FnMut(&mut Expr)) {
+    match node {
+        JoinTreeNode::Rel(_) => {}
+        JoinTreeNode::From(from) => {
+            from.fromlist.iter_mut().for_each(|n| jointree_quals_mut(n, f));
+            from.quals.iter_mut().for_each(&mut *f);
+        }
+        JoinTreeNode::Join(join) => {
+            jointree_quals_mut(&mut join.larg, f);
+            jointree_quals_mut(&mut join.rarg, f);
+            join.quals.iter_mut().for_each(&mut *f);
+        }
+    }
 }
 
 /// jointree_quals calls a function with each qual of a join tree.

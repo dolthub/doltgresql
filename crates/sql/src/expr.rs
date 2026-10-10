@@ -138,6 +138,8 @@ pub struct SubPlan {
     pub link: Expr,
     pub args: Vec<Expr>,
     pub init_plan: bool,
+    /// Whether the planner planned the subquery yet, which it does when it plans the query around the SubPlan.
+    pub planned: bool,
     pub startup_cost: f64,
     pub per_call_cost: f64,
 }

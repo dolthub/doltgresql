@@ -1738,6 +1738,14 @@ impl<'b, 'a> Planner<'b, 'a> {
     /// that the query around it may pull up. The ported optimizer, when it is on, plans them last, once it knows what
     /// the rest of the query reads.
     pub(crate) fn plan_select(&mut self, select: &SelectStmt, defer: bool) -> Result<Query> {
+        let saved = std::mem::replace(&mut self.ctx.defer_subplans, crate::optimizer::enabled());
+        let query = self.plan_select_body(select, defer);
+        self.ctx.defer_subplans = saved;
+        query
+    }
+
+    /// plan_select_body plans a simple SELECT as plan_select does.
+    fn plan_select_body(&mut self, select: &SelectStmt, defer: bool) -> Result<Query> {
         let (mut plan, scope) = self.plan_from(&select.from_clause)?;
         if let Some(node) = select.where_clause.as_deref() {
             if has_aggregate(node) {

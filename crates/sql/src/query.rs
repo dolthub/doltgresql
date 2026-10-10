@@ -68,6 +68,9 @@ pub struct Ctx<'a> {
     /// The locations of the subqueries of the WHERE clause being bound that the ported optimizer may turn into joins,
     /// which their binding leaves unplanned when it can.
     pub deferred_sublinks: Vec<i32>,
+    /// Whether the subqueries of the SELECT being bound become SubPlans that the ported optimizer plans when it plans
+    /// the query around them, rather than as they are bound.
+    pub defer_subplans: bool,
 }
 
 /// column returns the description of a result column of the type.

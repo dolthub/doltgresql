@@ -188,6 +188,7 @@ fn subquery_planner(
             rte.kind = RteKind::Plan(plan_subquery(ctx, plan.clone()));
         }
     }
+    subselect::preprocess_query_subplans(ctx, &mut parse);
     let has_having_qual = parse.having_qual.is_some();
     preprocess_having(glob, &mut parse);
     if prepjointree::has_outer_joins(&parse) {

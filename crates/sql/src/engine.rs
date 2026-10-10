@@ -1751,6 +1751,7 @@ impl Session {
             variables: Vec::new(),
             expanding: Vec::new(),
             deferred_sublinks: Vec::new(),
+            defer_subplans: false,
         };
         store::defer_syncs(true);
         let result = (|| {
