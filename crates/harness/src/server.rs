@@ -175,6 +175,11 @@ impl Server {
         &self.directory
     }
 
+    /// pid returns the ID of the server's process.
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
     /// is_running reports whether the server's process has not exited.
     pub fn is_running(&mut self) -> bool {
         matches!(self.child.try_wait(), Ok(None))

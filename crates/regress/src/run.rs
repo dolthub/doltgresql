@@ -29,6 +29,9 @@ use crate::{align, script};
 const DATABASE: &str = "regression";
 /// How long one test may run before it is stopped.
 const TEST_TIMEOUT: Duration = Duration::from_secs(300);
+/// How much memory, in kilobytes, the server may hold while a test runs before the test is stopped, so that one
+/// runaway query cannot exhaust the machine.
+const MEMORY_LIMIT_KB: u64 = 8 * 1024 * 1024;
 /// How long the server may take to answer a query between tests.
 const PING_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -45,8 +48,8 @@ pub struct Options<'a> {
     pub only: &'a [String],
 }
 
-/// run runs the tests and returns their results. A test that stops the server, or runs too long, is followed by a
-/// restart of the server, which keeps its data.
+/// run runs the tests and returns their results. A test that stops the server, runs too long, or grows the server
+/// past the memory limit is followed by a restart of the server, which keeps its data.
 pub fn run(options: &Options<'_>) -> Result<Vec<FileResult>, String> {
     let tests = schedule(&options.suite.join("parallel_schedule"))?;
     std::fs::create_dir_all(options.out.join("results")).map_err(|e| e.to_string())?;
@@ -135,7 +138,7 @@ fn psql_succeeds(options: &Options<'_>, server: &Server, statement: &str, timeou
         .stdout(log)
         .stderr(stderr)
         .spawn();
-    let succeeded = child.is_ok_and(|mut child| wait(&mut child, timeout).is_some_and(|code| code == Some(0)));
+    let succeeded = child.is_ok_and(|mut child| wait(&mut child, timeout, None).is_some_and(|code| code == Some(0)));
     if !succeeded {
         println!("{statement}: {}", std::fs::read_to_string(&path).unwrap_or_default().trim());
     }
@@ -143,7 +146,7 @@ fn psql_succeeds(options: &Options<'_>, server: &Server, statement: &str, timeou
 }
 
 /// run_test runs a test's script through psql as pg_regress does, and returns its output and whether it finished in
-/// time.
+/// time and within the memory limit.
 fn run_test(options: &Options<'_>, server: &Server, test: &str) -> Result<(String, bool), String> {
     let script = options.suite.join("sql").join(format!("{test}.sql"));
     let path = options.out.join("results").join(format!("{test}.out"));
@@ -155,25 +158,41 @@ fn run_test(options: &Options<'_>, server: &Server, test: &str) -> Result<(Strin
         .stderr(output)
         .spawn()
         .map_err(|e| format!("cannot start {}: {e}", options.psql.display()))?;
-    let finished = wait(&mut child, TEST_TIMEOUT).is_some();
+    let finished = wait(&mut child, TEST_TIMEOUT, Some(server.pid())).is_some();
     let output = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     Ok((String::from_utf8_lossy(&output).into_owned(), finished))
 }
 
-/// wait waits for a process to exit and returns its exit code, or stops it and returns None when it runs too long.
-fn wait(child: &mut Child, timeout: Duration) -> Option<Option<i32>> {
+/// wait waits for a process to exit and returns its exit code, or stops it and returns None when it runs too long
+/// or the server process grows past the memory limit.
+fn wait(child: &mut Child, timeout: Duration, server: Option<u32>) -> Option<Option<i32>> {
     let deadline = Instant::now() + timeout;
+    let mut checked = Instant::now();
     loop {
         if let Ok(Some(status)) = child.try_wait() {
             return Some(status.code());
         }
-        if Instant::now() > deadline {
+        let mut too_large = false;
+        if checked.elapsed() > Duration::from_secs(1) {
+            checked = Instant::now();
+            too_large = server.is_some_and(|pid| resident_kb(pid).is_some_and(|kb| kb > MEMORY_LIMIT_KB));
+        }
+        if too_large || Instant::now() > deadline {
+            if too_large {
+                println!("the server grew past {} GiB", MEMORY_LIMIT_KB / 1024 / 1024);
+            }
             let _ = child.kill();
             let _ = child.wait();
             return None;
         }
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+/// resident_kb returns the resident memory of a process in kilobytes, as ps reports it.
+fn resident_kb(pid: u32) -> Option<u64> {
+    let output = Command::new("ps").args(["-o", "rss=", "-p", &pid.to_string()]).output().ok()?;
+    String::from_utf8_lossy(&output.stdout).trim().parse().ok()
 }
 
 /// compare compares a test's output with each of its expected outputs, keeping the one that the most units match,
