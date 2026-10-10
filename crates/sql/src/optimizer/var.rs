@@ -87,11 +87,12 @@ pub fn contain_var_clause(e: &Expr) -> bool {
     found
 }
 
-/// mutate_query rewrites the expressions of a query's target list and join tree.
+/// mutate_query rewrites the expressions of a query's target list, join tree, and lateral relations.
 pub fn mutate_query(query: &mut Query, f: &mut dyn FnMut(Expr) -> Expr) {
     for e in query.upper_exprs_mut() {
         *e = f(std::mem::replace(e, Expr::Const(crate::types::Value::Null)));
     }
+    mutate_lateral_rtes(query, f);
     let mut node = JoinTreeNode::From(Box::new(std::mem::replace(
         &mut query.jointree,
         super::nodes::FromExpr { fromlist: Vec::new(), quals: Vec::new() },
@@ -99,6 +100,16 @@ pub fn mutate_query(query: &mut Query, f: &mut dyn FnMut(Expr) -> Expr) {
     mutate_jointree(&mut node, f);
     let JoinTreeNode::From(jointree) = node else { unreachable!("the join tree stays a FROM list") };
     query.jointree = *jointree;
+}
+
+/// mutate_lateral_rtes rewrites the expressions of the plans of a query's lateral relations, which read the query's
+/// Vars.
+pub fn mutate_lateral_rtes(query: &mut Query, f: &mut dyn FnMut(Expr) -> Expr) {
+    for rte in query.rtable.iter_mut().filter(|rte| rte.lateral) {
+        if let super::nodes::RteKind::Plan(plan) = &mut rte.kind {
+            plan.map_exprs(0, &mut |e, depth| if depth == 0 { f(e) } else { e });
+        }
+    }
 }
 
 /// mutate_jointree rewrites the quals of a join tree.

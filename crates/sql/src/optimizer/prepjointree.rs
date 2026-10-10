@@ -210,12 +210,13 @@ struct PullupReplaceVars {
     done: HashSet<usize>,
 }
 
-/// perform_pullup_replace_vars replaces the Vars of a pulled-up relation in the query's target list and join tree,
-/// as Postgres' function of the same name does.
+/// perform_pullup_replace_vars replaces the Vars of a pulled-up relation in the query's target list, join tree, and
+/// lateral relations, as Postgres' function of the same name does.
 fn perform_pullup_replace_vars(glob: &mut PlannerGlobal, parse: &mut Query, rvcontext: &mut PullupReplaceVars) {
     for e in parse.upper_exprs_mut() {
         *e = pullup_replace_vars(glob, e.clone(), rvcontext);
     }
+    super::var::mutate_lateral_rtes(parse, &mut |e| pullup_replace_vars(glob, e, rvcontext));
     let mut node = JoinTreeNode::From(Box::new(std::mem::replace(
         &mut parse.jointree,
         FromExpr { fromlist: Vec::new(), quals: Vec::new() },

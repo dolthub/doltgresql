@@ -949,3 +949,79 @@ fn test_window_clause_frames() {
         },
     ]);
 }
+
+#[test]
+fn test_lateral_functions() {
+    run_scripts(&[
+        ScriptTest {
+            name: "functions and VALUES lists that read the FROM items before them",
+            set_up_script: &[
+                "CREATE TABLE lat_t (id INT PRIMARY KEY, n INT, arr INT[]);",
+                "INSERT INTO lat_t VALUES (1, 2, '{10,20}'), (2, 3, '{30}'), (3, 0, '{}');",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT id, g FROM lat_t, generate_series(1, lat_t.n) g ORDER BY id, g;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("g", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("1"), T("2")],
+                            &[T("2"), T("1")],
+                            &[T("2"), T("2")],
+                            &[T("2"), T("3")],
+                        ],
+                        tag: "SELECT 5",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT id, x FROM lat_t, unnest(lat_t.arr) x ORDER BY id, x;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("x", INT4)],
+                        rows: &[
+                            &[T("1"), T("10")],
+                            &[T("1"), T("20")],
+                            &[T("2"), T("30")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT lat_t.id, v.a FROM lat_t, LATERAL (VALUES (lat_t.id * 10), (lat_t.n)) v(a) ORDER BY 1, 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("a", INT4)],
+                        rows: &[
+                            &[T("1"), T("2")],
+                            &[T("1"), T("10")],
+                            &[T("2"), T("3")],
+                            &[T("2"), T("20")],
+                            &[T("3"), T("0")],
+                            &[T("3"), T("30")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT a.id, b.id, g FROM lat_t a JOIN lat_t b ON a.id = b.id, generate_series(a.n, b.n + 1) g ORDER BY 1, 3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("id", INT4), Column("id", INT4), Column("g", INT4)],
+                        rows: &[
+                            &[T("1"), T("1"), T("2")],
+                            &[T("1"), T("1"), T("3")],
+                            &[T("2"), T("2"), T("3")],
+                            &[T("2"), T("2"), T("4")],
+                            &[T("3"), T("3"), T("0")],
+                            &[T("3"), T("3"), T("1")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
