@@ -80,8 +80,9 @@ fn project(root: &PlannerInfo<'_, '_>, plan: Plan, layout: Vec<Slot>, path: &Pat
     (Plan::Project { input: Box::new(plan), exprs: positional_exprs }, slots)
 }
 
-/// sort_keys returns the sort keys of pathkeys over a plan's rows of a layout, by the member of each key's class that
-/// the rows hold or that their columns compute, as Postgres' prepare_sort_from_pathkeys finds them.
+/// sort_keys returns the sort keys of pathkeys over a plan's rows of a layout, as Postgres' prepare_sort_from_pathkeys
+/// finds them: the first column of the rows that holds a member of each key's class, as find_ec_member_matching_expr
+/// matches it, or else the first member that the columns compute, as find_computable_ec_member finds it.
 fn sort_keys(
     root: &PlannerInfo<'_, '_>,
     pathkeys: &[super::nodes::PkId],
@@ -91,14 +92,19 @@ fn sort_keys(
         .iter()
         .filter_map(|&pk| {
             let pathkey = &root.canon_pathkeys[pk];
-            let members = &root.eq_classes[pathkey.pk_eclass].ec_members;
-            let expr =
-                members.iter().map(|&em| &root.eq_members[em].em_expr).find(|e| computable(root, e, layout))?.clone();
-            Some(crate::plan::SortKey {
-                expr: positional(root, expr, layout),
-                descending: pathkey.pk_descending,
-                nulls_first: pathkey.pk_nulls_first,
-            })
+            let members: Vec<&Expr> = root.eq_classes[pathkey.pk_eclass]
+                .ec_members
+                .iter()
+                .map(|&em| &root.eq_members[em])
+                .filter(|em| !em.em_is_const)
+                .map(|em| &em.em_expr)
+                .collect();
+            let column = layout.iter().position(|s| members.iter().any(|e| expr_slot(root, e) == *s));
+            let expr = match column {
+                Some(column) => Expr::Column(column),
+                None => positional(root, (*members.iter().find(|e| computable(root, e, layout))?).clone(), layout),
+            };
+            Some(crate::plan::SortKey { expr, descending: pathkey.pk_descending, nulls_first: pathkey.pk_nulls_first })
         })
         .collect()
 }
