@@ -833,7 +833,6 @@ func TestForeignKeys(t *testing.T) {
 			},
 			{
 				Name: "drop foreign key in another schema, no search path",
-				Skip: true, // not getting the explicit schema name passed to the node
 				SetUpScript: []string{
 					"create schema parent",
 					"create schema child",
@@ -845,7 +844,7 @@ func TestForeignKeys(t *testing.T) {
 					"INSERT INTO parent.parent VALUES (0, 0), (1, 1), (2,2)",
 					"SELECT DOLT_COMMIT('-Am', 'new tables')",
 					"INSERT INTO child.child VALUES (2, 'two', 2)",
-					"ALTER TABLE child.child ADD FOREIGN KEY (test_pk) REFERENCES parent.parent(pk)",
+					"ALTER TABLE child.child ADD CONSTRAINT fk1 FOREIGN KEY (test_pk) REFERENCES parent.parent(pk)",
 				},
 				Assertions: []ScriptTestAssertion{
 					{
@@ -853,7 +852,7 @@ func TestForeignKeys(t *testing.T) {
 						ExpectedErr: "Foreign key violation",
 					},
 					{
-						Query:            "alter table child.child DROP constraint child_ibfk_1",
+						Query:            "alter table child.child DROP constraint fk1",
 						SkipResultsCheck: true,
 					},
 					{

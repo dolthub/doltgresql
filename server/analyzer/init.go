@@ -29,35 +29,35 @@ import (
 // Comments are to match the Stringer formatting rules in the original rule definition file, but we can't generate
 // human-readable strings for these extended types because they are in another package.
 const (
-	ruleId_TypeSanitizer                   analyzer.RuleId = iota + 1000 // typeSanitizer
-	ruleId_AddDomainConstraints                                          // addDomainConstraints
-	ruleId_AddDomainConstraintsToCasts                                   // addDomainConstraintsToCasts
-	ruleId_ApplyTablesForAnalyzeAllTables                                // applyTablesForAnalyzeAllTables
-	ruleId_AssignInsertCasts                                             // assignInsertCasts
-	ruleId_AssignTriggers                                                // assignTriggers
-	ruleId_AssignUpdateCasts                                             // assignUpdateCasts
-	ruleId_ConvertDropPrimaryKeyConstraint                               // convertDropPrimaryKeyConstraint
-	ruleId_GenerateForeignKeyName                                        // generateForeignKeyName
-	ruleId_ReplaceNode                                                   // replaceNode
-	ruleId_ReplaceSerial                                                 // replaceSerial
-	ruleId_InsertContextRootFinalizer                                    // insertContextRootFinalizer
-	ruleId_ResolveType                                                   // resolveType
-	ruleId_ReplaceArithmeticExpressions                                  // replaceArithmeticExpressions
-	ruleId_OptimizeFunctions                                             // optimizeFunctions
-	ruleId_ValidateColumnDefaults                                        // validateColumnDefaults
-	ruleId_ValidateCreateTable                                           // validateCreateTable
-	ruleId_ValidateCreateSchema                                          // validateCreateSchema
-	ruleId_ResolveAlterColumn                                            // resolveAlterColumn
-	ruleId_ValidateCreateFunction                                        // validateCreateFunction
-	ruleId_ResolveValuesTypes                                            // resolveValuesTypes
-	ruleId_ResolveProcedureDefaults                                      // resolveProcedureDefaults
-	ruleId_SetRunner                                                     // setRunner
-	ruleId_TypeSanitizeExistsSubquery                                    // typeSanitizeExistsSubquery
-	ruleId_ResolveTableForDDL                                            // resolveTableForDDL
-	ruleId_AddLikePrefixRanges                                           // addLikePrefixRanges
-	ruleId_ParenthesizeColumnDefaults                                    // parenthesizeColumnDefaults
-	ruleId_HoistInsertTriggers                                           // hoistInsertTriggers
-	ruleId_SplitRowComparisons                                           // splitRowComparisons
+	ruleId_TypeSanitizer                  analyzer.RuleId = iota + 1000 // typeSanitizer
+	ruleId_AddDomainConstraints                                         // addDomainConstraints
+	ruleId_AddDomainConstraintsToCasts                                  // addDomainConstraintsToCasts
+	ruleId_ApplyTablesForAnalyzeAllTables                               // applyTablesForAnalyzeAllTables
+	ruleId_AssignInsertCasts                                            // assignInsertCasts
+	ruleId_AssignTriggers                                               // assignTriggers
+	ruleId_AssignUpdateCasts                                            // assignUpdateCasts
+	ruleId_ResolveDropConstraint                                        // resolveDropConstraint
+	ruleId_GenerateForeignKeyName                                       // generateForeignKeyName
+	ruleId_ReplaceNode                                                  // replaceNode
+	ruleId_ReplaceSerial                                                // replaceSerial
+	ruleId_InsertContextRootFinalizer                                   // insertContextRootFinalizer
+	ruleId_ResolveType                                                  // resolveType
+	ruleId_ReplaceArithmeticExpressions                                 // replaceArithmeticExpressions
+	ruleId_OptimizeFunctions                                            // optimizeFunctions
+	ruleId_ValidateColumnDefaults                                       // validateColumnDefaults
+	ruleId_ValidateCreateTable                                          // validateCreateTable
+	ruleId_ValidateCreateSchema                                         // validateCreateSchema
+	ruleId_ResolveAlterColumn                                           // resolveAlterColumn
+	ruleId_ValidateCreateFunction                                       // validateCreateFunction
+	ruleId_ResolveValuesTypes                                           // resolveValuesTypes
+	ruleId_ResolveProcedureDefaults                                     // resolveProcedureDefaults
+	ruleId_SetRunner                                                    // setRunner
+	ruleId_TypeSanitizeExistsSubquery                                   // typeSanitizeExistsSubquery
+	ruleId_ResolveTableForDDL                                           // resolveTableForDDL
+	ruleId_AddLikePrefixRanges                                          // addLikePrefixRanges
+	ruleId_ParenthesizeColumnDefaults                                   // parenthesizeColumnDefaults
+	ruleId_HoistInsertTriggers                                          // hoistInsertTriggers
+	ruleId_SplitRowComparisons                                          // splitRowComparisons
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -68,7 +68,7 @@ func Init() {
 		{Id: ruleId_AddLikePrefixRanges, Apply: AddLikePrefixRanges},
 		{Id: ruleId_SplitRowComparisons, Apply: SplitRowComparisons},
 		{Id: ruleId_ApplyTablesForAnalyzeAllTables, Apply: applyTablesForAnalyzeAllTables},
-		{Id: ruleId_ConvertDropPrimaryKeyConstraint, Apply: convertDropPrimaryKeyConstraint},
+		{Id: ruleId_ResolveDropConstraint, Apply: resolveDropConstraint},
 		{Id: ruleId_ResolveTableForDDL, Apply: resolveTableForDDL}},
 		analyzer.OnceBeforeDefault...)
 
