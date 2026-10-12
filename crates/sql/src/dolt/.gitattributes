@@ -1,0 +1,2 @@
+# The agent guide is embedded in the server and returned byte for byte, so it keeps Unix line endings everywhere.
+AGENT.md -text

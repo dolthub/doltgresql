@@ -382,9 +382,13 @@ tests:
       result:
         columns: ["routine_value"]
         rows: [["1"]]
-  # Drop the group after the standby has applied its authorization payload.
+  # Drop the group after the standby has applied its authorization payload. Postgres refuses to drop a role that
+  # still holds privileges, so they are revoked first.
   - on: server1
     queries:
+    - exec: "use repo1"
+    - exec: "revoke select on vals from doomed"
+    - exec: "revoke execute on function routine_vals() from doomed"
     - exec: "drop role doomed"
   # The dropped group disappears on the standby, while the member remains.
   - on: server2
@@ -407,9 +411,11 @@ tests:
     - query: "select i from vals"
       error_match: "permission denied for table vals"
       retry_attempts: 100
-    - query: "select routine_vals()"
-      error_match: "permission denied"
-      retry_attempts: 100
+    # PUBLIC can still execute the routine, as Postgres grants EXECUTE on routines to PUBLIC by default.
+    - query: "select routine_vals() as routine_value"
+      result:
+        columns: ["routine_value"]
+        rows: [["1"]]
 - name: roles and privileges usable after failover
   multi_repos:
   - name: server1

@@ -1,0 +1,3 @@
+# Fixture databases keep their .dolt directories, which the repository ignores elsewhere.
+!**/.dolt/
+!config.json

@@ -34,7 +34,7 @@ verify_column_name() {
   [ "$status" -eq 0 ]
   # Ensure the column name is 'version' and not 'version()'
   verify_column_name "$output" "version"
-  [[ "$output" =~ "PostgreSQL 15.5" ]] || false
+  [[ "$output" =~ "PostgreSQL 18.6" ]] || false
 }
 
 @test 'workbench-commands: current_schema' {

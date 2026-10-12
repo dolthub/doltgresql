@@ -1,0 +1,51 @@
+[package]
+name = "pg_query"
+description = "PostgreSQL parser that uses the actual PostgreSQL server source to parse SQL queries and return the internal PostgreSQL parse tree."
+version = "18.0.0"
+edition = "2021"
+documentation = "https://docs.rs/pg_query"
+license = "MIT"
+repository = "https://github.com/pganalyze/pg_query.rs"
+include = [
+    # pg_query.rs
+    "README.md", "build.rs", "src/**/*.rs",
+    # libpg_query
+    "Makefile", "pg_query.h",
+    "libpg_query/*.h",
+    "libpg_query/{src,vendor}/**/*.{c,h}",
+    "libpg_query/vendor/**/*.inc",
+    "libpg_query/protobuf/pg_query.proto",
+    "libpg_query/protobuf/pg_query.upb.{h,c}",
+    "libpg_query/protobuf/pg_query.upb_minitable.{c,h}",
+]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+itertools = "0.10.3"
+prost = "0.13.5"
+serde = { version = "1.0.139", features = ["derive"] }
+serde_json = "1.0.82"
+thiserror = "1.0.31"
+
+[build-dependencies]
+bindgen = "0.66.1"
+clippy = { version = "0.0.302", optional = true }
+prost-build = "0.13.5"
+fs_extra = "1.2.0"
+cc = "1.0.83"
+glob = "0.3.1"
+
+[dev-dependencies]
+brunch = "0.11"
+easy-parallel = "3.2.0"
+pretty_assertions = "1.4.0"
+regex = "1.6.0"
+
+[[bench]]
+name = "parse_vs_summary"
+harness = false
+
+[[bench]]
+name = "parse_very_large_query"
+harness = false

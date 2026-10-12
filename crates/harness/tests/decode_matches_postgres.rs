@@ -1,0 +1,238 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Compares the binary decoder against Postgres' own text output for the same values. It needs a real Postgres in
+//! PGX_SMOKE_URL, and runs with TimeZone UTC since the decoder renders timestamptz in UTC.
+
+use harness::decode::decode_binary;
+use harness::pgx::{Conn, ConnConfig, formats};
+
+/// EXPRESSIONS covers each binary-decoded type, including the edge cases of its output function.
+const EXPRESSIONS: &[&str] = &[
+    "true",
+    "false",
+    "'\\x'::bytea",
+    "'\\xdeadbeef00ff'::bytea",
+    "'a'::\"char\"",
+    "'\\377'::\"char\"",
+    "''::\"char\"",
+    "(-32768)::int2",
+    "32767::int2",
+    "(-2147483648)::int4",
+    "2147483647::int4",
+    "(-9223372036854775808)::int8",
+    "9223372036854775807::int8",
+    "0::oid",
+    "4294967295::oid",
+    "'(3,4)'::tid",
+    "'42'::xid",
+    "'7'::cid",
+    "'18446744073709551615'::xid8",
+    "0::float8",
+    "'-0'::float8",
+    "1::float8",
+    "-1.5::float8",
+    "0.1::float8",
+    "1e15::float8",
+    "1e14::float8",
+    "123456789012345678::float8",
+    "1e20::float8",
+    "0.0001::float8",
+    "0.00001::float8",
+    "1.7976931348623157e308::float8",
+    "5e-324::float8",
+    "'NaN'::float8",
+    "'Infinity'::float8",
+    "'-Infinity'::float8",
+    "3.14159::float4",
+    "1e6::float4",
+    "1e5::float4",
+    "123456::float4",
+    "0.0001::float4",
+    "0.00001::float4",
+    "'NaN'::float4",
+    "0::numeric",
+    "0.00::numeric",
+    "1.50::numeric",
+    "-1.50::numeric",
+    "10000::numeric",
+    "100000000::numeric",
+    "123456789.123456789::numeric",
+    "0.000001::numeric",
+    "0.00012345::numeric",
+    "-0.5::numeric",
+    "1e30::numeric",
+    "1e-30::numeric",
+    "'NaN'::numeric",
+    "'Infinity'::numeric",
+    "'-Infinity'::numeric",
+    "round(2.5::numeric, 10)",
+    "'2000-01-01'::date",
+    "'1999-12-31'::date",
+    "'0001-01-01'::date",
+    "'0044-03-15 BC'::date",
+    "'4713-01-01 BC'::date",
+    "'5874897-12-31'::date",
+    "'infinity'::date",
+    "'-infinity'::date",
+    "'00:00:00'::time",
+    "'23:59:59.999999'::time",
+    "'12:34:56.5'::time",
+    "'24:00:00'::time",
+    "'2000-01-01 00:00:00'::timestamp",
+    "'2024-02-29 13:45:01.25'::timestamp",
+    "'1900-01-01 00:00:00.000001'::timestamp",
+    "'0001-01-01 00:00:00 BC'::timestamp",
+    "'294276-12-31 23:59:59.999999'::timestamp",
+    "'infinity'::timestamp",
+    "'-infinity'::timestamp",
+    "'2024-02-29 13:45:01.25+05:30'::timestamptz",
+    "'1970-01-01 00:00:00+00'::timestamptz",
+    "'0010-06-01 00:00:00+00 BC'::timestamptz",
+    "'infinity'::timestamptz",
+    "'0'::interval",
+    "'1 year'::interval",
+    "'2 years 3 mons'::interval",
+    "'1 mon'::interval",
+    "'-1 year -2 mons'::interval",
+    "'1 day'::interval",
+    "'-1 day'::interval",
+    "'1 day -1 hour'::interval",
+    "'-1 day 1 hour'::interval",
+    "'1 year -1 day'::interval",
+    "'-1 year 1 day'::interval",
+    "'1 hour'::interval",
+    "'-00:00:01'::interval",
+    "'100 hours 2 minutes 3.5 seconds'::interval",
+    "'-1.000001 seconds'::interval",
+    "'1 year 2 mons 3 days 04:05:06.789'::interval",
+    "'178000000 years'::interval",
+    "'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid",
+    "B''",
+    "B'1'",
+    "B'10110'",
+    "B'1011001110'::varbit",
+    "B'101'::bit(3)",
+    "'(1,2)'::point",
+    "'(1.5,-2.25)'::point",
+    "'[(1,2),(3,4)]'::lseg",
+    "'[(1,2),(3,4),(5,6)]'::path",
+    "'((1,2),(3,4),(5,6))'::path",
+    "'(3,4),(1,2)'::box",
+    "'((0,0),(1,1),(1,0))'::polygon",
+    "'{1,2,3}'::line",
+    "'<(1,2),3>'::circle",
+    "'192.168.1.1'::inet",
+    "'192.168.1.0/24'::inet",
+    "'10/8'::cidr",
+    "'192.168.1.5/32'::cidr",
+    "'::1'::inet",
+    "'2001:db8::1'::inet",
+    "'2001:db8::/32'::cidr",
+    "'::ffff:1.2.3.4'::inet",
+    "'fe80::1:2:3:4'::inet",
+    "'1:0:0:1:0:0:0:1'::inet",
+    "'08:00:2b:01:02:03'::macaddr",
+    "'08:00:2b:01:02:03:04:05'::macaddr8",
+    "ROW(1, 'a', NULL, '', 'b c', 'q\"x', 'back\\slash')",
+    "ROW()",
+    "ROW(1.5::numeric, '2024-01-01'::date, true)",
+    "'a fat cat sat on a mat'::tsvector",
+    "'a:1A fat:2B,4C cat:5D it''s back\\\\slash'::tsvector",
+    "''::tsvector",
+    "'[1,5)'::int4range",
+    "'(1,5]'::int4range",
+    "'empty'::int4range",
+    "'[1,)'::int4range",
+    "'(,)'::int8range",
+    "'[1.5,2.5]'::numrange",
+    "'[2024-01-01,2024-02-01)'::daterange",
+    "'[\"2024-01-01 00:00\",\"2024-01-02 00:00\")'::tsrange",
+    "'[\"2024-01-01 00:00+00\",)'::tstzrange",
+    "'{[1,3),[5,7)}'::int4multirange",
+    "'{}'::int4multirange",
+    "'{}'::int4[]",
+    "'{1,2,3}'::int4[]",
+    "'{{1,2},{3,4}}'::int4[]",
+    "'[0:1]={5,6}'::int4[]",
+    "'[2:3][1:2]={{1,2},{3,4}}'::int4[]",
+    "ARRAY[1, NULL, 3]::int8[]",
+    "ARRAY['a', '', 'NULL', 'null', 'b c', 'q\"x', 'back\\slash', '{x}', 'a,b']::text[]",
+    "ARRAY['x', NULL]::varchar[]",
+    "ARRAY['x  ']::bpchar[]",
+    "ARRAY['abc']::name[]",
+    "ARRAY[true, false]",
+    "ARRAY['\\x01'::bytea]",
+    "ARRAY[1.5::float8, 'NaN']",
+    "ARRAY[1.5::float4]",
+    "ARRAY[1.50::numeric, 'NaN']",
+    "ARRAY['2024-01-01'::date]",
+    "ARRAY['12:00'::time]",
+    "ARRAY['2024-01-01 12:00'::timestamp]",
+    "ARRAY['2024-01-01 12:00+00'::timestamptz]",
+    "ARRAY['1 day'::interval]",
+    "ARRAY['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'::uuid]",
+    "ARRAY[B'101']",
+    "ARRAY[B'101'::varbit]",
+    "ARRAY['(1,2)'::point]",
+    "ARRAY['(3,4),(1,2)'::box, '(5,6),(1,2)'::box]",
+    "ARRAY['1.2.3.4'::inet]",
+    "ARRAY['1.2.3.0/24'::cidr]",
+    "ARRAY['08:00:2b:01:02:03'::macaddr]",
+    "ARRAY['{\"a\": 1}'::json]",
+    "ARRAY['{\"a\": 1}'::jsonb]",
+    "ARRAY['<a/>'::xml]",
+    "ARRAY['a'::\"char\"]",
+    "ARRAY[1::oid]",
+    "ARRAY['(1,2)'::tid]",
+    "ARRAY['1'::xid]",
+    "ARRAY['1'::xid8]",
+    "ARRAY['1'::cid]",
+    "ARRAY[ROW(1, 'a')]",
+    "ARRAY['a:1'::tsvector]",
+    "ARRAY['[1,2)'::int4range]",
+    "ARRAY['{1,2,3}'::line]",
+    "ARRAY['<(1,2),3>'::circle]",
+    "ARRAY['[(1,2),(3,4)]'::lseg]",
+    "ARRAY['[(1,2),(3,4)]'::path]",
+    "ARRAY['((0,0),(1,1),(1,0))'::polygon]",
+];
+
+#[test]
+fn binary_decoding_matches_text_output() {
+    let Ok(url) = std::env::var("PGX_SMOKE_URL") else { return };
+    let mut conn = Conn::connect(ConnConfig::parse(&url).unwrap()).unwrap();
+    conn.exec("SET TimeZone = 'UTC';", &[]).unwrap();
+    let mut failures = Vec::new();
+    for expression in EXPRESSIONS {
+        let sql = format!("SELECT {expression};");
+        let text = conn.query_with_result_format(&sql, formats::TEXT).unwrap();
+        let binary = conn.query_with_result_format(&sql, formats::BINARY).unwrap();
+        assert_eq!(text.error, None, "{sql}");
+        assert_eq!(binary.error, None, "{sql}");
+        let oid = binary.fields[0].data_type_oid;
+        let expected = text.rows[0][0].as_ref().map(|bytes| String::from_utf8(bytes.clone()).unwrap());
+        let actual = match &binary.rows[0][0] {
+            Some(bytes) => match decode_binary(oid, bytes) {
+                Ok(text) => Some(text),
+                Err(err) => Some(format!("<error: {err}>")),
+            },
+            None => None,
+        };
+        if expected != actual {
+            failures.push(format!("{sql} (type {oid}): Postgres {expected:?}, decoder {actual:?}"));
+        }
+    }
+    assert!(failures.is_empty(), "{} mismatches:\n{}", failures.len(), failures.join("\n"));
+}

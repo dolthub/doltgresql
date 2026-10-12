@@ -54,9 +54,8 @@ teardown() {
 @test 'psql-commands: \dn' {
     run query_server --csv -c "\dn"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "dolt,postgres" ]] || false
-    [[ "$output" =~ "public,postgres" ]] || false
-    [ "${#lines[@]}" -eq 3 ]
+    [[ "$output" =~ "public,pg_database_owner" ]] || false
+    [ "${#lines[@]}" -eq 2 ]
 }
 
 @test 'psql-commands: \df' {

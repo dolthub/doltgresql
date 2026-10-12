@@ -1,0 +1,15 @@
+[package]
+name = "regress"
+description = "Runs Postgres' regression suite against a server through psql, as pg_regress does, and compares runs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+harness = { path = "../harness" }
+serde_json = "1"
+
+[lints]
+workspace = true

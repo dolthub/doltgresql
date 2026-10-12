@@ -1,0 +1,2 @@
+{"databases":1,"name":"dt_basic_dt","steps":[{"admin":"CREATE DATABASE \"@db0@\"","divergence":null,"error":false},{"continue":true,"database":"@db0@","statements":[{"expect":{"columns":["dolt_version"],"rows":[["1.4.0"]]},"postgres":"Doltgres reports its own version","sql":"SELECT DOLT_VERSION()"}]}]}
+{"databases":1,"name":"dt_one_arg_dt_err","steps":[{"admin":"CREATE DATABASE \"@db0@\"","divergence":null,"error":false},{"continue":true,"database":"@db0@","statements":[{"expect":{"error":"function dolt_version(unknown) does not exist"},"sql":"SELECT DOLT_VERSION('x')"}]}]}

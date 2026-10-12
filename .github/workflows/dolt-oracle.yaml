@@ -1,0 +1,26 @@
+name: Dolt Oracle Tests
+on: [pull_request]
+
+concurrency:
+  group: dolt-oracle-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  oracle:
+    name: Dolt oracle tests
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up Rust
+        run: rustup toolchain install
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ github.workflow }}
+      - name: Build doltgres and the oracle
+        run: cargo build --release -p server -p oracle
+      - name: Replay Dolt's behavior
+        run: target/release/dolt-oracle run testing/dolt-oracle "$PWD/target/release/doltgres"

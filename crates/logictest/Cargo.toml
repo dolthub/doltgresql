@@ -1,0 +1,16 @@
+[package]
+name = "logictest"
+description = "Runs sqllogictest files against a server and logs a result for every record"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+harness = { path = "../harness" }
+md-5 = "0.10"
+pgproto.workspace = true
+
+[lints]
+workspace = true

@@ -1,22 +1,10 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.26.2-alpine AS golang_cgo
-ENV CGO_ENABLED=1
-ENV GO_LDFLAGS="-linkmode external -extldflags '-static'"
-RUN apk add --no-cache build-base
-
 # --- Build doltgres binary ---
-FROM golang_cgo AS doltgres_build
-RUN apk add --no-cache icu-dev icu-static git
-RUN apk update && apk add --no-cache bash
-WORKDIR /root/building
-COPY go.mod doltgresql/
-WORKDIR doltgresql
-RUN go mod download
+FROM rust:bookworm AS doltgres_build
+RUN apt-get update && apt-get install -y clang libclang-dev && rm -rf /var/lib/apt/lists/*
+WORKDIR /root/building/doltgresql
 COPY --exclude=testing/postgres-client-tests/ . .
-WORKDIR /root/building/doltgresql/postgres/parser
-RUN sh ./build.sh
-WORKDIR /root/building/doltgresql/cmd/doltgres
-RUN go build -ldflags "-linkmode external -extldflags '-static'" -o /build/bin/doltgres .
+RUN rustup toolchain install && cargo build --release -p server && mkdir -p /build/bin && cp target/release/doltgres /build/bin/doltgres
 
 # --- Build Go postgres clients (pgx, lib/pq) ---
 FROM golang:1.26.4 AS go_clients_build

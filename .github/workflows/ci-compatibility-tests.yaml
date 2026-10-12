@@ -8,6 +8,10 @@ on:
       - 'core/**'
       - 'server/**'
       - 'integration-tests/**'
+      - 'crates/**'
+      - 'third_party/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
 
 concurrency:
   group: ci-compatibility-tests-${{ github.event.pull_request.number || github.ref }}
@@ -20,20 +24,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Set up Rust
+        run: rustup toolchain install
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
         with:
-          go-version-file: go.mod
-        id: go
+          key: ${{ github.workflow }}-${{ matrix.os }}${{ matrix.platform }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: ^16
-
-      - name: Build SQL Syntax
-        run: ./build.sh
-        working-directory: ./postgres/parser
-        shell: bash
 
       - name: Create CI Bin
         run: |
@@ -48,7 +49,8 @@ jobs:
 
       - name: Install DoltgreSQL
         run: |
-          go build -mod=readonly -o .ci_bin/doltgres ./cmd/doltgres
+          cargo build --release -p server
+          cp target/release/doltgres .ci_bin/doltgres
 
       - name: Install PSQL
         run: |
