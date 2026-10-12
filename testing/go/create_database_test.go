@@ -14,7 +14,11 @@
 
 package _go
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
+)
 
 func TestCreateDatabase(t *testing.T) {
 	RunScripts(t, []ScriptTest{
@@ -69,6 +73,31 @@ func TestCreateDatabase(t *testing.T) {
 				},
 				{
 					Query: "USE \"test-db\"",
+				},
+			},
+		},
+		{
+			Name: "options in any order",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE DATABASE testdb ENCODING 'UTF8' TEMPLATE template0;",
+				},
+				{
+					Query: "CREATE DATABASE testdb2 WITH LC_COLLATE = 'C' TEMPLATE = template0 OWNER = postgres ENCODING = 'UTF8';",
+				},
+				{
+					Query:           "CREATE DATABASE testdb3 ENCODING 'UTF8' TEMPLATE template0 ENCODING 'UTF8';",
+					ExpectedErr:     "conflicting or redundant options",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:           "CREATE DATABASE testdb3 TEMPLATE template0 ENCODING 'UTF8' TEMPLATE template0;",
+					ExpectedErr:     "conflicting or redundant options",
+					ExpectedErrCode: "42601",
+				},
+				{
+					Query:    "SELECT datname FROM pg_database WHERE datname LIKE 'testdb%' ORDER BY datname;",
+					Expected: []sql.Row{{"testdb"}, {"testdb2"}},
 				},
 			},
 		},

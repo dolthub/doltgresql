@@ -35,6 +35,8 @@ package tree
 
 import (
 	"github.com/dolthub/doltgresql/postgres/parser/lex"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 )
 
 var _ Statement = &CreateDatabase{}
@@ -59,6 +61,53 @@ type CreateDatabase struct {
 	ConnectionLimit  Expr // default is -1
 	IsTemplate       Expr // default is false
 	Oid              Expr
+}
+
+// NewCreateDatabase builds a CREATE DATABASE statement from options given in any order, rejecting repeated options.
+func NewCreateDatabase(name Name, ifNotExists bool, options []KVOption) (*CreateDatabase, error) {
+	node := &CreateDatabase{Name: name, IfNotExists: ifNotExists}
+	seen := make(map[Name]struct{}, len(options))
+	for _, option := range options {
+		if _, ok := seen[option.Key]; ok {
+			return nil, pgerror.New(pgcode.Syntax, "conflicting or redundant options")
+		}
+		seen[option.Key] = struct{}{}
+		switch option.Key {
+		case "owner":
+			node.Owner = string(*option.Value.(*DString))
+		case "template":
+			node.Template = string(*option.Value.(*DString))
+		case "encoding":
+			node.Encoding = string(*option.Value.(*DString))
+		case "strategy":
+			node.Strategy = string(*option.Value.(*DString))
+		case "locale":
+			node.Locale = string(*option.Value.(*DString))
+		case "lc_collate":
+			node.Collate = string(*option.Value.(*DString))
+		case "lc_ctype":
+			node.CType = string(*option.Value.(*DString))
+		case "icu_locale":
+			node.IcuLocale = string(*option.Value.(*DString))
+		case "icu_rules":
+			node.IcuRules = string(*option.Value.(*DString))
+		case "locale_provider":
+			node.LocaleProvider = string(*option.Value.(*DString))
+		case "collation_version":
+			node.CollationVersion = string(*option.Value.(*DString))
+		case "tablespace":
+			node.Tablespace = string(*option.Value.(*DString))
+		case "allow_connections":
+			node.AllowConnections = option.Value
+		case "connection_limit":
+			node.ConnectionLimit = option.Value
+		case "is_template":
+			node.IsTemplate = option.Value
+		case "oid":
+			node.Oid = option.Value
+		}
+	}
+	return node, nil
 }
 
 // Format implements the NodeFormatter interface.
