@@ -1,0 +1,15 @@
+[package]
+name = "bench"
+description = "Times a corpus of queries against doltgres and Postgres servers, to compare their speed query by query"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+harness = { path = "../harness" }
+md-5 = "0.10"
+
+[lints]
+workspace = true

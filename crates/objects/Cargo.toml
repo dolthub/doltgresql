@@ -1,0 +1,13 @@
+[package]
+name = "objects"
+description = "Doltgres root objects: sequences, types, functions, triggers, extensions, procedures, casts, operators, aggregates, and conflicts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+store = { path = "../store" }
+
+[lints]
+workspace = true

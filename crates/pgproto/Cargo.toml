@@ -1,0 +1,10 @@
+[package]
+name = "pgproto"
+description = "Postgres wire protocol messages for both the frontend and the backend"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true

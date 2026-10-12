@@ -1127,7 +1127,7 @@ tests:
     - query: "SELECT pg_sleep(5)"
       result:
         columns: ["pg_sleep"]
-        rows: [["NULL"]]
+        rows: [[""]]
     - query: "SELECT EXTRACT(EPOCH FROM (NOW() - last_update)) < 5 AS within_threshold FROM dolt_cluster_status;"
       result:
         columns: ["within_threshold"]
@@ -1575,6 +1575,8 @@ tests:
         - ["dolt_cluster"]
         - ["postgres"]
         - ["repo1"]
+        - ["template0"]
+        - ["template1"]
     - exec: 'use dolt_cluster'
     - query: "select \"database\", standby_remote, role, epoch, replication_lag_millis is not null as \"replication_lag_millis\", current_error from dolt_cluster_status order by \"database\" asc"
       result:
@@ -1592,6 +1594,8 @@ tests:
         - ["dolt_cluster"]
         - ["postgres"]
         - ["repo1"]
+        - ["template0"]
+        - ["template1"]
       retry_attempts: 100
     - exec: 'use dolt_cluster'
     - query: "select \"database\", standby_remote, role, epoch from dolt_cluster_status order by \"database\" asc"
@@ -1731,6 +1735,8 @@ tests:
         rows:
         - ["dolt_cluster"]
         - ["postgres"]
+        - ["template0"]
+        - ["template1"]
       retry_attempts: 100
     - exec: 'use dolt_cluster'
     - query: "select \"database\", standby_remote, role, epoch from dolt_cluster_status order by \"database\" asc"
@@ -1752,6 +1758,8 @@ tests:
         - ["dolt_cluster"]
         - ["postgres"]
         - ["repo1"]
+        - ["template0"]
+        - ["template1"]
       retry_attempts: 100
     - exec: 'use repo1'
     - query: "select d from vals"
@@ -1803,6 +1811,8 @@ tests:
         rows:
         - ["dolt_cluster"]
         - ["postgres"]
+        - ["template0"]
+        - ["template1"]
     - query: 'select * from dolt_cluster_transition_to_standby(2, 1) order by "database"'
       result:
         columns: ["caught_up", "database", "remote", "remote_url"]

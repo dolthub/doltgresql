@@ -1,0 +1,21 @@
+[package]
+name = "oracle"
+description = "Checks Doltgres against Dolt's behavior in the scenarios of Doltlite's oracle tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "dolt-oracle"
+path = "src/dolt_oracle/main.rs"
+
+[dependencies]
+harness = { path = "../harness" }
+pg_query = "18"
+pgproto.workspace = true
+serde_json = "1"
+
+[lints]
+workspace = true

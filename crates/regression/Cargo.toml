@@ -1,0 +1,19 @@
+[package]
+name = "regression"
+description = "Replays the recorded Postgres regression suite against a server and tracks which statements match"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+harness = { path = "../harness" }
+pgproto.workspace = true
+
+[dev-dependencies]
+base64 = "0.22"
+serde_json = "1"
+
+[lints]
+workspace = true

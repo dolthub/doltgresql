@@ -1,0 +1,985 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! Arrays: their text and binary formats, and how Doltgres stores them.
+
+use std::cmp::Ordering;
+
+use crate::catalog::builtin_type;
+use crate::error::{PgError, Result, code};
+use crate::expr::{ArrayOp, compare_values};
+use crate::types::Value;
+
+/// MAX_DIMENSIONS is the most dimensions an array may have.
+const MAX_DIMENSIONS: usize = 6;
+
+/// Array is an array value: its element type, its dimensions as lengths and lower bounds, and its elements in row
+/// order. An empty array has no dimensions.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Array {
+    pub element: u32,
+    pub dims: Vec<(i32, i32)>,
+    pub values: Vec<Value>,
+}
+
+impl Array {
+    /// one_dimensional returns a one-dimensional array of the elements, which is empty without them.
+    pub fn one_dimensional(element: u32, values: Vec<Value>) -> Array {
+        let dims = if values.is_empty() { Vec::new() } else { vec![(values.len() as i32, 1)] };
+        Array { element, dims, values }
+    }
+
+    /// array_type returns the OID of the array type of the elements, or of the vector type for a vector.
+    pub fn array_type(&self) -> u32 {
+        if is_vector_type(self.element) {
+            return self.element;
+        }
+        builtin_type(self.element).map_or(0, |t| t.array)
+    }
+
+    /// vector returns the array as a value of a vector type, int2vector or oidvector, whose subscripts start at 0 and
+    /// whose element type is the vector type itself.
+    pub fn vector(mut self, vector_type: u32) -> Array {
+        self.element = vector_type;
+        self.dims = if self.values.is_empty() { Vec::new() } else { vec![(self.values.len() as i32, 0)] };
+        self
+    }
+
+    /// element_type returns the type of the elements, which for a vector is the type of its numbers.
+    pub fn element_type(&self) -> u32 {
+        match self.element {
+            crate::oid::INT2VECTOR => crate::oid::INT2,
+            crate::oid::OIDVECTOR => crate::oid::OID,
+            element => element,
+        }
+    }
+}
+
+/// is_vector_type reports whether a type is int2vector or oidvector, the arrays that print as numbers separated by
+/// spaces.
+pub fn is_vector_type(type_oid: u32) -> bool {
+    matches!(type_oid, crate::oid::INT2VECTOR | crate::oid::OIDVECTOR)
+}
+
+/// parse_vector reads the numbers of an int2vector or oidvector, separated by spaces.
+pub fn parse_vector(text: &str, vector_type: u32, element: &dyn Fn(&str) -> Result<Value>) -> Result<Array> {
+    let values = text.split_ascii_whitespace().map(element).collect::<Result<Vec<_>>>()?;
+    Ok(Array::one_dimensional(vector_type, values).vector(vector_type))
+}
+
+/// malformed returns Postgres' error for array text it cannot read.
+fn malformed(text: &str, detail: &str) -> PgError {
+    PgError {
+        detail: Some(detail.to_string()),
+        ..PgError::new(code::INVALID_TEXT_REPRESENTATION, format!("malformed array literal: \"{text}\""))
+    }
+}
+
+/// is_array_space reports whether a byte is whitespace as Postgres' array_isspace sees it.
+fn is_array_space(c: u8) -> bool {
+    matches!(c, b' ' | b'\t' | b'\n' | b'\r' | b'\x0b' | b'\x0c')
+}
+
+/// Token is a token of array text, as Postgres' ReadArrayToken reads it.
+enum Token {
+    LevelStart,
+    LevelEnd,
+    Delimiter,
+    /// An element's text, with its quotes and escapes removed.
+    Element(String),
+    /// An unquoted NULL.
+    Null,
+}
+
+/// read_token reads the next token of array text, as Postgres' ReadArrayToken does.
+fn read_token(original: &str, text: &[u8], at: &mut usize, delimiter: u8) -> Result<Token> {
+    let end = || malformed(original, "Unexpected end of input.");
+    let quoted = loop {
+        match text.get(*at) {
+            None => return Err(end()),
+            Some(b'{') => {
+                *at += 1;
+                return Ok(Token::LevelStart);
+            }
+            Some(b'}') => {
+                *at += 1;
+                return Ok(Token::LevelEnd);
+            }
+            Some(b'"') => {
+                *at += 1;
+                break true;
+            }
+            Some(&c) if c == delimiter => {
+                *at += 1;
+                return Ok(Token::Delimiter);
+            }
+            Some(&c) if is_array_space(c) => *at += 1,
+            Some(_) => break false,
+        }
+    };
+    let mut element = Vec::new();
+    let text_of =
+        |bytes: Vec<u8>| String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into());
+    if quoted {
+        loop {
+            match text.get(*at) {
+                None => return Err(end()),
+                Some(b'\\') => {
+                    element.push(*text.get(*at + 1).ok_or_else(end)?);
+                    *at += 2;
+                }
+                Some(b'"') => loop {
+                    *at += 1;
+                    match text.get(*at) {
+                        None => return Err(end()),
+                        Some(&c) if c == delimiter || c == b'}' || c == b'{' => {
+                            return Ok(Token::Element(text_of(element)));
+                        }
+                        Some(&c) if !is_array_space(c) => {
+                            return Err(malformed(original, "Incorrectly quoted array element."));
+                        }
+                        Some(_) => {}
+                    }
+                },
+                Some(&c) => {
+                    element.push(c);
+                    *at += 1;
+                }
+            }
+        }
+    }
+    let (mut kept, mut escaped) = (0, false);
+    loop {
+        match text.get(*at) {
+            None => return Err(end()),
+            Some(b'{') => return Err(malformed(original, "Unexpected \"{\" character.")),
+            Some(b'"') => return Err(malformed(original, "Incorrectly quoted array element.")),
+            Some(b'\\') => {
+                element.push(*text.get(*at + 1).ok_or_else(end)?);
+                *at += 2;
+                kept = element.len();
+                escaped = true;
+            }
+            Some(&c) if c == delimiter || c == b'}' => {
+                element.truncate(kept);
+                let element = text_of(element);
+                return Ok(if !escaped && element.eq_ignore_ascii_case("NULL") {
+                    Token::Null
+                } else {
+                    Token::Element(element)
+                });
+            }
+            Some(&c) => {
+                element.push(c);
+                if !is_array_space(c) {
+                    kept = element.len();
+                }
+                *at += 1;
+            }
+        }
+    }
+}
+
+/// read_dimension_int reads an optionally signed integer of an array dimension, leaving the position alone when no
+/// digits follow it, as Postgres' ReadDimensionInt does.
+fn read_dimension_int(text: &[u8], at: &mut usize) -> Result<i32> {
+    let sign = usize::from(matches!(text.get(*at), Some(b'+' | b'-')));
+    let digits = text[(*at + sign).min(text.len())..].iter().take_while(|c| c.is_ascii_digit()).count();
+    if digits == 0 {
+        return Ok(0);
+    }
+    let number = std::str::from_utf8(&text[*at..*at + sign + digits]).unwrap_or_default();
+    *at += sign + digits;
+    number.parse::<i32>().map_err(|_| PgError::new(code::PROGRAM_LIMIT_EXCEEDED, "array bound is out of integer range"))
+}
+
+/// too_many_dimensions returns Postgres' error for array text nested more deeply than an array may be.
+fn too_many_dimensions() -> PgError {
+    PgError::new(
+        code::PROGRAM_LIMIT_EXCEEDED,
+        format!("number of array dimensions exceeds the maximum allowed ({MAX_DIMENSIONS})"),
+    )
+}
+
+/// read_dimensions reads the explicit dimensions that array text may start with, as `[1:3]` or `[2]`, returning the
+/// length and lower bound of each, as Postgres' ReadArrayDimensions does.
+fn read_dimensions(original: &str, text: &[u8], at: &mut usize) -> Result<Vec<(i32, i32)>> {
+    let mut dims = Vec::new();
+    loop {
+        while text.get(*at).is_some_and(|&c| is_array_space(c)) {
+            *at += 1;
+        }
+        if text.get(*at) != Some(&b'[') {
+            return Ok(dims);
+        }
+        *at += 1;
+        if dims.len() >= MAX_DIMENSIONS {
+            return Err(too_many_dimensions());
+        }
+        let start = *at;
+        let first = read_dimension_int(text, at)?;
+        if *at == start {
+            return Err(malformed(original, "\"[\" must introduce explicitly-specified array dimensions."));
+        }
+        let (lower, upper) = if text.get(*at) == Some(&b':') {
+            *at += 1;
+            let start = *at;
+            let upper = read_dimension_int(text, at)?;
+            if *at == start {
+                return Err(malformed(original, "Missing array dimension value."));
+            }
+            (first, upper)
+        } else {
+            (1, first)
+        };
+        if text.get(*at) != Some(&b']') {
+            return Err(malformed(original, "Missing \"]\" after array dimensions."));
+        }
+        *at += 1;
+        if upper < lower {
+            return Err(PgError::new(code::ARRAY_SUBSCRIPT_ERROR, "upper bound cannot be less than lower bound"));
+        }
+        if upper == i32::MAX {
+            return Err(PgError::new(code::PROGRAM_LIMIT_EXCEEDED, format!("array upper bound is too large: {upper}")));
+        }
+        let length = i32::try_from(i64::from(upper) - i64::from(lower) + 1).map_err(|_| {
+            PgError::new(code::PROGRAM_LIMIT_EXCEEDED, "array size exceeds the maximum allowed (134217727)")
+        })?;
+        dims.push((length, lower));
+    }
+}
+
+/// read_elements reads the elements of array text between its outer braces, checking its structure against the
+/// lengths of its dimensions, which are known when the text gave them and found as it goes when it did not, as
+/// Postgres' ReadArrayStr does. It returns the number of dimensions and the elements in row order.
+fn read_elements(
+    original: &str,
+    text: &[u8],
+    at: &mut usize,
+    lengths: &mut [i32; MAX_DIMENSIONS],
+    specified: usize,
+    read: &dyn Fn(&str) -> Result<Value>,
+) -> Result<(usize, Vec<Value>)> {
+    let delimiter = b',';
+    let mismatch = || match specified {
+        0 => malformed(original, "Multidimensional arrays must have sub-arrays with matching dimensions."),
+        _ => malformed(original, "Specified array dimensions do not match array contents."),
+    };
+    let (mut ndim, mut frozen, mut expect_delimiter) = (specified, specified > 0, false);
+    let mut counts = [0i32; MAX_DIMENSIONS];
+    let mut level = 0;
+    let mut values = Vec::new();
+    loop {
+        match read_token(original, text, at, delimiter)? {
+            Token::LevelStart => {
+                if expect_delimiter {
+                    return Err(malformed(original, "Unexpected \"{\" character."));
+                }
+                if level >= MAX_DIMENSIONS {
+                    return Err(too_many_dimensions());
+                }
+                counts[level] = 0;
+                level += 1;
+                if level > ndim {
+                    if frozen {
+                        return Err(mismatch());
+                    }
+                    ndim = level;
+                }
+            }
+            Token::LevelEnd => {
+                if counts[level - 1] > 0 && !expect_delimiter {
+                    return Err(malformed(original, "Unexpected \"}\" character."));
+                }
+                level -= 1;
+                if level > 0 {
+                    counts[level - 1] += 1;
+                }
+                if lengths[level] < 0 {
+                    lengths[level] = counts[level];
+                } else if counts[level] != lengths[level] {
+                    return Err(mismatch());
+                }
+                expect_delimiter = true;
+            }
+            Token::Delimiter => {
+                if !expect_delimiter {
+                    return Err(malformed(original, &format!("Unexpected \"{}\" character.", delimiter as char)));
+                }
+                expect_delimiter = false;
+            }
+            token @ (Token::Element(_) | Token::Null) => {
+                if expect_delimiter {
+                    return Err(malformed(original, "Unexpected array element."));
+                }
+                if values.len() >= 134217727 {
+                    return Err(PgError::new(
+                        code::PROGRAM_LIMIT_EXCEEDED,
+                        "array size exceeds the maximum allowed (134217727)",
+                    ));
+                }
+                values.push(match token {
+                    Token::Element(element) => read(&element)?,
+                    _ => Value::Null,
+                });
+                frozen = true;
+                if level != ndim {
+                    return Err(mismatch());
+                }
+                counts[level - 1] += 1;
+                expect_delimiter = true;
+            }
+        }
+        if level == 0 {
+            return Ok((ndim, values));
+        }
+    }
+}
+
+/// parse reads array text, as Postgres' array_in does.
+pub fn parse(text: &str, element: u32, read: &dyn Fn(&str) -> Result<Value>) -> Result<Array> {
+    let bytes = text.as_bytes();
+    let mut at = 0;
+    let specified = read_dimensions(text, bytes, &mut at)?;
+    if specified.is_empty() {
+        if bytes.get(at) != Some(&b'{') {
+            return Err(malformed(text, "Array value must start with \"{\" or dimension information."));
+        }
+    } else {
+        if bytes.get(at) != Some(&b'=') {
+            return Err(malformed(text, "Missing \"=\" after array dimensions."));
+        }
+        at += 1;
+        while bytes.get(at).is_some_and(|&c| is_array_space(c)) {
+            at += 1;
+        }
+        if bytes.get(at) != Some(&b'{') {
+            return Err(malformed(text, "Array contents must start with \"{\"."));
+        }
+    }
+    let mut lengths = [-1; MAX_DIMENSIONS];
+    for (length, (n, _)) in lengths.iter_mut().zip(&specified) {
+        *length = *n;
+    }
+    let (ndim, values) = read_elements(text, bytes, &mut at, &mut lengths, specified.len(), read)?;
+    if bytes[at..].iter().any(|&c| !is_array_space(c)) {
+        return Err(malformed(text, "Junk after closing right brace."));
+    }
+    if values.is_empty() {
+        return Ok(Array { element, dims: Vec::new(), values });
+    }
+    let dims = (0..ndim).map(|k| (lengths[k], specified.get(k).map_or(1, |&(_, lower)| lower))).collect();
+    Ok(Array { element, dims, values })
+}
+
+/// quote_element returns an element's text as array output writes it, quoted and escaped when it must be.
+fn quote_element(text: &str) -> String {
+    let needs = text.is_empty()
+        || text.eq_ignore_ascii_case("NULL")
+        || text.bytes().any(|c| matches!(c, b'"' | b'\\' | b'{' | b'}' | b',') || is_array_space(c));
+    if !needs {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len() + 2);
+    out.push('"');
+    for c in text.chars() {
+        if c == '"' || c == '\\' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('"');
+    out
+}
+
+/// format prints an array as Postgres' array_out does, with each element printed by the function.
+pub fn format(array: &Array, print: &dyn Fn(&Value) -> String) -> String {
+    if array.dims.is_empty() {
+        return "{}".into();
+    }
+    let mut out = String::new();
+    if array.dims.iter().any(|(_, lower)| *lower != 1) {
+        for (n, lower) in &array.dims {
+            out.push_str(&format!("[{}:{}]", lower, lower + n - 1));
+        }
+        out.push('=');
+    }
+    let mut index = 0;
+    format_level(array, 0, &mut index, print, &mut out);
+    out
+}
+
+/// format_level prints one level of an array's nesting.
+fn format_level(array: &Array, level: usize, index: &mut usize, print: &dyn Fn(&Value) -> String, out: &mut String) {
+    out.push('{');
+    let n = array.dims[level].0 as usize;
+    for i in 0..n {
+        if i > 0 {
+            out.push(',');
+        }
+        if level + 1 < array.dims.len() {
+            format_level(array, level + 1, index, print, out);
+        } else {
+            match &array.values[*index] {
+                Value::Null => out.push_str("NULL"),
+                value => out.push_str(&quote_element(&print(value))),
+            }
+            *index += 1;
+        }
+    }
+    out.push('}');
+}
+
+/// send writes an array in Postgres' binary format: dimensions, a NULL flag, the element type, bounds, and each
+/// element's length and binary form.
+pub fn send(array: &Array, element_send: &dyn Fn(&Value) -> Option<Vec<u8>>) -> Vec<u8> {
+    let mut out = Vec::new();
+    out.extend_from_slice(&(array.dims.len() as i32).to_be_bytes());
+    out.extend_from_slice(&(array.values.iter().any(Value::is_null) as i32).to_be_bytes());
+    out.extend_from_slice(&array.element_type().to_be_bytes());
+    for (n, lower) in &array.dims {
+        out.extend_from_slice(&n.to_be_bytes());
+        out.extend_from_slice(&lower.to_be_bytes());
+    }
+    for value in &array.values {
+        match element_send(value) {
+            Some(bytes) => {
+                out.extend_from_slice(&(bytes.len() as i32).to_be_bytes());
+                out.extend_from_slice(&bytes);
+            }
+            None => out.extend_from_slice(&(-1i32).to_be_bytes()),
+        }
+    }
+    out
+}
+
+/// receive reads Postgres' binary array format.
+pub fn receive(bytes: &[u8], element_receive: &dyn Fn(u32, &[u8]) -> Result<Value>) -> Result<Array> {
+    let invalid = || PgError::new(code::INVALID_BINARY_REPRESENTATION, "insufficient data left in message");
+    let int = |at: usize| -> Result<i32> {
+        Ok(i32::from_be_bytes(bytes.get(at..at + 4).ok_or_else(invalid)?.try_into().map_err(|_| invalid())?))
+    };
+    let ndim = int(0)? as usize;
+    if ndim > MAX_DIMENSIONS {
+        return Err(PgError::new(code::INVALID_BINARY_REPRESENTATION, format!("invalid number of dimensions: {ndim}")));
+    }
+    let element = int(8)? as u32;
+    let mut dims = Vec::with_capacity(ndim);
+    let mut at = 12;
+    for _ in 0..ndim {
+        dims.push((int(at)?, int(at + 4)?));
+        at += 8;
+    }
+    let count: usize = dims.iter().map(|(n, _)| *n as usize).product();
+    let mut values = Vec::with_capacity(count);
+    for _ in 0..if ndim == 0 { 0 } else { count } {
+        let length = int(at)?;
+        at += 4;
+        if length < 0 {
+            values.push(Value::Null);
+            continue;
+        }
+        let data = bytes.get(at..at + length as usize).ok_or_else(invalid)?;
+        values.push(element_receive(element, data)?);
+        at += length as usize;
+    }
+    Ok(Array { element, dims, values })
+}
+
+/// serialize writes an array as Doltgres stores it: the element count and the offset of each element, both
+/// little-endian, then each element with a NULL flag, then the lengths of a multidimensional array's dimensions.
+pub fn serialize(array: &Array, element_serialize: &dyn Fn(&Value) -> Result<Vec<u8>>) -> Result<Vec<u8>> {
+    let count = array.values.len();
+    let mut data = Vec::new();
+    let mut offsets = Vec::with_capacity(count + 1);
+    let mut offset = (4 + (count + 1) * 4) as u32;
+    for value in &array.values {
+        offsets.push(offset);
+        if value.is_null() {
+            data.push(1);
+            offset += 1;
+        } else {
+            let bytes = element_serialize(value)?;
+            data.push(0);
+            offset += 1 + bytes.len() as u32;
+            data.extend_from_slice(&bytes);
+        }
+    }
+    offsets.push(offset);
+    let mut out = (count as u32).to_le_bytes().to_vec();
+    for o in offsets {
+        out.extend_from_slice(&o.to_le_bytes());
+    }
+    out.extend_from_slice(&data);
+    if array.dims.len() > 1 {
+        for (n, _) in &array.dims {
+            out.extend_from_slice(&(*n as u32).to_le_bytes());
+        }
+    }
+    Ok(out)
+}
+
+/// deserialize reads an array as Doltgres stores it.
+pub fn deserialize(bytes: &[u8], element: u32, element_deserialize: &dyn Fn(&[u8]) -> Result<Value>) -> Result<Array> {
+    let corrupt = || PgError::internal("a stored array is corrupt");
+    let word = |at: usize| -> Result<u32> {
+        Ok(u32::from_le_bytes(bytes.get(at..at + 4).ok_or_else(corrupt)?.try_into().map_err(|_| corrupt())?))
+    };
+    let count = word(0)? as usize;
+    let mut values = Vec::with_capacity(count);
+    for i in 0..count {
+        let (start, end) = (word((i + 1) * 4)? as usize, word((i + 2) * 4)? as usize);
+        let item = bytes.get(start..end).ok_or_else(corrupt)?;
+        if item.first() == Some(&1) {
+            values.push(Value::Null);
+        } else {
+            values.push(element_deserialize(&item[1..])?);
+        }
+    }
+    let dims_start = word((count + 1) * 4)? as usize;
+    let mut dims: Vec<(i32, i32)> = bytes[dims_start..]
+        .chunks(4)
+        .filter(|c| c.len() == 4)
+        .map(|c| (u32::from_le_bytes(c.try_into().unwrap()) as i32, 1))
+        .collect();
+    if dims.is_empty() && count > 0 {
+        dims.push((count as i32, 1));
+    }
+    Ok(Array { element, dims, values })
+}
+
+/// nest builds a multidimensional array from arrays of matching dimensions, as an ARRAY constructor of arrays does,
+/// treating NULL items as empty arrays.
+pub fn nest(element: u32, items: Vec<Value>) -> Result<Array> {
+    let mismatch = || {
+        PgError::new(
+            code::ARRAY_SUBSCRIPT_ERROR,
+            "multidimensional arrays must have array expressions with matching dimensions",
+        )
+    };
+    let mut inner_dims: Option<Vec<(i32, i32)>> = None;
+    let mut count = 0;
+    let mut values = Vec::new();
+    for item in items {
+        let dims = match &item {
+            Value::Array(a) => a.dims.clone(),
+            _ => Vec::new(),
+        };
+        match &inner_dims {
+            Some(d) if *d != dims => return Err(mismatch()),
+            Some(_) => {}
+            None => inner_dims = Some(dims),
+        }
+        if let Value::Array(a) = item {
+            values.extend(a.values);
+        }
+        count += 1;
+    }
+    let inner = inner_dims.unwrap_or_default();
+    if inner.is_empty() {
+        return Ok(Array { element, dims: Vec::new(), values: Vec::new() });
+    }
+    if inner.len() >= MAX_DIMENSIONS {
+        return Err(PgError::new(
+            code::PROGRAM_LIMIT_EXCEEDED,
+            format!("number of array dimensions ({}) exceeds the maximum allowed ({MAX_DIMENSIONS})", inner.len() + 1),
+        ));
+    }
+    let mut dims = vec![(count, 1)];
+    dims.extend(inner);
+    Ok(Array { element, dims, values })
+}
+
+/// element returns the element at the subscripts, or None when they are outside the array.
+pub fn element<'v>(array: &'v Array, indexes: &[i32]) -> Option<&'v Value> {
+    if indexes.len() != array.dims.len() {
+        return None;
+    }
+    let mut offset = 0usize;
+    for (&index, &(length, lower)) in indexes.iter().zip(&array.dims) {
+        let position = index.checked_sub(lower)?;
+        if position < 0 || position >= length {
+            return None;
+        }
+        offset = offset * length as usize + position as usize;
+    }
+    array.values.get(offset)
+}
+
+/// slice returns the part of an array within the bounds, where a missing bound is the array's own, as a slice
+/// subscript does, and the result's dimensions start at 1.
+pub fn slice(array: &Array, bounds: &[(Option<i32>, Option<i32>)]) -> Array {
+    let empty = Array { element: array.element, dims: Vec::new(), values: Vec::new() };
+    if array.dims.is_empty() || bounds.len() > array.dims.len() {
+        return empty;
+    }
+    let mut ranges = Vec::with_capacity(array.dims.len());
+    for (i, &(length, lower)) in array.dims.iter().enumerate() {
+        let (from, to) = bounds.get(i).copied().unwrap_or((None, None));
+        let upper = lower + length - 1;
+        let from = from.map_or(lower, |f| f.max(lower));
+        let to = to.map_or(upper, |t| t.min(upper));
+        if from > to {
+            return empty;
+        }
+        ranges.push(((from - lower) as usize, (to - lower) as usize));
+    }
+    let mut values = Vec::new();
+    let mut index = vec![0usize; ranges.len()];
+    collect_slice(array, &ranges, 0, &mut index, &mut values);
+    let dims = ranges.iter().map(|(f, t)| ((t - f + 1) as i32, 1)).collect();
+    Array { element: array.element, dims, values }
+}
+
+/// collect_slice appends the elements of a slice in row order, one dimension at a time.
+fn collect_slice(array: &Array, ranges: &[(usize, usize)], level: usize, index: &mut Vec<usize>, out: &mut Vec<Value>) {
+    for i in ranges[level].0..=ranges[level].1 {
+        index[level] = i;
+        if level + 1 < ranges.len() {
+            collect_slice(array, ranges, level + 1, index, out);
+        } else {
+            let offset = index.iter().zip(&array.dims).fold(0, |acc, (&i, &(n, _))| acc * n as usize + i);
+            out.push(array.values[offset].clone());
+        }
+    }
+}
+
+/// compare orders arrays as Postgres does: by their elements, with NULLs last, then by their element counts,
+/// dimension counts, dimension lengths, and lower bounds.
+pub fn compare(left: &Array, right: &Array) -> Ordering {
+    for (l, r) in left.values.iter().zip(&right.values) {
+        let ordering = match (l.is_null(), r.is_null()) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (false, false) => compare_values(l, r),
+        };
+        if ordering != Ordering::Equal {
+            return ordering;
+        }
+    }
+    left.values
+        .len()
+        .cmp(&right.values.len())
+        .then(left.dims.len().cmp(&right.dims.len()))
+        .then_with(|| left.dims.iter().cmp(right.dims.iter()))
+}
+
+/// operate applies an array operator to two values.
+pub fn operate(op: ArrayOp, left: Value, right: Value) -> Result<Value> {
+    Ok(match op {
+        ArrayOp::Concat => match (left, right) {
+            (Value::Null, other) | (other, Value::Null) => other,
+            (Value::Array(l), Value::Array(r)) => Value::Array(Box::new(concat(*l, *r)?)),
+            _ => Value::Null,
+        },
+        ArrayOp::Append => match left {
+            Value::Array(array) => Value::Array(Box::new(append(*array, right, false)?)),
+            _ => Value::Null,
+        },
+        ArrayOp::Prepend => match right {
+            Value::Array(array) => Value::Array(Box::new(append(*array, left, true)?)),
+            _ => Value::Null,
+        },
+        ArrayOp::Contains | ArrayOp::ContainedBy | ArrayOp::Overlaps => {
+            let (Value::Array(l), Value::Array(r)) = (left, right) else { return Ok(Value::Null) };
+            let (haystack, needles) = if op == ArrayOp::ContainedBy { (r, l) } else { (l, r) };
+            let found = |needle: &Value| {
+                !needle.is_null()
+                    && haystack.values.iter().any(|v| !v.is_null() && compare_values(v, needle) == Ordering::Equal)
+            };
+            Value::Bool(if op == ArrayOp::Overlaps {
+                needles.values.iter().any(found)
+            } else {
+                needles.values.iter().all(found)
+            })
+        }
+    })
+}
+
+/// concat joins two arrays as array_cat does: along their first dimension when they have the same number of
+/// dimensions, or adding the smaller one as a new element of the larger one.
+pub fn concat(left: Array, right: Array) -> Result<Array> {
+    if left.dims.is_empty() {
+        return Ok(Array { element: left.element, ..right });
+    }
+    if right.dims.is_empty() {
+        return Ok(left);
+    }
+    let incompatible = |detail: String| PgError {
+        detail: Some(detail),
+        ..PgError::new(code::ARRAY_SUBSCRIPT_ERROR, "cannot concatenate incompatible arrays")
+    };
+    let (l, r) = (left.dims.len(), right.dims.len());
+    let dims = if l == r {
+        if left.dims[1..] != right.dims[1..] {
+            return Err(incompatible(
+                "Arrays with differing element dimensions are not compatible for concatenation.".into(),
+            ));
+        }
+        let mut dims = left.dims.clone();
+        dims[0].0 += right.dims[0].0;
+        dims
+    } else if l + 1 == r {
+        if left.dims[..] != right.dims[1..] {
+            return Err(incompatible("Arrays with differing dimensions are not compatible for concatenation.".into()));
+        }
+        let mut dims = right.dims.clone();
+        dims[0].0 += 1;
+        dims
+    } else if l == r + 1 {
+        if left.dims[1..] != right.dims[..] {
+            return Err(incompatible("Arrays with differing dimensions are not compatible for concatenation.".into()));
+        }
+        let mut dims = left.dims.clone();
+        dims[0].0 += 1;
+        dims
+    } else {
+        return Err(incompatible(format!("Arrays of {l} and {r} dimensions are not compatible for concatenation.")));
+    };
+    let mut values = left.values;
+    values.extend(right.values);
+    Ok(Array { element: left.element, dims, values })
+}
+
+/// append adds an element to the end, or the start, of an array that is empty or one-dimensional.
+pub fn append(mut array: Array, value: Value, prepend: bool) -> Result<Array> {
+    match array.dims.len() {
+        0 => return Ok(Array::one_dimensional(array.element, vec![value])),
+        1 => {}
+        _ => {
+            return Err(PgError::new(code::DATA_EXCEPTION, "argument must be empty or one-dimensional array"));
+        }
+    }
+    let (length, lower) = array.dims[0];
+    if prepend {
+        lower.checked_sub(1).ok_or_else(|| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "integer out of range"))?;
+        array.values.insert(0, value);
+    } else {
+        lower
+            .checked_add(length)
+            .ok_or_else(|| PgError::new(code::NUMERIC_VALUE_OUT_OF_RANGE, "integer out of range"))?;
+        array.values.push(value);
+    }
+    array.dims[0].0 += 1;
+    Ok(array)
+}
+
+/// is_array_type reports whether a type is an array type.
+pub fn is_array_type(type_oid: u32) -> bool {
+    if type_oid == crate::oid::ACLITEM_ARRAY {
+        return true;
+    }
+    match builtin_type(type_oid) {
+        Some(t) => t.elem != 0 && t.definition.typ_category == b"A",
+        None => crate::usertypes::get(type_oid).is_some_and(|t| t.is_array()),
+    }
+}
+
+/// subscript_error returns Postgres' error for a subscript that an array assignment cannot take.
+fn subscript_error(message: &str) -> PgError {
+    PgError::new(code::ARRAY_SUBSCRIPT_ERROR, message)
+}
+
+/// offset returns the position in row order of the element at the subscripts.
+fn offset(dims: &[(i32, i32)], subscripts: &[i32]) -> usize {
+    dims.iter().zip(subscripts).fold(0, |at, ((n, lower), i)| at * *n as usize + (i - lower) as usize)
+}
+
+/// extend widens a one-dimensional array with NULLs to reach from the lower to the upper subscript.
+fn extend(array: &mut Array, lower: i32, upper: i32) -> Result<()> {
+    let (n, lb) = array.dims[0];
+    let lowest = i64::from(lower.min(lb));
+    check_size(lowest, i64::from(upper).max(i64::from(lb) + i64::from(n) - 1) - lowest + 1)?;
+    if lower < lb {
+        array.values.splice(0..0, std::iter::repeat_n(Value::Null, (lb - lower) as usize));
+        array.dims[0] = (n + lb - lower, lower);
+    }
+    let (n, lb) = array.dims[0];
+    if upper >= lb + n {
+        array.values.resize((upper - lb + 1) as usize, Value::Null);
+        array.dims[0] = (upper - lb + 1, lb);
+    }
+    Ok(())
+}
+
+/// check_size fails as Postgres does for a dimension of an array that holds more elements than an array may, or
+/// whose upper bound is past the largest integer.
+fn check_size(lower: i64, length: i64) -> Result<()> {
+    if length > 134217727 {
+        return Err(PgError::new(code::PROGRAM_LIMIT_EXCEEDED, "array size exceeds the maximum allowed (134217727)"));
+    }
+    if lower + length > i64::from(i32::MAX) {
+        return Err(PgError::new(code::PROGRAM_LIMIT_EXCEEDED, format!("array lower bound is too large: {lower}")));
+    }
+    Ok(())
+}
+
+/// assign_element stores a value at the subscripts of an array, starting an empty array there and widening a
+/// one-dimensional one, as Postgres' array_set_element does.
+pub fn assign_element(mut array: Array, subscripts: &[i32], value: Value) -> Result<Array> {
+    if array.dims.is_empty() {
+        array.dims = subscripts.iter().map(|&i| (1, i)).collect();
+        array.values = vec![value];
+        return Ok(array);
+    }
+    if array.dims.len() != subscripts.len() {
+        return Err(subscript_error("wrong number of array subscripts"));
+    }
+    if array.dims.len() == 1 {
+        extend(&mut array, subscripts[0], subscripts[0])?;
+    } else if array.dims.iter().zip(subscripts).any(|((n, lower), i)| i < lower || *i >= lower + n) {
+        return Err(subscript_error("array subscript out of range"));
+    }
+    let at = offset(&array.dims, subscripts);
+    array.values[at] = value;
+    Ok(array)
+}
+
+/// assign_slice stores a source array's elements, in row order, over a slice of an array, leaving the array alone
+/// for a NULL source, as Postgres' array_set_slice does. A missing bound is the array's own.
+pub fn assign_slice(mut array: Array, bounds: &[(Option<i32>, Option<i32>)], source: Option<Array>) -> Result<Array> {
+    let Some(source) = source else { return Ok(array) };
+    let too_small = || subscript_error("source array too small");
+    if array.dims.is_empty() {
+        let mut dims = Vec::with_capacity(bounds.len());
+        for bound in bounds {
+            let (Some(lower), Some(upper)) = *bound else {
+                return Err(PgError {
+                    detail: Some(
+                        "When assigning to a slice of an empty array value, slice boundaries must be fully specified."
+                            .into(),
+                    ),
+                    ..subscript_error("array slice subscript must provide both boundaries")
+                });
+            };
+            let length = 1 + i64::from(upper) - i64::from(lower);
+            check_size(i64::from(lower), length)?;
+            dims.push((length as i32, lower));
+        }
+        let count = dims.iter().map(|(n, _)| (*n).max(0) as usize).product::<usize>();
+        if source.values.len() < count {
+            return Err(too_small());
+        }
+        array.dims = dims;
+        array.values = source.values.into_iter().take(count).collect();
+        return Ok(array);
+    }
+    if array.dims.len() < bounds.len() {
+        return Err(subscript_error("wrong number of array subscripts"));
+    }
+    let mut ranges = Vec::with_capacity(array.dims.len());
+    for (d, &(n, lb)) in array.dims.iter().enumerate() {
+        let (lower, upper) = bounds.get(d).copied().unwrap_or((None, None));
+        let (lower, upper) = (lower.unwrap_or(lb), upper.unwrap_or(lb + n - 1));
+        if lower > upper {
+            return Err(subscript_error("upper bound cannot be less than lower bound"));
+        }
+        if array.dims.len() > 1 && d < bounds.len() && (lower < lb || upper >= lb + n) {
+            return Err(subscript_error("array subscript out of range"));
+        }
+        ranges.push((lower, upper));
+    }
+    if array.dims.len() == 1 {
+        extend(&mut array, ranges[0].0, ranges[0].1)?;
+    }
+    let count = ranges.iter().map(|(lower, upper)| (upper - lower + 1) as usize).product::<usize>();
+    if source.values.len() < count {
+        return Err(too_small());
+    }
+    let mut subscripts: Vec<i32> = ranges.iter().map(|(lower, _)| *lower).collect();
+    for value in source.values.into_iter().take(count) {
+        let at = offset(&array.dims, &subscripts);
+        array.values[at] = value;
+        for d in (0..subscripts.len()).rev() {
+            if subscripts[d] < ranges[d].1 {
+                subscripts[d] += 1;
+                break;
+            }
+            subscripts[d] = ranges[d].0;
+        }
+    }
+    Ok(array)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::oid;
+
+    /// text_array parses text into a text array.
+    fn text_array(text: &str) -> Result<Array> {
+        parse(text, oid::TEXT, &|s| Ok(Value::Text(s.to_string())))
+    }
+
+    #[test]
+    fn literals_parse_and_print_as_postgres_does() {
+        let a = text_array(r#"{"this", "is", null, "NULL", quoted , {} }"#);
+        assert!(a.is_err());
+        let a = text_array(r#"{"this", "is", null, "NULL", " sp "}"#).unwrap();
+        assert_eq!(format(&a, &|v| v.output().unwrap_or_default()), r#"{this,is,NULL,"NULL"," sp "}"#);
+        let a = text_array("{{1,2},{3,4}}").unwrap();
+        assert_eq!(a.dims, vec![(2, 1), (2, 1)]);
+        let a = text_array("[0:1]={a,b}").unwrap();
+        assert_eq!(format(&a, &|v| v.output().unwrap_or_default()), "[0:1]={a,b}");
+        assert_eq!(text_array("{}").unwrap().dims, vec![]);
+    }
+
+    #[test]
+    fn malformed_literals_report_postgres_details() {
+        for (text, detail) in [
+            ("{{1,2},{3}}", "Multidimensional arrays must have sub-arrays with matching dimensions."),
+            ("{a,}", "Unexpected \"}\" character."),
+            ("{a,b,c\"}", "Incorrectly quoted array element."),
+            ("{a,b,c", "Unexpected end of input."),
+            ("{a,b,\"c}", "Unexpected end of input."),
+            ("{a\",b,c}", "Incorrectly quoted array element."),
+            ("{1,{2}}", "Multidimensional arrays must have sub-arrays with matching dimensions."),
+            ("{\"abc\"\"\",\"def\"}", "Incorrectly quoted array element."),
+            ("a,b,c}", "Array value must start with \"{\" or dimension information."),
+            ("{a} b", "Junk after closing right brace."),
+        ] {
+            let err = text_array(text).unwrap_err();
+            assert_eq!(err.detail.as_deref(), Some(detail), "{text}");
+        }
+    }
+
+    #[test]
+    fn values_nest_slice_and_concatenate_as_postgres_does() {
+        let ints = |values: &[i32]| Array::one_dimensional(oid::INT4, values.iter().map(|&i| Value::Int4(i)).collect());
+        let print = |a: &Array| format(a, &|v| v.output().unwrap_or_default());
+        let square =
+            nest(oid::INT4, vec![Value::Array(Box::new(ints(&[1, 2]))), Value::Array(Box::new(ints(&[3, 4])))]);
+        let square = square.unwrap();
+        assert_eq!(print(&square), "{{1,2},{3,4}}");
+        assert!(
+            nest(oid::INT4, vec![Value::Array(Box::new(ints(&[1]))), Value::Array(Box::new(ints(&[1, 2])))]).is_err()
+        );
+        assert_eq!(element(&square, &[2, 1]), Some(&Value::Int4(3)));
+        assert_eq!(element(&square, &[3, 1]), None);
+        assert_eq!(print(&slice(&square, &[(Some(1), Some(2)), (Some(2), None)])), "{{2},{4}}");
+        assert_eq!(print(&slice(&ints(&[1, 2, 3]), &[(Some(5), None)])), "{}");
+        assert_eq!(print(&concat(square.clone(), ints(&[5, 6])).unwrap()), "{{1,2},{3,4},{5,6}}");
+        assert!(concat(square, ints(&[5])).is_err());
+        assert_eq!(compare(&ints(&[1, 2]), &ints(&[1, 2, 0])), Ordering::Less);
+        assert_eq!(compare(&ints(&[1, 3]), &ints(&[1, 2, 0])), Ordering::Greater);
+    }
+
+    #[test]
+    fn empty_sub_arrays_make_an_empty_array() {
+        for text in ["{{}}", "{{},{}}", "{{{}}}"] {
+            assert!(text_array(text).unwrap().dims.is_empty(), "{text}");
+        }
+    }
+}
