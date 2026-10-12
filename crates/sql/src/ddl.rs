@@ -1192,6 +1192,7 @@ impl Ctx<'_> {
         }
         for (schema, name) in doomed {
             self.txn.root.put_table(self.db, &schema, &name, None)?;
+            self.session.engine.forget_table(&self.session.database, &schema, &name, None);
             self.drop_table_triggers(&schema, &name)?;
             self.forget_object(&Object::Table(schema.clone(), name.clone()))?;
             self.drop_owned_sequences(&schema, &name)?;
@@ -1354,6 +1355,7 @@ impl Ctx<'_> {
             }
             for table in tables {
                 self.txn.root.put_table(self.db, &name, &table, None)?;
+                self.session.engine.forget_table(&self.session.database, &name, &table, None);
                 self.drop_table_triggers(&name, &table)?;
                 self.forget_object(&Object::Table(name.clone(), table))?;
             }

@@ -60,6 +60,9 @@ struct Shared {
     /// The tables that VACUUM, ANALYZE, or building an index over rows measured, by database, schema, and name, which
     /// a branch shares with the database it copies, with whether ANALYZE gathered their statistics.
     vacuumed: Mutex<HashMap<(String, String, String), bool>>,
+    /// How many times tables' statistics went stale: ANALYZE gathered them again, or a table or database that had them
+    /// was dropped or renamed, which tells the statistics that sessions cached to be gathered again.
+    stats_epoch: std::sync::atomic::AtomicU64,
     /// What each open session is doing, by session ID.
     activity: Mutex<std::collections::BTreeMap<u64, Activity>>,
     /// The sessions that a garbage collection ended because they had a transaction open, by session ID.
@@ -282,6 +285,7 @@ impl Engine {
                 started: crate::datetime::clock(),
                 statistics: Mutex::default(),
                 vacuumed: Mutex::default(),
+                stats_epoch: std::sync::atomic::AtomicU64::new(0),
                 activity: Mutex::default(),
                 ended: Mutex::default(),
                 auto_gc: Mutex::default(),
@@ -444,6 +448,32 @@ impl Engine {
             let entry = vacuumed.entry((database.to_string(), schema.to_string(), table.to_string())).or_default();
             *entry |= analyzed;
         }
+        if analyzed {
+            self.stale_stats();
+        }
+    }
+
+    /// forget_table forgets what VACUUM and ANALYZE measured of a table of a database that was dropped, or renamed to
+    /// `renamed`, which keeps it, as Postgres keeps a relation's statistics with the relation.
+    pub fn forget_table(&self, database: &str, schema: &str, table: &str, renamed: Option<&str>) {
+        if let Ok(mut vacuumed) = self.shared.vacuumed.lock()
+            && let Some(analyzed) = vacuumed.remove(&(database.to_string(), schema.to_string(), table.to_string()))
+            && let Some(renamed) = renamed
+        {
+            vacuumed.insert((database.to_string(), schema.to_string(), renamed.to_string()), analyzed);
+        }
+        self.stale_stats();
+    }
+
+    /// stale_stats marks the statistics that sessions cached as stale.
+    fn stale_stats(&self) {
+        self.shared.stats_epoch.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// stats_epoch returns how many times tables' statistics went stale, which the statistics that a session cached
+    /// must match.
+    pub fn stats_epoch(&self) -> u64 {
+        self.shared.stats_epoch.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     /// vacuumed returns whether VACUUM or ANALYZE measured a table of a database, with whether ANALYZE gathered its
@@ -627,6 +657,8 @@ impl Engine {
     /// droppedDatabaseManager does.
     pub fn drop_database(&self, name: &str) -> Result<()> {
         lock(&self.shared.databases)?.remove(name);
+        lock(&self.shared.vacuumed)?.retain(|(database, ..), _| database != name);
+        self.stale_stats();
         let dropped = self.shared.data_dir.join(DROPPED_DATABASES);
         std::fs::create_dir_all(&dropped).map_err(PgError::internal)?;
         let target = dropped.join(name);

@@ -84,16 +84,20 @@ impl TableStats {
 type TableKey = (String, String, String, String);
 
 thread_local! {
-    /// TABLES are the statistics this thread gathered, by database, branch, schema, and table.
-    static TABLES: RefCell<HashMap<TableKey, Arc<TableStats>>> = RefCell::new(HashMap::new());
+    /// TABLES are the statistics this thread gathered, by database, branch, schema, and table, with the engine's
+    /// statistics epoch when it gathered them.
+    static TABLES: RefCell<HashMap<TableKey, (u64, Arc<TableStats>)>> = RefCell::new(HashMap::new());
 }
 
 /// table_stats returns the statistics of a table, gathering them again once its row count moved by more than a tenth
-/// since they were gathered, as autovacuum's analyze threshold does, or its columns changed.
+/// since they were gathered, as autovacuum's analyze threshold does, its columns changed, or the engine's statistics
+/// went stale.
 pub fn table_stats(ctx: &mut Ctx<'_>, table: &TableDef) -> Option<Arc<TableStats>> {
     let rows = prolly::Node::decode(table.table.primary_index.clone()).ok()?.tree_count();
     let key = (ctx.session.database.clone(), ctx.session.branch.clone(), table.schema.clone(), table.name.clone());
-    if let Some(stats) = TABLES.with(|t| t.borrow().get(&key).cloned())
+    let epoch = ctx.session.engine.stats_epoch();
+    if let Some((gathered, stats)) = TABLES.with(|t| t.borrow().get(&key).cloned())
+        && gathered == epoch
         && stats.columns.len() == table.columns.len()
         && stats.hidden.len() == table.hidden.len()
         && (stats.rows as f64 - rows as f64).abs() <= stats.rows as f64 / 10.0
@@ -101,7 +105,7 @@ pub fn table_stats(ctx: &mut Ctx<'_>, table: &TableDef) -> Option<Arc<TableStats
         return Some(stats);
     }
     let stats = Arc::new(gather(ctx, table, rows).ok()?);
-    TABLES.with(|t| t.borrow_mut().insert(key, stats.clone()));
+    TABLES.with(|t| t.borrow_mut().insert(key, (epoch, stats.clone())));
     Some(stats)
 }
 

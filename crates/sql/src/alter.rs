@@ -1022,6 +1022,7 @@ impl Ctx<'_> {
                 let address = self.txn.root.table(self.db, &schema, &old)?;
                 self.txn.root.put_table(self.db, &schema, &old, None)?;
                 self.txn.root.put_table(self.db, &schema, &stmt.newname, address)?;
+                self.session.engine.forget_table(&self.session.database, &schema, &old, Some(&stmt.newname));
                 self.move_owned_sequences(&schema, &old, &stmt.newname, None)?;
                 self.rename_in_foreign_keys(fks, &schema, &old, &stmt.newname)?;
                 let mut auth = self.auth()?;

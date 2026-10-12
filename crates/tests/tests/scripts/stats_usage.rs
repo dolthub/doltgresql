@@ -436,3 +436,53 @@ fn test_stats_usage() {
         },
     ]);
 }
+
+#[test]
+fn test_dropped_table_statistics() {
+    run_scripts(&[
+        ScriptTest {
+            name: "a table created again after a drop has no statistics from ANALYZE of the dropped one",
+            set_up_script: &[
+                "CREATE TABLE fs_big (id INT PRIMARY KEY, k INT, v INT);",
+                "CREATE INDEX fs_big_k ON fs_big (k, v);",
+                "INSERT INTO fs_big SELECT i, i % 500, i % 7 FROM generate_series(1, 3000) i;",
+                "CREATE TABLE fs_small (id INT PRIMARY KEY, k INT);",
+                "INSERT INTO fs_small VALUES (1, 3), (2, 40), (3, 499), (4, 3), (5, 7), (6, 8);",
+                "ANALYZE fs_big;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "EXPLAIN (COSTS OFF) SELECT s.id, b.id FROM fs_small s JOIN fs_big b ON b.k = s.k;",
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "HashJoin", left: "fs_small", right: "fs_big" }]),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "ANALYZE fs_small;",
+                    expected: Expected::Tag("ANALYZE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "DROP TABLE fs_small;",
+                    expected: Expected::Tag("DROP TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "CREATE TABLE fs_small (id INT PRIMARY KEY, k INT);",
+                    expected: Expected::Tag("CREATE TABLE"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "INSERT INTO fs_small VALUES (1, 3), (2, 40), (3, 499), (4, 3), (5, 7), (6, 8);",
+                    expected: Expected::Tag("INSERT 0 6"),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "EXPLAIN (COSTS OFF) SELECT s.id, b.id FROM fs_small s JOIN fs_big b ON b.k = s.k;",
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "HashJoin", left: "fs_small", right: "fs_big" }]),
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}
