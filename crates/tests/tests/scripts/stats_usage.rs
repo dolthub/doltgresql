@@ -353,12 +353,12 @@ fn test_stats_usage() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT * FROM small JOIN big ON small.pk = big.highcard;",
-                    expected: Expected::Plan(&[PlanFact::Join { kind: "LookupJoin", left: "small", right: "big" }, PlanFact::FullScan { table: "small" }, PlanFact::IndexScan { table: "big", columns: &["highcard"], ranges: "" }]),
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "MergeJoin", left: "big", right: "small" }]),
                     ..A
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT * FROM big JOIN small ON small.pk = big.highcard;",
-                    expected: Expected::Plan(&[PlanFact::Join { kind: "LookupJoin", left: "small", right: "big" }, PlanFact::FullScan { table: "small" }, PlanFact::IndexScan { table: "big", columns: &["highcard"], ranges: "" }]),
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "MergeJoin", left: "big", right: "small" }]),
                     ..A
                 },
             ],

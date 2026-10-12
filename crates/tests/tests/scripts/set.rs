@@ -17815,3 +17815,57 @@ fn test_transaction_timeout() {
         },
     ]);
 }
+
+#[test]
+fn test_set_in_failed_statements() {
+    run_scripts(&[
+        ScriptTest {
+            name: "a statement that fails undoes the settings that its functions changed",
+            set_up_script: &[
+                "SET work_mem = '3MB';",
+                "CREATE FUNCTION set_then_fail(int) RETURNS text AS $$ BEGIN SET work_mem = '2MB'; PERFORM 1/$1; RETURN current_setting('work_mem'); END $$ LANGUAGE plpgsql;",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT set_then_fail(0);",
+                    expected: Expected::Error(Diagnostic { code: "22012", message: "division by zero", ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_setting('work_mem');",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("3MB")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT set_then_fail(1);",
+                    expected: Expected::Rows {
+                        columns: &[Column("set_then_fail", TEXT)],
+                        rows: &[
+                            &[T("2MB")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT current_setting('work_mem');",
+                    expected: Expected::Rows {
+                        columns: &[Column("current_setting", TEXT)],
+                        rows: &[
+                            &[T("2MB")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

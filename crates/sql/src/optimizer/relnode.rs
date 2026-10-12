@@ -31,7 +31,7 @@ pub fn setup_simple_rel_arrays(root: &mut PlannerInfo<'_, '_>) {
 /// build_simple_rel builds the base relation of a range table entry, or the relation of a member of an append
 /// relation with its parent's restrictions, as Postgres' function of the same name does, sized as get_relation_info
 /// and estimate_rel_size size a table, with the statistics of a table that was analyzed, where autovacuum analyzes a
-/// table that holds enough rows. Any other entry's rows are the older planner's estimate.
+/// table that holds enough rows. Any other entry's rows are the estimate of `joins::estimate`.
 pub fn build_simple_rel(root: &mut PlannerInfo<'_, '_>, relid: usize, parent: Option<usize>) {
     let rte = root.parse.rte(relid).clone();
     let width = rte.coltypes.len();

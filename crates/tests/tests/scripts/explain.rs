@@ -227,7 +227,7 @@ fn test_planned_joins() {
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT s.id, b.id FROM lj_small s JOIN lj_big b ON b.k = s.k;",
-                    expected: Expected::Plan(&[PlanFact::Join { kind: "LookupJoin", left: "lj_small", right: "lj_big" }, PlanFact::FullScan { table: "lj_small" }, PlanFact::IndexScan { table: "lj_big", columns: &["k", "v"], ranges: "" }]),
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "HashJoin", left: "lj_small", right: "lj_big" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -282,7 +282,7 @@ fn test_planned_joins() {
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT id FROM ex_a WHERE EXISTS (SELECT 1 FROM ex_b WHERE ex_b.x = ex_a.x);",
-                    expected: Expected::Plan(&[PlanFact::Join { kind: "SemiJoin", left: "ex_a", right: "ex_b" }]),
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "HashJoin", left: "ex_a", right: "ex_b" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -540,7 +540,7 @@ fn test_limited_joins() {
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT a.id, a.v FROM lim_a a, lim_a b WHERE a.id = b.id LIMIT 50;",
-                    expected: Expected::Plan(&[PlanFact::Join { kind: "LookupJoin", left: "lim_a", right: "lim_a" }]),
+                    expected: Expected::Plan(&[PlanFact::FullScan { table: "lim_a" }]),
                     ..A
                 },
                 ScriptTestAssertion {

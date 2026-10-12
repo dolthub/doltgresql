@@ -105,7 +105,7 @@ fn test_exist_subquery() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT * FROM a WHERE EXISTS (SELECT 1 FROM b WHERE a.x = b.x);",
-                    expected: Expected::Plan(&[PlanFact::Join { kind: "SemiJoin", left: "a", right: "b" }, PlanFact::FullScan { table: "a" }, PlanFact::FullScan { table: "b" }]),
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "HashJoin", left: "a", right: "b" }]),
                     ..A
                 },
                 ScriptTestAssertion {

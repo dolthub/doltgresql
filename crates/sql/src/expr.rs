@@ -153,7 +153,7 @@ impl SubPlan {
     }
 
     /// map_children replaces the SubPlan's arguments and its test's children with what a function makes of them.
-    fn map_children(&mut self, f: &mut dyn FnMut(Expr) -> Expr) {
+    pub(crate) fn map_children(&mut self, f: &mut dyn FnMut(Expr) -> Expr) {
         self.args = std::mem::take(&mut self.args).into_iter().map(&mut *f).collect();
         let link = std::mem::replace(&mut self.link, Expr::SubqueryValue);
         self.link = link.map_children(f);
@@ -969,13 +969,22 @@ impl<'b, 'a> Binder<'b, 'a> {
             }
         };
         if name == "pg_typeof" && schema.is_none_or(|s| s == "pg_catalog") && call.args.len() == 1 {
-            let (_, ty) = self.bind(&call.args[0])?;
+            let (arg, ty) = self.bind(&call.args[0])?;
             let reg = crate::types::Reg {
                 type_oid: oid::REGTYPE,
                 oid: ty.oid,
                 name: crate::cast::type_display(ty.oid).into_owned(),
             };
-            return Ok((Expr::Const(Value::Reg(Box::new(reg))), typ(oid::REGTYPE)));
+            let value = Expr::Const(Value::Reg(Box::new(reg)));
+            let mut reads_set = false;
+            arg.visit(&mut |e| reads_set |= matches!(e, Expr::SetRef(_)));
+            return Ok(match reads_set {
+                true => (
+                    Expr::Case(vec![(Expr::IsNull(Box::new(arg), false), value.clone())], Box::new(value)),
+                    typ(oid::REGTYPE),
+                ),
+                false => (value, typ(oid::REGTYPE)),
+            });
         }
         if matches!(name, "enum_first" | "enum_last" | "enum_range")
             && schema.is_none_or(|s| s == "pg_catalog")
@@ -1543,10 +1552,8 @@ impl<'b, 'a> Binder<'b, 'a> {
                         });
                     }
                     let left = items.iter().map(|n| self.bind(n)).collect::<Result<Vec<_>>>()?;
-                    let mut subquery = Expr::Scalar(Box::new(query.plan));
-                    if crate::optimizer::enabled() {
-                        subquery = crate::optimizer::make_subplan(self.ctx, subquery, true, self.width());
-                    }
+                    let subquery = Expr::Scalar(Box::new(query.plan));
+                    let subquery = crate::optimizer::make_subplan(self.ctx, subquery, true, self.width());
                     let right = (0..items.len())
                         .map(|i| (Expr::Field(Box::new(subquery.clone()), i), query.types[i]))
                         .collect();
@@ -1991,7 +1998,7 @@ impl<'b, 'a> Binder<'b, 'a> {
             T::AnySublink => true,
             _ => crate::plan::is_simple_subquery(select),
         };
-        let deferred = crate::optimizer::enabled() && crate::plan::can_defer(select);
+        let deferred = crate::plan::can_defer(select);
         let level = EnclosingLevel {
             level: self.scopes.len() - 1,
             aggregates: self.aggregates.take(),
@@ -2008,16 +2015,13 @@ impl<'b, 'a> Binder<'b, 'a> {
         self.aggregates = level.aggregates;
         let inner = std::mem::replace(&mut self.ctx.outer_reach, reach);
         self.ctx.outer_reach = reach.min(inner);
-        let mut query = query?;
-        if !crate::optimizer::enabled() {
-            query.plan = crate::plan::share_subquery(query.plan, inner >= self.scopes.len());
-        }
+        let query = query?;
         let (bound, ty) = self.sublink_test(link, kind, query)?;
         let joined = self.ctx.deferred_sublinks.contains(&link.location)
             && level.outer_exprs.is_empty()
             && ((deferred && simple && crate::optimizer::sublink_convertible(&bound))
                 || crate::optimizer::values_convertible(&bound));
-        match crate::optimizer::enabled() && !joined || !level.outer_exprs.is_empty() {
+        match !joined || !level.outer_exprs.is_empty() {
             true => {
                 let subplan = crate::optimizer::make_subplan(self.ctx, bound, !deferred, self.width());
                 Ok((crate::optimizer::replace_outer_agg(subplan, self.width(), &level.outer_exprs), ty))

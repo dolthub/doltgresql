@@ -1427,6 +1427,9 @@ pub fn set_rel_width(root: &mut PlannerInfo<'_, '_>, rel: usize) {
             continue;
         };
         tuple_width += match root.glob.node(id) {
+            super::nodes::VarNode::Var(var) if var.varno != rel => {
+                get_typavgwidth(super::nodefuncs::expr_type(root, &e), -1)
+            }
             super::nodes::VarNode::Var(var) if root.rels[rel].attr_widths[var.varattno] > 0.0 => {
                 root.rels[rel].attr_widths[var.varattno]
             }

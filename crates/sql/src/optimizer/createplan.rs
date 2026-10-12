@@ -96,21 +96,29 @@ fn positional_at(root: &PlannerInfo<'_, '_>, e: Expr, layout: &[Slot], position:
 /// sort_keys returns the sort keys of pathkeys over a plan's rows of a layout, as Postgres' prepare_sort_from_pathkeys
 /// finds them: the first column of the rows that holds a member of each key's class, as find_ec_member_matching_expr
 /// matches it, or else the first member that the columns compute, as find_computable_ec_member finds it. Child members
-/// count too, since the rows hold only their own relations' columns.
+/// count for the child relations whose columns the rows hold.
 fn sort_keys(
     root: &PlannerInfo<'_, '_>,
     pathkeys: &[super::nodes::PkId],
     layout: &[Slot],
 ) -> Vec<crate::plan::SortKey> {
+    let relids: Vec<usize> = layout
+        .iter()
+        .filter_map(|s| match s {
+            Slot::Var(varno, _) => Some(*varno),
+            _ => None,
+        })
+        .collect();
     pathkeys
         .iter()
         .filter_map(|&pk| {
             let pathkey = &root.canon_pathkeys[pk];
             let class = &root.eq_classes[pathkey.pk_eclass];
+            let children = class.ec_childmembers.iter().enumerate().filter(|(relid, _)| relids.contains(relid));
             let members: Vec<&Expr> = class
                 .ec_members
                 .iter()
-                .chain(class.ec_childmembers.iter().flatten())
+                .chain(children.flat_map(|(_, members)| members))
                 .map(|&em| &root.eq_members[em])
                 .filter(|em| !em.em_is_const)
                 .map(|em| &em.em_expr)
@@ -578,7 +586,7 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 PathKind::Memoize(mpath) => &mpath.subpath,
                 _ => &join.inner,
             };
-            let (mut outer_plan, outer_layout) = create_plan_recurse(root, &join.outer);
+            let (mut outer_plan, mut outer_layout) = create_plan_recurse(root, &join.outer);
             let is_nestloop = matches!(path.kind, PathKind::NestLoop(_));
             let outerrelids = join.outer.relids.clone();
             let save_outer_rels = root.cur_outer_rels.clone();
@@ -628,6 +636,16 @@ fn create_plan_recurse(root: &mut PlannerInfo<'_, '_>, path: &Path) -> (Plan, Ve
                 true => super::paramassign::identify_current_nestloop_params(root, &outerrelids, &path.param),
                 false => Vec::new(),
             };
+            for nlp in &nest_params {
+                let Slot::PlaceHolder(phid) = slot(root, &nlp.paramval) else { continue };
+                if outer_layout.contains(&Slot::PlaceHolder(phid)) {
+                    continue;
+                }
+                let mut exprs: Vec<Expr> = (0..outer_layout.len()).map(Expr::Column).collect();
+                exprs.push(positional(root, root.glob.placeholder(phid).phexpr.clone(), &outer_layout));
+                outer_plan = Plan::Project { input: Box::new(outer_plan), exprs };
+                outer_layout.push(Slot::PlaceHolder(phid));
+            }
             if !nest_params.is_empty() {
                 if !lateral {
                     inner_plan.map_exprs(0, &mut |e, depth| read_lateral_row(e, depth));
@@ -958,7 +976,7 @@ fn create_subqueryscan_plan(root: &mut PlannerInfo<'_, '_>, rel: usize, subplan:
     let scan_clauses = order_qual_clauses(root, extract_actual_clauses(root, &root.rels[rel].baserestrictinfo, false));
     let mut plan = root.rels[rel].subplans[subplan].plan.clone();
     let lateral_columns = root.parse.rte(rel).lateral_columns.clone();
-    if !lateral_columns.is_empty() {
+    if root.parse.rte(rel).lateral {
         plan.map_exprs(0, &mut |e, depth| read_lateral_columns(root, e, depth, &lateral_columns));
     }
     let layout = base_slots(rel, plan.width());

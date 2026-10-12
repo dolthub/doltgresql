@@ -362,8 +362,9 @@ Postgres' cost formulas and default settings; only the inputs change: a table's 
 in Postgres' heap, Dolt's primary index is a clustered index whose scans fetch nothing else, a covering secondary
 index scan is an index-only scan, and an index's correlation comes from the statistics sample read in primary key
 order. Doltgres' existing index scan chooser and lookup joins supply the index paths, which take Postgres' costs.
-Stand the port beside the old planner behind a switch (`DOLTGRES_PG_PLANNER`) and grow it until it plans everything
-the old one does, measuring it against Postgres' own EXPLAIN output on the regression files. Expect plan-shape tests
+There is only one planner: the port replaces the old one outright, with no switch and no old planner kept beside
+it (the Rust port kept one behind `DOLTGRES_PG_PLANNER`, which the user never asked for). Measure it against
+Postgres' own EXPLAIN output on the regression files. Expect plan-shape tests
 written for go-mysql-server's choices to disagree: Postgres reads tiny tables in full rather than through an index.
 In Go, this planner would sit in front of go-mysql-server rather than inside it.
 

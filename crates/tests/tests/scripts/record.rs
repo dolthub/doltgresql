@@ -1344,7 +1344,7 @@ fn test_records() {
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT id FROM rf WHERE (a, b) <> (1, 2);",
-                    expected: Expected::Plan(&[PlanFact::IndexScan { table: "rf", columns: &["a", "b"], ranges: "[{[NULL, NULL], (NULL, 2)}, {[NULL, NULL], (2, ∞)}, {(NULL, 1), [NULL, ∞)}, {[1, 1], (NULL, 2)}, {[1, 1], (2, ∞)}, {(1, ∞), [NULL, ∞)}]" }]),
+                    expected: Expected::Plan(&[PlanFact::FullScan { table: "rf" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -1369,7 +1369,7 @@ fn test_records() {
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT id FROM rf WHERE (a, b) IN ((1, 2), (2, 1));",
-                    expected: Expected::Plan(&[PlanFact::IndexScan { table: "rf", columns: &["a", "b"], ranges: "[{[1, 1], [2, 2]}, {[2, 2], [1, 1]}]" }]),
+                    expected: Expected::Plan(&[PlanFact::IndexScan { table: "rf", columns: &["a", "b"], ranges: "[{[1, 1], [2, 2]}]" }, PlanFact::IndexScan { table: "rf", columns: &["a", "b"], ranges: "[{[2, 2], [1, 1]}]" }]),
                     ..A
                 },
                 ScriptTestAssertion {
@@ -1384,7 +1384,7 @@ fn test_records() {
                 },
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT sq.x, sq.y, rf.id FROM sq JOIN rf ON (rf.a, rf.b) > (sq.x, sq.y);",
-                    expected: Expected::Plan(&[PlanFact::Join { kind: "InnerJoin", left: "rf", right: "sq" }, PlanFact::FullScan { table: "rf" }, PlanFact::FullScan { table: "sq" }]),
+                    expected: Expected::Plan(&[PlanFact::Join { kind: "LookupJoin", left: "sq", right: "rf" }]),
                     ..A
                 },
                 ScriptTestAssertion {

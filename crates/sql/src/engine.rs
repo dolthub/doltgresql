@@ -965,7 +965,7 @@ impl SessionState {
     /// set runs SET and RESET.
     pub(crate) fn set(&mut self, set: &VariableSetStmt) -> Result<Outcome> {
         let kind = VariableSetKind::try_from(set.kind).unwrap_or(VariableSetKind::Undefined);
-        let in_transaction = self.explicit;
+        let in_transaction = true;
         let tag =
             if matches!(kind, VariableSetKind::VarReset | VariableSetKind::VarResetAll) { "RESET" } else { "SET" };
         let transactional =

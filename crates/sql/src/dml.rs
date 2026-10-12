@@ -31,7 +31,7 @@ use crate::error::{ErrorObjects, PgError, Result, code};
 use crate::expr::{Binder, Bound, Expr, Scope, ScopeColumn, arg_location, assign, coerce, position, typ};
 use crate::foreign::Change;
 use crate::optimizer::nodes::CmdType;
-use crate::plan::{JoinKind, Plan, Planner, push_down};
+use crate::plan::{JoinKind, Plan, Planner};
 use crate::query::{Ctx, scan};
 use crate::triggers::{AFTER, BEFORE, Event, Triggers};
 use crate::txn::Txn;
@@ -1435,10 +1435,10 @@ impl Ctx<'_> {
 }
 
 /// planned_matches reports whether the ported optimizer plans the rows of an UPDATE or DELETE of a table, with a FROM
-/// or USING list when `joined` says so: always when it is on, except a keyless table's joined rows, which have no key
-/// that tells the rows of the table apart.
+/// or USING list when `joined` says so: always, except a keyless table's joined rows, which have no key that tells the
+/// rows of the table apart.
 fn planned_matches(table: &TableDef, joined: bool) -> bool {
-    crate::optimizer::enabled() && (!joined || !table.keyless())
+    !joined || !table.keyless()
 }
 
 /// assign_subscripts binds the assignment of a bound value, written at the location, to the array elements that a
@@ -1823,7 +1823,8 @@ pub fn insert_rows(ctx: &mut Ctx<'_>, table: &TableDef, rows: Vec<Vec<Value>>) -
 
 /// matching_plan returns the plan that finds the rows of an UPDATE or DELETE of a table, each row of the FROM list
 /// followed by the table's row, and the width of the FROM list's rows: planned by the ported optimizer as the
-/// statement's command when planned_matches says so, and otherwise as a SELECT of them would be.
+/// statement's command when planned_matches says so, and otherwise as a nested loop over the table and the FROM list
+/// that the optimizer plans as a SELECT.
 fn matching_plan(
     ctx: &mut Ctx<'_>,
     table: &TableDef,
@@ -1833,6 +1834,21 @@ fn matching_plan(
 ) -> Result<(Plan, usize)> {
     let width = table.columns.len();
     let mut plan = Plan::Scan(Box::new(table.clone()), None);
+    if let Some(from) = from
+        && !planned_matches(table, true)
+    {
+        let right = planned_rows(ctx, (**from).clone())?;
+        let from_width = right.width();
+        let plan = Plan::Join {
+            left: Box::new(plan),
+            right: Box::new(right),
+            kind: JoinKind::Inner,
+            condition: filter.clone(),
+            lateral: false,
+            method: crate::plan::JoinMethod::NestedLoop,
+        };
+        return Ok((plan, from_width));
+    }
     if let Some(from) = from {
         plan = Plan::Join {
             left: Box::new(plan),
@@ -1844,22 +1860,21 @@ fn matching_plan(
         };
     }
     let from_width = plan.width() - width;
-    if !planned_matches(table, from.is_some()) {
-        let plan = match filter {
-            Some(filter) => Planner { ctx, outer: Vec::new() }.use_indexes(push_down(plan, filter.clone())),
-            None => plan,
-        };
-        return Ok((plan, from_width));
-    }
     if let Some(filter) = filter {
         plan = Plan::Filter { input: Box::new(plan), predicate: filter.clone() };
     }
     let exprs = (width..width + from_width).map(Expr::Column).collect();
     let plan = Plan::Project { input: Box::new(plan), exprs };
-    let plan = crate::optimizer::planner(ctx, plan, command, has_returning)?;
-    let mut plan = crate::joins::plan_joins(ctx, plan);
+    let mut plan = crate::optimizer::planner(ctx, plan, command, has_returning)?;
     crate::indexscan::prune(&mut plan);
     Ok((plan, from_width))
+}
+
+/// planned_rows returns the plan of a FROM list as the optimizer plans a SELECT of its rows.
+fn planned_rows(ctx: &mut Ctx<'_>, plan: Plan) -> Result<Plan> {
+    let mut plan = crate::optimizer::planner(ctx, plan, CmdType::Select, false)?;
+    crate::indexscan::prune(&mut plan);
+    Ok(plan)
 }
 
 /// modify_lines returns the lines of EXPLAIN of a statement that changes a table: its header lines, then its plan
@@ -1958,60 +1973,16 @@ fn matches(
         }
         return Ok(out);
     }
-    if let Some(from) = from
-        && !table.keyless()
-    {
-        let join = Plan::Join {
-            left: Box::new(Plan::Scan(Box::new(table.clone()), None)),
-            right: from.clone(),
-            kind: JoinKind::Inner,
-            condition: None,
-            lateral: false,
-            method: crate::plan::JoinMethod::Unplanned,
-        };
-        let plan = match filter {
-            Some(filter) => Planner { ctx, outer: Vec::new() }.use_indexes(push_down(join, filter.clone())),
-            None => join,
-        };
-        let (width, mut seen, mut out) = (table.columns.len(), crate::exec::Groups::new(), Vec::new());
-        for mut row in plan.run(ctx)? {
-            let from_row = row.split_off(width);
-            let key: Vec<Value> = table.key_columns.iter().map(|&i| row[i].clone()).collect();
-            if seen.insert(&key).1 {
-                out.push((row, from_row));
-            }
-        }
-        return Ok(out);
-    }
-    let from_rows = match from {
-        Some(plan) => Some(plan.run(ctx)?),
-        None => None,
-    };
-    let index_scan = match (&from_rows, filter) {
-        (None, Some(filter)) => crate::indexscan::choose(ctx, table, filter),
-        _ => None,
-    };
-    let rows = match index_scan {
-        Some(index_scan) => index_scan.run(ctx)?,
-        None => scan(ctx.db, table)?,
-    };
+    let from = from.as_deref().expect("only the joined rows of a keyless table are matched by hand");
+    let from_rows = planned_rows(ctx, from.clone())?.run(ctx)?;
     let mut out = Vec::new();
-    for row in rows {
-        match &from_rows {
-            None => {
-                if filter.as_ref().map_or(Ok(true), |f| f.is_true(ctx, &row))? {
-                    out.push((row, Vec::new()));
-                }
-            }
-            Some(from_rows) => {
-                for from_row in from_rows {
-                    let mut combined = row.clone();
-                    combined.extend(from_row.iter().cloned());
-                    if filter.as_ref().map_or(Ok(true), |f| f.is_true(ctx, &combined))? {
-                        out.push((row.clone(), from_row.clone()));
-                        break;
-                    }
-                }
+    for row in scan(ctx.db, table)? {
+        for from_row in &from_rows {
+            let mut combined = row.clone();
+            combined.extend(from_row.iter().cloned());
+            if filter.as_ref().map_or(Ok(true), |f| f.is_true(ctx, &combined))? {
+                out.push((row.clone(), from_row.clone()));
+                break;
             }
         }
     }
@@ -2229,7 +2200,7 @@ impl Ctx<'_> {
                     targets.push(row);
                 }
                 let mut pairs = Vec::new();
-                for source in source_plan.run(self)? {
+                for source in planned_rows(self, source_plan)?.run(self)? {
                     let mut matched_any = false;
                     for target in &targets {
                         let mut combined = target.clone();
@@ -2364,7 +2335,7 @@ impl Ctx<'_> {
         let alias = relation.alias.as_ref().map(|a| a.aliasname.clone());
         let mut scope = table_scope(&table, alias.as_deref());
         let source = stmt.source_relation.as_deref().ok_or_else(|| PgError::internal("MERGE without a source"))?;
-        let planned = crate::optimizer::enabled() && !table.keyless();
+        let planned = !table.keyless();
         let saved = std::mem::replace(&mut self.defer_subplans, planned);
         let bound = (|ctx: &mut Ctx<'_>| {
             let (source_plan, source_scope) =
@@ -2449,8 +2420,7 @@ impl Ctx<'_> {
         let source_width = plan.width() - width;
         let exprs = (width..width + source_width).map(Expr::Column).collect();
         let plan = Plan::Project { input: Box::new(plan), exprs };
-        let plan = crate::optimizer::planner(self, plan, CmdType::Merge, has_returning)?;
-        let mut plan = crate::joins::plan_joins(self, plan);
+        let mut plan = crate::optimizer::planner(self, plan, CmdType::Merge, has_returning)?;
         crate::indexscan::prune(&mut plan);
         let mut pairs = Vec::new();
         for mut source in plan.run(self)? {

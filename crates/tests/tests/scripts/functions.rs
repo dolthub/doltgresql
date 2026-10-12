@@ -17294,3 +17294,41 @@ fn test_type_send_functions() {
         },
     ]);
 }
+
+#[test]
+fn test_pg_typeof_set_returning_argument() {
+    run_scripts(&[
+        ScriptTest {
+            name: "pg_typeof of a set-returning call returns a row for each of its rows",
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(unnest(ARRAY[1, 2, 3]));",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("integer")],
+                            &[T("integer")],
+                            &[T("integer")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT pg_typeof(unnest('11 22 33'::int2vector));",
+                    expected: Expected::Rows {
+                        columns: &[Column("pg_typeof", REGTYPE)],
+                        rows: &[
+                            &[T("smallint")],
+                            &[T("smallint")],
+                            &[T("smallint")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

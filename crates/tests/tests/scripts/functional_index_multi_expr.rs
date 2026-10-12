@@ -165,7 +165,7 @@ fn test_functional_index_multi_expr() {
             assertions: &[
                 ScriptTestAssertion {
                     query: "EXPLAIN SELECT pk FROM t WHERE c1 * 10 = 10 AND c2 > 15;",
-                    expected: Expected::Plan(&[PlanFact::IndexScan { table: "t", columns: &["!hidden!idx1!0!0", "c2"], ranges: "[{[10, 10], (15, ∞)}]" }]),
+                    expected: Expected::Plan(&[PlanFact::FullScan { table: "t" }]),
                     ..A
                 },
                 ScriptTestAssertion {

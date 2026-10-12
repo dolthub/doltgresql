@@ -539,3 +539,150 @@ fn test_correlated_in_subqueries() {
         },
     ]);
 }
+
+#[test]
+fn test_lateral_placeholders() {
+    run_scripts(&[
+        ScriptTest {
+            name: "lateral subqueries whose outputs or conditions read the enclosing row under outer joins",
+            set_up_script: &[
+                "CREATE TABLE lp1 (a INT, b INT, c TEXT);",
+                "CREATE TABLE lp2 (a INT, b INT);",
+                "CREATE TABLE lpk (i INT PRIMARY KEY);",
+                "INSERT INTO lp1 VALUES (0, 0, 'x'), (1, 1, 'y'), (2, 2, 'z'), (3, 1, 'w');",
+                "INSERT INTO lp2 VALUES (1, 1), (2, 3), (3, 2);",
+                "INSERT INTO lpk VALUES (1), (2);",
+            ],
+            assertions: &[
+                ScriptTestAssertion {
+                    query: "SELECT t1.a, ss.t2a, ss.l FROM lp1 t1 LEFT JOIN LATERAL (SELECT t2.a AS t2a, LEAST(t1.a, t2.a, t3.b) AS l FROM lp1 t2 JOIN lp2 t3 ON t2.a = t3.b) ss ON t1.a = ss.t2a ORDER BY t1.a;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("t2a", INT4), Column("l", INT4)],
+                        rows: &[
+                            &[T("0"), Null, Null],
+                            &[T("1"), T("1"), T("1")],
+                            &[T("2"), T("2"), T("2")],
+                            &[T("3"), T("3"), T("3")],
+                        ],
+                        tag: "SELECT 4",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM (SELECT k FROM (SELECT i, COALESCE(i, j) AS k FROM (SELECT i FROM lpk UNION ALL SELECT 0) u JOIN (SELECT 1 AS j LIMIT 1) l ON i = j) a RIGHT JOIN (SELECT 2 AS x) b ON TRUE JOIN (SELECT 3 AS y) c ON i IS NOT NULL) d, LATERAL (SELECT k AS kl LIMIT 1) e;",
+                    expected: Expected::Rows {
+                        columns: &[Column("k", INT4), Column("kl", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM lp1 AS i41, LATERAL (SELECT 1 AS x FROM (SELECT i41.a AS lat, i42.a AS loc FROM lp2 AS i81, lp1 AS i42) AS ss1 RIGHT JOIN lp2 AS i43 ON (i43.a > 1) WHERE ss1.loc = ss1.lat) AS ss2 WHERE i41.a > 0;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("18")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT g, ss.a FROM generate_series(1, 3) g, LATERAL (SELECT a FROM lp2 x WHERE g = a UNION ALL SELECT b FROM lp2 y WHERE g = b) ss ORDER BY 1, 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("g", INT4), Column("a", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("1"), T("1")],
+                            &[T("2"), T("2")],
+                            &[T("2"), T("2")],
+                            &[T("3"), T("3")],
+                            &[T("3"), T("3")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT count(*) FROM lp2 c LEFT JOIN (lp2 a LEFT JOIN (SELECT b.a AS q1, COALESCE(b.b, b2.a) AS x FROM lp2 b, lp1 b2 WHERE b.a < b2.a) ss1 ON a.b = ss1.q1 CROSS JOIN LATERAL (SELECT d.a AS q1, COALESCE(ss1.x, d.b) AS y FROM lp2 d) ss2) ON c.b = ss2.q1, LATERAL (SELECT * FROM lp1 i WHERE ss2.y > i.a) ss3;",
+                    expected: Expected::Rows {
+                        columns: &[Column("count", INT8)],
+                        rows: &[
+                            &[T("21")],
+                        ],
+                        tag: "SELECT 1",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT t1.a, s.a FROM lp2 t1 LEFT JOIN lp2 t2 ON t1.a = t2.b JOIN LATERAL (SELECT t1.a AS a UNION ALL SELECT t2.a AS a) s ON TRUE WHERE s.a IS NOT NULL ORDER BY 1, 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("a", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("1"), T("1")],
+                            &[T("2"), T("2")],
+                            &[T("2"), T("3")],
+                            &[T("3"), T("2")],
+                            &[T("3"), T("3")],
+                        ],
+                        tag: "SELECT 6",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM lp1 a FULL JOIN LATERAL generate_series(0, a.a) g ON TRUE;",
+                    expected: Expected::Error(Diagnostic { code: "42P10", message: r#"invalid reference to FROM-clause entry for table "a""#, detail: "The combining JOIN type must be INNER or LEFT for a LATERAL reference.", position: 58, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT * FROM lp1 a RIGHT JOIN LATERAL (SELECT a.a) g ON TRUE;",
+                    expected: Expected::Error(Diagnostic { code: "42P10", message: r#"invalid reference to FROM-clause entry for table "a""#, detail: "The combining JOIN type must be INNER or LEFT for a LATERAL reference.", position: 48, ..E }),
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT g, ss.f1 FROM generate_series(0, 3) g, LATERAL (SELECT a AS f1 FROM lp1 WHERE a = ANY (SELECT b FROM lp2 WHERE lp2.a = g OFFSET 0)) ss ORDER BY 1, 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("g", INT4), Column("f1", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("2"), T("3")],
+                            &[T("3"), T("2")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v.a, s.a FROM lp1 v, LATERAL (SELECT x.a FROM lp2 x WHERE x.a = v.b AND x.b = ANY (SELECT y.b FROM lp2 y WHERE y.a = length(v.c) OFFSET 0)) s ORDER BY 1, 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("a", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("3"), T("1")],
+                        ],
+                        tag: "SELECT 2",
+                    },
+                    ..A
+                },
+                ScriptTestAssertion {
+                    query: "SELECT v.a, s.a FROM lp1 v, LATERAL (SELECT x.a FROM lp2 x WHERE x.a = v.b AND EXISTS (SELECT 1 FROM lp2 y WHERE y.b = length(v.c) + 1 OFFSET 0)) s ORDER BY 1, 2;",
+                    expected: Expected::Rows {
+                        columns: &[Column("a", INT4), Column("a", INT4)],
+                        rows: &[
+                            &[T("1"), T("1")],
+                            &[T("2"), T("2")],
+                            &[T("3"), T("1")],
+                        ],
+                        tag: "SELECT 3",
+                    },
+                    ..A
+                },
+            ],
+            ..S
+        },
+    ]);
+}

@@ -288,8 +288,8 @@ pub struct Cte {
     pub types: Vec<ColumnType>,
     pub plan: Option<Plan>,
     pub work_table: usize,
-    /// The definition that the ported optimizer's references to the query share, when it is on and the query reads
-    /// no enclosing row.
+    /// The definition that the ported optimizer's references to the query share, when the query reads no enclosing
+    /// row.
     pub def: Option<std::sync::Arc<CteDef>>,
     /// How many queries enclose the one whose WITH clause defines the query.
     pub depth: usize,
@@ -571,7 +571,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             if cte.search_clause.is_some() || cte.cycle_clause.is_some() {
                 self.check_search_and_cycle(cte, query, recursive)?;
             }
-            let unplanned = crate::optimizer::enabled() && (recursive || can_defer(query));
+            let unplanned = recursive || can_defer(query);
             let planned = if recursive {
                 if cte.search_clause.is_some() || cte.cycle_clause.is_some() {
                     let rewritten = rewrite_search_and_cycle(cte, query, &mut aliases)?;
@@ -588,8 +588,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 planned
             };
             let work_table = self.ctx.work_tables.len() + self.ctx.ctes.len();
-            let shareable = crate::optimizer::enabled()
-                && self.ctx.ctes.iter().all(|c| c.plan.is_some())
+            let shareable = self.ctx.ctes.iter().all(|c| c.plan.is_some())
                 && crate::joins::plan_lowest_level(&planned.plan).is_some_and(|level| level >= 0);
             let def = shareable.then(|| {
                 std::sync::Arc::new(CteDef {
@@ -814,14 +813,14 @@ impl<'b, 'a> Planner<'b, 'a> {
             query.plan = Plan::Sort { input: Box::new(query.plan), keys };
         }
         query.plan = self.limit(query.plan, select)?;
-        if crate::optimizer::enabled() && !defer && select.values_lists.is_empty() {
+        if !defer && select.values_lists.is_empty() {
             let plan = crate::optimizer::planner(
                 self.ctx,
                 std::mem::replace(&mut query.plan, Plan::OneRow),
                 crate::optimizer::nodes::CmdType::Select,
                 false,
             )?;
-            query.plan = crate::joins::plan_joins(self.ctx, plan);
+            query.plan = plan;
             crate::indexscan::prune(&mut query.plan);
         }
         Ok(query)
@@ -967,10 +966,10 @@ impl<'b, 'a> Planner<'b, 'a> {
         Ok((Query { plan, columns, types }, scope))
     }
 
-    /// plan_branch plans a term of a set operation, leaving it unplanned for the ported optimizer when it is on and
-    /// the term has no WITH or INTO.
+    /// plan_branch plans a term of a set operation, leaving it unplanned for the ported optimizer when the term has no
+    /// WITH or INTO.
     fn plan_branch(&mut self, select: &SelectStmt) -> Result<Query> {
-        match crate::optimizer::enabled() && can_defer(select) {
+        match can_defer(select) {
             true => self.plan_query_body(select, true),
             false => self.plan_query(select),
         }
@@ -1521,7 +1520,7 @@ impl<'b, 'a> Planner<'b, 'a> {
         let unnamed = pg_query::protobuf::Alias::default();
         let alias = subselect.alias.as_ref().unwrap_or(&unnamed);
         let mut planner = Planner { ctx: self.ctx, outer: self.outer.clone() };
-        let query = match crate::optimizer::enabled() && can_defer(select) {
+        let query = match can_defer(select) {
             true => planner.plan_query_body(select, true)?,
             false => planner.plan_query(select)?,
         };
@@ -1773,15 +1772,18 @@ impl<'b, 'a> Planner<'b, 'a> {
         let left = join.larg.as_deref().ok_or_else(|| PgError::internal("a join without a left side"))?;
         let right = join.rarg.as_deref().ok_or_else(|| PgError::internal("a join without a right side"))?;
         let (left_plan, left_scope) = self.plan_from_item(left)?;
-        let lateral = is_lateral(right);
-        let (right_plan, right_scope) = self.plan_lateral_item(right, &left_scope, lateral)?;
-        check_duplicate_aliases(&left_scope, &right_scope)?;
         let kind = match JoinType::try_from(join.jointype) {
             Ok(JoinType::JoinLeft) => JoinKind::Left,
             Ok(JoinType::JoinRight) => JoinKind::Right,
             Ok(JoinType::JoinFull) => JoinKind::Full,
             _ => JoinKind::Inner,
         };
+        let lateral = is_lateral(right);
+        let (right_plan, right_scope) = match lateral && matches!(kind, JoinKind::Right | JoinKind::Full) {
+            true => self.plan_from_item(right).map_err(|err| lateral_join_error(err, &left_scope))?,
+            false => self.plan_lateral_item(right, &left_scope, lateral)?,
+        };
+        check_duplicate_aliases(&left_scope, &right_scope)?;
         let mut scope = Scope { columns: left_scope.columns.iter().chain(&right_scope.columns).cloned().collect() };
         let width = left_scope.columns.len();
         let using: Vec<String> = if join.is_natural {
@@ -1866,7 +1868,7 @@ impl<'b, 'a> Planner<'b, 'a> {
         } else {
             match join.quals.as_deref() {
                 Some(quals) => {
-                    let deferred = match crate::optimizer::enabled() && !lateral && kind != JoinKind::Full {
+                    let deferred = match !lateral && kind != JoinKind::Full {
                         true => top_level_sublinks(quals),
                         false => Vec::new(),
                     };
@@ -1890,10 +1892,10 @@ impl<'b, 'a> Planner<'b, 'a> {
     }
 
     /// plan_select plans a simple SELECT, leaving its FROM and WHERE clauses unplanned when `defer` asks for a subquery
-    /// that the query around it may pull up. The ported optimizer, when it is on, plans them last, once it knows what
-    /// the rest of the query reads.
+    /// that the query around it may pull up. The ported optimizer plans them last, once it knows what the rest of the
+    /// query reads.
     pub(crate) fn plan_select(&mut self, select: &SelectStmt, defer: bool) -> Result<Query> {
-        let saved = std::mem::replace(&mut self.ctx.defer_subplans, crate::optimizer::enabled());
+        let saved = std::mem::replace(&mut self.ctx.defer_subplans, true);
         let query = self.plan_select_body(select, defer);
         self.ctx.defer_subplans = saved;
         query
@@ -1909,7 +1911,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                     ..PgError::new(code::GROUPING_ERROR, "aggregate functions are not allowed in WHERE")
                 });
             }
-            let deferred = match crate::optimizer::enabled() && !matches!(plan, Plan::OneRow) {
+            let deferred = match !matches!(plan, Plan::OneRow) {
                 true => top_level_sublinks(node),
                 false => Vec::new(),
             };
@@ -1919,31 +1921,7 @@ impl<'b, 'a> Planner<'b, 'a> {
             let bound = binder.bind(node);
             self.ctx.deferred_sublinks = saved;
             let predicate = crate::expr::condition(bound?, "WHERE", crate::expr::arg_location(node))?;
-            let mut kept = Vec::new();
-            let mut existences = Vec::new();
-            for c in crate::indexscan::conjuncts(&predicate) {
-                match matches!(c, Expr::Exists(_))
-                    || matches!(c, Expr::Not(inner) if matches!(**inner, Expr::Exists(_)))
-                    || crate::joins::any_input(c).is_some()
-                {
-                    true => existences.push(c.clone()),
-                    false => kept.push(c.clone()),
-                }
-            }
-            if crate::optimizer::enabled() {
-                let quals = kept.into_iter().chain(existences);
-                if let Some(predicate) = quals.reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
-                    plan = Plan::Filter { input: Box::new(plan), predicate };
-                }
-            } else {
-                if let Some(kept) = kept.into_iter().reduce(|a, b| Expr::And(Box::new(a), Box::new(b))) {
-                    plan = push_down(plan, kept);
-                }
-                plan = self.use_indexes(plan);
-                for existence in existences {
-                    plan = crate::joins::filter_existence(plan, existence);
-                }
-            }
+            plan = Plan::Filter { input: Box::new(plan), predicate };
         }
         let hints = crate::joins::hints(&self.ctx.session.source);
         if !hints.is_empty() {
@@ -2280,7 +2258,7 @@ impl<'b, 'a> Planner<'b, 'a> {
                 sort_keys.push(SortKey { expr: key.clone(), descending: false, nulls_first: false });
             }
             sort_keys.extend(keys.iter().skip(prefix).cloned());
-            if !(crate::optimizer::enabled() && keys.is_empty()) {
+            if !keys.is_empty() {
                 plan = Plan::Sort { input: Box::new(plan), keys: sort_keys };
             }
             plan = Plan::Distinct { input: Box::new(plan), keys: distinct_keys };
@@ -2290,32 +2268,38 @@ impl<'b, 'a> Planner<'b, 'a> {
             }
             if !keys.is_empty() {
                 plan = Plan::Sort { input: Box::new(plan), keys };
-                if !crate::optimizer::enabled() {
-                    plan = crate::indexscan::order_by_index(plan);
-                }
             }
         }
         plan = self.limit(plan, select)?;
-        if !crate::optimizer::enabled() {
-            plan = crate::indexscan::nearest(plan);
-        }
         if !matches!(&plan, Plan::Project { exprs, .. } if exprs.len() == width) {
             let visible = (0..width).map(Expr::Column).collect();
             plan = Plan::Project { input: Box::new(plan), exprs: visible };
         }
         if !defer {
-            if crate::optimizer::enabled() {
-                plan = nearest_planned(crate::optimizer::planner(
-                    self.ctx,
-                    plan,
-                    crate::optimizer::nodes::CmdType::Select,
-                    false,
-                )?);
-            }
-            plan = crate::joins::plan_joins(self.ctx, plan);
+            plan = nearest_planned(crate::optimizer::planner(
+                self.ctx,
+                plan,
+                crate::optimizer::nodes::CmdType::Select,
+                false,
+            )?);
             crate::indexscan::prune(&mut plan);
         }
         Ok(Query { plan, columns, types })
+    }
+}
+
+/// lateral_join_error returns the error of a LATERAL item on the right of a RIGHT or FULL join that refers to the
+/// join's left side, as Postgres' check_lateral_ref_ok raises it, or the item's error otherwise.
+fn lateral_join_error(err: PgError, left: &Scope) -> PgError {
+    let table = err.message.strip_prefix("missing FROM-clause entry for table \"").and_then(|t| t.strip_suffix('"'));
+    match table {
+        Some(table) if err.code == code::UNDEFINED_TABLE && left.columns.iter().any(|c| c.table == table) => PgError {
+            code: code::INVALID_COLUMN_REFERENCE,
+            message: format!("invalid reference to FROM-clause entry for table \"{table}\""),
+            detail: Some("The combining JOIN type must be INNER or LEFT for a LATERAL reference.".into()),
+            ..err
+        },
+        _ => err,
     }
 }
 

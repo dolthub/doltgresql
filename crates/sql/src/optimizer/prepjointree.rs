@@ -139,7 +139,7 @@ fn pull_up_simple_subquery(
     let rtoffset = parse.rtable.len();
     offset_var_nodes(glob, &mut subquery, rtoffset);
     if rte.lateral {
-        read_lateral_columns(&mut subquery, &rte.lateral_columns);
+        read_lateral_columns(glob, &mut subquery, &rte.lateral_columns);
     }
     let targetlist: Vec<Expr> = subquery.target_list.iter().map(|tle| tle.expr.clone()).collect();
     let wrap_option = if parse.grouping_sets.is_some() { ReplaceWrap::All } else { ReplaceWrap::None };
@@ -281,8 +281,13 @@ fn expr_varnos(glob: &PlannerGlobal, e: &Expr) -> Relids {
 /// read_lateral_columns rewrites a pulled-up lateral subquery's reads of its enclosing row into the expressions of the
 /// query around it that its columns hold, marking its own relations lateral, as Postgres' pull_up_simple_subquery does
 /// with IncrementVarSublevelsUp and its LATERAL markers.
-fn read_lateral_columns(subquery: &mut Query, lateral_columns: &[Expr]) {
-    let mut f = |e: Expr| super::read_left_vars(e, lateral_columns);
+fn read_lateral_columns(glob: &mut PlannerGlobal, subquery: &mut Query, lateral_columns: &[Expr]) {
+    let mut done = HashSet::new();
+    let mut f = |e: Expr| {
+        let e = super::read_left_vars(e, lateral_columns);
+        read_lateral_placeholders(glob, &e, lateral_columns, &mut done);
+        e
+    };
     for e in subquery.upper_exprs_mut() {
         *e = f(std::mem::replace(e, Expr::Const(crate::types::Value::Null)));
     }
@@ -302,12 +307,92 @@ fn read_lateral_columns(subquery: &mut Query, lateral_columns: &[Expr]) {
                 });
                 rte.lateral = true;
             }
-            RteKind::Subquery(..) if !rte.lateral => {
+            RteKind::Subquery(inner, _) if rte.lateral => {
+                let mut read = Vec::new();
+                shift_query_reads(inner, 2, rte.lateral_columns.len(), &mut read);
+                let own = std::mem::take(&mut rte.lateral_columns).into_iter();
+                let own = own.map(|e| super::read_left_vars(e, lateral_columns));
+                rte.lateral_columns = own.chain(read.iter().map(|&c| lateral_columns[c].clone())).collect();
+            }
+            RteKind::Subquery(..) => {
                 rte.lateral = true;
                 rte.lateral_columns = lateral_columns.to_vec();
             }
             _ => {}
         }
+    }
+}
+
+/// shift_query_reads rewrites a lateral query that a pulled-up lateral subquery held, whose expressions read the
+/// subquery's enclosing row `level` rows out, to read that row's columns as lateral reads of its own, as
+/// shift_enclosing_reads rewrites each expression. Its lateral subqueries read the row one level further out.
+fn shift_query_reads(query: &mut Query, level: usize, offset: usize, read: &mut Vec<usize>) {
+    let take = |e: &mut Expr| std::mem::replace(e, Expr::Const(crate::types::Value::Null));
+    for e in query.upper_exprs_mut() {
+        *e = shift_enclosing_reads(take(e), level, offset, read);
+    }
+    for e in query.append_rel_list.iter_mut().flat_map(|appinfo| appinfo.translated_vars.iter_mut()) {
+        *e = shift_enclosing_reads(take(e), level, offset, read);
+    }
+    let mut node = JoinTreeNode::From(Box::new(std::mem::take(&mut query.jointree)));
+    super::var::mutate_jointree(&mut node, &mut |e| shift_enclosing_reads(e, level, offset, read));
+    let JoinTreeNode::From(jointree) = node else { unreachable!("the join tree stays a FROM list") };
+    query.jointree = *jointree;
+    for rte in &mut query.rtable {
+        for e in &mut rte.lateral_columns {
+            *e = shift_enclosing_reads(take(e), level, offset, read);
+        }
+        match &mut rte.kind {
+            RteKind::Plan(plan) => {
+                plan.map_exprs(0, &mut |e, depth| shift_enclosing_reads(e, level + depth, offset, read));
+            }
+            RteKind::Subquery(inner, _) => shift_query_reads(inner, level + usize::from(rte.lateral), offset, read),
+            _ => {}
+        }
+    }
+}
+
+/// shift_enclosing_reads rewrites an expression that reads a pulled-up lateral subquery's enclosing row `level` rows
+/// out to read it one level closer, through the lateral columns of the query that holds the expression, numbering
+/// each column it reads by its position in `read` after the query's `offset` lateral columns, and the rows further
+/// out one level closer, as Postgres' IncrementVarSublevelsUp moves Vars up a level.
+fn shift_enclosing_reads(e: Expr, level: usize, offset: usize, read: &mut Vec<usize>) -> Expr {
+    let mut e = match e {
+        Expr::Outer(d, c) if d == level => {
+            let k = match read.iter().position(|&r| r == c) {
+                Some(k) => k,
+                None => {
+                    read.push(c);
+                    read.len() - 1
+                }
+            };
+            return Expr::Outer(level - 1, offset + k);
+        }
+        Expr::Outer(d, c) if d > level => return Expr::Outer(d - 1, c),
+        other => other.map_children(&mut |x| shift_enclosing_reads(x, level, offset, read)),
+    };
+    for plan in e.subqueries_mut() {
+        plan.map_exprs(0, &mut |x, depth| shift_enclosing_reads(x, level + 1 + depth, offset, read));
+    }
+    e
+}
+
+/// read_lateral_placeholders rewrites the shared expressions of the PlaceHolderVars that an expression reads, and of
+/// those they read in turn, as read_lateral_columns rewrites the expression itself.
+fn read_lateral_placeholders(glob: &mut PlannerGlobal, e: &Expr, lateral_columns: &[Expr], done: &mut HashSet<usize>) {
+    let mut found = Vec::new();
+    e.visit(&mut |x| {
+        if let Expr::Column(id) = x
+            && let VarNode::PlaceHolderVar(phv) = glob.node(*id)
+            && done.insert(phv.phid)
+        {
+            found.push(phv.phid);
+        }
+    });
+    for phid in found {
+        let phexpr = super::read_left_vars(glob.placeholder(phid).phexpr.clone(), lateral_columns);
+        read_lateral_placeholders(glob, &phexpr, lateral_columns, done);
+        glob.placeholders[phid - 1].phexpr = phexpr;
     }
 }
 
@@ -347,6 +432,13 @@ fn pull_up_simple_union_all(glob: &mut PlannerGlobal, parse: &mut Query, varno: 
     let subquery = (**subquery).clone();
     let rtoffset = parse.rtable.len();
     parse.rtable.extend(subquery.rtable.iter().cloned());
+    if parse.rte(varno).lateral {
+        let lateral_columns = parse.rte(varno).lateral_columns.clone();
+        for child in &mut parse.rtable[rtoffset..] {
+            child.lateral = true;
+            child.lateral_columns = lateral_columns.clone();
+        }
+    }
     let topop = subquery.set_operations.clone().expect("a set operation");
     pull_up_union_leaf_queries(glob, parse, &SetOpTree::Op(topop), varno, &subquery.target_list, rtoffset);
     parse.rtable[varno - 1].inh = true;
@@ -1087,12 +1179,23 @@ fn remove_result_refs(glob: &mut PlannerGlobal, parse: &Query, varno: usize, sub
     }
 }
 
-/// query_phids returns the IDs of the PlaceHolderVars that a query's expressions hold, with those that their
-/// expressions hold.
+/// query_phids returns the IDs of the PlaceHolderVars that a query's expressions and its lateral relations' reads of
+/// it hold, with those that their expressions hold.
 fn query_phids(glob: &PlannerGlobal, parse: &Query) -> Vec<usize> {
     let mut exprs: Vec<Expr> = parse.upper_exprs();
     exprs.extend(parse.append_rel_list.iter().flat_map(|appinfo| appinfo.translated_vars.iter().cloned()));
     collect_quals(&JoinTreeNode::From(Box::new(parse.jointree.clone())), &mut exprs);
+    for rte in parse.rtable.iter().filter(|rte| rte.lateral) {
+        exprs.extend(rte.lateral_columns.iter().cloned());
+        if let RteKind::Plan(plan) = &rte.kind {
+            plan.clone().map_exprs(0, &mut |e, depth| {
+                if depth == 0 {
+                    exprs.push(e.clone());
+                }
+                e
+            });
+        }
+    }
     exprs_phids(glob, &exprs)
 }
 

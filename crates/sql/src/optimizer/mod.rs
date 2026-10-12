@@ -173,13 +173,6 @@ impl PlannerInfo<'_, '_> {
     }
 }
 
-/// enabled reports whether the DOLTGRES_PG_PLANNER environment variable asks for this planner, which stands beside
-/// the older one until it plans every query that the older one does.
-pub(crate) fn enabled() -> bool {
-    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| std::env::var_os("DOLTGRES_PG_PLANNER").is_some())
-}
-
 /// planner plans the statement that the binder built a plan of with standard_planner, and raises the error that
 /// planning found, as Postgres' function of the same name does: a SELECT, or the rows that an UPDATE, DELETE, or
 /// MERGE changes, whose plan reads its result relation first.
@@ -229,8 +222,7 @@ fn plan_subselect(
     tuple_fraction: f64,
 ) -> (Plan, Rc<nodes::Path>) {
     let mut root = subquery_planner(ctx, glob, parse, tuple_fraction, None);
-    let (plan, path) = create_final_plan(&mut root, tuple_fraction);
-    let mut plan = crate::joins::plan_joins(ctx, plan);
+    let (mut plan, path) = create_final_plan(&mut root, tuple_fraction);
     crate::indexscan::prune(&mut plan);
     (plan, path)
 }
@@ -346,6 +338,7 @@ fn new_planner_info<'r, 'a>(
     let enables = costsize::Enables::read(&ctx.session.settings);
     let counting = (parse.group_clause.is_empty() && parse.grouping_sets.is_none() && parse.has_aggs)
         .then(|| parse.aggregates.clone());
+    let has_lateral_rtes = parse.rtable.iter().any(|rte| rte.lateral);
     PlannerInfo {
         ctx: std::cell::RefCell::new(ctx),
         glob,
@@ -374,7 +367,7 @@ fn new_planner_info<'r, 'a>(
         placeholder_array: HashMap::new(),
         placeholders_frozen: false,
         has_pseudo_constant_quals: false,
-        has_lateral_rtes: false,
+        has_lateral_rtes,
         total_table_pages: 0.0,
         enables,
         tuple_fraction,
@@ -573,10 +566,7 @@ pub(super) fn lateral_subquery_relation(
     let mut read = std::collections::BTreeSet::new();
     crate::indexscan::outer_reads(&right, 1, &mut read);
     let read: Vec<usize> = read.into_iter().collect();
-    right.map_exprs(0, &mut |e, depth| match depth {
-        0 => renumber_left_reads(e, &read),
-        _ => e,
-    });
+    right.map_exprs(0, &mut |e, depth| renumber_left_reads(e, depth, &read));
     let node = subquery_relation(glob, ctx, right, rtable, output);
     let rte = rtable.last_mut().expect("the lateral subquery");
     rte.lateral = true;
@@ -584,25 +574,67 @@ pub(super) fn lateral_subquery_relation(
     node
 }
 
-/// renumber_left_reads rewrites the reads of the left row in an expression of a lateral subquery, outside its
-/// subqueries, to read the position of their column among those that the subquery reads.
-fn renumber_left_reads(e: Expr, read: &[usize]) -> Expr {
-    match e {
-        Expr::Outer(1, c) => Expr::Outer(1, read.binary_search(&c).expect("a column that the subquery reads")),
-        other => other.map_children(&mut |x| renumber_left_reads(x, read)),
+/// renumber_left_reads rewrites the reads of the left row in an expression `nesting` rows out from a lateral
+/// subquery's own rows, and in its subqueries, to read the position of their column among those that the subquery
+/// reads.
+fn renumber_left_reads(e: Expr, nesting: usize, read: &[usize]) -> Expr {
+    let mut e = match e {
+        Expr::Outer(d, c) if d == nesting + 1 => {
+            return Expr::Outer(d, read.binary_search(&c).expect("a column that the subquery reads"));
+        }
+        other => other.map_children(&mut |x| renumber_left_reads(x, nesting, read)),
+    };
+    for plan in e.subqueries_mut() {
+        plan.map_exprs(0, &mut |x, depth| renumber_left_reads(x, nesting + 1 + depth, read));
     }
+    e
 }
 
 /// read_left_vars rewrites an expression of a lateral input to read the Vars of the left rows' columns in place of
-/// its reads of the left row, and the rows of the enclosing queries one level closer.
+/// its reads of the left row, and the rows of the enclosing queries one level closer. A SubPlan whose subquery reads
+/// the left row passes those Vars as arguments of its own, as Postgres' SubPlans pass upper-level Vars as Params.
 pub(super) fn read_left_vars(e: Expr, left_columns: &[Expr]) -> Expr {
     let mut e = match e {
         Expr::Outer(1, c) => return left_columns[c].clone(),
         Expr::Outer(d, c) if d > 1 => return Expr::Outer(d - 1, c),
+        Expr::SubPlan(mut subplan) => {
+            subplan.map_children(&mut |x| read_left_vars(x, left_columns));
+            let (base, mut read) = (subplan.args.len(), Vec::new());
+            for plan in subplan.link.subqueries_mut() {
+                plan.map_exprs(0, &mut |x, depth| pass_left_reads(x, depth, base, &mut read));
+            }
+            subplan.init_plan &= read.is_empty();
+            subplan.args.extend(read.iter().map(|&c| left_columns[c].clone()));
+            return Expr::SubPlan(subplan);
+        }
         other => other.map_children(&mut |x| read_left_vars(x, left_columns)),
     };
     for plan in e.subqueries_mut() {
         plan.map_exprs(0, &mut |x, depth| subselect::decrement_sublevels_up(x, depth + 1));
+    }
+    e
+}
+
+/// pass_left_reads rewrites an expression `nesting` rows out from a SubPlan's subquery rows to read the columns of
+/// the left row as SubPlan arguments past its first `base`, numbered by their position in `read`, and the rows
+/// further out one level closer.
+fn pass_left_reads(e: Expr, nesting: usize, base: usize, read: &mut Vec<usize>) -> Expr {
+    let mut e = match e {
+        Expr::Outer(d, c) if d == nesting + 2 => {
+            let k = match read.iter().position(|&r| r == c) {
+                Some(k) => k,
+                None => {
+                    read.push(c);
+                    read.len() - 1
+                }
+            };
+            return Expr::Outer(nesting + 1, base + k);
+        }
+        Expr::Outer(d, c) if d > nesting + 2 => return Expr::Outer(d - 1, c),
+        other => other.map_children(&mut |x| pass_left_reads(x, nesting, base, read)),
+    };
+    for plan in e.subqueries_mut() {
+        plan.map_exprs(0, &mut |x, depth| pass_left_reads(x, nesting + 1 + depth, base, read));
     }
     e
 }

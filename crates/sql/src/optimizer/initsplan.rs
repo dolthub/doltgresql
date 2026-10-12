@@ -183,7 +183,6 @@ fn extract_lateral_references(root: &mut PlannerInfo<'_, '_>, rtindex: usize) {
     if vars.is_empty() {
         return;
     }
-    root.has_lateral_rtes = true;
     add_vars_to_targetlist(root, &vars, &Relids::singleton(rtindex));
     root.rels[rtindex].lateral_vars = vars.into_iter().map(Expr::Column).collect();
 }
