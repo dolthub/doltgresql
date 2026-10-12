@@ -565,14 +565,9 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			Expression: pgexprs.NewRawLiteralInt64(int64(*node)),
 		}, nil
 	case *tree.DInterval:
-		cast, err := pgexprs.NewExplicitCastInjectable(pgtypes.Interval)
-		if err != nil {
-			return nil, err
-		}
-		expr := pgexprs.NewIntervalLiteral(node.Duration)
+		// Interval formats its duration as a quoted SQL literal so stored defaults can be reparsed.
 		return vitess.InjectedExpr{
-			Expression: cast,
-			Children:   vitess.Exprs{vitess.InjectedExpr{Expression: expr}},
+			Expression: pgexprs.NewInterval(node.Duration),
 		}, nil
 	case *tree.DJSON:
 		// JSON type is handled in string format
