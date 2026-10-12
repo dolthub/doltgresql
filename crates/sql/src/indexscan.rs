@@ -2107,8 +2107,9 @@ pub(crate) fn outer_reads(plan: &Plan, depth: usize, out: &mut BTreeSet<usize>) 
         | Plan::Catalog(_)
         | Plan::CatalogIndexScan(_)
         | Plan::WorkTable(..)
-        | Plan::CteScan(_) => Vec::new(),
-        Plan::System(_) | Plan::QueryDiff(..) | Plan::XmlTable(_) | Plan::JsonTable(_) => return false,
+        | Plan::CteScan(_)
+        | Plan::System(_) => Vec::new(),
+        Plan::QueryDiff(..) | Plan::XmlTable(_) | Plan::JsonTable(_) => return false,
         Plan::IndexScan(scan) => {
             if let Some(n) = &scan.nearest {
                 read(&mut [&n.order, &n.query].into_iter().chain(&n.limit).chain(&n.offset));

@@ -3021,8 +3021,9 @@ impl Plan {
             | Plan::Catalog(_)
             | Plan::CatalogIndexScan(_)
             | Plan::WorkTable(..)
-            | Plan::CteScan(_) => {}
-            Plan::System(_) | Plan::QueryDiff(..) | Plan::XmlTable(_) | Plan::JsonTable(_) => return false,
+            | Plan::CteScan(_)
+            | Plan::System(_) => {}
+            Plan::QueryDiff(..) | Plan::XmlTable(_) | Plan::JsonTable(_) => return false,
             Plan::IndexScan(scan) => {
                 if let Some(n) = &mut scan.nearest {
                     for e in [&mut n.order, &mut n.query].into_iter().chain(&mut n.limit).chain(&mut n.offset) {
