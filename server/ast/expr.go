@@ -448,9 +448,15 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		case tree.NotSimilarTo:
 			return nil, errors.Errorf("not similar to is not yet supported")
 		case tree.RegMatch:
-			operator = vitess.RegexpStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryRegexMatch),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.NotRegMatch:
-			operator = vitess.NotRegexpStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryRegexNotMatch),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.RegIMatch:
 			return nil, errors.Errorf("~* is not yet supported")
 		case tree.NotRegIMatch:
