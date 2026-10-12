@@ -2702,3 +2702,129 @@ $$ LANGUAGE plpgsql;`,
 		},
 	})
 }
+
+// TestCreateOrReplaceRoutineValidation checks that an invalid CREATE OR REPLACE fails and leaves the original routine
+// untouched.
+func TestCreateOrReplaceRoutineValidation(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "CREATE OR REPLACE FUNCTION cannot change the return type",
+			SetUpScript: []string{
+				`CREATE FUNCTION replace_ret() RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `CREATE OR REPLACE FUNCTION replace_ret() RETURNS TEXT AS $$ BEGIN RETURN 'x'; END; $$ LANGUAGE plpgsql;`,
+					ExpectedErr: "cannot change return type of existing function",
+				},
+				{
+					Query:       `CREATE OR REPLACE FUNCTION replace_ret() RETURNS SETOF INT AS $$ SELECT 2 $$ LANGUAGE sql;`,
+					ExpectedErr: "cannot change return type of existing function",
+				},
+				{
+					Query:       `CREATE OR REPLACE FUNCTION replace_ret() RETURNS TABLE(a INT, b TEXT) AS $$ BEGIN RETURN QUERY SELECT 2, 'x'; END; $$ LANGUAGE plpgsql;`,
+					ExpectedErr: "cannot change return type of existing function",
+				},
+				{
+					Query:       `CREATE OR REPLACE FUNCTION replace_ret(OUT a INT, OUT b TEXT) AS $$ BEGIN a := 2; b := 'x'; END; $$ LANGUAGE plpgsql;`,
+					ExpectedErr: "cannot change return type of existing function",
+				},
+				{
+					Query:    `SELECT replace_ret();`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query: `CREATE OR REPLACE FUNCTION replace_ret() RETURNS INT AS $$ BEGIN RETURN 2; END; $$ LANGUAGE plpgsql;`,
+				},
+				{
+					Query:    `SELECT replace_ret();`,
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
+		{
+			Name: "CREATE OR REPLACE FUNCTION cannot change OUT parameters",
+			SetUpScript: []string{
+				`CREATE FUNCTION replace_out(a INT, OUT b INT, OUT c INT) AS $$ BEGIN b := a; c := a + 1; END; $$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `CREATE OR REPLACE FUNCTION replace_out(a INT, OUT b INT, OUT d INT) AS $$ BEGIN b := a; d := a; END; $$ LANGUAGE plpgsql;`,
+					ExpectedErr: "cannot change return type of existing function",
+				},
+				{
+					Query:       `CREATE OR REPLACE FUNCTION replace_out(a INT, OUT b INT, OUT c TEXT) AS $$ BEGIN b := a; c := 'x'; END; $$ LANGUAGE plpgsql;`,
+					ExpectedErr: "cannot change return type of existing function",
+				},
+				{
+					Query:    `SELECT * FROM replace_out(1);`,
+					Expected: []sql.Row{{1, 2}},
+				},
+			},
+		},
+		{
+			Name: "CREATE OR REPLACE FUNCTION cannot rename input parameters or remove defaults",
+			SetUpScript: []string{
+				`CREATE FUNCTION replace_param(a INT, b INT DEFAULT 10) RETURNS INT AS $$ BEGIN RETURN a + b; END; $$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `CREATE OR REPLACE FUNCTION replace_param(x INT, b INT DEFAULT 10) RETURNS INT AS $$ BEGIN RETURN x + b; END; $$ LANGUAGE plpgsql;`,
+					ExpectedErr: `cannot change name of input parameter "a"`,
+				},
+				{
+					Query:       `CREATE OR REPLACE FUNCTION replace_param(a INT, b INT) RETURNS INT AS $$ BEGIN RETURN a + b; END; $$ LANGUAGE plpgsql;`,
+					ExpectedErr: "cannot remove parameter defaults from existing function",
+				},
+				{
+					Query:    `SELECT replace_param(1, 10);`,
+					Expected: []sql.Row{{11}},
+				},
+			},
+		},
+		{
+			Name: "failed CREATE OR REPLACE FUNCTION does not drop the original",
+			SetUpScript: []string{
+				`CREATE FUNCTION replace_ext() RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `CREATE OR REPLACE FUNCTION replace_ext() RETURNS INT AS 'nosuchlib', 'nosuchsym' LANGUAGE c;`,
+					ExpectedErr: "nosuch",
+				},
+				{
+					Query:    `SELECT replace_ext();`,
+					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "CREATE OR REPLACE PROCEDURE cannot change output parameters",
+			SetUpScript: []string{
+				`CREATE PROCEDURE replace_proc(INOUT a INT) AS $$ BEGIN a := a + 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE PROCEDURE replace_proc_noout(a INT) AS $$ BEGIN END; $$ LANGUAGE plpgsql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `CREATE OR REPLACE PROCEDURE replace_proc(INOUT a INT, OUT b TEXT) AS $$ BEGIN a := a + 2; b := 'x'; END; $$ LANGUAGE plpgsql;`,
+					ExpectedErr: "cannot change return type of existing function",
+				},
+				{
+					Query:       `CREATE OR REPLACE PROCEDURE replace_proc_noout(a INT, OUT b INT) AS $$ BEGIN b := a; END; $$ LANGUAGE plpgsql;`,
+					ExpectedErr: "cannot change whether a procedure has output parameters",
+				},
+				{
+					Query:    `CALL replace_proc(1);`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query: `CREATE OR REPLACE PROCEDURE replace_proc(INOUT a INT) AS $$ BEGIN a := a + 5; END; $$ LANGUAGE plpgsql;`,
+				},
+				{
+					Query:    `CALL replace_proc(1);`,
+					Expected: []sql.Row{{6}},
+				},
+			},
+		},
+	})
+}

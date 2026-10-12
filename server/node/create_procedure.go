@@ -16,6 +16,7 @@ package node
 
 import (
 	"context"
+	goerrors "errors"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -122,19 +123,12 @@ func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, err
 		return nil, err
 	}
 	procID := id.NewProcedure(schemaName, c.ProcedureName, inputParamTypes...)
-	// A replaced routine keeps its existing privileges, so default privileges only apply to new routines
-	replaced := c.Replace && procCollection.HasProcedure(ctx, procID)
-	if replaced {
-		if err = procCollection.DropProcedure(ctx, procID); err != nil {
-			return nil, err
-		}
-	}
 	if len(c.ExtensionName) > 0 {
 		if _, err = extensions.GetFunction(c.ExtensionName, c.ExtensionSymbol); err != nil {
 			return nil, err
 		}
 	}
-	err = procCollection.AddProcedure(ctx, procedures.Procedure{
+	newProc := procedures.Procedure{
 		ID:              procID,
 		AllParams:       allParams,
 		Definition:      c.Definition,
@@ -142,8 +136,29 @@ func (c *CreateProcedure) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, err
 		ExtensionSymbol: c.ExtensionSymbol,
 		Operations:      c.Statements,
 		SQLDefinition:   c.SqlDef,
-	})
-	if err != nil {
+	}
+	// A replaced routine keeps its existing privileges, so default privileges only apply to new routines
+	replaced := c.Replace && procCollection.HasProcedure(ctx, procID)
+	if replaced {
+		// All validation must happen before the existing procedure is dropped, so that a failed replacement leaves
+		// the original procedure untouched
+		oldProc, err := procCollection.GetProcedure(ctx, procID)
+		if err != nil {
+			return nil, err
+		}
+		if err = validateProcedureReplacement(oldProc.AllParams, newProc.AllParams); err != nil {
+			return nil, err
+		}
+		if err = procCollection.DropProcedure(ctx, procID); err != nil {
+			return nil, err
+		}
+		if err = procCollection.AddProcedure(ctx, newProc); err != nil {
+			if restoreErr := procCollection.AddProcedure(ctx, oldProc); restoreErr != nil {
+				return nil, goerrors.Join(err, restoreErr)
+			}
+			return nil, err
+		}
+	} else if err = procCollection.AddProcedure(ctx, newProc); err != nil {
 		return nil, err
 	}
 	if !replaced {

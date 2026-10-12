@@ -1848,7 +1848,7 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_serial VALUES (4, 3);",
 				"INSERT INTO t_generated (pk, v1) VALUES (3, 3);",
 				"INSERT INTO t_trigger VALUES (3, 3);",
-				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT4 AS $$ BEGIN RETURN 33; END; $$ LANGUAGE plpgsql;",
+				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 33; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (3, 3);",
 				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},

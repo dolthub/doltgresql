@@ -16,6 +16,7 @@ package node
 
 import (
 	"context"
+	goerrors "errors"
 	"fmt"
 
 	"github.com/cockroachdb/errors"
@@ -141,19 +142,12 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		return nil, err
 	}
 	funcID := id.NewFunction(schemaName, c.FunctionName, inputParamTypes...)
-	// A replaced routine keeps its existing privileges, so default privileges only apply to new routines
-	replaced := c.Replace && funcCollection.HasFunction(ctx, funcID)
-	if replaced {
-		if err = funcCollection.DropFunction(ctx, funcID); err != nil {
-			return nil, err
-		}
-	}
 	if len(c.ExtensionName) > 0 {
 		if _, err = extensions.GetFunction(c.ExtensionName, c.ExtensionSymbol); err != nil {
 			return nil, err
 		}
 	}
-	err = funcCollection.AddFunction(ctx, functions.Function{
+	newFunc := functions.Function{
 		ID:                 funcID,
 		ReturnType:         c.ReturnType.ID,
 		AllParams:          allParams,
@@ -166,8 +160,30 @@ func (c *CreateFunction) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		Operations:         c.Statements,
 		SQLDefinition:      c.SqlDef,
 		SetOf:              c.SetOf,
-	})
-	if err != nil {
+	}
+	// A replaced routine keeps its existing privileges, so default privileges only apply to new routines
+	replaced := c.Replace && funcCollection.HasFunction(ctx, funcID)
+	if replaced {
+		// All validation must happen before the existing function is dropped, so that a failed replacement leaves
+		// the original function untouched
+		oldFunc, err := funcCollection.GetFunction(ctx, funcID)
+		if err != nil {
+			return nil, err
+		}
+		err = validateFunctionReplacement(oldFunc.ReturnType, oldFunc.SetOf, oldFunc.AllParams, newFunc.ReturnType, newFunc.SetOf, newFunc.AllParams)
+		if err != nil {
+			return nil, err
+		}
+		if err = funcCollection.DropFunction(ctx, funcID); err != nil {
+			return nil, err
+		}
+		if err = funcCollection.AddFunction(ctx, newFunc); err != nil {
+			if restoreErr := funcCollection.AddFunction(ctx, oldFunc); restoreErr != nil {
+				return nil, goerrors.Join(err, restoreErr)
+			}
+			return nil, err
+		}
+	} else if err = funcCollection.AddFunction(ctx, newFunc); err != nil {
 		return nil, err
 	}
 	if !replaced {
