@@ -42781,7 +42781,7 @@ sqldefault:
 		sqlDollar = sqlS[sqlpt-3 : sqlpt+1]
 //line sql-gen.y:13598
 		{
-			sqlVAL.union.val = &tree.FuncExpr{Func: tree.WrapFunction("inet_contained_by_or_equals"), Exprs: tree.Exprs{sqlDollar[1].union.expr(), sqlDollar[3].union.expr()}}
+			sqlVAL.union.val = &tree.FuncExpr{Func: tree.WrapFunction("network_subeq"), Exprs: tree.Exprs{sqlDollar[1].union.expr(), sqlDollar[3].union.expr()}}
 		}
 	case 2488:
 		sqlDollar = sqlS[sqlpt-3 : sqlpt+1]
@@ -42793,7 +42793,7 @@ sqldefault:
 		sqlDollar = sqlS[sqlpt-3 : sqlpt+1]
 //line sql-gen.y:13606
 		{
-			sqlVAL.union.val = &tree.FuncExpr{Func: tree.WrapFunction("inet_contains_or_equals"), Exprs: tree.Exprs{sqlDollar[1].union.expr(), sqlDollar[3].union.expr()}}
+			sqlVAL.union.val = &tree.FuncExpr{Func: tree.WrapFunction("network_supeq"), Exprs: tree.Exprs{sqlDollar[1].union.expr(), sqlDollar[3].union.expr()}}
 		}
 	case 2490:
 		sqlDollar = sqlS[sqlpt-3 : sqlpt+1]
@@ -43268,7 +43268,7 @@ sqldefault:
 		sqlDollar = sqlS[sqlpt-8 : sqlpt+1]
 //line sql-gen.y:13925
 		{
-			sqlVAL.union.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("inet_contained_by_or_equals", sqlDollar[4].str), Exprs: tree.Exprs{sqlDollar[1].union.expr(), sqlDollar[8].union.expr()}}
+			sqlVAL.union.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("network_subeq", sqlDollar[4].str), Exprs: tree.Exprs{sqlDollar[1].union.expr(), sqlDollar[8].union.expr()}}
 		}
 	case 2567:
 		sqlDollar = sqlS[sqlpt-8 : sqlpt+1]
@@ -43280,7 +43280,7 @@ sqldefault:
 		sqlDollar = sqlS[sqlpt-8 : sqlpt+1]
 //line sql-gen.y:13933
 		{
-			sqlVAL.union.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("inet_contains_or_equals", sqlDollar[4].str), Exprs: tree.Exprs{sqlDollar[1].union.expr(), sqlDollar[8].union.expr()}}
+			sqlVAL.union.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("network_supeq", sqlDollar[4].str), Exprs: tree.Exprs{sqlDollar[1].union.expr(), sqlDollar[8].union.expr()}}
 		}
 	case 2569:
 		sqlDollar = sqlS[sqlpt-8 : sqlpt+1]

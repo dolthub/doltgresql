@@ -36,5 +36,6 @@ func Init() {
 	initBinaryPlus()
 	initBinaryShiftLeft()
 	initBinaryShiftRight()
+	initInet()
 	initJSON()
 }

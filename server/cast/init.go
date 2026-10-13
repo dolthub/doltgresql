@@ -27,6 +27,7 @@ func Init(builtInCasts map[id.Cast]casts.Cast) {
 	initDate(builtInCasts)
 	initFloat32(builtInCasts)
 	initFloat64(builtInCasts)
+	initInet(builtInCasts)
 	initInt16(builtInCasts)
 	initInt32(builtInCasts)
 	initInt64(builtInCasts)

@@ -38,6 +38,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/ipaddr"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
@@ -438,6 +439,8 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 	case uuid.UUID:
 		bb := v2.(uuid.UUID)
 		return bytes.Compare(ab.GetBytesMut(), bb.GetBytesMut()), nil
+	case ipaddr.IPAddr:
+		return InetCompare(ab, v2.(ipaddr.IPAddr)), nil
 	case id.Id:
 		return cmp.Compare(id.Cache().ToOID(ab), id.Cache().ToOID(v2.(id.Id))), nil
 	case id.Oid:
@@ -556,6 +559,10 @@ func (t *DoltgresType) Convert(ctx context.Context, v interface{}) (interface{},
 		}
 	case "int4":
 		if _, ok := v.(int32); ok {
+			return v, sql.InRange, nil
+		}
+	case "inet":
+		if _, ok := v.(ipaddr.IPAddr); ok {
 			return v, sql.InRange, nil
 		}
 	case "int8":

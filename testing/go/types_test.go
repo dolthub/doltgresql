@@ -1129,7 +1129,6 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Inet type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_inet (id INTEGER primary key, v1 INET);",
 			"INSERT INTO t_inet VALUES (1, '192.168.1.1'), (2, '10.0.0.1');",

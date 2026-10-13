@@ -40,7 +40,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/utils"
 )
 
-var errResultOutOfRange = pgerror.WithCandidateCode(errors.New("result out of range"), pgcode.NumericValueOutOfRange)
+var errResultOutOfRange = pgerror.WithCandidateCode(errors.New("result is out of range"), pgcode.NumericValueOutOfRange)
 
 // Addr is the representation of the IP address. The Uint128 takes 16-bytes for
 // both IPv4 and IPv6.
@@ -460,7 +460,7 @@ func (ipAddr *IPAddr) SubIPAddr(other *IPAddr) (int64, error) {
 	var diff int64
 	if ipAddr.Family != other.Family {
 		return diff, pgerror.WithCandidateCode(
-			errors.New("cannot subtract inet addresses with different sizes"),
+			errors.New("cannot subtract inet values of different sizes"),
 			pgcode.InvalidParameterValue)
 	}
 
