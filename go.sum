@@ -256,6 +256,8 @@ github.com/dolthub/dolt/go v0.40.5-0.20261006071020-ba178d09ec18 h1:QqnjMBmrUFtc
 github.com/dolthub/dolt/go v0.40.5-0.20261006071020-ba178d09ec18/go.mod h1:XWHYvnjKW/pol8gM/7KkOiIPKh4Z8qXFqfC7rp7biv4=
 github.com/dolthub/dolt/go v0.40.5-0.20261013012100-e5d47ba87a7f h1:CZjdu4i95YauJW2fvrXcURUAtRaPWY9BUYGg8YamJhw=
 github.com/dolthub/dolt/go v0.40.5-0.20261013012100-e5d47ba87a7f/go.mod h1:6FaS8U3iM5N73RwlqxpcnclkPUbjogdMtP8lWedWcLc=
+github.com/dolthub/dolt/go v0.40.5-0.20261013025517-25e97f749c86 h1:Y/lUcRi1BIkEooY06cwI1cTCWSVVfaI0X/tTkNEBq/Y=
+github.com/dolthub/dolt/go v0.40.5-0.20261013025517-25e97f749c86/go.mod h1:6FaS8U3iM5N73RwlqxpcnclkPUbjogdMtP8lWedWcLc=
 github.com/dolthub/eventsapi_schema v0.0.0-20260715220557-d9b4a1c6b4d4 h1:0mg9QEFdkkBwJMxvz1tCjHYmfG2iIC6aShj1InDq9/M=
 github.com/dolthub/eventsapi_schema v0.0.0-20260715220557-d9b4a1c6b4d4/go.mod h1:SSLraQS/jGLYFgff3vuZ+JbVUct6vyEeMzjLBqWqoyM=
 github.com/dolthub/file-locks v0.1.1 h1:8oKr20PflAVHkroB5Kq1BrtzesvKop9onekWEse1Qr8=
