@@ -357,7 +357,7 @@ func iterateTypes(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema, 
 // iterateViews is called by iterateSchemas to handle views.
 func iterateViews(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema) error {
 	if viewDatabase, ok := itemSchema.Item.(sql.ViewDatabase); ok {
-		views, err := viewDatabase.AllViews(ctx)
+		views, err := allViews(ctx, itemSchema, viewDatabase)
 		if err != nil {
 			return err
 		}
@@ -377,6 +377,56 @@ func iterateViews(ctx *sql.Context, callbacks Callbacks, itemSchema ItemSchema) 
 		}
 	}
 	return nil
+}
+
+// allViews returns the views in the given schema.
+func allViews(ctx *sql.Context, itemSchema ItemSchema, viewDatabase sql.ViewDatabase) ([]sql.ViewDefinition, error) {
+	views, err := viewDatabase.AllViews(ctx)
+	if err != nil {
+		return nil, err
+	}
+	showSystemTables, err := ctx.GetSessionVariable(ctx, dsess.ShowSystemTables)
+	if err != nil {
+		return nil, err
+	}
+	if showSystemTables.(int8) != 1 {
+		return views, nil
+	}
+	viewIndexes := make(map[string]int, len(views))
+	for i, view := range views {
+		viewIndexes[view.Name] = i
+	}
+	tableNames, err := itemSchema.Item.GetTableNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, tableName := range tableNames {
+		if doltdb.IsSystemTable(doltdb.TableName{Name: tableName, Schema: itemSchema.Item.SchemaName()}) {
+			continue
+		}
+		table, ok, err := itemSchema.Item.GetTableInsensitive(ctx, tableName)
+		if err != nil && !errors.Is(err, doltdb.ErrTableNotFound) {
+			return nil, err
+		} else if !ok {
+			continue
+		}
+		if pkTable, ok := table.(sql.PrimaryKeyTable); !ok || len(pkTable.PrimaryKeySchema(ctx).PkOrdinals) == 0 {
+			continue
+		}
+		// Each table with a primary key has a dolt_blame view, which replaces any stored view with the same name
+		view, ok, err := viewDatabase.GetViewDefinition(ctx, doltdb.DoltBlameViewPrefix+tableName)
+		if err != nil {
+			return nil, err
+		} else if !ok {
+			continue
+		}
+		if i, exists := viewIndexes[view.Name]; exists {
+			views[i] = view
+		} else {
+			views = append(views, view)
+		}
+	}
+	return views, nil
 }
 
 // iterateTables is called by iterateSchemas to handle tables and elements contained within tables.
@@ -883,7 +933,7 @@ func runTable(ctx *sql.Context, internalID id.Id, callbacks Callbacks, itemSchem
 // runView is called by RunCallback to handle Section_View.
 func runView(ctx *sql.Context, internalID id.Id, callbacks Callbacks, itemSchema ItemSchema) error {
 	if viewDatabase, ok := itemSchema.Item.(sql.ViewDatabase); ok && itemSchema.Item.SchemaName() == internalID.Segment(0) {
-		views, err := viewDatabase.AllViews(ctx)
+		views, err := allViews(ctx, itemSchema, viewDatabase)
 		if err != nil {
 			return err
 		}

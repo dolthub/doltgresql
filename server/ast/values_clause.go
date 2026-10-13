@@ -15,6 +15,8 @@
 package ast
 
 import (
+	"fmt"
+
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -33,6 +35,13 @@ func nodeValuesClause(ctx *Context, node *tree.ValuesClause) (*vitess.Select, er
 		}
 		valTuples[i] = vitess.ValTuple(exprs)
 	}
+	var columns []vitess.ColIdent
+	if len(node.Rows) > 0 {
+		columns = make([]vitess.ColIdent, len(node.Rows[0]))
+		for i := range columns {
+			columns[i] = vitess.NewColIdent(fmt.Sprintf("column%d", i+1))
+		}
+	}
 	return &vitess.Select{
 		SelectExprs: vitess.SelectExprs{
 			&vitess.StarExpr{},
@@ -40,7 +49,8 @@ func nodeValuesClause(ctx *Context, node *tree.ValuesClause) (*vitess.Select, er
 		From: vitess.TableExprs{
 			&vitess.AliasedTableExpr{
 				Expr: &vitess.ValuesStatement{
-					Rows: valTuples,
+					Rows:    valTuples,
+					Columns: columns,
 				},
 			},
 		},

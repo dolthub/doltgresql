@@ -4126,6 +4126,207 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "Regprocedure type",
+		SetUpScript: []string{
+			`CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE SCHEMA s;`,
+			`CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT 'tf()'::regprocedure;`,
+				Expected: []sql.Row{{"tf()"}},
+			},
+			{
+				Query:    `SELECT 's.sf(int)'::regprocedure;`,
+				Expected: []sql.Row{{"s.sf(integer)"}},
+			},
+			{
+				Query:    `SELECT 'f2(int,text)'::regprocedure;`,
+				Expected: []sql.Row{{"f2(integer,text)"}},
+			},
+			{
+				Query:    `SELECT 'abs(int)'::regprocedure;`,
+				Expected: []sql.Row{{"abs(integer)"}},
+			},
+			{
+				Query:    `SELECT 'p1(int)'::regprocedure;`,
+				Expected: []sql.Row{{"p1(integer)"}},
+			},
+			{
+				Query:    `SELECT 'tf()'::regprocedure::oid = (SELECT oid FROM pg_proc WHERE proname = 'tf');`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    `SELECT 2212::regprocedure;`,
+				Expected: []sql.Row{{"regprocedurein(cstring)"}},
+			},
+			{
+				Query:    `SELECT 'now'::regproc::regprocedure;`,
+				Expected: []sql.Row{{"now()"}},
+			},
+			{
+				Query:    `SELECT 'f2(int,text)'::regprocedure::regproc;`,
+				Expected: []sql.Row{{"f2"}},
+			},
+			{
+				Query:    `SELECT 'f2(int,text)'::regprocedure::text;`,
+				Expected: []sql.Row{{"f2(integer,text)"}},
+			},
+			{
+				Query:    `SELECT 'f3(int)'::regprocedure::regproc::regprocedure;`,
+				Expected: []sql.Row{{"f3(integer)"}},
+			},
+			{
+				Query:           `SELECT 'f3(bool)'::regprocedure;`,
+				ExpectedErr:     `function "f3(bool)" does not exist`,
+				ExpectedErrCode: "42883",
+			},
+			{
+				Query:           `SELECT 'nosuch()'::regprocedure;`,
+				ExpectedErr:     `function "nosuch()" does not exist`,
+				ExpectedErrCode: "42883",
+			},
+			{
+				Query:           `SELECT 'f3'::regprocedure;`,
+				ExpectedErr:     `expected a left parenthesis`,
+				ExpectedErrCode: "22P02",
+			},
+			{
+				Skip:            true, // TODO: schemas are not checked for existence
+				Query:           `SELECT 'nosuchschema.sf(int)'::regprocedure;`,
+				ExpectedErr:     `schema "nosuchschema" does not exist`,
+				ExpectedErrCode: "3F000",
+			},
+			{
+				Query:    `SET search_path = s;`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT 's.sf(int)'::regprocedure;`,
+				Expected: []sql.Row{{"sf(integer)"}},
+			},
+			{
+				Query:    `SELECT 'public.f2(int,text)'::regprocedure;`,
+				Expected: []sql.Row{{"public.f2(integer,text)"}},
+			},
+			{
+				Skip:     true, // TODO: aggregate functions and window functions are not resolved yet
+				Query:    `SELECT 'array_agg(anynonarray)'::regprocedure;`,
+				Expected: []sql.Row{{"array_agg(anynonarray)"}},
+			},
+			{
+				Skip:     true, // TODO: aggregate functions and window functions are not resolved yet
+				Query:    `SELECT 'row_number()'::regprocedure;`,
+				Expected: []sql.Row{{"row_number()"}},
+			},
+		},
+	},
+	{
+		Name: "Regproc user-defined routines",
+		SetUpScript: []string{
+			`CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE SCHEMA s;`,
+			`CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT 'tf'::regproc;`,
+				Expected: []sql.Row{{"tf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('tf');`,
+				Expected: []sql.Row{{"tf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('public.tf');`,
+				Expected: []sql.Row{{"tf"}},
+			},
+			{
+				Query:    `SELECT 's.sf'::regproc;`,
+				Expected: []sql.Row{{"s.sf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('s.sf');`,
+				Expected: []sql.Row{{"s.sf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('sf');`,
+				Expected: []sql.Row{{nil}},
+			},
+			{
+				Query:    `SELECT to_regproc('p1');`,
+				Expected: []sql.Row{{"p1"}},
+			},
+			{
+				Query:    `SELECT to_regproc('f3');`,
+				Expected: []sql.Row{{nil}},
+			},
+			{
+				Query:    `SELECT to_regproc('nosuchschema.sf');`,
+				Expected: []sql.Row{{nil}},
+			},
+			{
+				Query:    `SELECT 'tf'::regproc::oid = (SELECT oid FROM pg_proc WHERE proname = 'tf');`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    `SELECT 'abs(int)'::regprocedure::regproc;`,
+				Expected: []sql.Row{{"pg_catalog.abs"}},
+			},
+			{
+				Query:    `SELECT 'f3(int)'::regprocedure::regproc;`,
+				Expected: []sql.Row{{"public.f3"}},
+			},
+			{
+				Query:           `SELECT 'f3'::regproc;`,
+				ExpectedErr:     `more than one function named "f3"`,
+				ExpectedErrCode: "42725",
+			},
+			{
+				Query:           `SELECT 'abs'::regproc;`,
+				ExpectedErr:     `more than one function named "abs"`,
+				ExpectedErrCode: "42725",
+			},
+			{
+				Query:           `SELECT 'nosuch'::regproc;`,
+				ExpectedErr:     `function "nosuch" does not exist`,
+				ExpectedErrCode: "42883",
+			},
+			{
+				Skip:            true, // TODO: schemas are not checked for existence
+				Query:           `SELECT 'nosuchschema.sf'::regproc;`,
+				ExpectedErr:     `schema "nosuchschema" does not exist`,
+				ExpectedErrCode: "3F000",
+			},
+			{
+				Query:    `SET search_path = s;`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT 'sf'::regproc;`,
+				Expected: []sql.Row{{"sf"}},
+			},
+			{
+				Query:    `SELECT 'public.tf'::regproc;`,
+				Expected: []sql.Row{{"public.tf"}},
+			},
+			{
+				Skip:     true, // TODO: aggregate functions and window functions are not resolved yet
+				Query:    `SELECT to_regproc('row_number');`,
+				Expected: []sql.Row{{"row_number"}},
+			},
+		},
+	},
 }
 
 func TestSameTypes(t *testing.T) {

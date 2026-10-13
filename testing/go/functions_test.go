@@ -15,10 +15,15 @@
 package _go
 
 import (
+	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core/id"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 func TestAggregateFunctions(t *testing.T) {
@@ -1352,6 +1357,136 @@ func TestFunctionsOID(t *testing.T) {
 					Expected: []sql.Row{
 						{nil},
 					},
+				},
+			},
+		},
+		{
+			Name: "to_regprocedure",
+			SetUpScript: []string{
+				`CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE SCHEMA s;`,
+				`CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;`,
+				`CREATE TABLE t1 (pk INT PRIMARY KEY);`,
+				`CREATE TRIGGER trg AFTER INSERT ON t1 FOR EACH ROW EXECUTE FUNCTION tf();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT to_regprocedure('tf()');`,
+					ExpectedColNames: []string{"to_regprocedure"},
+					Expected:         []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('pg_catalog.now()');`,
+					Expected: []sql.Row{{"now()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('"tf"()');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('public.tf()');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure(' tf ( ) ');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2(int, text)');`,
+					Expected: []sql.Row{{"f2(integer,text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2( integer , text ) ');`,
+					Expected: []sql.Row{{"f2(integer,text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2(int4, varchar)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f3(text)');`,
+					Expected: []sql.Row{{"f3(text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f3(bool)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('s.sf(int)');`,
+					Expected: []sql.Row{{"s.sf(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('sf(int)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('p1(int)');`,
+					Expected: []sql.Row{{"p1(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('abs(float8)');`,
+					Expected: []sql.Row{{"abs(double precision)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('nosuch()');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('nosuchschema.sf(int)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(to_regprocedure('tf()'));`,
+					Expected: []sql.Row{{"regprocedure"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('revision_change()') IS NULL;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 1 FROM pg_trigger t WHERE t.tgname = 'trg' AND t.tgfoid = to_regprocedure('"tf"()');`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:           `SELECT to_regprocedure('tf');`,
+					ExpectedErr:     `expected a left parenthesis`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int,text');`,
+					ExpectedErr:     `expected a right parenthesis`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int,)');`,
+					ExpectedErr:     `expected a type name`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int))');`,
+					ExpectedErr:     `improper type name`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('abs(nosuchtype)');`,
+					ExpectedErr:     `type "nosuchtype" does not exist`,
+					ExpectedErrCode: "42704",
+				},
+				{
+					Query:    `SET search_path = s;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT to_regprocedure('s.sf(int)');`,
+					Expected: []sql.Row{{"sf(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('public.f2(int,text)');`,
+					Expected: []sql.Row{{"public.f2(integer,text)"}},
 				},
 			},
 		},
@@ -5671,7 +5806,548 @@ func TestStringFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "format",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT format('hello'), format('%s', 'a'), format('x %s y %s', 'a', 'b'), format('100%% %s', 'a');`,
+					Expected: []sql.Row{{"hello", "a", "x a y b", "100% a"}},
+				},
+				{
+					Query:    `SELECT format('%I', 'my table'), format('INSERT INTO %I VALUES (1)', 'log');`,
+					Expected: []sql.Row{{`"my table"`, "INSERT INTO log VALUES (1)"}},
+				},
+				{
+					Query:    `SELECT format('%I %I %I %I', 'Abc', 'user', 'select', 'a"b');`,
+					Expected: []sql.Row{{`"Abc" "user" "select" "a""b"`}},
+				},
+				{
+					Query:    `SELECT format('%L', 'it''s'), format('%L', 'a\b'), format('%L', 12);`,
+					Expected: []sql.Row{{`'it''s'`, `E'a\\b'`, `'12'`}},
+				},
+				{
+					Query:    `SELECT format('%s %s', 1, true), format('%s %L', ARRAY[true,false], true), format('%s', 'a', 'b');`,
+					Expected: []sql.Row{{"1 t", "{t,f} 't'", "a"}},
+				},
+				{
+					Query:    `SELECT format(NULL), format(NULL, 'a'), format('%s|%L|', NULL, NULL);`,
+					Expected: []sql.Row{{nil, nil, "|NULL|"}},
+				},
+				{
+					Query:    `SELECT format('%2$s %1$s %s', 'a', 'b');`,
+					Expected: []sql.Row{{"b a b"}},
+				},
+				{
+					Query:    `SELECT format('|%5s|%-5s|%*s|%-*s|%*s|', 'ab', 'cd', 4, 'ef', 4, 'gh', -4, 'ij');`,
+					Expected: []sql.Row{{"|   ab|cd   |  ef|gh  |ij  |"}},
+				},
+				{
+					Query:    `SELECT format('|%*s|', NULL, 'ab'), format('|%*s|', '3'::text, 'ab'), format('|%3s|', 'éé');`,
+					Expected: []sql.Row{{"|ab|", "| ab|", "| éé|"}},
+				},
+				{
+					Query:           `SELECT format(1234.5678, 2);`,
+					ExpectedErr:     "function format(numeric, integer) does not exist",
+					ExpectedErrCode: "42883",
+				},
+				{
+					Query:           `SELECT format('%I', NULL);`,
+					ExpectedErr:     "null values cannot be formatted as an SQL identifier",
+					ExpectedErrCode: "22004",
+				},
+				{
+					Query:           `SELECT format('%s');`,
+					ExpectedErr:     "too few arguments for format()",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('|%*2$s|%1$*2$s|', 'ab', 5);`,
+					ExpectedErr:     "too few arguments for format()",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%');`,
+					ExpectedErr:     "unterminated format() type specifier",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%1');`,
+					ExpectedErr:     "unterminated format() type specifier",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%d', 1);`,
+					ExpectedErr:     `unrecognized format() type specifier "d"`,
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%é', 1);`,
+					ExpectedErr:     `unrecognized format() type specifier "é"`,
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%0$s', 1);`,
+					ExpectedErr:     "format specifies argument 0, but arguments are numbered from 1",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%*0$s', 1);`,
+					ExpectedErr:     "format specifies argument 0, but arguments are numbered from 1",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%*1s', 1);`,
+					ExpectedErr:     `width argument position must be ended by "$"`,
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%99999999999s', 1);`,
+					ExpectedErr:     "number is out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT format('|%*s|', 'x'::text, 'ab');`,
+					ExpectedErr:     `invalid input syntax for type integer: "x"`,
+					ExpectedErrCode: "22P02",
+					Skip:            true, // the int4 input error names the type int4 rather than integer
+				},
+				{
+					Query:    `SELECT format('%s %s', VARIADIC ARRAY['a', 'b']);`,
+					Expected: []sql.Row{{"a b"}},
+					Skip:     true, // VARIADIC is not yet supported when calling a function
+				},
+				{
+					Query:           `SELECT format('%2147483647s', 'a');`,
+					ExpectedErr:     "out of memory",
+					ExpectedErrCode: "54000",
+				},
+				{
+					Query:           `SELECT format('%*s', -2147483647, 'a');`,
+					ExpectedErr:     "out of memory",
+					ExpectedErrCode: "54000",
+				},
+				{
+					Query:           `SELECT format('%*s', -2147483648, 'a');`,
+					ExpectedErr:     "number is out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT format('%1073741820s', 'a');`,
+					ExpectedErr:     "invalid memory alloc request size 1073741824",
+					ExpectedErrCode: "XX000",
+					Skip:            true, // lengths just below the limit report out of memory instead
+				},
+			},
+		},
+		{
+			Name: "format builds dynamic SQL in a trigger function",
+			SetUpScript: []string{
+				`CREATE TABLE t (id TEXT PRIMARY KEY);`,
+				`CREATE TABLE log (v TEXT);`,
+				`CREATE FUNCTION f() RETURNS TRIGGER LANGUAGE plpgsql AS $f$
+BEGIN EXECUTE format('INSERT INTO %I VALUES (%L)', 'log', NEW.id); RETURN NULL; END $f$;`,
+				`CREATE TRIGGER tr AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `INSERT INTO t VALUES ('a');`,
+				},
+				{
+					Query:    `SELECT v FROM log;`,
+					Expected: []sql.Row{{"a"}},
+				},
+			},
+		},
+		{
+			Name: "format builds dynamic SQL in functions",
+			SetUpScript: []string{
+				`CREATE FUNCTION make_table(name TEXT) RETURNS TEXT LANGUAGE plpgsql AS $$
+BEGIN
+	IF to_regclass(format('%I', name)) IS NULL THEN
+		EXECUTE format('CREATE TABLE %I (id INT PRIMARY KEY, note TEXT)', name);
+		RETURN 'created';
+	END IF;
+	RETURN 'exists';
+END;
+$$;`,
+				`CREATE FUNCTION add_note(name TEXT, id INT, note TEXT) RETURNS TEXT LANGUAGE plpgsql AS $$
+DECLARE
+	stmt TEXT := format('INSERT INTO %I VALUES (%s, %L)', name, id, note);
+BEGIN
+	EXECUTE stmt;
+	RETURN stmt;
+END;
+$$;`,
+				`CREATE FUNCTION count_rows(name TEXT) RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE
+	n BIGINT;
+BEGIN
+	EXECUTE format('SELECT count(*) FROM %I', name) INTO n;
+	RETURN n;
+END;
+$$;`,
+				`CREATE FUNCTION count_notes(name TEXT, note TEXT) RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE
+	n BIGINT;
+BEGIN
+	EXECUTE format('SELECT count(*) FROM %I WHERE note = $1', name) INTO n USING note;
+	RETURN n;
+END;
+$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT make_table('My Table');`,
+					Expected: []sql.Row{{"created"}},
+				},
+				{
+					Query:    `SELECT make_table('My Table');`,
+					Expected: []sql.Row{{"exists"}},
+				},
+				{
+					Query:    `SELECT make_table('plain');`,
+					Expected: []sql.Row{{"created"}},
+				},
+				{
+					Query:    `SELECT add_note('My Table', 1, 'it''s');`,
+					Expected: []sql.Row{{`INSERT INTO "My Table" VALUES (1, 'it''s')`}},
+				},
+				{
+					Query:    `SELECT add_note('My Table', 2, NULL);`,
+					Expected: []sql.Row{{`INSERT INTO "My Table" VALUES (2, NULL)`}},
+				},
+				{
+					Query:    `SELECT add_note('My Table', 3, 'back\slash');`,
+					Expected: []sql.Row{{`INSERT INTO "My Table" VALUES (3, E'back\\slash')`}},
+				},
+				{
+					Query:    `SELECT * FROM "My Table" ORDER BY id;`,
+					Expected: []sql.Row{{1, "it's"}, {2, nil}, {3, `back\slash`}},
+				},
+				{
+					Query:    `SELECT count_rows('My Table'), count_rows('plain');`,
+					Expected: []sql.Row{{3, 0}},
+				},
+				{
+					Query:    `SELECT count_notes('My Table', 'it''s'), count_notes('My Table', 'nope');`,
+					Expected: []sql.Row{{1, 0}},
+					Skip:     true, // a $1 inside a string literal is replaced by the function's first argument
+				},
+				{
+					Query: `DO $$
+BEGIN
+	EXECUTE format('UPDATE %1$I SET note = %2$L WHERE note IS NULL OR note <> %2$L', 'My Table', 'same');
+END;
+$$;`,
+				},
+				{
+					Query:    `SELECT * FROM "My Table" ORDER BY id;`,
+					Expected: []sql.Row{{1, "same"}, {2, "same"}, {3, "same"}},
+				},
+				{
+					Query:           `SELECT add_note('missing', 1, 'x');`,
+					ExpectedErr:     `relation "missing" does not exist`,
+					ExpectedErrCode: "42P01",
+					Skip:            true, // a missing table is reported as "table not found: missing"
+				},
+			},
+		},
+		{
+			Name: "format builds dynamic SQL in an audit trigger",
+			SetUpScript: []string{
+				`CREATE TABLE src (id TEXT PRIMARY KEY);`,
+				`CREATE TABLE audit (tbl TEXT, op TEXT, id TEXT);`,
+				`CREATE FUNCTION audit_row() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+	EXECUTE format('INSERT INTO %I VALUES (%L, %L, %L)', 'audit', TG_TABLE_NAME, TG_OP, NEW.id);
+	RETURN NEW;
+END;
+$$;`,
+				`CREATE TRIGGER src_audit AFTER INSERT OR UPDATE ON src FOR EACH ROW EXECUTE FUNCTION audit_row();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `INSERT INTO src VALUES ('a'), ('b''c');`,
+				},
+				{
+					Query: `UPDATE src SET id = 'd' WHERE id = 'a';`,
+				},
+				{
+					Query:    `SELECT * FROM audit ORDER BY op, id;`,
+					Expected: []sql.Row{{"src", "INSERT", "a"}, {"src", "INSERT", "b'c"}, {"src", "UPDATE", "d"}},
+				},
+			},
+		},
 	})
+}
+
+func TestParseIdent(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "signatures and array result",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT parse_ident('public'), parse_ident('"SomeSchema".some_table');`,
+					Expected:         []sql.Row{{"{public}", "{SomeSchema,some_table}"}},
+					ExpectedColTypes: []id.Type{pgtypes.TextArray.ID, pgtypes.TextArray.ID},
+				},
+				{
+					Query:    `SELECT parse_ident('Schema.Table'::text, true), parse_ident('Schema.Table'::text, false);`,
+					Expected: []sql.Row{{"{schema,table}", "{schema,table}"}},
+				},
+				{
+					Query:    `SELECT pg_catalog.parse_ident('public'), pg_catalog.parse_ident('"SomeSchema".some_table', false);`,
+					Expected: []sql.Row{{"{public}", "{SomeSchema,some_table}"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('pg_catalog.parse_ident(text, boolean)')::oid;`,
+					Expected: []sql.Row{{1268}},
+				},
+				{
+					Query:    `SELECT parse_ident('Schema.Table'::varchar), parse_ident('public'::name);`,
+					Expected: []sql.Row{{"{schema,table}", "{public}"}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"SomeSchema".some_table'))[1], (parse_ident('"SomeSchema".some_table'))[2], (parse_ident('public'))[2];`,
+					Expected: []sql.Row{{"SomeSchema", "some_table", nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(parse_ident('public')), array_length(parse_ident('a.b.c.d.e'), 1);`,
+					Expected: []sql.Row{{"text[]", 5}},
+				},
+				{
+					Query:    `SELECT parse_ident($1::text, $2::boolean);`,
+					BindVars: []any{`"SomeSchema".SomeTable(integer)`, false},
+					Expected: []sql.Row{{"{SomeSchema,sometable}"}},
+				},
+			},
+		},
+		{
+			Name: "quoted identifiers",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT parse_ident('"SomeSchema".someTable'), parse_ident('"SomeSchema"."SomeTable"');`,
+					Expected: []sql.Row{{"{SomeSchema,sometable}", "{SomeSchema,SomeTable}"}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"schema.with.dots"."table name"'))[1], (parse_ident('"schema.with.dots"."table name"'))[2];`,
+					Expected: []sql.Row{{"schema.with.dots", "table name"}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"a""b"."c""d"'))[1], (parse_ident('"a""b"."c""d"'))[2];`,
+					Expected: []sql.Row{{`a"b`, `c"d`}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"""foo"""'))[1], (parse_ident('""""'))[1];`,
+					Expected: []sql.Row{{`"foo"`, `"`}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"  spaced  "'))[1], (parse_ident('"123"'))[1], (parse_ident('"char"'))[1];`,
+					Expected: []sql.Row{{"  spaced  ", "123", "char"}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"comma,brace{and}slash\"'))[1], (parse_ident('"O''Brien"'))[1];`,
+					Expected: []sql.Row{{`comma,brace{and}slash\`, "O'Brien"}},
+				},
+				{
+					Query:    `SELECT (parse_ident(E'"line\nnext"'))[1];`,
+					Expected: []sql.Row{{"line\nnext"}},
+				},
+				{
+					Query:    `SELECT parse_ident('"NULL"."a,b"');`,
+					Expected: []sql.Row{{`{"NULL","a,b"}`}},
+				},
+			},
+		},
+		{
+			Name: "unquoted identifiers and whitespace",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT parse_ident('_Schema9.Table$1'), parse_ident('select.from');`,
+					Expected: []sql.Row{{"{_schema9,table$1}", "{select,from}"}},
+				},
+				{
+					Query:    `SELECT parse_ident('  First . "  Second  " . Third  ');`,
+					Expected: []sql.Row{{`{first,"  Second  ",third}`}},
+				},
+				{
+					Query:    `SELECT parse_ident(E' \t\n\r\fFirst\t.\nSecond\r\f ');`,
+					Expected: []sql.Row{{"{first,second}"}},
+				},
+				{
+					// PostgreSQL folds ASCII letters, preserving non-ASCII case in UTF-8.
+					Query:    `SELECT parse_ident('ÄBC.ÖDEF'), parse_ident('日本語.テーブル'), parse_ident('🐘.TABLE');`,
+					Expected: []sql.Row{{"{Äbc,Ödef}", "{日本語,テーブル}", "{🐘,table}"}},
+				},
+				{
+					// Identifier parsing does not perform Unicode normalization.
+					Query:    "SELECT (parse_ident('E\u0301COLE'))[1];",
+					Expected: []sql.Row{{"e\u0301cole"}},
+				},
+				{
+					// Non-breaking spaces are identifier characters, not scanner whitespace.
+					Query:    "SELECT (parse_ident('\u00a0FOO\u00a0'))[1];",
+					Expected: []sql.Row{{"\u00a0foo\u00a0"}},
+				},
+			},
+		},
+		{
+			Name: "non-strict trailing input",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT parse_ident('Schema.Function(integer, text)', false);`,
+					Expected: []sql.Row{{"{schema,function}"}},
+				},
+				{
+					Query:    `SELECT parse_ident('foo.boo[]', false), parse_ident('aaa.a%b', false);`,
+					Expected: []sql.Row{{"{foo,boo}", "{aaa,a}"}},
+				},
+				{
+					Query:    `SELECT parse_ident('foo bar.baz', false), parse_ident('foo;bar', false);`,
+					Expected: []sql.Row{{"{foo}", "{foo}"}},
+				},
+				{
+					Query:    `SELECT parse_ident('"Foo"bar', false), parse_ident('foo"bar', false);`,
+					Expected: []sql.Row{{"{Foo}", "{foo}"}},
+				},
+				{
+					Query:    `SELECT parse_ident('"Foo"."Bar" (integer)', false);`,
+					Expected: []sql.Row{{"{Foo,Bar}"}},
+				},
+				{
+					Query:    `SELECT parse_ident(E'foo\013bar', false), parse_ident('foo/*comment*/.bar', false);`,
+					Expected: []sql.Row{{"{foo}", "{foo}"}},
+				},
+			},
+		},
+		{
+			Name: "long identifiers",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT (parse_ident(repeat('A', 100)))[1];`,
+					Expected: []sql.Row{{strings.Repeat("a", 100)}},
+				},
+				{
+					Query:    `SELECT length((parse_ident('"' || repeat('X', 100) || '".' || repeat('Y', 100)))[1]), length((parse_ident('"' || repeat('X', 100) || '".' || repeat('Y', 100)))[2]);`,
+					Expected: []sql.Row{{100, 100}},
+				},
+				{
+					Query:    `SELECT length((parse_ident(repeat('Ä', 100)))[1]), octet_length((parse_ident(repeat('Ä', 100)))[1]);`,
+					Expected: []sql.Row{{100, 200}},
+				},
+			},
+		},
+		{
+			Name: "null arguments",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT parse_ident(NULL), parse_ident(NULL::text);`,
+					Expected: []sql.Row{{nil, nil}},
+				},
+				{
+					Query:    `SELECT parse_ident(NULL, true), parse_ident(NULL, false), parse_ident(NULL, NULL);`,
+					Expected: []sql.Row{{nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT parse_ident('public', NULL::boolean), parse_ident('invalid..name', NULL::boolean);`,
+					Expected: []sql.Row{{nil, nil}},
+				},
+			},
+		},
+		{
+			Name: "column arguments",
+			SetUpScript: []string{
+				`CREATE TABLE parse_ident_inputs (id integer PRIMARY KEY, input text, strict_mode boolean);`,
+				`INSERT INTO parse_ident_inputs VALUES (1, 'PUBLIC', true), (2, '"SomeSchema".SomeTable', false), (3, NULL, true), (4, 'invalid..name', NULL);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT id, parse_ident(input, strict_mode) FROM parse_ident_inputs ORDER BY id;`,
+					Expected: []sql.Row{{1, "{public}"}, {2, "{SomeSchema,sometable}"}, {3, nil}, {4, nil}},
+				},
+				{
+					Query:    `SELECT id, parse_ident(input) FROM parse_ident_inputs WHERE id < 4 ORDER BY id;`,
+					Expected: []sql.Row{{1, "{public}"}, {2, "{SomeSchema,sometable}"}, {3, nil}},
+				},
+			},
+		},
+		{
+			Name: "PostgREST computed relationship schema",
+			SetUpScript: []string{
+				`CREATE FUNCTION public.parse_ident_computed_rel(integer) RETURNS integer LANGUAGE SQL AS 'SELECT $1';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT (parse_ident(p.pronamespace::regnamespace::text))[1] AS schema FROM pg_catalog.pg_proc p WHERE p.proname = 'parse_ident_computed_rel';`,
+					Expected: []sql.Row{{"public"}},
+				},
+			},
+		},
+	})
+}
+
+func TestParseIdentInvalidInput(t *testing.T) {
+	// These inputs must fail even in non-strict mode: no valid identifier was
+	// found, or a dot requires another identifier, or the quoted part is invalid.
+	invalidInputs := []string{
+		`''`,
+		`' '`,
+		`E'\t\n\r\f'`,
+		`'.'`,
+		`'.foo'`,
+		`'foo.'`,
+		`'foo . '`,
+		`'foo..bar'`,
+		`'foo.123'`,
+		`'123'`,
+		`'$foo'`,
+		`'""'`,
+		`'"unterminated'`,
+		`'foo."unterminated'`,
+		`'foo.""'`,
+		`E'\013foo'`,
+		`'/*comment*/foo'`,
+	}
+	var assertions []ScriptTestAssertion
+	for _, input := range invalidInputs {
+		for _, mode := range []string{"", ", true", ", false"} {
+			assertions = append(assertions, ScriptTestAssertion{
+				Query:           fmt.Sprintf("SELECT parse_ident(%s%s);", input, mode),
+				ExpectedErr:     "string is not a valid identifier",
+				ExpectedErrCode: "22023",
+			})
+		}
+	}
+	RunScripts(t, []ScriptTest{{Name: "invalid identifiers in either mode", Assertions: assertions}})
+}
+
+func TestParseIdentStrictInput(t *testing.T) {
+	// Both the default and explicit strict mode reject characters left after the
+	// final identifier. Non-strict counterparts are covered in TestParseIdent.
+	trailingInputs := []string{
+		`'Schema.Function(integer, text)'`,
+		`'foo.boo[]'`,
+		`'aaa.a%b'`,
+		`'foo bar.baz'`,
+		`'foo;bar'`,
+		`'"Foo"bar'`,
+		`'foo"bar'`,
+		`'"Foo"."Bar" (integer)'`,
+		`E'foo\013bar'`,
+		`'foo/*comment*/.bar'`,
+	}
+	var assertions []ScriptTestAssertion
+	for _, input := range trailingInputs {
+		for _, mode := range []string{"", ", true"} {
+			assertions = append(assertions, ScriptTestAssertion{
+				Query:           fmt.Sprintf("SELECT parse_ident(%s%s);", input, mode),
+				ExpectedErr:     "string is not a valid identifier",
+				ExpectedErrCode: "22023",
+			})
+		}
+	}
+	RunScripts(t, []ScriptTest{{Name: "strict trailing input", Assertions: assertions}})
 }
 
 func TestFormatFunctions(t *testing.T) {

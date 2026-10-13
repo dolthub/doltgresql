@@ -18,8 +18,8 @@ import "testing"
 
 func TestClose(t *testing.T) {
 	tests := []QueryParses{
-		Unimplemented("CLOSE name"),
-		Unimplemented("CLOSE ALL"),
+		Converts("CLOSE name"),
+		Converts("CLOSE ALL"),
 	}
 	RunTests(t, tests)
 }

@@ -679,10 +679,22 @@ func substituteVariableReferences(expression string, stack *InterpreterStack) (n
 		return "", nil, err
 	}
 
+	// Comments are whitespace, so remove them before checking token adjacency for record fields and
+	// function calls. Rebuilding a line comment with a space would make it consume the following SQL.
+	tokens := scanResult.Tokens[:0]
+	for _, token := range scanResult.Tokens {
+		if token.Token != pg_query.Token_SQL_COMMENT && token.Token != pg_query.Token_C_COMMENT {
+			tokens = append(tokens, token)
+		}
+	}
+	scanResult.Tokens = tokens
+
 	varMap := stack.ListVariables()
+	argvShifts := make(map[int]string)
 	for i := 0; i < len(scanResult.Tokens); i++ {
 		token := scanResult.Tokens[i]
 		substring := expression[token.Start:token.End]
+		newExpression += argvShifts[i]
 		// varMap lowercases everything, so we'll lowercase our substring to enable case-insensitivity
 		isAfterDot := i > 0 && scanResult.Tokens[i-1].Token == '.'
 
@@ -711,6 +723,9 @@ func substituteVariableReferences(expression string, stack *InterpreterStack) (n
 			} else if _, ok := triggerSpecialVariables[normalized]; ok {
 				referencedVars = append(referencedVars, normalized)
 				newExpression += fmt.Sprintf("$%d ", len(referencedVars))
+				if normalized == "tg_argv" && i+1 < len(scanResult.Tokens) && scanResult.Tokens[i+1].Token == '[' {
+					shiftArgvSubscript(scanResult.Tokens, i+2, argvShifts)
+				}
 			} else {
 				newExpression += substring + " "
 			}
@@ -720,4 +735,26 @@ func substituteVariableReferences(expression string, stack *InterpreterStack) (n
 	}
 
 	return newExpression, referencedVars, nil
+}
+
+// shiftArgvSubscript adds one to each bound of the TG_ARGV subscript whose first bound begins at `tokens[start]`, since
+// TG_ARGV counts from 0 while arrays count from 1. The added text goes into `shifts`, keyed by the token it is written
+// before.
+func shiftArgvSubscript(tokens []*pg_query.ScanToken, start int, shifts map[int]string) {
+	boundStart, depth := start, 0
+	for i := start; i < len(tokens) && depth >= 0; i++ {
+		switch tokens[i].Token {
+		case '[':
+			depth++
+		case ']':
+			depth--
+		}
+		if depth < 0 || (depth == 0 && tokens[i].Token == ':') {
+			if i > boundStart {
+				shifts[boundStart] += "1 + ( "
+				shifts[i] += ") "
+			}
+			boundStart = i + 1
+		}
+	}
 }

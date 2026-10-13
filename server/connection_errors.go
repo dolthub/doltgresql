@@ -226,6 +226,8 @@ func castSQLError(err error) *pgconn.PgError {
 		code = pgcode.DuplicateObject
 	case sql.ErrUnknownSystemVariable.Is(err), sql.ErrUnknownConstraint.Is(err), pgtypes.ErrTypeDoesNotExist.Is(err):
 		code = pgcode.UndefinedObject
+	case sql.ErrViewRecursion.Is(err):
+		code = pgcode.InvalidObjectDefinition
 	default:
 		code = pgcode.Internal
 	}

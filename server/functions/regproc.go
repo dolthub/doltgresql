@@ -15,12 +15,17 @@
 package functions
 
 import (
+	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
@@ -52,34 +57,23 @@ var regprocin = framework.Function1{
 			}
 			return id.NewOID(uint32(parsedOid)).AsId(), nil
 		}
-		sections, err := ioInputSections(input)
+		schemas, funcName, err := regproc_SchemasAndName(ctx, input)
 		if err != nil {
 			return id.Null, err
 		}
-		if err = regproc_IoInputValidation(ctx, input, sections); err != nil {
+		// TODO: handle aggregate functions and window functions
+		routineIDs, err := regproc_FindRoutines(ctx, schemas, funcName)
+		if err != nil {
 			return id.Null, err
 		}
-		var funcName string
-		switch len(sections) {
+		switch len(routineIDs) {
+		case 0:
+			return id.Null, pgerror.Newf(pgcode.UndefinedFunction, `function "%s" does not exist`, input)
 		case 1:
-			funcName = sections[0]
-		case 3:
-			// TODO: All built-in functions are cataloged under pg_catalog; there's no support yet
-			// for resolving functions in other schemas (e.g. user-defined functions)
-			if sections[0] != "pg_catalog" {
-				return id.Null, errors.Errorf(`function "%s" does not exist`, input)
-			}
-			funcName = sections[2]
+			return routineIDs[0], nil
 		default:
-			return id.Null, errors.Errorf("regproc failed validation")
+			return id.Null, pgerror.Newf(pgcode.AmbiguousFunction, `more than one function named "%s"`, input)
 		}
-		// TODO: handle procedures, aggregate functions, and window functions
-		// TODO: this only handles built-in functions
-		funcInterfaces := framework.Catalog[funcName]
-		if len(funcInterfaces) == 1 {
-			return funcInterfaces[0].InternalID(), nil
-		}
-		return id.Null, errors.Errorf(`function "%s" does not exist`, input)
 	},
 }
 
@@ -98,7 +92,18 @@ var regprocout = framework.Function1{
 		if res == "" {
 			return "-", nil
 		}
-		return res, nil
+		searchPath, err := core.SearchPath(ctx)
+		if err != nil {
+			return "", err
+		}
+		routineIDs, err := regproc_FindRoutines(ctx, searchPath, res)
+		if err != nil {
+			return "", err
+		}
+		if regproc_IsVisible(input, searchPath, routineIDs) {
+			return res, nil
+		}
+		return fmt.Sprintf("%s.%s", input.Segment(0), res), nil
 	},
 }
 
@@ -158,4 +163,72 @@ func regproc_IoInputValidation(ctx *sql.Context, input string, sections []string
 	default:
 		return errors.Errorf("invalid name syntax")
 	}
+}
+
+// regproc_SchemasAndName parses the possibly-qualified routine name in `input`, returning the schemas to search in
+// order along with the unqualified name.
+func regproc_SchemasAndName(ctx *sql.Context, input string) (schemas []string, name string, err error) {
+	sections, err := ioInputSections(input)
+	if err != nil {
+		return nil, "", err
+	}
+	if err = regproc_IoInputValidation(ctx, input, sections); err != nil {
+		return nil, "", err
+	}
+	switch len(sections) {
+	case 1:
+		schemas, err = core.SearchPath(ctx)
+		return schemas, sections[0], err
+	case 3:
+		return []string{sections[0]}, sections[2], nil
+	default:
+		return nil, "", errors.Errorf("regproc failed validation")
+	}
+}
+
+// regproc_FindRoutines returns the IDs of every built-in function, user-defined function, and procedure with the given
+// name in the given schemas.
+func regproc_FindRoutines(ctx *sql.Context, schemas []string, name string) ([]id.Id, error) {
+	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	procCollection, err := core.GetProceduresCollectionFromContext(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	var routineIDs []id.Id
+	for _, schema := range schemas {
+		if schema == "pg_catalog" {
+			for _, f := range framework.Catalog[name] {
+				routineIDs = append(routineIDs, f.InternalID())
+			}
+		}
+		funcs, err := funcCollection.GetFunctionOverloads(ctx, id.NewFunction(schema, name))
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range funcs {
+			routineIDs = append(routineIDs, f.ID.AsId())
+		}
+		procs, err := procCollection.GetProcedureOverloads(ctx, id.NewProcedure(schema, name))
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range procs {
+			routineIDs = append(routineIDs, p.ID.AsId())
+		}
+	}
+	return routineIDs, nil
+}
+
+// regproc_IsVisible returns whether `routineID` may be displayed without its schema. Its schema must be on the search
+// path, and `resolvedIDs`, the routines found by its unqualified name, must contain no other routine.
+func regproc_IsVisible(routineID id.Id, searchPath []string, resolvedIDs []id.Id) bool {
+	for _, resolvedID := range resolvedIDs {
+		if resolvedID.IsValid() && resolvedID != routineID {
+			return false
+		}
+	}
+	return slices.Contains(searchPath, routineID.Segment(0))
 }

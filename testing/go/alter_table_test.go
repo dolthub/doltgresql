@@ -1986,5 +1986,37 @@ ORDER BY schema_name, table_name;`,
 				},
 			},
 		},
+		{
+			Name: "column defaults with user-defined functions keep working after table rewrites",
+			SetUpScript: []string{
+				"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL AS $$ SELECT 1 $$;",
+				"CREATE TABLE t (id INT, a INT DEFAULT f());",
+				"INSERT INTO t (id) VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER TABLE t ALTER COLUMN a SET NOT NULL;",
+				},
+				{
+					Query: "ALTER TABLE t ALTER COLUMN a TYPE BIGINT;",
+				},
+				{
+					Query: "ALTER TABLE t ADD COLUMN b INT DEFAULT 2;",
+				},
+				{
+					Query: "ALTER TABLE t DROP COLUMN b;",
+				},
+				{
+					Query: "ALTER TABLE t ADD PRIMARY KEY (id);",
+				},
+				{
+					Query: "INSERT INTO t (id) VALUES (2);",
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 1}, {2, 1}},
+				},
+			},
+		},
 	})
 }

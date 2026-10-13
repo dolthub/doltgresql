@@ -31,9 +31,16 @@ func NewRecordExpr() *RecordExpr {
 	return &RecordExpr{}
 }
 
+// NewCatalogRowExpr creates a whole-row reference with a catalog's named row type.
+func NewCatalogRowExpr(typ *pgtypes.DoltgresType, bareReference bool) *RecordExpr {
+	return &RecordExpr{typ: typ, bareReference: bareReference}
+}
+
 // RecordExpr is a set of sql.Expressions wrapped together in a single value.
 type RecordExpr struct {
-	exprs []sql.Expression
+	exprs         []sql.Expression
+	typ           *pgtypes.DoltgresType
+	bareReference bool
 }
 
 var _ sql.Expression = (*RecordExpr)(nil)
@@ -60,22 +67,27 @@ func (t *RecordExpr) String() string {
 
 // Type implements the sql.Expression interface.
 func (t *RecordExpr) Type(ctx *sql.Context) sql.Type {
+	if t.typ != nil {
+		return t.typ
+	}
 	return pgtypes.Record
 }
 
 // IsNullable implements the sql.Expression interface.
 func (t *RecordExpr) IsNullable(ctx *sql.Context) bool {
-	return false
+	return t.typ != nil
 }
 
 // Eval implements the sql.Expression interface.
 func (t *RecordExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 	vals := make([]pgtypes.RecordValue, len(t.exprs))
+	allNull := true
 	for i, expr := range t.exprs {
 		val, err := expr.Eval(ctx, row)
 		if err != nil {
 			return nil, err
 		}
+		allNull = allNull && val == nil
 
 		t := expr.Type(ctx)
 		typ, ok := t.(*pgtypes.DoltgresType)
@@ -91,6 +103,11 @@ func (t *RecordExpr) Eval(ctx *sql.Context, row sql.Row) (interface{}, error) {
 			Value: val,
 			Type:  typ,
 		}
+	}
+	// Catalog rows have non-null fields, so an all-null whole-row reference
+	// represents the missing side of an outer join.
+	if t.typ != nil && allNull {
+		return nil, nil
 	}
 
 	return vals, nil
@@ -110,6 +127,17 @@ func (t *RecordExpr) WithChildren(ctx *sql.Context, children ...sql.Expression) 
 
 // WithResolvedChildren implements the vitess.Injectable interface
 func (t *RecordExpr) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
+	if t.bareReference {
+		if len(children) == 0 {
+			return nil, sql.ErrInvalidChildrenNumber.New(t, 0, 1)
+		}
+		// PostgreSQL resolves an unqualified column before a whole-row reference
+		// with the same name. Let the builder make that decision.
+		if _, ok := children[0].(*TableToComposite); !ok {
+			return children[0], nil
+		}
+		children = children[1:]
+	}
 	newExpressions := make([]sql.Expression, len(children))
 	for i, resolvedChild := range children {
 		resolvedExpression, ok := resolvedChild.(sql.Expression)

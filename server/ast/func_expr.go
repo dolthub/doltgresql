@@ -69,6 +69,9 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 	if err != nil {
 		return nil, err
 	}
+	for i, expr := range exprs {
+		exprs[i] = catalogRowArgument(ctx, expr)
+	}
 
 	switch strings.ToLower(name.String()) {
 	// special case for string_agg, which maps to the mysql aggregate function group_concat
