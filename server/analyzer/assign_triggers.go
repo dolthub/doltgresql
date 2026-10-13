@@ -57,6 +57,7 @@ func AssignTriggers(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope
 					Sch:      sch,
 					Source:   getTriggerSource(node),
 					Runner:   pgexprs.StatementRunner{Runner: a.Runner},
+					TgOp:     getTriggerOperation(node),
 				})
 				if err != nil {
 					return nil, transform.NewTree, err
@@ -71,6 +72,7 @@ func AssignTriggers(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope
 					Sch:      sch,
 					Source:   newNode,
 					Runner:   pgexprs.StatementRunner{Runner: a.Runner},
+					TgOp:     getTriggerOperation(node),
 				}
 			}
 			return newNode, transform.NewTree, nil
@@ -246,6 +248,22 @@ func getTriggerRowHandling(node sql.Node) pgnodes.TriggerExecutionRowHandling {
 		return pgnodes.TriggerExecutionRowHandling_OldNew
 	default:
 		return pgnodes.TriggerExecutionRowHandling_None
+	}
+}
+
+// getTriggerOperation returns the operation that the node fires its triggers for, as seen by TG_OP.
+func getTriggerOperation(node sql.Node) string {
+	switch node.(type) {
+	case *plan.DeleteFrom:
+		return "DELETE"
+	case *plan.InsertInto:
+		return "INSERT"
+	case *plan.Truncate:
+		return "TRUNCATE"
+	case *plan.Update:
+		return "UPDATE"
+	default:
+		return ""
 	}
 }
 

@@ -58,7 +58,8 @@ func AddRoutinePrivilege(key RoutinePrivilegeKey, privilege GrantedPrivilege, wi
 		privilegeMap = make(map[GrantedPrivilege]bool)
 		routinePrivilegeValue.Privileges[privilege.Privilege] = privilegeMap
 	}
-	privilegeMap[privilege] = withGrantOption
+	// A grant without the grant option does not remove an existing grant option
+	privilegeMap[privilege] = privilegeMap[privilege] || withGrantOption
 }
 
 // HasRoutinePrivilege checks whether the user has the given privilege on the associated routine.
@@ -200,7 +201,7 @@ func (rp *RoutinePrivileges) deserialize(version uint32, reader *utils.Reader) {
 	rp.Data = make(map[RoutinePrivilegeKey]RoutinePrivilegeValue)
 	switch version {
 	case 0:
-	case 1:
+	case 1, 2:
 		// Read the total number of values
 		dataCount := reader.Uint64()
 		for dataIdx := uint64(0); dataIdx < dataCount; dataIdx++ {

@@ -55,7 +55,8 @@ func AddSchemaPrivilege(key SchemaPrivilegeKey, privilege GrantedPrivilege, with
 		privilegeMap = make(map[GrantedPrivilege]bool)
 		schemaPrivilegeValue.Privileges[privilege.Privilege] = privilegeMap
 	}
-	privilegeMap[privilege] = withGrantOption
+	// A grant without the grant option does not remove an existing grant option
+	privilegeMap[privilege] = privilegeMap[privilege] || withGrantOption
 }
 
 // HasSchemaPrivilege checks whether the user has the given privilege on the associated schema.
@@ -179,7 +180,7 @@ func (sp *SchemaPrivileges) serialize(writer *utils.Writer) {
 func (sp *SchemaPrivileges) deserialize(version uint32, reader *utils.Reader) {
 	sp.Data = make(map[SchemaPrivilegeKey]SchemaPrivilegeValue)
 	switch version {
-	case 0, 1:
+	case 0, 1, 2:
 		// Read the total number of values
 		dataCount := reader.Uint64()
 		for dataIdx := uint64(0); dataIdx < dataCount; dataIdx++ {

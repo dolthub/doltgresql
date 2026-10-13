@@ -189,8 +189,6 @@ DECLARE acc int := 0; BEGIN FOR "I" IN 1..3 LOOP acc := acc + i; END LOOP; RETUR
 			},
 		},
 		{
-			// TG_OP is left out deliberately: it is not populated for a trigger whose source node is
-			// wrapped, so it resolves to nothing regardless of how it is spelled.
 			Name: "trigger records fold like any other name",
 			SetUpScript: []string{
 				`CREATE TABLE t (id int primary key, v int);`,

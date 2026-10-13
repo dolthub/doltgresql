@@ -67,7 +67,11 @@ func TestConflictsRootObject(t *testing.T) {
 					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
-					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT2 AS $$ BEGIN RETURN '2' || input; END; $$ LANGUAGE plpgsql;",
+					Query:    "DROP FUNCTION interpreted_example(TEXT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE FUNCTION interpreted_example(input TEXT) RETURNS INT2 AS $$ BEGIN RETURN '2' || input; END; $$ LANGUAGE plpgsql;",
 					Expected: []sql.Row{},
 				},
 				{
@@ -465,7 +469,11 @@ func TestConflictsRootObject(t *testing.T) {
 					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
-					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || ''; END; $$ LANGUAGE plpgsql;",
+					Query:    "DROP FUNCTION interpreted_example(TEXT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || ''; END; $$ LANGUAGE plpgsql;",
 					Expected: []sql.Row{},
 				},
 				{
@@ -487,7 +495,11 @@ func TestConflictsRootObject(t *testing.T) {
 					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
-					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || ''; END; $$ LANGUAGE plpgsql;",
+					Query:    "DROP FUNCTION interpreted_example(TEXT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || ''; END; $$ LANGUAGE plpgsql;",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1039,7 +1051,11 @@ func TestConflictsRootObject(t *testing.T) {
 					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
-					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || '3'; END; $$ LANGUAGE plpgsql;",
+					Query:    "DROP FUNCTION interpreted_example(TEXT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || '3'; END; $$ LANGUAGE plpgsql;",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1055,7 +1071,11 @@ func TestConflictsRootObject(t *testing.T) {
 					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
-					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || '2'; END; $$ LANGUAGE plpgsql;",
+					Query:    "DROP FUNCTION interpreted_example(TEXT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || '2'; END; $$ LANGUAGE plpgsql;",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1124,7 +1144,11 @@ func TestConflictsRootObject(t *testing.T) {
 					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
 				},
 				{
-					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || '3'; END; $$ LANGUAGE plpgsql;",
+					Query:    "DROP FUNCTION interpreted_example(TEXT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE FUNCTION interpreted_example(input TEXT) RETURNS INT8 AS $$ BEGIN RETURN input || '3'; END; $$ LANGUAGE plpgsql;",
 					Expected: []sql.Row{},
 				},
 				{
@@ -1140,7 +1164,11 @@ func TestConflictsRootObject(t *testing.T) {
 					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
 				},
 				{
-					Query:    "CREATE OR REPLACE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || '2'; END; $$ LANGUAGE plpgsql;",
+					Query:    "DROP FUNCTION interpreted_example(TEXT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE FUNCTION interpreted_example(input TEXT) RETURNS FLOAT AS $$ BEGIN RETURN input || '2'; END; $$ LANGUAGE plpgsql;",
 					Expected: []sql.Row{},
 				},
 				{

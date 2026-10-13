@@ -20,7 +20,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	"github.com/dolthub/go-mysql-server/sql/expression/function"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -128,7 +127,6 @@ func Initialize(astConvert func(parser.Statement) (sqlparser.Statement, error)) 
 	convertToVitess = astConvert
 	pgtypes.LoadFunctionFromCatalog = getQuickFunctionForTypes
 	pgtypes.LoadExtensionFunction = getQuickExtensionFunction
-	analyzer.ExternalFunctionProvider = &FunctionProvider{}
 	replaceGmsBuiltIns()
 	validateFunctions()
 	compileFunctions()

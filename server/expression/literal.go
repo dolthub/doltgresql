@@ -23,7 +23,6 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core/id"
-	"github.com/dolthub/doltgresql/postgres/parser/duration"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
@@ -69,11 +68,6 @@ func NewUnknownLiteral(stringValue string) *expression.Literal {
 // This should be used for internal uses when the type of the value is certain.
 func NewTextLiteral(stringValue string) *expression.Literal {
 	return expression.NewLiteral(stringValue, pgtypes.Text)
-}
-
-// NewIntervalLiteral returns a new *expression.Literal containing a INTERVAL value.
-func NewIntervalLiteral(duration duration.Duration) *expression.Literal {
-	return expression.NewLiteral(duration, pgtypes.Interval)
 }
 
 // NewJSONLiteral returns a new *expression.Literal containing a JSON value. This is different from JSONB.

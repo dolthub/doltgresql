@@ -40,6 +40,7 @@ func Init(builtInCasts map[id.Cast]casts.Cast) {
 	initRegclass(builtInCasts)
 	initRegnamespace(builtInCasts)
 	initRegproc(builtInCasts)
+	initRegprocedure(builtInCasts)
 	initRegtype(builtInCasts)
 	initText(builtInCasts)
 	initTime(builtInCasts)

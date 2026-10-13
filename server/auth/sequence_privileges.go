@@ -56,7 +56,8 @@ func AddSequencePrivilege(key SequencePrivilegeKey, privilege GrantedPrivilege, 
 		privilegeMap = make(map[GrantedPrivilege]bool)
 		seqPrivilegeValue.Privileges[privilege.Privilege] = privilegeMap
 	}
-	privilegeMap[privilege] = withGrantOption
+	// A grant without the grant option does not remove an existing grant option
+	privilegeMap[privilege] = privilegeMap[privilege] || withGrantOption
 }
 
 // HasSequencePrivilege checks whether the user has the given privilege on the associated sequence.
@@ -195,7 +196,7 @@ func (sp *SequencePrivileges) deserialize(version uint32, reader *utils.Reader) 
 	sp.Data = make(map[SequencePrivilegeKey]SequencePrivilegeValue)
 	switch version {
 	case 0:
-	case 1:
+	case 1, 2:
 		// Read the total number of values
 		dataCount := reader.Uint64()
 		for dataIdx := uint64(0); dataIdx < dataCount; dataIdx++ {

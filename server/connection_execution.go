@@ -56,6 +56,8 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery, simpl
 			if err := h.warnOutsideTransactionBlock(query, simpleQuery); err != nil {
 				return true, true, err
 			}
+		case *node.DeclareCursor:
+			return true, true, h.declareCursor(injectedStmt, query, simpleQuery)
 		case *node.CopyFrom:
 			if injectedStmt.Stdin {
 				return true, false, h.handleCopyFromStdinQuery(injectedStmt, simpleQuery)
@@ -82,9 +84,16 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 	return h.send(makeCommandComplete(query.StatementTag, rowsAffected))
 }
 
+// isInTransactionBlock reports whether a transaction block is active as Postgres defines one: an explicit block opened by
+// BEGIN, including a failed one, or the implicit block of a simple query with several statements. The implicit
+// transaction of an extended-protocol batch is not a transaction block.
+func (h *ConnectionHandler) isInTransactionBlock(simpleQuery *simpleQueryExecution) bool {
+	return h.state.txState.inExplicitTransactionBlock() || (simpleQuery != nil && h.state.txState == implicitTransactionState)
+}
+
 // warnOutsideTransactionBlock warns that a transaction-block-only command ran outside a transaction block.
 func (h *ConnectionHandler) warnOutsideTransactionBlock(query ConvertedQuery, simpleQuery *simpleQueryExecution) error {
-	if h.state.txState.inExplicitTransactionBlock() || (simpleQuery != nil && h.state.txState == implicitTransactionState) {
+	if h.isInTransactionBlock(simpleQuery) {
 		return nil
 	}
 	return h.send(&pgproto3.NoticeResponse{
@@ -108,7 +117,7 @@ func (h *ConnectionHandler) discardAll(query ConvertedQuery) error {
 
 // spoolRowsCallback returns an engine callback that writes a statement's result messages.
 func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32, isExecute bool) func(ctx *sql.Context, res *Result) error {
-	isIUD := query.StatementTag == "INSERT" || query.StatementTag == "UPDATE" || query.StatementTag == "DELETE"
+	reportsRowsAffected := query.StatementTag == "INSERT" || query.StatementTag == "UPDATE" || query.StatementTag == "DELETE" || query.StatementTag == "MOVE"
 	hasSentRowDescription := false
 	return func(ctx *sql.Context, res *Result) error {
 		sess := dsess.DSessFromSess(ctx.Session)
@@ -137,7 +146,7 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 			}
 		}
 
-		if isIUD {
+		if reportsRowsAffected {
 			*rows = int32(res.RowsAffected)
 		} else {
 			*rows += int32(len(res.Rows))

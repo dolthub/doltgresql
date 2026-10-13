@@ -72,6 +72,13 @@ func oidImplicit(builtInCasts map[id.Cast]casts.Cast) {
 	})
 	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
 		FromType: pgtypes.Oid,
+		ToType:   pgtypes.Regprocedure,
+		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
+			return val, nil
+		},
+	})
+	framework.MustAddImplicitTypeCast(builtInCasts, framework.TypeCast{
+		FromType: pgtypes.Oid,
 		ToType:   pgtypes.Regtype,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
 			return val, nil

@@ -428,7 +428,7 @@ func (node *AlterTableComputed) GetColumn() Name {
 type AlterTableConstraintUsingIndex struct {
 	Constraint Name
 	IsUnique   bool
-	Index      Name
+	Index      *UnresolvedObjectName
 	Deferrable DeferrableMode
 	Initially  InitiallyMode
 }
@@ -445,7 +445,7 @@ func (node *AlterTableConstraintUsingIndex) Format(ctx *FmtCtx) {
 		ctx.WriteString(" PRIMARY KEY")
 	}
 	ctx.WriteString(" USING INDEX")
-	ctx.FormatNode(&node.Index)
+	node.Index.Format(ctx)
 	switch node.Deferrable {
 	case Deferrable:
 		ctx.WriteString(" DEFERRABLE")
@@ -990,7 +990,7 @@ func (node *AlterTablePartition) Format(ctx *FmtCtx) {
 	node.Name.Format(ctx)
 	if node.IsDetach {
 		ctx.WriteString(" DETACH PARTITION ")
-		node.Name.Format(ctx)
+		node.Partition.Format(ctx)
 		switch node.DetachType {
 		case DetachPartitionNone:
 		case DetachPartitionConcurrently:
@@ -1000,7 +1000,7 @@ func (node *AlterTablePartition) Format(ctx *FmtCtx) {
 		}
 	} else {
 		ctx.WriteString(" ATTACH PARTITION ")
-		node.Name.Format(ctx)
+		node.Partition.Format(ctx)
 		ctx.WriteByte(' ')
 		ctx.FormatNode(&node.Spec)
 	}

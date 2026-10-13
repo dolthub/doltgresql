@@ -64,6 +64,14 @@ func ResolveTypeForNodes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, 
 				same = transform.NewTree
 				col.Type = dt
 			}
+			// Defaults retain their own output type, which must be resolved before validation.
+			resolvedDefault, err := resolveDefaultColumnType(ctx, db, col.Default)
+			if err != nil {
+				return nil, transform.NewTree, err
+			}
+			if resolvedDefault {
+				same = transform.NewTree
+			}
 			return node, same, nil
 		case *pgnodes.CreateAggregate:
 			if !n.SType.IsResolvedType() {

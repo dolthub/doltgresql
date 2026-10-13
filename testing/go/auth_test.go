@@ -376,6 +376,8 @@ func TestAuthTests(t *testing.T) {
 				`CREATE TABLE drop_role_table (v integer);`,
 				`INSERT INTO drop_role_table VALUES (1);`,
 				`CREATE SEQUENCE drop_role_sequence;`,
+				// EXECUTE on functions is granted to PUBLIC by default, so it must be revoked for this test
+				`ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
 				`CREATE FUNCTION drop_role_routine() RETURNS integer AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
 				`CREATE ROLE dropped_group;`,
 				`CREATE USER surviving_member PASSWORD 'password';`,
@@ -896,6 +898,8 @@ func TestAuthTests(t *testing.T) {
 			SetUpScript: []string{
 				authTestCreateSuperUser,
 				`CREATE USER user1 PASSWORD 'a';`,
+				// EXECUTE on functions is granted to PUBLIC by default, so it must be revoked for this test
+				`ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
 				"CREATE FUNCTION testfunc1() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql",
 				"CREATE FUNCTION testfunc2() RETURNS int AS $$ BEGIN RETURN 2; END; $$ LANGUAGE plpgsql",
 			},
@@ -958,6 +962,8 @@ func TestAuthTests(t *testing.T) {
 				authTestCreateSuperUser,
 				`CREATE USER user1 PASSWORD 'a';`,
 				`CREATE TABLE test (v1 TEXT);`,
+				// EXECUTE on functions is granted to PUBLIC by default, so it must be revoked for this test
+				`ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`,
 				`CREATE PROCEDURE public.interpreted_example_1(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('1' || input); END; $$ LANGUAGE plpgsql;`,
 				`CREATE PROCEDURE interpreted_example_3(input TEXT) AS $$ BEGIN INSERT INTO test VALUES ('3' || input); END; $$ LANGUAGE plpgsql;`,
 				`GRANT ALL PRIVILEGES ON test TO user1 WITH GRANT OPTION;`,
