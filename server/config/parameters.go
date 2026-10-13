@@ -74,6 +74,7 @@ var _ sql.SystemVariable = (*Parameter)(nil)
 
 type Parameter struct {
 	Name         string
+	Unit         string // Base unit for parsing and display; currently supports "ms".
 	Default      any
 	Category     string
 	ShortDesc    string
@@ -120,6 +121,13 @@ func (p *Parameter) GetDefault() any {
 
 // InitValue implements sql.SystemVariable.
 func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
+	if p.Unit == "ms" {
+		milliseconds, err := parseMilliseconds(p.Name, fmt.Sprint(val))
+		if err != nil {
+			return sql.SystemVarValue{}, err
+		}
+		val = milliseconds
+	}
 	convertedVal, _, err := p.Type.Convert(ctx, val)
 	if err != nil {
 		return sql.SystemVarValue{}, err
@@ -147,7 +155,7 @@ func (p *Parameter) SetValue(ctx *sql.Context, val any, global bool) (sql.System
 	if p.IsReadOnly() {
 		return sql.SystemVarValue{}, pgerror.Newf(pgcode.CantChangeRuntimeParam, `parameter "%s" cannot be changed now`, p.Name)
 	}
-	// TODO: Do parsing of units for memory and time parameters
+	// TODO: Support units for the remaining memory and time parameters.
 	return p.InitValue(ctx, val, global)
 }
 
@@ -258,6 +266,11 @@ func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) er
 func FormatPostgresParameterValue(name string, val any) string {
 	if val == nil {
 		return ""
+	}
+	if HasMillisecondUnit(name) {
+		if milliseconds, ok := val.(int64); ok {
+			return formatMilliseconds(milliseconds)
+		}
 	}
 	if variable, ok := postgresConfigParameters[strings.ToLower(name)]; ok && variable.GetType().String() == "system_bool" {
 		switch v := val.(type) {

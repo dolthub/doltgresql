@@ -7249,7 +7249,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW statement_timeout",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET statement_timeout TO '42'",
@@ -7257,11 +7257,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW statement_timeout",
-				Expected: []sql.Row{{int64(42)}},
+				Expected: []sql.Row{{"42ms"}},
 			},
 			{
 				Query:    "SELECT current_setting('statement_timeout')",
-				Expected: []sql.Row{{"42"}},
+				Expected: []sql.Row{{"42ms"}},
 			},
 		},
 	},
