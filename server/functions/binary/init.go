@@ -37,4 +37,5 @@ func Init() {
 	initBinaryShiftLeft()
 	initBinaryShiftRight()
 	initJSON()
+	initRegexInsensitive()
 }
