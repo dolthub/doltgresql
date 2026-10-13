@@ -118,6 +118,29 @@ func TestRoleSettings(t *testing.T) {
 			},
 		},
 		{
+			Name: "ALTER ROLE SET with units",
+			SetUpScript: []string{
+				"CREATE ROLE settings_units",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "ALTER ROLE settings_units SET work_mem TO '16MB'"},
+				{Query: "ALTER ROLE settings_units SET statement_timeout = '1.5min'"},
+				{
+					// The value is stored as it was given
+					Query:    "SELECT rolconfig FROM pg_roles WHERE rolname = 'settings_units'",
+					Expected: []sql.Row{{"{work_mem=16MB,statement_timeout=1.5min}"}},
+				},
+				{
+					Query:       "ALTER ROLE settings_units SET work_mem TO '16XB'",
+					ExpectedErr: `invalid value for parameter "work_mem": "16XB"`,
+				},
+				{
+					Query:       "ALTER DATABASE postgres SET statement_timeout = '5MB'",
+					ExpectedErr: `invalid value for parameter "statement_timeout": "5MB"`,
+				},
+			},
+		},
+		{
 			Name: "dropping a role removes its settings",
 			Assertions: []ScriptTestAssertion{
 				{Query: "CREATE ROLE settings_dropped"},
@@ -267,7 +290,7 @@ func TestRoleSettingsAppliedAtConnection(t *testing.T) {
 		"ALTER DATABASE settings_db SET app.database_only = 'd'",
 		"ALTER ROLE settings_login SET app.level = 'role'",
 		"ALTER ROLE settings_login SET search_path = other_schema, public",
-		"ALTER ROLE settings_login SET work_mem = 16384",
+		"ALTER ROLE settings_login SET work_mem = '16MB'",
 		"ALTER ROLE settings_login IN DATABASE settings_db SET app.level = 'role_in_database'",
 	} {
 		exec(conn.Default, statement)

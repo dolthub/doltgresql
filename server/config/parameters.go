@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 
+	"github.com/cockroachdb/apd/v3"
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -75,6 +77,7 @@ var _ sql.SystemVariable = (*Parameter)(nil)
 type Parameter struct {
 	Name         string
 	Default      any
+	Unit         string
 	Category     string
 	ShortDesc    string
 	Context      ParameterContext
@@ -147,7 +150,33 @@ func (p *Parameter) SetValue(ctx *sql.Context, val any, global bool) (sql.System
 	if p.IsReadOnly() {
 		return sql.SystemVarValue{}, pgerror.Newf(pgcode.CantChangeRuntimeParam, `parameter "%s" cannot be changed now`, p.Name)
 	}
-	// TODO: Do parsing of units for memory and time parameters
+	// Integer parameters accept fractional values, which are rounded, so we parse those the same way as strings
+	if p.Type.String() == "system_int" {
+		switch v := val.(type) {
+		case float32:
+			val = strconv.FormatFloat(float64(v), 'g', -1, 32)
+		case float64:
+			val = strconv.FormatFloat(v, 'g', -1, 64)
+		case *apd.Decimal:
+			val = v.String()
+		}
+	}
+	if str, ok := val.(string); ok {
+		switch p.Type.String() {
+		case "system_int":
+			parsed, err := p.parseNumericValue(str, true)
+			if err != nil {
+				return sql.SystemVarValue{}, err
+			}
+			val = parsed
+		case "system_double":
+			parsed, err := p.parseNumericValue(str, false)
+			if err != nil {
+				return sql.SystemVarValue{}, err
+			}
+			val = parsed
+		}
+	}
 	return p.InitValue(ctx, val, global)
 }
 

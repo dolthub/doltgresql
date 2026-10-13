@@ -243,7 +243,7 @@ func (db *Database) deserializeV2(reader *utils.Reader) error {
 	roleCount := reader.Uint32()
 	for i := uint32(0); i < roleCount; i++ {
 		r := Role{}
-		r.deserialize(1, reader)
+		r.deserialize(2, reader)
 		db.rolesByName[r.Name] = r.id
 		db.rolesByID[r.id] = r
 	}

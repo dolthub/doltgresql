@@ -9024,6 +9024,105 @@ var setStmts = []ScriptTest{
 		},
 	},
 	{
+		Name:        "set configuration variables with units",
+		SetUpScript: []string{},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SET work_mem TO '16MB'",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW work_mem",
+				Expected: []sql.Row{{int64(16384)}}, // TODO: Postgres displays 16MB
+			},
+			{
+				// Whitespace is allowed around the value and between the value and the unit
+				Query:    "SET work_mem TO ' 1 GB '",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW work_mem",
+				Expected: []sql.Row{{int64(1048576)}},
+			},
+			{
+				// Values are rounded to the nearest multiple of the base unit
+				Query:    "SET work_mem TO '1.5MB'",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW work_mem",
+				Expected: []sql.Row{{int64(1536)}},
+			},
+			{
+				Query:    "SET work_mem TO 100.4",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW work_mem",
+				Expected: []sql.Row{{int64(100)}},
+			},
+			{
+				Query:    "SELECT set_config('work_mem', '32MB', false)",
+				Expected: []sql.Row{{"32768"}},
+			},
+			{
+				// Units are case-sensitive
+				Query:       "SET work_mem TO '16mb'",
+				ExpectedErr: `invalid value for parameter "work_mem": "16mb"`,
+			},
+			{
+				Query:       "SET work_mem TO '16ms'",
+				ExpectedErr: `invalid value for parameter "work_mem": "16ms"`,
+			},
+			{
+				Query:       "SET work_mem TO '16TB'",
+				ExpectedErr: `invalid value for parameter "work_mem": "16TB"`,
+			},
+			{
+				Query:       "SET work_mem TO 'abc'",
+				ExpectedErr: `invalid value for parameter "work_mem": "abc"`,
+			},
+			{
+				Query:       "SET work_mem TO ''",
+				ExpectedErr: `invalid value for parameter "work_mem": ""`,
+			},
+			{
+				Query:    "SET statement_timeout TO '1.5min'",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW statement_timeout",
+				Expected: []sql.Row{{int64(90000)}}, // TODO: Postgres displays 90s
+			},
+			{
+				Query:    "SET statement_timeout TO '600us'",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW statement_timeout",
+				Expected: []sql.Row{{int64(1)}},
+			},
+			{
+				Query:       "SET statement_timeout TO '5MB'",
+				ExpectedErr: `invalid value for parameter "statement_timeout": "5MB"`,
+			},
+			{
+				// Real parameters are not rounded
+				Query:    "SET vacuum_cost_delay TO '500us'",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SHOW vacuum_cost_delay",
+				Expected: []sql.Row{{float64(0.5)}},
+			},
+			{
+				// Parameters without units do not accept them
+				Query:       "SET extra_float_digits TO '1kB'",
+				ExpectedErr: `invalid value for parameter "extra_float_digits": "1kB"`,
+			},
+		},
+	},
+	{
 		Name:        "set 'xmlbinary' configuration variable",
 		SetUpScript: []string{},
 		Assertions: []ScriptTestAssertion{
