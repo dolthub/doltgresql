@@ -401,6 +401,36 @@ func TestUpdate(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "UPDATE FROM with columns sharing the target's names",
+			SetUpScript: []string{
+				"CREATE SCHEMA s;",
+				"CREATE TABLE s.target (id INT PRIMARY KEY, v INT, note TEXT, arr INT[]);",
+				"CREATE TABLE source (id INT PRIMARY KEY, v INT, note TEXT, arr INT[]);",
+				"INSERT INTO s.target VALUES (1, 0, 'old', '{0,0}'), (2, 0, 'old', '{0,0}');",
+				"INSERT INTO source VALUES (1, 10, 'new', '{5,5}');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "UPDATE s.target AS t SET v = src.v, note = src.note FROM source AS src WHERE t.id = src.id;",
+				},
+				{
+					Query: "UPDATE s.target SET v = target.v + source.v FROM source WHERE target.id = source.id;",
+				},
+				{
+					Query: "UPDATE s.target AS t SET arr[2] = src.v FROM source AS src WHERE t.id = src.id;",
+				},
+				{
+					Query:    "SELECT * FROM s.target ORDER BY id;",
+					Expected: []sql.Row{{1, 20, "new", "{0,10}"}, {2, 0, "old", "{0,0}"}},
+				},
+				{
+					Query:           "UPDATE s.target AS t SET v = v FROM source AS src WHERE t.id = src.id;",
+					ExpectedErr:     "ambiguous",
+					ExpectedErrCode: "42702",
+				},
+			},
+		},
 	})
 }
 
