@@ -21,25 +21,24 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/auth"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeDropDatabase handles *tree.DropDatabase nodes.
-func nodeDropDatabase(_ *Context, node *tree.DropDatabase) (*vitess.DBDDL, error) {
+func nodeDropDatabase(_ *Context, node *tree.DropDatabase) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
 	if node.Force {
 		return nil, errors.Errorf("WITH ( FORCE ) is not yet supported")
 	}
-	return &vitess.DBDDL{
+	return vitess.InjectedStatement{
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_DROPDATABASE,
 			TargetType:  auth.AuthTargetType_DatabaseIdentifiers,
 			TargetNames: []string{bareIdentifier(node.Name)},
 		},
-		Action:           vitess.DropStr,
-		SchemaOrDatabase: "database",
-		DBName:           bareIdentifier(node.Name),
-		IfExists:         node.IfExists,
+		Statement: pgnodes.NewDropDatabase(bareIdentifier(node.Name), node.IfExists),
+		Children:  nil,
 	}, nil
 }

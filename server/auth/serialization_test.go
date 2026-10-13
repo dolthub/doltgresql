@@ -15,6 +15,8 @@
 package auth
 
 import (
+	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -102,5 +104,64 @@ func TestDeserializeRemovesInvalidRoleReferences(t *testing.T) {
 	}
 	if HasRoleMembership(survivor.ID(), otherGroup.ID()) {
 		t.Error("orphaned role retained membership as grantor")
+	}
+}
+
+// TestRoleSettingsSerialization verifies that role settings survive a round trip, and that settings of missing roles are
+// removed on load.
+func TestRoleSettingsSerialization(t *testing.T) {
+	originalDatabase := globalDatabase
+	originalLock := globalLock
+	t.Cleanup(func() {
+		globalDatabase = originalDatabase
+		globalLock = originalLock
+		publishRoleNames()
+	})
+	if globalLock == nil {
+		globalLock = &sync.RWMutex{}
+	}
+	globalDatabase = newEmptyDatabase()
+
+	survivor := Role{Name: "survivor", InheritPrivileges: true, id: 1}
+	orphan := Role{Name: "orphan", InheritPrivileges: true, id: 2}
+	SetRole(survivor)
+	SetRole(orphan)
+	SetRoleSetting(RoleSettingKey{}, "app.global", "g")
+	SetRoleSetting(RoleSettingKey{Database: "db"}, "TimeZone", "UTC")
+	SetRoleSetting(RoleSettingKey{Role: survivor.ID()}, "search_path", "a, b")
+	SetRoleSetting(RoleSettingKey{Role: survivor.ID()}, "app.second", "2")
+	SetRoleSetting(RoleSettingKey{Role: survivor.ID(), Database: "db"}, "app.both", "b")
+	SetRoleSetting(RoleSettingKey{Role: orphan.ID()}, "app.orphan", "o")
+	delete(globalDatabase.rolesByName, orphan.Name)
+	delete(globalDatabase.rolesByID, orphan.ID())
+
+	loaded := newEmptyDatabase()
+	if err := loaded.deserialize(globalDatabase.serialize()); err != nil {
+		t.Fatal(err)
+	}
+	expected := map[RoleSettingKey][]RoleSetting{
+		{}:                                    {{Name: "app.global", Value: "g"}},
+		{Database: "db"}:                      {{Name: "TimeZone", Value: "UTC"}},
+		{Role: survivor.ID()}:                 {{Name: "search_path", Value: "a, b"}, {Name: "app.second", Value: "2"}},
+		{Role: survivor.ID(), Database: "db"}: {{Name: "app.both", Value: "b"}},
+	}
+	if !reflect.DeepEqual(expected, loaded.roleSettings.Data) {
+		t.Fatalf("expected %v, got %v", expected, loaded.roleSettings.Data)
+	}
+
+	globalDatabase = loaded
+	publishRoleNames()
+	expectedSession := []RoleSetting{
+		{Name: "app.global", Value: "g"},
+		{Name: "TimeZone", Value: "UTC"},
+		{Name: "search_path", Value: "a, b"},
+		{Name: "app.second", Value: "2"},
+		{Name: "app.both", Value: "b"},
+	}
+	if got := SessionRoleSettings("survivor", "db"); !reflect.DeepEqual(expectedSession, got) {
+		t.Fatalf("expected %v, got %v", expectedSession, got)
+	}
+	if got := SessionRoleSettings("missing", ""); !reflect.DeepEqual(expectedSession[:1], got) {
+		t.Fatalf("expected %v, got %v", expectedSession[:1], got)
 	}
 }

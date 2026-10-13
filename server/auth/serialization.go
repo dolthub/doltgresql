@@ -60,6 +60,8 @@ func (db *Database) serialize() []byte {
 	db.roleMembership.serialize(writer)
 	// Write the default privileges
 	db.defaultPrivileges.serialize(writer)
+	// Write the role settings
+	db.roleSettings.serialize(writer)
 	return writer.Data()
 }
 
@@ -149,6 +151,11 @@ func (db *Database) removeInvalidRoleReferences() {
 			delete(db.roleMembership.Data, member)
 		}
 	}
+	for key := range db.roleSettings.Data {
+		if _, ok := db.rolesByID[key.Role]; key.Role.IsValid() && !ok {
+			delete(db.roleSettings.Data, key)
+		}
+	}
 }
 
 // removeInvalidPrivilegeGrants removes grants made by nonexistent roles and reports whether the map is empty.
@@ -192,6 +199,8 @@ func (db *Database) deserializeV0(reader *utils.Reader) error {
 	db.roleMembership.deserialize(0, reader)
 	// Read the default privileges
 	db.defaultPrivileges.deserialize(0, reader)
+	// Role settings did not exist in this version
+	db.roleSettings.deserialize(0, reader)
 	return nil
 }
 
@@ -221,6 +230,8 @@ func (db *Database) deserializeV1(reader *utils.Reader) error {
 	db.roleMembership.deserialize(1, reader)
 	// Read the default privileges
 	db.defaultPrivileges.deserialize(1, reader)
+	// Read the role settings
+	db.roleSettings.deserialize(1, reader)
 	return nil
 }
 
@@ -250,5 +261,7 @@ func (db *Database) deserializeV2(reader *utils.Reader) error {
 	db.roleMembership.deserialize(2, reader)
 	// Read the default privileges
 	db.defaultPrivileges.deserialize(2, reader)
+	// Read the role settings
+	db.roleSettings.deserialize(2, reader)
 	return nil
 }

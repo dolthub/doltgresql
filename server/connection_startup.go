@@ -111,23 +111,6 @@ func (h *ConnectionHandler) sendClientStartupMessages() error {
 // chooseInitialParameters attempts to choose the initial parameter settings for the connection.
 func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.StartupMessage) error {
 	postgresParser := psql.PostgresParser{}
-	for name, value := range startupMessage.Parameters {
-		switch strings.ToLower(name) {
-		case "datestyle":
-			if err := h.doltgresHandler.InitSessionParameterDefault(context.Background(), h.mysqlConn, "DateStyle", value); err != nil {
-				return err
-			}
-		case "timezone":
-			setStmt := fmt.Sprintf("SET timezone TO '%s';", strings.ReplaceAll(value, "'", "''"))
-			parsed, err := postgresParser.ParseSimple(setStmt)
-			if err != nil {
-				return err
-			}
-			if err = h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, setStmt, parsed, func(_ *sql.Context, _ *Result) error { return nil }); err != nil {
-				return err
-			}
-		}
-	}
 	db, ok := startupMessage.Parameters["database"]
 	if !ok || len(db) == 0 {
 		db = h.mysqlConn.User
@@ -145,6 +128,52 @@ func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.Sta
 			Routine:  "InitPostgres",
 		})
 		return err
+	}
+	// Settings from ALTER ROLE and ALTER DATABASE are applied before the client's parameters, so that the client's
+	// parameters take precedence, which matches Postgres. Applying them requires the database to have been chosen.
+	if err = h.applyRoleSettings(db); err != nil {
+		return err
+	}
+	for name, value := range startupMessage.Parameters {
+		switch strings.ToLower(name) {
+		case "datestyle":
+			if err = h.doltgresHandler.InitSessionParameterDefault(context.Background(), h.mysqlConn, "DateStyle", value); err != nil {
+				return err
+			}
+		case "timezone":
+			setStmt := fmt.Sprintf("SET timezone TO '%s';", strings.ReplaceAll(value, "'", "''"))
+			parsed, err = postgresParser.ParseSimple(setStmt)
+			if err != nil {
+				return err
+			}
+			if err = h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, setStmt, parsed, func(_ *sql.Context, _ *Result) error { return nil }); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// applyRoleSettings applies the settings from ALTER ROLE ... SET and ALTER DATABASE ... SET that target the session's
+// user and database. As in Postgres, a setting that cannot be applied results in a warning rather than a failure to
+// connect, since otherwise a bad setting could prevent the role from ever connecting to fix it.
+func (h *ConnectionHandler) applyRoleSettings(db string) error {
+	postgresParser := psql.PostgresParser{}
+	for _, setting := range auth.SessionRoleSettings(h.mysqlConn.User, db) {
+		setStmt := fmt.Sprintf("SELECT set_config('%s', '%s', false);",
+			strings.ReplaceAll(setting.Name, "'", "''"), strings.ReplaceAll(setting.Value, "'", "''"))
+		parsed, err := postgresParser.ParseSimple(setStmt)
+		if err == nil {
+			err = h.doltgresHandler.ComQuery(context.Background(), h.mysqlConn, setStmt, parsed, func(_ *sql.Context, _ *Result) error { return nil })
+		}
+		if err != nil {
+			if err = h.send(&pgproto3.NoticeResponse{
+				Severity: string(ErrorResponseSeverity_Warning),
+				Message:  fmt.Sprintf(`could not apply setting "%s": %s`, setting.Name, err.Error()),
+			}); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

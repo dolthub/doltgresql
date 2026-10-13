@@ -106,7 +106,7 @@ func (iter *pgRolesRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		"********",                     // rolpassword (always masked, matching Postgres)
 		rolValidUntil,                  // rolvaliduntil
 		role.CanBypassRowLevelSecurity, // rolbypassrls
-		nil,                            // rolconfig (per-role settings are not supported)
+		roleConfig(role),               // rolconfig
 		roleOid(role.Name),             // oid
 	}, nil
 }
