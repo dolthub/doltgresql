@@ -245,6 +245,7 @@ func Init() {
 	initSplitPart()
 	initSqlConstant()
 	initSqrt()
+	initStartsWith()
 	initStringToArray()
 	initStrpos()
 	initSubstr()
