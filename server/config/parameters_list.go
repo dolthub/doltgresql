@@ -3411,9 +3411,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"statement_timeout": &Parameter{
-		Name:    "statement_timeout",
-		Default: int64(0),
-		// Unit: "ms",
+		Name:      "statement_timeout",
+		Default:   int64(0),
+		Unit:      "ms",
 		Category:  "Client Connection Defaults / Statement Behavior",
 		ShortDesc: "Sets the maximum allowed duration of any statement.",
 		Context:   ParameterContextUser,
