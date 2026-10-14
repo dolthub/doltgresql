@@ -19,11 +19,12 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // TestApplicationSettingsFormatting checks PostgreSQL text values and the
