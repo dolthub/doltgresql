@@ -282,8 +282,20 @@ func resolveAlterColumn(ctx *sql.Context, a *analyzer.Analyzer, n sql.Node, scop
 
 			return n, transform.NewTree, nil
 		case *plan.DropColumn:
-			if nn.IfExists && !sch.Contains(nn.Column, nn.Table.(sql.Nameable).Name()) {
-				return plan.NewBlock(nil), transform.NewTree, nil
+			if nn.IfExists {
+				// PostgreSQL folds unquoted identifiers during parsing; quoted
+				// identifiers must match the stored column name exactly.
+				found := false
+				tableName := nn.Table.(sql.Nameable).Name()
+				for _, col := range sch {
+					if col.Name == nn.Column && strings.EqualFold(col.Source, tableName) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					return plan.NoopDDL{}, transform.NewTree, nil
+				}
 			}
 			n, err := nn.WithTargetSchema(sch.Copy())
 			if err != nil {
