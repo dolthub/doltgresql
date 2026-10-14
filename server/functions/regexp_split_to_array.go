@@ -117,6 +117,8 @@ func compileSplitRegexp(pattern, options string) (*regexp.Regexp, error) {
 			case 'x':
 				expanded = true
 			case 'g':
+				// PostgreSQL rejects this flag for split functions, which already
+				// process all matches; it is not accepted as a no-op.
 				return pgerror.New(pgcode.InvalidParameterValue, "regexp_split_to_array() does not support the \"global\" option")
 			default:
 				return pgerror.Newf(pgcode.InvalidParameterValue, "invalid regular expression option: %q", string(option))
@@ -127,7 +129,8 @@ func compileSplitRegexp(pattern, options string) (*regexp.Regexp, error) {
 	if err := apply(options); err != nil {
 		return nil, err
 	}
-	// Directors and initial embedded options override the function's flags.
+	// Quoted mode treats the entire pattern literally, including directors.
+	// Otherwise, directors and initial embedded options can override the flags.
 	if mode != 'q' {
 		if strings.HasPrefix(pattern, "***=") {
 			mode, pattern = 'q', pattern[4:]
@@ -240,6 +243,8 @@ func compactExpandedRegexp(pattern string) string {
 
 // expandBasicRegexp converts BRE grouping and bounds into ERE spelling while
 // quoting metacharacters that are ordinary in PostgreSQL basic regex syntax.
+// Escaped +, ?, and | remain literals too; PostgreSQL does not use the GNU BRE
+// extensions that interpret them as quantifiers or alternation.
 func expandBasicRegexp(pattern string) string {
 	var result strings.Builder
 	inClass := false
