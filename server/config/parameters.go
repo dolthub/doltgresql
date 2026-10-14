@@ -121,12 +121,17 @@ func (p *Parameter) GetDefault() any {
 
 // InitValue implements sql.SystemVariable.
 func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
-	if p.Unit == "ms" {
+	switch p.Unit {
+	case "":
+		// Unitless parameters use the normal type conversion below.
+	case "ms":
 		milliseconds, err := parseMilliseconds(p.Name, fmt.Sprint(val))
 		if err != nil {
 			return sql.SystemVarValue{}, err
 		}
 		val = milliseconds
+	default:
+		return sql.SystemVarValue{}, pgerror.Newf(pgcode.FeatureNotSupported, `unsupported unit "%s" for parameter "%s"`, p.Unit, p.Name)
 	}
 	convertedVal, _, err := p.Type.Convert(ctx, val)
 	if err != nil {
