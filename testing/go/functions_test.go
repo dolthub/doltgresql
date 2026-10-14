@@ -5488,6 +5488,10 @@ func TestStringFunction(t *testing.T) {
 			{Query: `SELECT regexp_split_to_array('a,b', ',', 'e');`, Expected: []sql.Row{{"{a,b}"}}},
 			{Query: `SELECT regexp_split_to_array('a+b++c', '+', 'b');`, Expected: []sql.Row{{"{a,b,\"\",c}"}}},
 			{Query: `SELECT regexp_split_to_array('a,,b', E'\\(,\\)\\{2\\}', 'b');`, Expected: []sql.Row{{"{a,b}"}}},
+			// BRE grouping and bounds require basic mode and one backslash in the pattern.
+			{Query: `SELECT regexp_split_to_array('a,,b', $re$\(,\)\{2\}$re$, 'b');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('a,,b', $re$\(,\)\{2\}$re$);`, Expected: []sql.Row{{`{"a,,b"}`}}},
+			{Query: `SELECT regexp_split_to_array('a,,b', $re$\\(,\\)\\{2\\}$re$, 'b');`, Expected: []sql.Row{{`{"a,,b"}`}}},
 			{Query: `SELECT regexp_split_to_array(E'a\nb', '.');`, Expected: []sql.Row{{"{\"\",\"\",\"\",\"\"}"}}},
 			{Query: `SELECT regexp_split_to_array(E'a\nb', '.', 'n');`, Expected: []sql.Row{{"{\"\",\"\n\",\"\"}"}}},
 			{Query: `SELECT regexp_split_to_array(E'a\nb', '.', 'p');`, Expected: []sql.Row{{"{\"\",\"\n\",\"\"}"}}},
