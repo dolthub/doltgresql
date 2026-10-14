@@ -1060,6 +1060,10 @@ func (c *CompiledFunction) unknownTypeCategoryMatches(argTypes []*pgtypes.Doltgr
 	// Resolve the category before choosing a preferred type within it. In
 	// particular, a preferred OID must not beat a non-preferred name for an
 	// unknown string literal, while timestamptz can still beat timestamp.
+	// Inspect the original candidates for every argument so resolution does
+	// not depend on argument order. For example, (text, int) and (int, text)
+	// remain ambiguous for two unknowns: each position prefers string, but
+	// neither overload satisfies both positions.
 	for argIdx, argType := range argTypes {
 		if argType.ID != pgtypes.Unknown.ID {
 			continue
