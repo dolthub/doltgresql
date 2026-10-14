@@ -50,6 +50,7 @@ func initInet() {
 	framework.RegisterFunction(inetnot)
 	framework.RegisterFunction(masklen_inet)
 	framework.RegisterFunction(netmask_inet)
+	framework.RegisterFunction(network_inet)
 	framework.RegisterFunction(set_masklen_inet)
 	framework.RegisterFunction(text_inet)
 }
@@ -278,6 +279,25 @@ var netmask_inet = framework.Function1{
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
 		ip := val.(ipaddr.IPAddr)
 		return ip.Netmask(), nil
+	},
+}
+
+// network_inet represents the PostgreSQL function of the same name, taking the same parameters.
+// TODO: Postgres returns a cidr, which displays the mask length even when it is the maximum for the family.
+var network_inet = framework.Function1{
+	Name:       "network",
+	Return:     pgtypes.Inet,
+	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Inet},
+	Strict:     true,
+	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
+		ip := val.(ipaddr.IPAddr)
+		netmask := ip.Netmask()
+		network, err := ip.And(&netmask)
+		if err != nil {
+			return nil, err
+		}
+		network.Mask = ip.Mask
+		return network, nil
 	},
 }
 

@@ -64,6 +64,14 @@ func TestInet(t *testing.T) {
 					Expected: []sql.Row{{"255.255.255.0", "0.0.0.255", "1.2.3.255/24", "1.2.3.4/16", "1.2.3.4"}},
 				},
 				{
+					Query:    `SELECT network('192.168.1.5/24'::inet), network('10.1.2.3/8'::inet), network('1.2.3.4'::inet), network('0.0.0.0/0'::inet);`,
+					Expected: []sql.Row{{"192.168.1.0/24", "10.0.0.0/8", "1.2.3.4", "0.0.0.0/0"}},
+				},
+				{
+					Query:    `SELECT network('2001:db8:1234:5678::1/48'::inet), network('2001:db8::ff/120'::inet), network('::1'::inet);`,
+					Expected: []sql.Row{{"2001:db8:1234::/48", "2001:db8::/120", "::1"}},
+				},
+				{
 					Query:    `SELECT inet_same_family('1.2.3.4', '::1'), inet_same_family('1.2.3.4', '5.6.7.8'), inetnot('1.2.3.4');`,
 					Expected: []sql.Row{{"f", "t", "254.253.252.251"}},
 				},
