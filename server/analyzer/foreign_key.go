@@ -22,11 +22,10 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
-	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
-	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
-
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/types"
 )
