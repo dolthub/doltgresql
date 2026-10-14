@@ -225,6 +225,7 @@ func Init() {
 	initQuoteIdent()
 	initRadians()
 	initRandom()
+	initRegexpSplitToArray()
 	initRepeat()
 	initReplace()
 	initReverse()
