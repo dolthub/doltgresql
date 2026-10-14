@@ -194,6 +194,7 @@ func Init() {
 	initPgGetRuledef()
 	initPgGetTriggerDef()
 	initPgGetUserbyid()
+	initPgHasRole()
 	initPgGetViewDef()
 	initPgIndexesSize()
 	initPgIsInRecovery()
