@@ -153,7 +153,11 @@ func compileSplitRegexp(pattern, options string) (*regexp.Regexp, error) {
 		flags |= syntax.Literal
 	} else {
 		if expanded {
-			pattern = compactExpandedRegexp(pattern)
+			var err error
+			pattern, err = compactExpandedRegexp(pattern)
+			if err != nil {
+				return nil, err
+			}
 		}
 		if mode == 'b' {
 			pattern = expandBasicRegexp(pattern)
@@ -193,7 +197,7 @@ func hasNonGreedyRegexp(re *syntax.Regexp) bool {
 
 // compactExpandedRegexp removes unescaped whitespace and comments outside
 // bracket expressions, preserving escaped characters and POSIX character classes.
-func compactExpandedRegexp(pattern string) string {
+func compactExpandedRegexp(pattern string) (string, error) {
 	var result strings.Builder
 	inClass := false
 	classStart := 0
@@ -207,13 +211,25 @@ func compactExpandedRegexp(pattern string) string {
 		}
 		if inClass {
 			if c == '[' && i+1 < len(pattern) && strings.ContainsRune(":.=", rune(pattern[i+1])) {
-				end := strings.Index(pattern[i+2:], string(pattern[i+1])+"]")
-				if end >= 0 {
-					end += i + 4
-					result.WriteString(pattern[i:end])
-					i = end - 1
-					continue
+				end := -1
+				for j := i + 2; j+1 < len(pattern); j++ {
+					// An escaped delimiter is part of the class contents, not
+					// its terminator. Leave validity checks to the regex parser.
+					if pattern[j] == '\\' {
+						j++
+						continue
+					}
+					if pattern[j] == pattern[i+1] && pattern[j+1] == ']' {
+						end = j + 2
+						break
+					}
 				}
+				if end < 0 {
+					return "", pgerror.New(pgcode.InvalidRegularExpression, "invalid regular expression: unterminated bracket expression")
+				}
+				result.WriteString(pattern[i:end])
+				i = end - 1
+				continue
 			}
 			if c == ']' && i > classStart {
 				inClass = false
@@ -238,7 +254,7 @@ func compactExpandedRegexp(pattern string) string {
 		}
 		result.WriteByte(c)
 	}
-	return result.String()
+	return result.String(), nil
 }
 
 // expandBasicRegexp converts BRE grouping and bounds into ERE spelling while
