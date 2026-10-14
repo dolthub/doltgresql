@@ -37,7 +37,7 @@ const (
 	ruleId_AssignTriggers                                                // assignTriggers
 	ruleId_AssignUpdateCasts                                             // assignUpdateCasts
 	ruleId_ConvertDropPrimaryKeyConstraint                               // convertDropPrimaryKeyConstraint
-	ruleId_GenerateForeignKeyName                                        // generateForeignKeyName
+	ruleId_ResolveForeignKeyDefinitions                                  // resolveForeignKeyDefinitions
 	ruleId_ReplaceNode                                                   // replaceNode
 	ruleId_ReplaceSerial                                                 // replaceSerial
 	ruleId_InsertContextRootFinalizer                                    // insertContextRootFinalizer
@@ -79,7 +79,7 @@ func Init() {
 		analyzer.Rule{Id: ruleId_SetRunner, Apply: SetRunner},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		analyzer.Rule{Id: ruleId_ResolveValuesTypes, Apply: ResolveValuesTypes},
-		analyzer.Rule{Id: ruleId_GenerateForeignKeyName, Apply: generateForeignKeyName},
+		analyzer.Rule{Id: ruleId_ResolveForeignKeyDefinitions, Apply: resolveForeignKeyDefinitions},
 		analyzer.Rule{Id: ruleId_AddDomainConstraints, Apply: AddDomainConstraints},
 		analyzer.Rule{Id: ruleId_ValidateColumnDefaults, Apply: ValidateColumnDefaults},
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},

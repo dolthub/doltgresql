@@ -157,11 +157,14 @@ func nodeForeignKeyDefinitionFromColumnTableDef(ctx *Context, fromColumn tree.Na
 		Name:       references.ConstraintName,
 		FromCols:   []tree.Name{fromColumn},
 		Table:      *references.Table,
-		ToCols:     []tree.Name{references.Col},
 		Actions:    references.Actions,
 		Match:      references.Match,
 		Deferrable: references.Deferrable,
 		Initially:  references.Initially,
+	}
+
+	if references.Col != "" {
+		fkConstraintTableDef.ToCols = []tree.Name{references.Col}
 	}
 
 	return nodeForeignKeyConstraintTableDef(ctx, fkConstraintTableDef, false)
