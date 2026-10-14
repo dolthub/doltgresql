@@ -399,7 +399,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('authentication_timeout')",
-				Expected: []sql.Row{{"60"}},
+				Expected: []sql.Row{{"1min"}},
 			},
 		},
 	},
@@ -525,7 +525,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_naptime')",
-				Expected: []sql.Row{{"60"}},
+				Expected: []sql.Row{{"1min"}},
 			},
 		},
 	},
@@ -543,7 +543,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_vacuum_cost_delay')",
-				Expected: []sql.Row{{"2"}},
+				Expected: []sql.Row{{"2ms"}},
 			},
 		},
 	},
@@ -981,7 +981,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('checkpoint_timeout')",
-				Expected: []sql.Row{{"300"}},
+				Expected: []sql.Row{{"5min"}},
 			},
 		},
 	},
@@ -999,7 +999,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('checkpoint_warning')",
-				Expected: []sql.Row{{"30"}},
+				Expected: []sql.Row{{"30s"}},
 			},
 		},
 	},
@@ -1545,7 +1545,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('deadlock_timeout')",
-				Expected: []sql.Row{{"1000"}},
+				Expected: []sql.Row{{"1s"}},
 			},
 		},
 	},
@@ -2093,7 +2093,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('effective_cache_size')",
-				Expected: []sql.Row{{"524288"}},
+				Expected: []sql.Row{{"4GB"}},
 			},
 		},
 	},
@@ -3219,7 +3219,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('gin_pending_list_limit')",
-				Expected: []sql.Row{{"4096"}},
+				Expected: []sql.Row{{"4MB"}},
 			},
 		},
 	},
@@ -4598,7 +4598,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('log_parameter_max_length')",
-				Expected: []sql.Row{{"10"}},
+				Expected: []sql.Row{{"10B"}},
 			},
 			{
 				Query:    "SET log_parameter_max_length TO DEFAULT",
@@ -4766,7 +4766,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('log_rotation_age')",
-				Expected: []sql.Row{{"1440"}},
+				Expected: []sql.Row{{"1d"}},
 			},
 		},
 	},
@@ -4784,7 +4784,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('log_rotation_size')",
-				Expected: []sql.Row{{"10240"}},
+				Expected: []sql.Row{{"10MB"}},
 			},
 		},
 	},
@@ -5036,7 +5036,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('logical_decoding_work_mem')",
-				Expected: []sql.Row{{"65536"}},
+				Expected: []sql.Row{{"64MB"}},
 			},
 		},
 	},
@@ -5096,7 +5096,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('maintenance_work_mem')",
-				Expected: []sql.Row{{"65536"}},
+				Expected: []sql.Row{{"64MB"}},
 			},
 		},
 	},
@@ -5468,7 +5468,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('max_stack_depth')",
-				Expected: []sql.Row{{"2048"}},
+				Expected: []sql.Row{{"2MB"}},
 			},
 		},
 	},
@@ -5486,7 +5486,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('max_standby_archive_delay')",
-				Expected: []sql.Row{{"30000"}},
+				Expected: []sql.Row{{"30s"}},
 			},
 		},
 	},
@@ -5504,7 +5504,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('max_standby_streaming_delay')",
-				Expected: []sql.Row{{"30000"}},
+				Expected: []sql.Row{{"30s"}},
 			},
 		},
 	},
@@ -5558,7 +5558,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('max_wal_size')",
-				Expected: []sql.Row{{"1024"}},
+				Expected: []sql.Row{{"1GB"}},
 			},
 		},
 	},
@@ -5604,7 +5604,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW min_parallel_index_scan_size",
-				Expected: []sql.Row{{int64(1024)}},
+				Expected: []sql.Row{{int64(64)}},
 			},
 			{
 				Query:    "SET min_parallel_index_scan_size TO '512'",
@@ -5620,11 +5620,11 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW min_parallel_index_scan_size",
-				Expected: []sql.Row{{int64(1024)}},
+				Expected: []sql.Row{{int64(64)}},
 			},
 			{
 				Query:    "SELECT current_setting('min_parallel_index_scan_size')",
-				Expected: []sql.Row{{"1024"}},
+				Expected: []sql.Row{{"512kB"}},
 			},
 		},
 	},
@@ -5654,7 +5654,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('min_parallel_table_scan_size')",
-				Expected: []sql.Row{{"1024"}},
+				Expected: []sql.Row{{"8MB"}},
 			},
 		},
 	},
@@ -5672,7 +5672,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('min_wal_size')",
-				Expected: []sql.Row{{"80"}},
+				Expected: []sql.Row{{"80MB"}},
 			},
 		},
 	},
@@ -6680,7 +6680,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('segment_size')",
-				Expected: []sql.Row{{"131072"}},
+				Expected: []sql.Row{{"1GB"}},
 			},
 		},
 	},
@@ -6867,7 +6867,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('shared_buffers')",
-				Expected: []sql.Row{{"16384"}},
+				Expected: []sql.Row{{"128MB"}},
 			},
 		},
 	},
@@ -6885,7 +6885,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('shared_memory_size')",
-				Expected: []sql.Row{{"143"}},
+				Expected: []sql.Row{{"143MB"}},
 			},
 		},
 	},
@@ -7261,7 +7261,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('statement_timeout')",
-				Expected: []sql.Row{{"42"}},
+				Expected: []sql.Row{{"42ms"}},
 			},
 		},
 	},
@@ -7609,7 +7609,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('temp_buffers')",
-				Expected: []sql.Row{{"1024"}},
+				Expected: []sql.Row{{"8MB"}},
 			},
 		},
 	},
@@ -7855,7 +7855,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('track_activity_query_size')",
-				Expected: []sql.Row{{"1024"}},
+				Expected: []sql.Row{{"1kB"}},
 			},
 		},
 	},
@@ -8227,7 +8227,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_buffer_usage_limit')",
-				Expected: []sql.Row{{"256"}},
+				Expected: []sql.Row{{"256kB"}},
 			},
 		},
 	},
@@ -8593,7 +8593,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('wal_buffers')",
-				Expected: []sql.Row{{"512"}},
+				Expected: []sql.Row{{"4MB"}},
 			},
 		},
 	},
@@ -8671,7 +8671,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('wal_decode_buffer_size')",
-				Expected: []sql.Row{{"524288"}},
+				Expected: []sql.Row{{"512kB"}},
 			},
 		},
 	},
@@ -8791,7 +8791,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('wal_receiver_status_interval')",
-				Expected: []sql.Row{{"10"}},
+				Expected: []sql.Row{{"10s"}},
 			},
 		},
 	},
@@ -8875,7 +8875,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('wal_segment_size')",
-				Expected: []sql.Row{{"16777216"}},
+				Expected: []sql.Row{{"16MB"}},
 			},
 		},
 	},
@@ -8905,7 +8905,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('wal_sender_timeout')",
-				Expected: []sql.Row{{"60000"}},
+				Expected: []sql.Row{{"1min"}},
 			},
 		},
 	},
@@ -8935,7 +8935,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('wal_skip_threshold')",
-				Expected: []sql.Row{{"2048"}},
+				Expected: []sql.Row{{"2MB"}},
 			},
 		},
 	},
@@ -8971,7 +8971,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('wal_writer_delay')",
-				Expected: []sql.Row{{"200"}},
+				Expected: []sql.Row{{"200ms"}},
 			},
 		},
 	},
@@ -8989,7 +8989,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('wal_writer_flush_after')",
-				Expected: []sql.Row{{"128"}},
+				Expected: []sql.Row{{"1MB"}},
 			},
 		},
 	},
@@ -9019,7 +9019,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT current_setting('work_mem')",
-				Expected: []sql.Row{{"4096"}},
+				Expected: []sql.Row{{"4MB"}},
 			},
 		},
 	},
@@ -9063,7 +9063,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SELECT set_config('work_mem', '32MB', false)",
-				Expected: []sql.Row{{"32768"}},
+				Expected: []sql.Row{{"32MB"}},
 			},
 			{
 				// Units are case-sensitive

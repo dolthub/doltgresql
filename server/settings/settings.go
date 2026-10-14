@@ -34,7 +34,7 @@ func Set(ctx *sql.Context, name string, value any, reset, local bool) error {
 		_ = core.SetDateStyleOutputFormat(ctx, "")
 		if reset {
 			var err error
-			value, err = ctx.GetSessionVariableDefault(ctx, name)
+			value, err = resetValue(ctx, name, true)
 			if err != nil {
 				return err
 			}
@@ -43,7 +43,11 @@ func Set(ctx *sql.Context, name string, value any, reset, local bool) error {
 	}
 	if config.IsValidCustomParameterName(name) {
 		if reset {
-			value = ""
+			var err error
+			value, err = resetValue(ctx, name, false)
+			if err != nil {
+				return err
+			}
 		}
 		return core.SetSetting(ctx, name, settingText(value), local)
 	}
@@ -51,6 +55,38 @@ func Set(ctx *sql.Context, name string, value any, reset, local bool) error {
 		return pgerror.Newf(pgcode.InvalidName, `invalid configuration parameter name "%s"`, name)
 	}
 	return pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, name)
+}
+
+// resetValue returns the value that RESET restores for the parameter. This is the session's reset value if it has
+// one, which comes from the role and database settings and the client's startup parameters. Otherwise, it is the
+// default of a built-in parameter, or the empty string for a custom parameter.
+func resetValue(ctx *sql.Context, name string, builtIn bool) (any, error) {
+	if value, ok, err := core.SettingResetValue(ctx, name); err != nil || ok {
+		return value, err
+	}
+	if builtIn {
+		return ctx.GetSessionVariableDefault(ctx, name)
+	}
+	return "", nil
+}
+
+// InitResetValue makes the parameter's current value the value that RESET restores for the rest of the session. This
+// is used for the settings that are applied when a connection starts.
+func InitResetValue(ctx *sql.Context, name string) error {
+	name = strings.ToLower(name)
+	value, ok, err := core.Setting(ctx, name)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		if !config.IsValidPostgresConfigParameter(name) {
+			return nil
+		}
+		if value, err = ctx.GetSessionVariable(ctx, name); err != nil {
+			return err
+		}
+	}
+	return core.SetSettingResetValue(ctx, name, value)
 }
 
 func settingText(value any) string {

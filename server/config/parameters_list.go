@@ -2672,14 +2672,14 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 	},
 	"min_parallel_index_scan_size": &Parameter{
 		Name:      "min_parallel_index_scan_size",
-		Default:   int64(1024),
+		Default:   int64(64),
 		Unit:      "8kB",
 		Category:  "Query Tuning / Planner Cost Constants",
-		ShortDesc: "Sets the minimum amount of table data for a parallel scan.",
+		ShortDesc: "Sets the minimum amount of index data for a parallel scan.",
 		Context:   ParameterContextUser,
 		Type:      types.NewSystemIntType("min_parallel_index_scan_size", 0, 715827882, false),
 		Source:    ParameterSourceDefault,
-		ResetVal:  int64(1024),
+		ResetVal:  int64(64),
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"min_parallel_table_scan_size": &Parameter{

@@ -113,7 +113,7 @@ func TestRoleSettings(t *testing.T) {
 				{Query: "ALTER ROLE settings_current SET work_mem FROM CURRENT"},
 				{
 					Query:    "SELECT rolconfig FROM pg_roles WHERE rolname = 'settings_current'",
-					Expected: []sql.Row{{"{app.color=blue,work_mem=12288}"}},
+					Expected: []sql.Row{{"{app.color=blue,work_mem=12MB}"}},
 				},
 			},
 		},
@@ -320,7 +320,7 @@ func TestRoleSettingsAppliedAtConnection(t *testing.T) {
 	require.Equal(t, "d", read(roleInDatabase, "app.database_only"))
 	require.Equal(t, "g", read(roleInDatabase, "app.global_only"))
 	require.Equal(t, "other_schema, public", read(roleInDatabase, "search_path"))
-	require.Equal(t, "16384", read(roleInDatabase, "work_mem")) // TODO: show unit
+	require.Equal(t, "16MB", read(roleInDatabase, "work_mem"))
 
 	// The search_path from the role is used to resolve unqualified names in new sessions
 	admin, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/settings_db", port))
@@ -398,4 +398,66 @@ func TestRoleSettingsAppliedAtConnection(t *testing.T) {
 	utc := connect("settings_plain", "postgres")
 	defer utc.Close(ctx)
 	require.Equal(t, "UTC", read(utc, "timezone"))
+}
+
+func TestRoleSettingsResetDefaults(t *testing.T) {
+	ctx, conn, controller := CreateServer(t, "postgres")
+	defer func() {
+		conn.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+	for _, statement := range []string{
+		"ALTER ROLE postgres SET work_mem = '16MB'",
+		"ALTER ROLE postgres SET app.tenant = 'acme'",
+	} {
+		_, err := conn.Default.Exec(ctx, statement)
+		require.NoError(t, err)
+	}
+	c, err := pgx.Connect(ctx, fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/postgres", conn.Default.Config().Port))
+	require.NoError(t, err)
+	defer c.Close(ctx)
+	for _, tc := range []struct{ name, expected, changed string }{
+		{"work_mem", "16MB", "1MB"}, {"app.tenant", "acme", "other"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var got string
+			require.NoError(t, c.QueryRow(ctx, "SELECT current_setting($1)", tc.name).Scan(&got))
+			require.Equal(t, tc.expected, got)
+			for _, reset := range []string{"RESET " + tc.name, "SET " + tc.name + " TO DEFAULT", "RESET ALL"} {
+				_, err := c.Exec(ctx, "SELECT set_config($1, $2, false)", tc.name, tc.changed)
+				require.NoError(t, err)
+				_, err = c.Exec(ctx, reset)
+				require.NoError(t, err)
+				require.NoError(t, c.QueryRow(ctx, "SELECT current_setting($1)", tc.name).Scan(&got))
+				require.Equal(t, tc.expected, got, reset)
+			}
+		})
+	}
+}
+
+func TestRoleSettingsClientDateStyleOverride(t *testing.T) {
+	ctx, conn, controller := CreateServer(t, "postgres")
+	defer func() {
+		conn.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+	_, err := conn.Default.Exec(ctx, "ALTER ROLE postgres SET DateStyle = 'SQL, DMY'")
+	require.NoError(t, err)
+	cfg, err := pgx.ParseConfig(fmt.Sprintf("postgres://postgres:password@127.0.0.1:%d/postgres", conn.Default.Config().Port))
+	require.NoError(t, err)
+	cfg.RuntimeParams["DateStyle"] = "ISO, MDY"
+	c, err := pgx.ConnectConfig(ctx, cfg)
+	require.NoError(t, err)
+	defer c.Close(ctx)
+	var got string
+	require.NoError(t, c.QueryRow(ctx, "SELECT current_setting('DateStyle')").Scan(&got))
+	require.Equal(t, "ISO, MDY", got)
+	_, err = c.Exec(ctx, "SET DateStyle = 'German'")
+	require.NoError(t, err)
+	_, err = c.Exec(ctx, "RESET DateStyle")
+	require.NoError(t, err)
+	require.NoError(t, c.QueryRow(ctx, "SELECT current_setting('DateStyle')").Scan(&got))
+	require.Equal(t, "ISO, MDY", got)
 }

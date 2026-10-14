@@ -283,10 +283,16 @@ func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) er
 }
 
 // FormatPostgresParameterValue renders values as PostgreSQL reports them in
-// SHOW and current_setting, including boolean on/off spelling.
+// SHOW and current_setting, including boolean on/off spelling and the units of
+// integer and real parameters.
 func FormatPostgresParameterValue(name string, val any) string {
 	if val == nil {
 		return ""
+	}
+	if param, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter); ok {
+		if formatted, ok := param.formatWithUnit(val); ok {
+			return formatted
+		}
 	}
 	if variable, ok := postgresConfigParameters[strings.ToLower(name)]; ok && variable.GetType().String() == "system_bool" {
 		switch v := val.(type) {

@@ -142,3 +142,52 @@ func unitsHint(units []parameterUnit) string {
 	sb.WriteString(".")
 	return sb.String()
 }
+
+// formatWithUnit formats the value of an integer or real parameter using the largest unit that represents the value
+// exactly, which matches Postgres's convert_int_from_base_unit and convert_real_from_base_unit. Values that aren't
+// positive, as well as values of parameters without a unit, are formatted without a unit.
+func (p *Parameter) formatWithUnit(val any) (string, bool) {
+	var num float64
+	isInt := true
+	switch v := val.(type) {
+	case int:
+		num = float64(v)
+	case int8:
+		num = float64(v)
+	case int16:
+		num = float64(v)
+	case int32:
+		num = float64(v)
+	case int64:
+		num = float64(v)
+	case uint8:
+		num = float64(v)
+	case uint16:
+		num = float64(v)
+	case uint32:
+		num = float64(v)
+	case uint64:
+		num = float64(v)
+	case float32:
+		num, isInt = float64(v), false
+	case float64:
+		num, isInt = v, false
+	default:
+		return "", false
+	}
+	units, baseMultiplier, ok := p.units()
+	if !ok || num <= 0 {
+		return "", false
+	}
+	for i := len(units) - 1; i >= 0; i-- {
+		multiplier := units[i].multiplier / baseMultiplier
+		converted := num / multiplier
+		if multiplier <= 1 || converted == math.Trunc(converted) {
+			if isInt {
+				return strconv.FormatInt(int64(converted), 10) + units[i].name, true
+			}
+			return strconv.FormatFloat(converted, 'g', -1, 64) + units[i].name, true
+		}
+	}
+	return "", false
+}
