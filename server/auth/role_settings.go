@@ -157,7 +157,7 @@ func (db *Database) removeRoleSettings(roleID RoleID) {
 
 // serialize writes the RoleSettings to the given writer.
 func (rs *RoleSettings) serialize(writer *utils.Writer) {
-	// Version 2
+	// Version 3
 	writer.Uint64(uint64(len(rs.Data)))
 	for key, settings := range rs.Data {
 		writer.Uint64(uint64(key.Role))
@@ -174,9 +174,9 @@ func (rs *RoleSettings) serialize(writer *utils.Writer) {
 func (rs *RoleSettings) deserialize(version uint32, reader *utils.Reader) {
 	rs.Data = make(map[RoleSettingKey][]RoleSetting)
 	switch version {
-	case 0:
-	case 1:
-	case 2:
+	case 0, 1, 2:
+		// Role settings did not exist in these versions
+	case 3:
 		keyCount := reader.Uint64()
 		for keyIdx := uint64(0); keyIdx < keyCount; keyIdx++ {
 			key := RoleSettingKey{Role: RoleID(reader.Uint64()), Database: reader.String()}

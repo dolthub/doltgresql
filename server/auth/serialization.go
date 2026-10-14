@@ -40,7 +40,7 @@ func PersistChanges(ctx *sql.Context, rsc *doltdb.ReplicationStatusController) e
 func (db *Database) serialize() []byte {
 	writer := utils.NewWriter(16384)
 	// Write the version
-	writer.Uint32(2)
+	writer.Uint32(3)
 	// Write the roles
 	writer.Uint32(uint32(len(db.rolesByID)))
 	for _, role := range db.rolesByID {
@@ -80,6 +80,8 @@ func (db *Database) deserialize(data []byte) error {
 		err = db.deserializeV1(reader)
 	case 2:
 		err = db.deserializeV2(reader)
+	case 3:
+		err = db.deserializeV3(reader)
 	default:
 		return errors.Errorf("Authorization database format %d is not supported, please upgrade Doltgres", version)
 	}
@@ -261,7 +263,38 @@ func (db *Database) deserializeV2(reader *utils.Reader) error {
 	db.roleMembership.deserialize(2, reader)
 	// Read the default privileges
 	db.defaultPrivileges.deserialize(2, reader)
-	// Read the role settings
+	// Role settings did not exist in this version
 	db.roleSettings.deserialize(2, reader)
+	return nil
+}
+
+// deserializeV3 creates a Database from a byte slice. Expects a reader that has already read the version.
+func (db *Database) deserializeV3(reader *utils.Reader) error {
+	// Read the roles
+	clear(db.rolesByName)
+	clear(db.rolesByID)
+	roleCount := reader.Uint32()
+	for i := uint32(0); i < roleCount; i++ {
+		r := Role{}
+		r.deserialize(3, reader)
+		db.rolesByName[r.Name] = r.id
+		db.rolesByID[r.id] = r
+	}
+	// Read the database privileges
+	db.databasePrivileges.deserialize(3, reader)
+	// Read the schema privileges
+	db.schemaPrivileges.deserialize(3, reader)
+	// Read the table privileges
+	db.tablePrivileges.deserialize(3, reader)
+	// Read the sequence privileges
+	db.sequencePrivileges.deserialize(3, reader)
+	// Read the routine privileges
+	db.routinePrivileges.deserialize(3, reader)
+	// Read the role membership
+	db.roleMembership.deserialize(3, reader)
+	// Read the default privileges
+	db.defaultPrivileges.deserialize(3, reader)
+	// Read the role settings
+	db.roleSettings.deserialize(3, reader)
 	return nil
 }

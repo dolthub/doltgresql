@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // TestDeserializeRemovesInvalidRoleReferences verifies that upgrades sanitize authorization data written by affected releases.
@@ -163,5 +164,25 @@ func TestRoleSettingsSerialization(t *testing.T) {
 	}
 	if got := SessionRoleSettings("missing", ""); !reflect.DeepEqual(expectedSession[:1], got) {
 		t.Fatalf("expected %v, got %v", expectedSession[:1], got)
+	}
+}
+
+// TestDeserializeV2WithoutRoleSettings verifies that version 2 data, which predates role settings, still loads.
+func TestDeserializeV2WithoutRoleSettingss(t *testing.T) {
+	// Construct the original v2 format independently of the current serializer:
+	// version, role count, then seven empty privilege/membership collections.
+	// Existing v2 files end after default privileges, without a role-settings count.
+	writer := utils.NewWriter(64)
+	writer.Uint32(2)
+	writer.Uint32(0)
+	for range 7 {
+		writer.Uint64(0)
+	}
+	loaded := newEmptyDatabase()
+	if err := loaded.deserialize(writer.Data()); err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.roleSettings.Data) != 0 {
+		t.Fatalf("expected no role settings in a legacy v2 auth database, got %v", loaded.roleSettings.Data)
 	}
 }
