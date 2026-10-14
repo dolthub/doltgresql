@@ -343,7 +343,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW archive_timeout",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:       "SET archive_timeout TO '0'",
@@ -391,7 +391,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW authentication_timeout",
-				Expected: []sql.Row{{int64(60)}},
+				Expected: []sql.Row{{"1min"}},
 			},
 			{
 				Query:       "SET authentication_timeout TO '120'",
@@ -517,7 +517,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW autovacuum_naptime",
-				Expected: []sql.Row{{int64(60)}},
+				Expected: []sql.Row{{"1min"}},
 			},
 			{
 				Query:       "SET autovacuum_naptime TO '60'",
@@ -535,7 +535,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW autovacuum_vacuum_cost_delay",
-				Expected: []sql.Row{{float64(2)}},
+				Expected: []sql.Row{{"2ms"}},
 			},
 			{
 				Query:       "SET autovacuum_vacuum_cost_delay TO '2'",
@@ -643,7 +643,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW autovacuum_work_mem",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:       "SET autovacuum_work_mem TO '-1'",
@@ -661,7 +661,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW backend_flush_after",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET backend_flush_after TO '256'",
@@ -669,7 +669,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW backend_flush_after",
-				Expected: []sql.Row{{int64(256)}},
+				Expected: []sql.Row{{"2MB"}},
 			},
 			{
 				Query:    "SET backend_flush_after TO DEFAULT",
@@ -677,7 +677,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW backend_flush_after",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SELECT current_setting('backend_flush_after')",
@@ -769,7 +769,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW bgwriter_flush_after",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:       "SET bgwriter_flush_after TO '0'",
@@ -955,7 +955,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW checkpoint_flush_after",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:       "SET checkpoint_flush_after TO '0'",
@@ -973,7 +973,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW checkpoint_timeout",
-				Expected: []sql.Row{{int64(300)}},
+				Expected: []sql.Row{{"5min"}},
 			},
 			{
 				Query:       "SET checkpoint_timeout TO '300'",
@@ -991,7 +991,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW checkpoint_warning",
-				Expected: []sql.Row{{int64(30)}},
+				Expected: []sql.Row{{"30s"}},
 			},
 			{
 				Query:       "SET checkpoint_warning TO '30'",
@@ -1009,7 +1009,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW client_connection_check_interval",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET client_connection_check_interval TO 10",
@@ -1017,7 +1017,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW client_connection_check_interval",
-				Expected: []sql.Row{{int64(10)}},
+				Expected: []sql.Row{{"10ms"}},
 			},
 			{
 				Query:    "SET client_connection_check_interval TO DEFAULT",
@@ -1025,7 +1025,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW client_connection_check_interval",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SELECT current_setting('client_connection_check_interval')",
@@ -1525,7 +1525,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW deadlock_timeout",
-				Expected: []sql.Row{{int64(1000)}},
+				Expected: []sql.Row{{"1s"}},
 			},
 			{
 				Query:    "SET deadlock_timeout TO '2000'",
@@ -1533,7 +1533,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW deadlock_timeout",
-				Expected: []sql.Row{{int64(2000)}},
+				Expected: []sql.Row{{"2s"}},
 			},
 			{
 				Query:    "SET deadlock_timeout TO DEFAULT",
@@ -1541,7 +1541,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW deadlock_timeout",
-				Expected: []sql.Row{{int64(1000)}},
+				Expected: []sql.Row{{"1s"}},
 			},
 			{
 				Query:    "SELECT current_setting('deadlock_timeout')",
@@ -2073,7 +2073,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW effective_cache_size",
-				Expected: []sql.Row{{int64(524288)}},
+				Expected: []sql.Row{{"4GB"}},
 			},
 			{
 				Query:    "SET effective_cache_size TO '400000'",
@@ -2081,7 +2081,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW effective_cache_size",
-				Expected: []sql.Row{{int64(400000)}},
+				Expected: []sql.Row{{"3125MB"}},
 			},
 			{
 				Query:    "SET effective_cache_size TO DEFAULT",
@@ -2089,7 +2089,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW effective_cache_size",
-				Expected: []sql.Row{{int64(524288)}},
+				Expected: []sql.Row{{"4GB"}},
 			},
 			{
 				Query:    "SELECT current_setting('effective_cache_size')",
@@ -3199,7 +3199,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW gin_pending_list_limit",
-				Expected: []sql.Row{{int64(4096)}},
+				Expected: []sql.Row{{"4MB"}},
 			},
 			{
 				Query:    "SET gin_pending_list_limit TO '4000'",
@@ -3207,7 +3207,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW gin_pending_list_limit",
-				Expected: []sql.Row{{int64(4000)}},
+				Expected: []sql.Row{{"4000kB"}},
 			},
 			{
 				Query:    "SET gin_pending_list_limit TO DEFAULT",
@@ -3215,7 +3215,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW gin_pending_list_limit",
-				Expected: []sql.Row{{int64(4096)}},
+				Expected: []sql.Row{{"4MB"}},
 			},
 			{
 				Query:    "SELECT current_setting('gin_pending_list_limit')",
@@ -3331,7 +3331,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW huge_page_size",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:       "SET huge_page_size TO '0'",
@@ -3415,7 +3415,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW idle_in_transaction_session_timeout",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET idle_in_transaction_session_timeout TO 2",
@@ -3423,7 +3423,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW idle_in_transaction_session_timeout",
-				Expected: []sql.Row{{int64(2)}},
+				Expected: []sql.Row{{"2ms"}},
 			},
 			{
 				Query:    "SET idle_in_transaction_session_timeout TO DEFAULT",
@@ -3431,7 +3431,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW idle_in_transaction_session_timeout",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SELECT current_setting('idle_in_transaction_session_timeout')",
@@ -3445,7 +3445,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW idle_session_timeout",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET idle_session_timeout TO '3'",
@@ -3453,7 +3453,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW idle_session_timeout",
-				Expected: []sql.Row{{int64(3)}},
+				Expected: []sql.Row{{"3ms"}},
 			},
 			{
 				Query:    "SET idle_session_timeout TO DEFAULT",
@@ -3461,7 +3461,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW idle_session_timeout",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SELECT current_setting('idle_session_timeout')",
@@ -4136,7 +4136,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW lock_timeout",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET lock_timeout TO 20",
@@ -4144,7 +4144,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW lock_timeout",
-				Expected: []sql.Row{{int64(20)}},
+				Expected: []sql.Row{{"20ms"}},
 			},
 			{
 				Query:    "SET lock_timeout TO DEFAULT",
@@ -4152,7 +4152,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW lock_timeout",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SELECT current_setting('lock_timeout')",
@@ -4466,7 +4466,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW log_min_duration_sample",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:    "SET log_min_duration_sample TO 1",
@@ -4474,7 +4474,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW log_min_duration_sample",
-				Expected: []sql.Row{{int64(1)}},
+				Expected: []sql.Row{{"1ms"}},
 			},
 			{
 				Query:    "SET log_min_duration_sample TO DEFAULT",
@@ -4482,7 +4482,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW log_min_duration_sample",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:    "SELECT current_setting('log_min_duration_sample')",
@@ -4496,7 +4496,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW log_min_duration_statement",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:    "SET log_min_duration_statement TO 10",
@@ -4504,7 +4504,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW log_min_duration_statement",
-				Expected: []sql.Row{{int64(10)}},
+				Expected: []sql.Row{{"10ms"}},
 			},
 			{
 				Query:    "SET log_min_duration_statement TO DEFAULT",
@@ -4512,7 +4512,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW log_min_duration_statement",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:    "SELECT current_setting('log_min_duration_statement')",
@@ -4586,7 +4586,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW log_parameter_max_length",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:    "SET log_parameter_max_length TO '10'",
@@ -4594,7 +4594,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW log_parameter_max_length",
-				Expected: []sql.Row{{int64(10)}},
+				Expected: []sql.Row{{"10B"}},
 			},
 			{
 				Query:    "SELECT current_setting('log_parameter_max_length')",
@@ -4606,7 +4606,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW log_parameter_max_length",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:    "SELECT current_setting('log_parameter_max_length')",
@@ -4620,7 +4620,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW log_parameter_max_length_on_error",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET log_parameter_max_length_on_error TO '1'",
@@ -4628,7 +4628,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW log_parameter_max_length_on_error",
-				Expected: []sql.Row{{int64(1)}},
+				Expected: []sql.Row{{"1B"}},
 			},
 			{
 				Query:    "SET log_parameter_max_length_on_error TO DEFAULT",
@@ -4636,7 +4636,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW log_parameter_max_length_on_error",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SELECT current_setting('log_parameter_max_length_on_error')",
@@ -4758,7 +4758,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW log_rotation_age",
-				Expected: []sql.Row{{int64(1440)}},
+				Expected: []sql.Row{{"1d"}},
 			},
 			{
 				Query:       "SET log_rotation_age TO '1440'",
@@ -4776,7 +4776,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW log_rotation_size",
-				Expected: []sql.Row{{int64(10240)}},
+				Expected: []sql.Row{{"10MB"}},
 			},
 			{
 				Query:       "SET log_rotation_size TO '10240'",
@@ -4902,7 +4902,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW log_temp_files",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:    "SET log_temp_files TO '100'",
@@ -4910,7 +4910,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW log_temp_files",
-				Expected: []sql.Row{{int64(100)}},
+				Expected: []sql.Row{{"100kB"}},
 			},
 			{
 				Query:    "SET log_temp_files TO DEFAULT",
@@ -4918,7 +4918,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW log_temp_files",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:    "SELECT current_setting('log_temp_files')",
@@ -5016,7 +5016,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW logical_decoding_work_mem",
-				Expected: []sql.Row{{int64(65536)}},
+				Expected: []sql.Row{{"64MB"}},
 			},
 			{
 				Query:    "SET logical_decoding_work_mem TO '64000'",
@@ -5024,7 +5024,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW logical_decoding_work_mem",
-				Expected: []sql.Row{{int64(64000)}},
+				Expected: []sql.Row{{"64000kB"}},
 			},
 			{
 				Query:    "SET logical_decoding_work_mem TO DEFAULT",
@@ -5032,7 +5032,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW logical_decoding_work_mem",
-				Expected: []sql.Row{{int64(65536)}},
+				Expected: []sql.Row{{"64MB"}},
 			},
 			{
 				Query:    "SELECT current_setting('logical_decoding_work_mem')",
@@ -5076,7 +5076,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW maintenance_work_mem",
-				Expected: []sql.Row{{int64(65536)}},
+				Expected: []sql.Row{{"64MB"}},
 			},
 			{
 				Query:    "SET maintenance_work_mem TO '64000'",
@@ -5084,7 +5084,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW maintenance_work_mem",
-				Expected: []sql.Row{{int64(64000)}},
+				Expected: []sql.Row{{"64000kB"}},
 			},
 			{
 				Query:    "SET maintenance_work_mem TO DEFAULT",
@@ -5092,7 +5092,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW maintenance_work_mem",
-				Expected: []sql.Row{{int64(65536)}},
+				Expected: []sql.Row{{"64MB"}},
 			},
 			{
 				Query:    "SELECT current_setting('maintenance_work_mem')",
@@ -5430,7 +5430,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW max_slot_wal_keep_size",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:       "SET max_slot_wal_keep_size TO '-1'",
@@ -5448,7 +5448,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW max_stack_depth",
-				Expected: []sql.Row{{int64(2048)}},
+				Expected: []sql.Row{{"2MB"}},
 			},
 			{
 				Query:    "SET max_stack_depth TO '2000'",
@@ -5456,7 +5456,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW max_stack_depth",
-				Expected: []sql.Row{{int64(2000)}},
+				Expected: []sql.Row{{"2000kB"}},
 			},
 			{
 				Query:    "SET max_stack_depth TO DEFAULT",
@@ -5464,7 +5464,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW max_stack_depth",
-				Expected: []sql.Row{{int64(2048)}},
+				Expected: []sql.Row{{"2MB"}},
 			},
 			{
 				Query:    "SELECT current_setting('max_stack_depth')",
@@ -5478,7 +5478,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW max_standby_archive_delay",
-				Expected: []sql.Row{{int64(30000)}},
+				Expected: []sql.Row{{"30s"}},
 			},
 			{
 				Query:       "SET max_standby_archive_delay TO '30'",
@@ -5496,7 +5496,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW max_standby_streaming_delay",
-				Expected: []sql.Row{{int64(30000)}},
+				Expected: []sql.Row{{"30s"}},
 			},
 			{
 				Query:       "SET max_standby_streaming_delay TO '30'",
@@ -5550,7 +5550,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW max_wal_size",
-				Expected: []sql.Row{{int64(1024)}},
+				Expected: []sql.Row{{"1GB"}},
 			},
 			{
 				Query:       "SET max_wal_size TO '1000'",
@@ -5604,7 +5604,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW min_parallel_index_scan_size",
-				Expected: []sql.Row{{int64(64)}},
+				Expected: []sql.Row{{"512kB"}},
 			},
 			{
 				Query:    "SET min_parallel_index_scan_size TO '512'",
@@ -5612,7 +5612,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW min_parallel_index_scan_size",
-				Expected: []sql.Row{{int64(512)}},
+				Expected: []sql.Row{{"4MB"}},
 			},
 			{
 				Query:    "SET min_parallel_index_scan_size TO DEFAULT",
@@ -5620,7 +5620,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW min_parallel_index_scan_size",
-				Expected: []sql.Row{{int64(64)}},
+				Expected: []sql.Row{{"512kB"}},
 			},
 			{
 				Query:    "SELECT current_setting('min_parallel_index_scan_size')",
@@ -5634,7 +5634,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW min_parallel_table_scan_size",
-				Expected: []sql.Row{{int64(1024)}},
+				Expected: []sql.Row{{"8MB"}},
 			},
 			{
 				Query:    "SET min_parallel_table_scan_size TO '800'",
@@ -5642,7 +5642,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW min_parallel_table_scan_size",
-				Expected: []sql.Row{{int64(800)}},
+				Expected: []sql.Row{{"6400kB"}},
 			},
 			{
 				Query:    "SET min_parallel_table_scan_size TO DEFAULT",
@@ -5650,7 +5650,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW min_parallel_table_scan_size",
-				Expected: []sql.Row{{int64(1024)}},
+				Expected: []sql.Row{{"8MB"}},
 			},
 			{
 				Query:    "SELECT current_setting('min_parallel_table_scan_size')",
@@ -5664,7 +5664,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW min_wal_size",
-				Expected: []sql.Row{{int64(80)}},
+				Expected: []sql.Row{{"80MB"}},
 			},
 			{
 				Query:       "SET min_wal_size TO '8000'",
@@ -5850,7 +5850,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW post_auth_delay",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:       "SET post_auth_delay TO '0'",
@@ -5868,7 +5868,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW pre_auth_delay",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:       "SET pre_auth_delay TO '0'",
@@ -6018,7 +6018,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW recovery_min_apply_delay",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:       "SET recovery_min_apply_delay TO '0'",
@@ -6672,7 +6672,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW segment_size",
-				Expected: []sql.Row{{int64(131072)}},
+				Expected: []sql.Row{{"1GB"}},
 			},
 			{
 				Query:       "SET segment_size TO '131072'",
@@ -6859,7 +6859,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW shared_buffers",
-				Expected: []sql.Row{{int64(16384)}},
+				Expected: []sql.Row{{"128MB"}},
 			},
 			{
 				Query:       "SET shared_buffers TO '128000'",
@@ -6877,7 +6877,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW shared_memory_size",
-				Expected: []sql.Row{{int64(143)}},
+				Expected: []sql.Row{{"143MB"}},
 			},
 			{
 				Query:       "SET shared_memory_size TO '143000'",
@@ -7244,12 +7244,76 @@ var setStmts = []ScriptTest{
 		},
 	},
 	{
+		Name: "statement_timeout units",
+		Assertions: []ScriptTestAssertion{
+			{Query: `SELECT set_config('statement_timeout', '12h', false);`, Expected: []sql.Row{{"12h"}}},
+			{Query: `SELECT set_config('statement_timeout', '1d', false);`, Expected: []sql.Row{{"1d"}}},
+			{Query: `SELECT set_config('statement_timeout', '90min', false);`, Expected: []sql.Row{{"90min"}}},
+			{Query: `SELECT set_config('statement_timeout', '1.5s', false);`, Expected: []sql.Row{{"1500ms"}}},
+			{Query: `SELECT set_config('statement_timeout', '1500ms', false);`, Expected: []sql.Row{{"1500ms"}}},
+			{Query: `SELECT set_config('statement_timeout', '1500000us', false);`, Expected: []sql.Row{{"1500ms"}}},
+			{Query: `SELECT set_config('statement_timeout', '  +2 h  ', false);`, Expected: []sql.Row{{"2h"}}},
+			{Query: `SELECT set_config('statement_timeout', '42', false);`, Expected: []sql.Row{{"42ms"}}},
+			{Query: `SELECT set_config('statement_timeout', '0', false);`, Expected: []sql.Row{{"0"}}},
+			{Query: `SELECT set_config('statement_timeout', '0.5', false);`, Expected: []sql.Row{{"0"}}},
+			{Query: `SELECT set_config('statement_timeout', '1.5', false);`, Expected: []sql.Row{{"2ms"}}},
+			{Query: `SELECT set_config('statement_timeout', '2.5', false);`, Expected: []sql.Row{{"2ms"}}},
+			{Query: `SELECT set_config('statement_timeout', '500us', false);`, Expected: []sql.Row{{"0"}}},
+			{Query: `SELECT set_config('statement_timeout', '1500us', false);`, Expected: []sql.Row{{"2ms"}}},
+			{Query: `SELECT set_config('statement_timeout', '2500us', false);`, Expected: []sql.Row{{"2ms"}}},
+			{Query: `SELECT set_config('statement_timeout', '1.00001h', false);`, Expected: []sql.Row{{"1h"}}},
+			{Query: `SELECT set_config('statement_timeout', '1.0005s', false);`, Expected: []sql.Row{{"1s"}}},
+			{Query: `SELECT set_config('statement_timeout', '2147483647ms', false);`, Expected: []sql.Row{{"2147483647ms"}}},
+			{Query: `SELECT set_config('statement_timeout', '0x10', false);`, Expected: []sql.Row{{"16ms"}}},
+			{Query: `SELECT set_config('statement_timeout', '010', false);`, Expected: []sql.Row{{"8ms"}}},
+			{Query: `SELECT set_config('statement_timeout', '1e3ms', false);`, Expected: []sql.Row{{"1s"}}},
+			{Query: `SET statement_timeout = '-1';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '-1ms';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '2147483648';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '25d';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '1e100h';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '1e-999ms';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '12H';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '1m';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '1ns';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '1h30min';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '12hours';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = 'ms';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = 'NaN';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = 'Infinity';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '08';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '1_000';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SET statement_timeout = '1 s junk';`, ExpectedErr: `statement_timeout`, ExpectedErrCode: "22023"},
+			{Query: `SHOW statement_timeout;`, Expected: []sql.Row{{"1s"}}},
+			{Query: `SET statement_timeout = '12h';`},
+			{Query: `SELECT setting FROM pg_settings WHERE name = 'statement_timeout';`, Expected: []sql.Row{{"43200000"}}},
+			{Query: `SHOW statement_timeout;`, Expected: []sql.Row{{"12h"}}},
+			{Query: `SELECT current_setting('statement_timeout');`, Expected: []sql.Row{{"12h"}}},
+			{Query: `BEGIN;`},
+			{Query: `SET LOCAL statement_timeout = '90min';`},
+			{Query: `SHOW statement_timeout;`, Expected: []sql.Row{{"90min"}}},
+			{Query: `COMMIT;`},
+			{Query: `SHOW statement_timeout;`, Expected: []sql.Row{{"12h"}}},
+			{Query: `BEGIN;`},
+			{Query: `SELECT set_config('statement_timeout', '1d', false);`, Expected: []sql.Row{{"1d"}}},
+			{Query: `ROLLBACK;`},
+			{Query: `SHOW statement_timeout;`, Expected: []sql.Row{{"12h"}}},
+			{Query: `RESET statement_timeout;`},
+			{Query: `SHOW statement_timeout;`, Expected: []sql.Row{{"0"}}},
+			{Query: `SET statement_timeout = 1000;`},
+			{Query: `SHOW statement_timeout;`, Expected: []sql.Row{{"1s"}}},
+			{Query: `SET statement_timeout = DEFAULT;`},
+			{Query: `SHOW statement_timeout;`, Expected: []sql.Row{{"0"}}},
+		},
+	},
+	{
 		Name:        "set 'statement_timeout' configuration variable",
 		SetUpScript: []string{},
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW statement_timeout",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET statement_timeout TO '42'",
@@ -7257,7 +7321,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW statement_timeout",
-				Expected: []sql.Row{{int64(42)}},
+				Expected: []sql.Row{{"42ms"}},
 			},
 			{
 				Query:    "SELECT current_setting('statement_timeout')",
@@ -7499,7 +7563,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW tcp_keepalives_idle",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET tcp_keepalives_idle TO 1",
@@ -7507,7 +7571,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW tcp_keepalives_idle",
-				Expected: []sql.Row{{int64(1)}},
+				Expected: []sql.Row{{"1s"}},
 			},
 			{
 				Query:    "SET tcp_keepalives_idle TO DEFAULT",
@@ -7515,7 +7579,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW tcp_keepalives_idle",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SELECT current_setting('tcp_keepalives_idle')",
@@ -7529,7 +7593,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW tcp_keepalives_interval",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET tcp_keepalives_interval TO 1",
@@ -7537,7 +7601,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW tcp_keepalives_interval",
-				Expected: []sql.Row{{int64(1)}},
+				Expected: []sql.Row{{"1s"}},
 			},
 			{
 				Query:    "SET tcp_keepalives_interval TO DEFAULT",
@@ -7545,7 +7609,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW tcp_keepalives_interval",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SELECT current_setting('tcp_keepalives_interval')",
@@ -7559,7 +7623,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW tcp_user_timeout",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET tcp_user_timeout TO '100000'",
@@ -7567,7 +7631,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW tcp_user_timeout",
-				Expected: []sql.Row{{int64(100000)}},
+				Expected: []sql.Row{{"100s"}},
 			},
 			{
 				Query:    "SET tcp_user_timeout TO DEFAULT",
@@ -7575,7 +7639,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW tcp_user_timeout",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SELECT current_setting('tcp_user_timeout')",
@@ -7589,7 +7653,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW temp_buffers",
-				Expected: []sql.Row{{int64(1024)}},
+				Expected: []sql.Row{{"8MB"}},
 			},
 			{
 				Query:    "SET temp_buffers TO '8000'",
@@ -7597,7 +7661,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW temp_buffers",
-				Expected: []sql.Row{{int64(8000)}},
+				Expected: []sql.Row{{"64000kB"}},
 			},
 			{
 				Query:    "SET temp_buffers TO DEFAULT",
@@ -7605,7 +7669,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW temp_buffers",
-				Expected: []sql.Row{{int64(1024)}},
+				Expected: []sql.Row{{"8MB"}},
 			},
 			{
 				Query:    "SELECT current_setting('temp_buffers')",
@@ -7619,7 +7683,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW temp_file_limit",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:    "SET temp_file_limit TO 100",
@@ -7627,7 +7691,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW temp_file_limit",
-				Expected: []sql.Row{{int64(100)}},
+				Expected: []sql.Row{{"100kB"}},
 			},
 			{
 				Query:    "SET temp_file_limit TO DEFAULT",
@@ -7635,7 +7699,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW temp_file_limit",
-				Expected: []sql.Row{{int64(-1)}},
+				Expected: []sql.Row{{"-1"}},
 			},
 			{
 				Query:    "SELECT current_setting('temp_file_limit')",
@@ -7847,7 +7911,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW track_activity_query_size",
-				Expected: []sql.Row{{int64(1024)}},
+				Expected: []sql.Row{{"1kB"}},
 			},
 			{
 				Query:       "SET track_activity_query_size TO '1024'",
@@ -8207,7 +8271,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW vacuum_buffer_usage_limit",
-				Expected: []sql.Row{{int64(256)}},
+				Expected: []sql.Row{{"256kB"}},
 			},
 			{
 				Query:    "SET vacuum_buffer_usage_limit TO '512'",
@@ -8215,7 +8279,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW vacuum_buffer_usage_limit",
-				Expected: []sql.Row{{int64(512)}},
+				Expected: []sql.Row{{"512kB"}},
 			},
 			{
 				Query:    "SET vacuum_buffer_usage_limit TO DEFAULT",
@@ -8223,7 +8287,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW vacuum_buffer_usage_limit",
-				Expected: []sql.Row{{int64(256)}},
+				Expected: []sql.Row{{"256kB"}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_buffer_usage_limit')",
@@ -8237,7 +8301,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW vacuum_cost_delay",
-				Expected: []sql.Row{{float64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SET vacuum_cost_delay TO '0.2'",
@@ -8245,7 +8309,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW vacuum_cost_delay",
-				Expected: []sql.Row{{float64(0.2)}},
+				Expected: []sql.Row{{"200us"}},
 			},
 			{
 				Query:    "SET vacuum_cost_delay TO DEFAULT",
@@ -8253,7 +8317,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW vacuum_cost_delay",
-				Expected: []sql.Row{{float64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_cost_delay')",
@@ -8585,7 +8649,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW wal_buffers",
-				Expected: []sql.Row{{int64(512)}},
+				Expected: []sql.Row{{"4MB"}},
 			},
 			{
 				Query:       "SET wal_buffers TO '4000'",
@@ -8663,7 +8727,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW wal_decode_buffer_size",
-				Expected: []sql.Row{{int64(524288)}},
+				Expected: []sql.Row{{"512kB"}},
 			},
 			{
 				Query:       "SET wal_decode_buffer_size TO '524288'",
@@ -8711,7 +8775,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW wal_keep_size",
-				Expected: []sql.Row{{int64(0)}},
+				Expected: []sql.Row{{"0"}},
 			},
 			{
 				Query:       "SET wal_keep_size TO '0'",
@@ -8783,7 +8847,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW wal_receiver_status_interval",
-				Expected: []sql.Row{{int64(10)}},
+				Expected: []sql.Row{{"10s"}},
 			},
 			{
 				Query:       "SET wal_receiver_status_interval TO '10'",
@@ -8867,7 +8931,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW wal_segment_size",
-				Expected: []sql.Row{{int64(16777216)}},
+				Expected: []sql.Row{{"16MB"}},
 			},
 			{
 				Query:       "SET wal_segment_size TO '16777216'",
@@ -8885,7 +8949,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW wal_sender_timeout",
-				Expected: []sql.Row{{int64(60000)}},
+				Expected: []sql.Row{{"1min"}},
 			},
 			{
 				Query:    "SET wal_sender_timeout TO '100000'",
@@ -8893,7 +8957,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW wal_sender_timeout",
-				Expected: []sql.Row{{int64(100000)}},
+				Expected: []sql.Row{{"100s"}},
 			},
 			{
 				Query:    "SET wal_sender_timeout TO DEFAULT",
@@ -8901,7 +8965,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW wal_sender_timeout",
-				Expected: []sql.Row{{int64(60000)}},
+				Expected: []sql.Row{{"1min"}},
 			},
 			{
 				Query:    "SELECT current_setting('wal_sender_timeout')",
@@ -8915,7 +8979,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW wal_skip_threshold",
-				Expected: []sql.Row{{int64(2048)}},
+				Expected: []sql.Row{{"2MB"}},
 			},
 			{
 				Query:    "SET wal_skip_threshold TO '2000'",
@@ -8923,7 +8987,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW wal_skip_threshold",
-				Expected: []sql.Row{{int64(2000)}},
+				Expected: []sql.Row{{"2000kB"}},
 			},
 			{
 				Query:    "SET wal_skip_threshold TO DEFAULT",
@@ -8931,7 +8995,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW wal_skip_threshold",
-				Expected: []sql.Row{{int64(2048)}},
+				Expected: []sql.Row{{"2MB"}},
 			},
 			{
 				Query:    "SELECT current_setting('wal_skip_threshold')",
@@ -8963,7 +9027,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW wal_writer_delay",
-				Expected: []sql.Row{{int64(200)}},
+				Expected: []sql.Row{{"200ms"}},
 			},
 			{
 				Query:       "SET wal_writer_delay TO '200'",
@@ -8981,7 +9045,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW wal_writer_flush_after",
-				Expected: []sql.Row{{int64(128)}},
+				Expected: []sql.Row{{"1MB"}},
 			},
 			{
 				Query:       "SET wal_writer_flush_after TO '1000'",
@@ -8999,7 +9063,7 @@ var setStmts = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				Query:    "SHOW work_mem",
-				Expected: []sql.Row{{int64(4096)}},
+				Expected: []sql.Row{{"4MB"}},
 			},
 			{
 				Query:    "SET work_mem TO '4000'",
@@ -9007,7 +9071,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW work_mem",
-				Expected: []sql.Row{{int64(4000)}},
+				Expected: []sql.Row{{"4000kB"}},
 			},
 			{
 				Query:    "SET work_mem TO DEFAULT",
@@ -9015,7 +9079,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW work_mem",
-				Expected: []sql.Row{{int64(4096)}},
+				Expected: []sql.Row{{"4MB"}},
 			},
 			{
 				Query:    "SELECT current_setting('work_mem')",
@@ -9033,7 +9097,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW work_mem",
-				Expected: []sql.Row{{int64(16384)}}, // TODO: Postgres displays 16MB
+				Expected: []sql.Row{{"16MB"}},
 			},
 			{
 				// Whitespace is allowed around the value and between the value and the unit
@@ -9042,7 +9106,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW work_mem",
-				Expected: []sql.Row{{int64(1048576)}},
+				Expected: []sql.Row{{"1GB"}},
 			},
 			{
 				// Values are rounded to the nearest multiple of the base unit
@@ -9051,7 +9115,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW work_mem",
-				Expected: []sql.Row{{int64(1536)}},
+				Expected: []sql.Row{{"1536kB"}},
 			},
 			{
 				Query:    "SET work_mem TO 100.4",
@@ -9059,7 +9123,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW work_mem",
-				Expected: []sql.Row{{int64(100)}},
+				Expected: []sql.Row{{"100kB"}},
 			},
 			{
 				Query:    "SELECT set_config('work_mem', '32MB', false)",
@@ -9092,7 +9156,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW statement_timeout",
-				Expected: []sql.Row{{int64(90000)}}, // TODO: Postgres displays 90s
+				Expected: []sql.Row{{"90s"}},
 			},
 			{
 				Query:    "SET statement_timeout TO '600us'",
@@ -9100,7 +9164,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW statement_timeout",
-				Expected: []sql.Row{{int64(1)}},
+				Expected: []sql.Row{{"1ms"}},
 			},
 			{
 				Query:       "SET statement_timeout TO '5MB'",
@@ -9113,7 +9177,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "SHOW vacuum_cost_delay",
-				Expected: []sql.Row{{float64(0.5)}},
+				Expected: []sql.Row{{"500us"}},
 			},
 			{
 				// Parameters without units do not accept them

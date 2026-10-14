@@ -42,7 +42,8 @@ func nodeShowVar(ctx *Context, node *tree.ShowVar) (vitess.Statement, error) {
 	// We treat namespaced variables (e.g. myvar.myvalue) as user variables.
 	// See set_var.go
 	isUserVar := strings.Index(node.Name, ".") > 0 || strings.EqualFold(node.Name, "role") || strings.EqualFold(node.Name, "session_authorization")
-	if isUserVar {
+	// Unit-bearing settings need the same formatted value as current_setting.
+	if isUserVar || config.HasUnit(node.Name) {
 		varName := vitess.NewColIdent(node.Name)
 		return &vitess.Select{
 			SelectExprs: vitess.SelectExprs{

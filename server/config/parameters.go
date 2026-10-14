@@ -125,6 +125,9 @@ func (p *Parameter) GetDefault() any {
 func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
 	convertedVal, _, err := p.Type.Convert(ctx, val)
 	if err != nil {
+		if sql.ErrInvalidSystemVariableValue.Is(err) {
+			return sql.SystemVarValue{}, p.invalidValueError(fmt.Sprint(val), "")
+		}
 		return sql.SystemVarValue{}, err
 	}
 	currVal, err := ctx.GetSessionVariable(ctx, p.Name)

@@ -17,6 +17,7 @@ package config
 import (
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -53,8 +54,17 @@ type parameterUnit struct {
 }
 
 // numericParameterValue matches a numeric value that is optionally followed by a unit, which is how Postgres accepts
-// the values of integer and real parameters.
-var numericParameterValue = regexp.MustCompile(`^\s*([+-]?(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?)\s*([A-Za-z]*)\s*$`)
+// the values of integer and real parameters. Whitespace matches C's isspace, which includes the vertical tab.
+var numericParameterValue = regexp.MustCompile(`^[\t\n\v\f\r ]*([+-]?(?:0[xX][0-9a-fA-F]+|(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][+-]?[0-9]+)?))[\t\n\v\f\r ]*([A-Za-z]*)[\t\n\v\f\r ]*$`)
+
+// minNormalFloat64 is the smallest positive normal float64. Smaller nonzero values underflow in C's strtod.
+var minNormalFloat64 = math.Float64frombits(0x0010000000000000)
+
+// HasUnit returns whether the given parameter has a unit, meaning that its value is displayed with a unit.
+func HasUnit(name string) bool {
+	p, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter)
+	return ok && len(p.Unit) > 0
+}
 
 // parseNumericValue parses the string value of an integer or real parameter, converting any unit that is given into
 // the parameter's base unit. This matches Postgres's parse_int and parse_real. Integer values are rounded to the
@@ -64,8 +74,8 @@ func (p *Parameter) parseNumericValue(str string, isInt bool) (any, error) {
 	if matches == nil {
 		return nil, p.invalidValueError(str, "")
 	}
-	val, err := strconv.ParseFloat(matches[1], 64)
-	if err != nil {
+	val, ok := parseNumber(matches[1], isInt)
+	if !ok {
 		return nil, p.invalidValueError(str, "")
 	}
 	if unit := matches[2]; len(unit) > 0 {
@@ -73,17 +83,16 @@ func (p *Parameter) parseNumericValue(str string, isInt bool) (any, error) {
 		if !ok {
 			return nil, p.invalidValueError(str, "")
 		}
-		found := false
-		for _, u := range units {
-			if u.name == unit {
-				val = val * u.multiplier / baseMultiplier
-				found = true
-				break
-			}
-		}
-		if !found {
+		idx := slices.IndexFunc(units, func(u parameterUnit) bool { return u.name == unit })
+		if idx < 0 {
 			return nil, p.invalidValueError(str, unitsHint(units))
 		}
+		val *= units[idx].multiplier
+		// Fractional values are rounded to the nearest multiple of the next smaller unit, as in convert_to_base_unit
+		if idx > 0 {
+			val = math.RoundToEven(val/units[idx-1].multiplier) * units[idx-1].multiplier
+		}
+		val /= baseMultiplier
 	}
 	if !isInt {
 		return val, nil
@@ -93,6 +102,31 @@ func (p *Parameter) parseNumericValue(str string, isInt bool) (any, error) {
 		return nil, p.invalidValueError(str, "Value exceeds integer range.")
 	}
 	return int64(val), nil
+}
+
+// parseNumber parses a number the same way as Postgres. Integer parameters first try strtol with a base of 0, which
+// accepts hexadecimal and octal values, and fall back to strtod for fractional values, exponents, and overflow. Real
+// parameters only use strtod.
+func parseNumber(number string, isInt bool) (float64, bool) {
+	if isInt {
+		integer, err := strconv.ParseInt(number, 0, 64)
+		if err == nil {
+			return float64(integer), true
+		}
+		if !strings.ContainsAny(number, ".eE") && !errors.Is(err, strconv.ErrRange) {
+			return 0, false
+		}
+	}
+	val, err := strconv.ParseFloat(number, 64)
+	if err != nil {
+		return 0, false
+	}
+	// strtod reports underflow as an error, while ParseFloat silently returns zero or a subnormal value
+	mantissa, _, _ := strings.Cut(strings.ToLower(number), "e")
+	if math.Abs(val) < minNormalFloat64 && strings.Trim(mantissa, "+-.0") != "" {
+		return 0, false
+	}
+	return val, true
 }
 
 // units returns the units that the parameter's value may be given in, along with the multiplier of the parameter's
@@ -144,8 +178,9 @@ func unitsHint(units []parameterUnit) string {
 }
 
 // formatWithUnit formats the value of an integer or real parameter using the largest unit that represents the value
-// exactly, which matches Postgres's convert_int_from_base_unit and convert_real_from_base_unit. Values that aren't
-// positive, as well as values of parameters without a unit, are formatted without a unit.
+// exactly (or nearly exactly, for real values), which matches Postgres's convert_int_from_base_unit and
+// convert_real_from_base_unit. Values that aren't positive, as well as values of parameters without a unit, are
+// formatted without a unit.
 func (p *Parameter) formatWithUnit(val any) (string, bool) {
 	var num float64
 	isInt := true
@@ -182,10 +217,13 @@ func (p *Parameter) formatWithUnit(val any) (string, bool) {
 	for i := len(units) - 1; i >= 0; i-- {
 		multiplier := units[i].multiplier / baseMultiplier
 		converted := num / multiplier
-		if multiplier <= 1 || converted == math.Trunc(converted) {
-			if isInt {
+		if isInt {
+			// Integer values are never displayed in a unit that is smaller than the base unit
+			if multiplier <= 1 || converted == math.Trunc(converted) {
 				return strconv.FormatInt(int64(converted), 10) + units[i].name, true
 			}
+		} else if i == 0 || math.Abs(math.RoundToEven(converted)/converted-1) <= 1e-8 {
+			// Real values may use smaller units, falling back to the smallest unit when none are integral
 			return strconv.FormatFloat(converted, 'g', -1, 64) + units[i].name, true
 		}
 	}
