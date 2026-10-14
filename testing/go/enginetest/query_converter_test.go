@@ -897,7 +897,7 @@ func convertColumnAlter(statement *sqlparser.DDL) ([]string, bool) {
 			Table: tableName,
 			Cmds: []tree.AlterTableCmd{
 				&tree.AlterTableDropColumn{
-					IfExists: statement.IfExists,
+					IfExists: statement.ColumnIfExists,
 					Column:   tree.Name(statement.Column.String()),
 				},
 			},
@@ -2439,6 +2439,21 @@ func TestAlterTableConversion(t *testing.T) {
 		{
 			input:    "ALTER TABLE foo DROP COLUMN c",
 			expected: []string{"ALTER TABLE foo DROP COLUMN c"},
+		},
+		{
+			input:    "ALTER TABLE foo DROP COLUMN IF EXISTS c",
+			expected: []string{"ALTER TABLE foo DROP COLUMN IF EXISTS c"},
+		},
+		{
+			input:    "ALTER TABLE foo DROP IF EXISTS c",
+			expected: []string{"ALTER TABLE foo DROP COLUMN IF EXISTS c"},
+		},
+		{
+			input: "ALTER TABLE foo DROP COLUMN IF EXISTS c, DROP COLUMN d",
+			expected: []string{
+				"ALTER TABLE foo DROP COLUMN IF EXISTS c",
+				"ALTER TABLE foo DROP COLUMN d",
+			},
 		},
 		{
 			input:    "ALTER TABLE foo RENAME COLUMN c TO d",
