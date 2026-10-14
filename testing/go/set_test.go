@@ -18,10 +18,26 @@ import (
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/stretchr/testify/require"
+
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
+	"github.com/dolthub/doltgresql/server/config"
 )
 
 func TestSetStatements(t *testing.T) {
 	RunScripts(t, setStmts)
+}
+
+func TestParameterInitValueUnsupportedUnit(t *testing.T) {
+	for _, unit := range []string{"s", "kB", "MS"} {
+		t.Run(unit, func(t *testing.T) {
+			parameter := config.Parameter{Name: "unsupported_unit", Unit: unit}
+			_, err := parameter.InitValue(nil, int64(1), false)
+			require.EqualError(t, err, `unsupported unit "`+unit+`" for parameter "unsupported_unit"`)
+			require.Equal(t, pgcode.FeatureNotSupported, pgerror.GetPGCode(err))
+		})
+	}
 }
 
 // setStmts test on simple cases on setting and showing the config parameters.
