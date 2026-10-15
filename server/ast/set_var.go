@@ -37,6 +37,9 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
+	if ctx.variables() == nil {
+		return nil, errors.New("SET requires an engine variable registry")
+	}
 	// The generic SET spelling (SET role TO/=/...) is a parser alias for
 	// SET ROLE. It must use the same permission check and identity journal.
 	if node.Namespace == "" && strings.EqualFold(node.Name, "role") {

@@ -51,3 +51,17 @@ func TestPgSettingsUsesEngineAndSessionDefaults(t *testing.T) {
 	require.Equal(t, "psql", bRow[1])
 	require.Equal(t, "psql", bRow[13])
 }
+
+func TestPgConfigVersionUsesOwningRegistry(t *testing.T) {
+	a, b := sqle.NewEngineVariables(), sqle.NewEngineVariables()
+	config.InitWithRegistry(a.System)
+	config.InitWithRegistry(b.System)
+	aVersion, _, ok := a.System.GetGlobal("server_version")
+	require.True(t, ok)
+	aVersion.SetDefault("test-version")
+
+	aCtx := sql.NewContextWithVariables(context.Background(), a)
+	bCtx := sql.NewContextWithVariables(context.Background(), b)
+	require.Equal(t, "PostgreSQL test-version", pgConfigVersion(aCtx))
+	require.NotEqual(t, pgConfigVersion(aCtx), pgConfigVersion(bCtx))
+}

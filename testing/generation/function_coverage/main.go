@@ -34,7 +34,7 @@ type Assertion struct {
 }
 
 func main() {
-	initialization.Initialize(nil, doltgresservercfg.DefaultServerConfig())
+	initialization.InitializeProcess(nil, doltgresservercfg.DefaultServerConfig())
 	rootFolder, err := utils.GetRootFolder()
 	if err != nil {
 		fmt.Printf("%s\n", err.Error())

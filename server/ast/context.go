@@ -55,8 +55,5 @@ func (ctx *Context) Auth() *auth.AuthContext {
 }
 
 func (ctx *Context) variables() sql.SystemVariableRegistry {
-	if ctx.systemVariables != nil {
-		return ctx.systemVariables
-	}
-	return sql.SystemVariables
+	return ctx.systemVariables
 }

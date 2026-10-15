@@ -19,6 +19,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -145,14 +146,15 @@ func TestIdentityJournalLifecycleAndCleanup(t *testing.T) {
 }
 
 func TestIdentityJournalThroughDoltTransactions(t *testing.T) {
-	if _, _, ok := sql.SystemVariables.GetGlobal(dsess.TransactionsDisabledSysVar); !ok {
-		sql.SystemVariables.AddSystemVariables([]sql.SystemVariable{&sql.MysqlSystemVariable{
+	vars := sqle.NewEngineVariables()
+	if _, _, ok := vars.System.GetGlobal(dsess.TransactionsDisabledSysVar); !ok {
+		vars.System.AddSystemVariables([]sql.SystemVariable{&sql.MysqlSystemVariable{
 			Name: dsess.TransactionsDisabledSysVar, Scope: sql.GetMysqlScope(sql.SystemVariableScope_Session),
 			Dynamic: true, Type: sqltypes.NewSystemBoolType(dsess.TransactionsDisabledSysVar), Default: int8(0),
 		}})
 	}
-	sess := dsess.DefaultSession(identityTestProvider{}, nil)
-	ctx := sql.NewContext(context.Background(), sql.WithSession(sess))
+	sess := dsess.DefaultSessionWithVariables(identityTestProvider{}, nil, vars)
+	ctx := sql.NewContext(context.Background(), sql.WithSession(sess), sql.WithEngineVariables(vars))
 	if err := InitializeIdentity(ctx, 17, true); err != nil {
 		t.Fatal(err)
 	}

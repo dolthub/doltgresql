@@ -18,12 +18,12 @@ func TestPostgresParametersBelongToTheirEngine(t *testing.T) {
 	bName, _, ok := b.System.GetGlobal("application_name")
 	require.True(t, ok)
 	require.NotSame(t, aName, bName)
-	require.NotSame(t, postgresConfigParameters["application_name"], aName)
+	require.NotSame(t, postgresConfigParameters()["application_name"], aName)
 
 	aName.SetDefault("engine_a")
 	require.Equal(t, "engine_a", aName.GetDefault())
 	require.Equal(t, "psql", bName.GetDefault())
-	require.Equal(t, "psql", postgresConfigParameters["application_name"].GetDefault())
+	require.Equal(t, "psql", postgresConfigParameters()["application_name"].GetDefault())
 
 	aMax, _, ok := a.System.GetGlobal("max_connections")
 	require.True(t, ok)
@@ -57,5 +57,17 @@ func TestRegressionTimezoneOverrideIsPerEngine(t *testing.T) {
 	aTimezone, _, ok := a.System.GetGlobal("timezone")
 	require.True(t, ok)
 	require.Equal(t, "America/Los_Angeles", aTimezone.GetDefault())
-	require.NotEqual(t, aTimezone.GetDefault(), postgresConfigParameters["timezone"].GetDefault())
+	require.NotEqual(t, aTimezone.GetDefault(), postgresConfigParameters()["timezone"].GetDefault())
+}
+
+func TestParameterCatalogDoesNotRetainMutableDefinitions(t *testing.T) {
+	first := postgresConfigParameters()
+	first["application_name"].SetDefault("changed")
+	first["application_name"].Scope.(*PgsqlScope).Type = PsqlScopeLocal
+	delete(first, "timezone")
+
+	second := postgresConfigParameters()
+	require.Equal(t, "psql", second["application_name"].GetDefault())
+	require.Equal(t, PsqlScopeSession, second["application_name"].Scope.(*PgsqlScope).Type)
+	require.Contains(t, second, "timezone")
 }
