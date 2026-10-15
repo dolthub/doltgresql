@@ -21,6 +21,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 )
@@ -40,6 +42,15 @@ var timeSettingPattern = regexp.MustCompile(`^[\t\n\r\f\v ]*([+-]?(?:0[xX][0-9a-
 // HasMillisecondUnit reports whether a parameter stores time in milliseconds.
 func HasMillisecondUnit(name string) bool {
 	p, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter)
+	return ok && p.Unit == "ms"
+}
+
+func HasMillisecondUnitInRegistry(vars sql.SystemVariableRegistry, name string) bool {
+	definition, _, ok := vars.GetGlobal(strings.ToLower(name))
+	if !ok {
+		return false
+	}
+	p, ok := definition.(*Parameter)
 	return ok && p.Unit == "ms"
 }
 

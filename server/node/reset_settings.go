@@ -51,7 +51,7 @@ func (*ResetSettings) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) 
 		return nil, err
 	}
 	for _, name := range names {
-		if config.IsValidPostgresConfigParameter(name) {
+		if config.IsValidPostgresConfigParameterInRegistry(ctx.SystemVariables(), name) {
 			value, err := ctx.GetSessionVariableDefault(ctx, name)
 			if err != nil {
 				return nil, err

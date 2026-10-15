@@ -28,6 +28,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	doltservercfg "github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dfunctions"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
@@ -88,7 +89,8 @@ func RunInMemory(cfg *servercfg.DoltgresConfig, protocolListenerFactory server.P
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
 func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.DoltEnv, protocolListenerFactory server.ProtocolListenerFunc) (*svcs.Controller, error) {
-	initialization.Initialize(dEnv, cfg)
+	engineVars := sqle.NewEngineVariables()
+	initialization.InitializeWithVariables(dEnv, cfg, engineVars)
 
 	if dEnv.HasDoltDataDir() {
 		cwd, _ := dEnv.FS.Abs(".")
@@ -98,17 +100,18 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 
 	defer tempfiles.MovableTempFileProvider.Clean()
 
-	sql.SystemVariables.SetGlobal(sql.NewContext(ctx), dsess.DoltStatsEnabled, true)
+	if err := engineVars.System.SetGlobal(sql.NewContextWithVariables(ctx, engineVars), dsess.DoltStatsEnabled, true); err != nil {
+		return nil, err
+	}
 
-	err := dsess.InitPersistedSystemVars(dEnv)
+	err := dsess.InitPersistedSystemVarsWithRegistry(engineVars.System, dEnv)
 	if err != nil {
 		return nil, errors.Errorf("failed to load persisted system variables: %w", err)
 	}
 
 	ssCfg := cfg.ToSqlServerConfig()
-	// The sql context can't be passed in because doesn't exist yet.
-	// But since it's only needed to read from the db and the db doesn't exist yet either, this is safe.
-	err = doltservercfg.ApplySystemVariables(nil, ssCfg, sql.SystemVariables)
+	// Configuration is applied before engine construction using its eventual variable owner.
+	err = doltservercfg.ApplySystemVariables(sql.NewContextWithVariables(ctx, engineVars), ssCfg, engineVars.System)
 	if err != nil {
 		return nil, err
 	}
@@ -187,6 +190,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		ProtocolListenerFactory: protocolListenerFactory,
 		ProviderFactory:         DoltgresProviderFactory{},
 		EngineInitializer:       engineInitializer,
+		EngineVariables:         engineVars,
 	})
 	go controller.Start(newCtx)
 
