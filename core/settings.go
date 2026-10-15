@@ -68,6 +68,31 @@ func SettingNames(ctx *sql.Context) ([]string, error) {
 	return names, nil
 }
 
+// SettingResetValue returns the value that RESET restores for the parameter in this session, if the session has one.
+// Postgres takes these from the role and database settings and the client's startup parameters, and they take
+// precedence over the parameter's default.
+func SettingResetValue(ctx *sql.Context, name string) (any, bool, error) {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	value, ok := cv.settingResetVals[strings.ToLower(name)]
+	return value, ok, nil
+}
+
+// SetSettingResetValue sets the value that RESET restores for the parameter in this session.
+func SetSettingResetValue(ctx *sql.Context, name string, value any) error {
+	cv, err := getContextValues(ctx)
+	if err != nil {
+		return err
+	}
+	if cv.settingResetVals == nil {
+		cv.settingResetVals = make(map[string]any)
+	}
+	cv.settingResetVals[strings.ToLower(name)] = value
+	return nil
+}
+
 // SetSetting records a custom parameter in its session journal. Callers own
 // parameter validation before reaching this API.
 func SetSetting(ctx *sql.Context, name string, value any, local bool) error {

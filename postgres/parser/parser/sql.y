@@ -1098,6 +1098,8 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> set_constraints_stmt
 %type <tree.Statement> set_exprs_internal
 %type <tree.Statement> generic_set_single_config
+%type <tree.Statement> generic_reset_single_config
+%type <str> opt_in_database
 %type <tree.Statement> set_session_or_local_cmd
 %type <tree.Statement> set_session_authorization
 %type <tree.Statement> set_var
@@ -1845,9 +1847,9 @@ opt_alter_database:
   {
     $$.val = &tree.AlterDatabase{Name: tree.Name($3), SetVar: $5.setVar()}
   }
-| ALTER DATABASE database_name RESET name
+| ALTER DATABASE database_name RESET generic_reset_single_config
   {
-    $$.val = &tree.AlterDatabase{Name: tree.Name($3), Tablespace: $5}
+    $$.val = &tree.AlterDatabase{Name: tree.Name($3), SetVar: $5.setVar()}
   }
 | ALTER DATABASE database_name RESET ALL
   {
@@ -6515,6 +6517,20 @@ generic_set_single_config:
   {
     $$.val = &tree.SetVar{Name: $1, FromCurrent: true}
   }
+| name '.' name FROM CURRENT
+  {
+    $$.val = &tree.SetVar{Namespace: $1, Name: $3, FromCurrent: true}
+  }
+
+generic_reset_single_config:
+  name
+  {
+    $$.val = &tree.SetVar{Name: $1, Reset: true, Values: tree.Exprs{tree.DefaultVal{}}}
+  }
+| name '.' name
+  {
+    $$.val = &tree.SetVar{Namespace: $1, Name: $3, Reset: true, Values: tree.Exprs{tree.DefaultVal{}}}
+  }
 
 var_list:
   var_value
@@ -9550,7 +9566,41 @@ alter_role_stmt:
 {
   $$.val = &tree.AlterRole{Name: $5, IfExists: true, KVOptions: $6.kvOptions(), IsRole: $2.bool()}
 }
+| ALTER role_or_group_or_user role_spec opt_in_database SET generic_set_single_config
+{
+  $$.val = &tree.AlterRole{Name: $3, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user role_spec opt_in_database RESET generic_reset_single_config
+{
+  $$.val = &tree.AlterRole{Name: $3, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user role_spec opt_in_database RESET ALL
+{
+  $$.val = &tree.AlterRole{Name: $3, InDatabase: $4, ResetAll: true, IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user ALL opt_in_database SET generic_set_single_config
+{
+  $$.val = &tree.AlterRole{AllRoles: true, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user ALL opt_in_database RESET generic_reset_single_config
+{
+  $$.val = &tree.AlterRole{AllRoles: true, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user ALL opt_in_database RESET ALL
+{
+  $$.val = &tree.AlterRole{AllRoles: true, InDatabase: $4, ResetAll: true, IsRole: $2.bool()}
+}
 | ALTER role_or_group_or_user error // SHOW HELP: ALTER ROLE
+
+opt_in_database:
+  /* EMPTY */
+  {
+    $$ = ""
+  }
+| IN DATABASE database_name
+  {
+    $$ = $3
+  }
 
 // "CREATE GROUP is now an alias for CREATE ROLE"
 // https://www.postgresql.org/docs/10/static/sql-creategroup.html

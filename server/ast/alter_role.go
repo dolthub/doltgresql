@@ -29,6 +29,16 @@ func nodeAlterRole(ctx *Context, node *tree.AlterRole) (vitess.Statement, error)
 	if node == nil {
 		return nil, nil
 	}
+	if node.SetVar != nil || node.ResetAll {
+		setting, err := nodeAlterRoleSetting(node.SetVar, node.ResetAll)
+		if err != nil {
+			return nil, err
+		}
+		setting.Role = node.Name
+		setting.AllRoles = node.AllRoles
+		setting.Database = node.InDatabase
+		return alterRoleSettingStatement(setting), nil
+	}
 	if len(node.Name) == 0 {
 		// The parser should make this impossible, but extra error checking is never bad
 		return nil, errors.New(`role name cannot be empty`)
