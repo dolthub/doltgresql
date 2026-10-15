@@ -7360,3 +7360,95 @@ func TestPgAttributeIndexes(t *testing.T) {
 		},
 	})
 }
+
+func TestRegrole(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "regrole",
+			SetUpScript: []string{
+				`CREATE ROLE regrole_role;`,
+				`CREATE TABLE regrole_t (id INT PRIMARY KEY, r REGROLE);`,
+				`INSERT INTO regrole_t VALUES (1, 'postgres'), (2, 'regrole_role');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT 'postgres'::regrole;`,
+					Expected: []sql.Row{{"postgres"}},
+				},
+				{
+					Query:    `SELECT oid::regrole FROM pg_authid WHERE rolname = 'regrole_role';`,
+					Expected: []sql.Row{{"regrole_role"}},
+				},
+				{
+					Query:    `SELECT 'regrole_role'::REGROLE::OID = (SELECT oid FROM pg_authid WHERE rolname = 'regrole_role'), 'regrole_role'::REGROLE::TEXT, to_regrole('regrole_role') IS NOT NULL, to_regrole('nope'), (SELECT rolname FROM pg_roles WHERE oid = 'regrole_role'::REGROLE);`,
+					Expected: []sql.Row{{"t", "regrole_role", "t", nil, "regrole_role"}},
+				},
+				{
+					Query:    `SELECT typname FROM pg_type WHERE typname IN ('regrole', '_regrole') ORDER BY typname;`,
+					Expected: []sql.Row{{"_regrole"}, {"regrole"}},
+				},
+				{
+					Query:    `SELECT id, r, r::TEXT FROM regrole_t ORDER BY id;`,
+					Expected: []sql.Row{{1, "postgres", "postgres"}, {2, "regrole_role", "regrole_role"}},
+				},
+				{
+					Query:    `SELECT ARRAY['postgres', 'regrole_role']::regrole[];`,
+					Expected: []sql.Row{{"{postgres,regrole_role}"}},
+				},
+				{
+					Query:       `SELECT 'nope'::REGROLE;`,
+					ExpectedErr: `role "nope" does not exist`,
+				},
+				{
+					Query:       `SELECT 'a.b'::REGROLE;`,
+					ExpectedErr: "invalid name syntax",
+				},
+			},
+		},
+		{
+			Name: "quoted role output roundtrip",
+			SetUpScript: []string{
+				`CREATE ROLE "MixedCase"`, `CREATE ROLE mixedcase`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '"MixedCase"'::regrole::text`,
+					Expected: []sql.Row{{`"MixedCase"`}},
+				},
+				{
+					Query:    `SELECT '"MixedCase"'::regrole::text::regrole = '"MixedCase"'::regrole`,
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
+		{
+			Name: "zero OID sentinel",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '-'::regrole::oid`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `SELECT 0::regrole::text`,
+					Expected: []sql.Row{{"-"}},
+				},
+			},
+		},
+		{
+			Name: "quoted char role",
+			SetUpScript: []string{
+				`CREATE ROLE "char"`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '"char"'::regrole::oid = (SELECT oid FROM pg_roles WHERE rolname = 'char')`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '"char"'::regrole::text`,
+					Expected: []sql.Row{{`"char"`}},
+				},
+			},
+		},
+	})
+}
