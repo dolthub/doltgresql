@@ -36,7 +36,7 @@ import (
 func TestCsvDataLoader(t *testing.T) {
 	db := memory.NewDatabase("mydb")
 	provider := memory.NewDBProvider(db)
-	initialization.Initialize(nil, doltgresservercfg.DefaultServerConfig())
+	initialization.InitializeProcess(nil, doltgresservercfg.DefaultServerConfig())
 
 	ctx := &sql.Context{
 		Context: context.Background(),

@@ -39,12 +39,6 @@ var millisecondUnits = []struct {
 
 var timeSettingPattern = regexp.MustCompile(`^[\t\n\r\f\v ]*([+-]?(?:0[xX][0-9a-fA-F]+|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?))[\t\n\r\f\v ]*([a-zA-Z]*)[\t\n\r\f\v ]*$`)
 
-// HasMillisecondUnit reports whether a parameter stores time in milliseconds.
-func HasMillisecondUnit(name string) bool {
-	p, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter)
-	return ok && p.Unit == "ms"
-}
-
 func HasMillisecondUnitInRegistry(vars sql.SystemVariableRegistry, name string) bool {
 	definition, _, ok := vars.GetGlobal(strings.ToLower(name))
 	if !ok {

@@ -28,31 +28,8 @@ import (
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/variables"
 	"gopkg.in/src-d/go-errors.v1"
 )
-
-// doltConfigParameters is a list of Dolt-specific configuration parameters that can be used in SET statement.
-var doltConfigParameters = make(map[string]sql.SystemVariable)
-
-// Init initializes or appends to SystemVariables as it functions as a global variable.
-// Currently, we append all of postgres configuration parameters to sql.SystemVariables.
-// This means that all of mysql system variables and postgres config parameters will be stored together.
-// TODO: get rid of me, use an integration point to define new sysvars
-func Init() {
-	// There are two postgres parameters have the same name as mysql variables
-	// TODO: issue with this approach is that those parameters will override the mysql variables.
-	if sql.SystemVariables == nil {
-		// unlikely this would happen since init() in gms package is executed first
-		variables.InitSystemVariables()
-	}
-	params := freshPostgresParameters()
-	for _, doltSysVar := range sqle.DoltSystemVariables {
-		doltConfigParameters[doltSysVar.GetName()] = doltSysVar
-	}
-	sql.SystemVariables.AddSystemVariables(params)
-	sqle.AddDoltSystemVariables()
-}
 
 // InitWithRegistry registers fresh PostgreSQL definitions in one engine. Dolt's
 // definitions are registered last so overlapping names use Dolt's definitions.
@@ -62,22 +39,17 @@ func InitWithRegistry(vars sql.SystemVariableRegistry) {
 }
 
 func freshPostgresParameters() []sql.SystemVariable {
-	params := make([]sql.SystemVariable, 0, len(postgresConfigParameters))
+	templates := postgresConfigParameters()
+	params := make([]sql.SystemVariable, 0, len(templates))
 	_, regression := os.LookupEnv("REGRESSION_TESTING")
-	for _, definition := range postgresConfigParameters {
-		original := definition.(*Parameter)
-		param := *original
-		param.BootVal = original.Default
-		if scope, ok := original.Scope.(*PgsqlScope); ok {
-			copyScope := *scope
-			param.Scope = &copyScope
-		}
+	for _, param := range templates {
+		param.BootVal = param.Default
 		if regression && strings.EqualFold(param.Name, "timezone") {
 			param.Default = "America/Los_Angeles"
 			param.BootVal = param.Default
 			param.ResetVal = param.Default
 		}
-		params = append(params, &param)
+		params = append(params, param)
 	}
 	return params
 }
@@ -287,12 +259,6 @@ func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) er
 		return err
 	}
 	return core.SetPostgresSetting(ctx, name, validated.Val, local)
-}
-
-// FormatPostgresParameterValue renders values as PostgreSQL reports them in
-// SHOW and current_setting, including boolean on/off spelling.
-func FormatPostgresParameterValue(name string, val any) string {
-	return formatPostgresParameterValue(postgresConfigParameters[strings.ToLower(name)], val)
 }
 
 func FormatPostgresParameterValueInRegistry(vars sql.SystemVariableRegistry, name string, val any) string {

@@ -46,7 +46,7 @@ type database struct {
 // |dir| may either be a database directory itself (contains .dolt) or a data directory containing databases.
 // The returned cleanup function releases the underlying engine, sessions, and databases.
 func openDatabases(ctx context.Context, dir string) ([]*database, func(), error) {
-	initialization.Initialize(nil, doltgresservercfg.DefaultServerConfig())
+	initialization.InitializeProcess(nil, doltgresservercfg.DefaultServerConfig())
 
 	fs, err := filesys.LocalFilesysWithWorkingDir(dir)
 	if err != nil {
