@@ -259,6 +259,12 @@ func (*AlterIndexAllInTablespace) StatementTag() string { return "ALTER INDEX AL
 func (*AlterIndexAllInTablespace) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterExtension) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterExtension) StatementTag() string { return "ALTER EXTENSION" }
+
+// StatementType implements the Statement interface.
 func (*AlterLanguage) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -1276,6 +1282,7 @@ func (n *AlterDefaultPrivileges) String() string    { return AsString(n) }
 func (n *AlterFunction) String() string             { return AsString(n) }
 func (n *AlterIndex) String() string                { return AsString(n) }
 func (n *AlterIndexAllInTablespace) String() string { return AsString(n) }
+func (n *AlterExtension) String() string            { return AsString(n) }
 func (n *AlterLanguage) String() string             { return AsString(n) }
 func (n *AlterMaterializedView) String() string     { return AsString(n) }
 func (n *AlterProcedure) String() string            { return AsString(n) }
