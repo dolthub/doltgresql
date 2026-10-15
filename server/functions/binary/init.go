@@ -38,4 +38,5 @@ func Init() {
 	initBinaryShiftRight()
 	initInet()
 	initJSON()
+	initRegexInsensitive()
 }

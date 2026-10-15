@@ -59,8 +59,10 @@ const (
 	Operator_UnaryPlus                                 // +
 	Operator_UnaryMinus                                // -
 	Operator_BinaryArrayOverlap                        // &&
+	Operator_BinaryRegexInsensitive                    // ~*
+	Operator_BinaryNotRegexInsensitive                 // !~*
 	Operator_UnaryBitNot                               // ~
-// NOTE: Any new operator should also be added to Operator.String() and GetOperatorFromString() functions.
+	// NOTE: Any new operator should also be added to Operator.String() and GetOperatorFromString() functions.
 )
 
 // unaryFunction represents the signature for a unary function.
@@ -221,6 +223,10 @@ func (o Operator) String() string {
 		return "<%>"
 	case Operator_BinaryHammingDistance:
 		return "<~>"
+	case Operator_BinaryRegexInsensitive:
+		return "~*"
+	case Operator_BinaryNotRegexInsensitive:
+		return "!~*"
 	case Operator_UnaryBitNot:
 		return "~"
 	default:
@@ -314,6 +320,12 @@ func GetOperatorFromString(op string) (Operator, error) {
 		return Operator_BinaryJaccardDistance, nil
 	case "<~>":
 		return Operator_BinaryHammingDistance, nil
+	case "~*":
+		return Operator_BinaryRegexInsensitive, nil
+	case "!~*":
+		return Operator_BinaryNotRegexInsensitive, nil
+	case "~":
+		return Operator_UnaryBitNot, nil
 	default:
 		return 0, errors.Errorf("unhandled Operator `%s`", op)
 	}

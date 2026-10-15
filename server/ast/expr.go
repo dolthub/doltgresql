@@ -452,9 +452,9 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		case tree.NotRegMatch:
 			operator = vitess.NotRegexpStr
 		case tree.RegIMatch:
-			return nil, errors.Errorf("~* is not yet supported")
+			return vitess.InjectedExpr{Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryRegexInsensitive), Children: vitess.Exprs{left, right}}, nil
 		case tree.NotRegIMatch:
-			return nil, errors.Errorf("!~* is not yet supported")
+			return vitess.InjectedExpr{Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryNotRegexInsensitive), Children: vitess.Exprs{left, right}}, nil
 		case tree.TextSearchMatch:
 			return nil, errors.Errorf("@@ is not yet supported")
 		case tree.IsDistinctFrom:

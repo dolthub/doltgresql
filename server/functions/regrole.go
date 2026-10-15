@@ -46,11 +46,12 @@ var regrolein = framework.Function1{
 		if err != nil {
 			return nil, err
 		}
+		// "-" represents the zero OID, which is used when there is no role
+		if input == "-" {
+			return regroleFromOID(0), nil
+		}
 		if parsedOid, err := strconv.ParseUint(input, 10, 32); err == nil {
-			if internalID := id.Cache().ToInternal(uint32(parsedOid)); internalID.IsValid() {
-				return internalID, nil
-			}
-			return id.NewOID(uint32(parsedOid)).AsId(), nil
+			return regroleFromOID(uint32(parsedOid)), nil
 		}
 		sections, err := ioInputSections(input)
 		if err != nil {
@@ -58,6 +59,10 @@ var regrolein = framework.Function1{
 		}
 		if len(sections) != 1 {
 			return id.Null, errors.Errorf("invalid name syntax")
+		}
+		// The input parser keeps the quotes around "char" for type names, but a role name never includes them
+		if sections[0] == `"char"` {
+			sections[0] = "char"
 		}
 
 		var exists bool
@@ -87,8 +92,10 @@ var regroleout = framework.Function1{
 				exists = auth.RoleExists(roleName)
 			})
 			if exists {
-				return roleName, nil
+				return quoteTypeIdentifier(roleName), nil
 			}
+		} else if id.Cache().ToOID(input) == 0 {
+			return "-", nil
 		} else if input.Section() == id.Section_OID {
 			return input.Segment(0), nil
 		}
@@ -112,8 +119,7 @@ var regrolerecv = framework.Function1{
 			return nil, nil
 		}
 		reader := utils.NewWireReader(data)
-		cachedID := id.Cache().ToInternal(reader.ReadUint32())
-		return cachedID, nil
+		return regroleFromOID(reader.ReadUint32()), nil
 	},
 }
 
@@ -128,4 +134,13 @@ var regrolesend = framework.Function1{
 		writer.WriteUint32(id.Cache().ToOID(val.(id.Id)))
 		return writer.BufferData(), nil
 	},
+}
+
+// regroleFromOID returns the regrole value for the given OID. OIDs that are not in the cache, such as those of roles
+// that do not exist, are kept as their numeric value.
+func regroleFromOID(oid uint32) id.Id {
+	if internalID := id.Cache().ToInternal(oid); internalID.IsValid() {
+		return internalID
+	}
+	return id.NewOID(oid).AsId()
 }
