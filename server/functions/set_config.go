@@ -69,7 +69,7 @@ var set_config_text_text_boolean = framework.Function3{
 			return auth.SessionAuthorizationSetting(ctx)
 		}
 
-		if config.IsValidDoltConfigParameter(settingNameStr) && !config.IsValidPostgresConfigParameter(settingNameStr) {
+		if config.IsValidDoltConfigParameterInRegistry(ctx.SystemVariables(), settingNameStr) && !config.IsValidPostgresConfigParameterInRegistry(ctx.SystemVariables(), settingNameStr) {
 			if isLocal == true {
 				if err := ctx.Session.SetTransactionLocalVariable(ctx, settingNameStr, newValueStr); err != nil {
 					return nil, err

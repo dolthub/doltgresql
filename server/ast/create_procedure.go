@@ -56,7 +56,7 @@ func nodeCreateProcedure(ctx *Context, node *tree.CreateProcedure) (vitess.State
 			if !ok {
 				return nil, errors.Errorf("CREATE PROCEDURE definition needed for LANGUAGE SQL")
 			}
-			sqlDef, sqlDefParsedStmts, err = handleLanguageSQLAs(as.Definition, params)
+			sqlDef, sqlDefParsedStmts, err = handleLanguageSQLAs(ctx, as.Definition, params)
 			if err != nil {
 				return nil, err
 			}

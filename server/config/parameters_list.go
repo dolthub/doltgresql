@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 )
@@ -34,6 +35,49 @@ func IsValidPostgresConfigParameter(name string) bool {
 // parameter name. The returned map is shared, so callers must not modify it (or the parameters within it).
 func PostgresConfigParameters() map[string]sql.SystemVariable {
 	return postgresConfigParameters
+}
+
+// PostgresConfigParametersForRegistry returns PostgreSQL definitions owned by
+// this registry. The returned map is a snapshot of references to its definitions.
+func PostgresConfigParametersForRegistry(vars sql.SystemVariableRegistry) map[string]sql.SystemVariable {
+	params := make(map[string]sql.SystemVariable, len(postgresConfigParameters))
+	for name := range postgresConfigParameters {
+		if definition, _, ok := vars.GetGlobal(name); ok {
+			if _, isPostgres := definition.(*Parameter); isPostgres {
+				params[name] = definition
+			}
+		}
+	}
+	return params
+}
+
+func IsValidPostgresConfigParameterInRegistry(vars sql.SystemVariableRegistry, name string) bool {
+	definition, _, ok := vars.GetGlobal(strings.ToLower(name))
+	if !ok {
+		return false
+	}
+	_, isPostgres := definition.(*Parameter)
+	return isPostgres
+}
+
+func IsValidDoltConfigParameterInRegistry(vars sql.SystemVariableRegistry, name string) bool {
+	name = strings.ToLower(name)
+	listed := false
+	for _, definition := range sqle.DoltSystemVariables {
+		if strings.EqualFold(definition.GetName(), name) {
+			listed = true
+			break
+		}
+	}
+	if !listed {
+		return false
+	}
+	definition, _, ok := vars.GetGlobal(name)
+	if !ok {
+		return false
+	}
+	_, isDolt := definition.(*sql.MysqlSystemVariable)
+	return isDolt
 }
 
 // listQuoteConfigParameters are the parameters whose value is a comma separated list of identifiers rather than a
@@ -74,7 +118,11 @@ func IsGlobalOnlySystemVariable(name string) bool {
 // GlobalOnlySystemVariableScope returns the declared scope of the given system variable and true if the variable
 // is registered and has no session scope (Global, Persist, or PersistOnly). See IsGlobalOnlySystemVariable.
 func GlobalOnlySystemVariableScope(name string) (sql.MysqlSVScopeType, bool) {
-	sysVar, _, ok := sql.SystemVariables.GetGlobal(strings.ToLower(name))
+	return GlobalOnlySystemVariableScopeInRegistry(sql.SystemVariables, name)
+}
+
+func GlobalOnlySystemVariableScopeInRegistry(vars sql.SystemVariableRegistry, name string) (sql.MysqlSVScopeType, bool) {
+	sysVar, _, ok := vars.GetGlobal(strings.ToLower(name))
 	if !ok {
 		return 0, false
 	}
