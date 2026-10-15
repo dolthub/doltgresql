@@ -44,8 +44,10 @@ func (p PgConfigHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgConfigHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
+	configs := append([]pgConfig(nil), defaultPgConfigs...)
+	configs[len(configs)-1].setting = pgConfigVersion(ctx)
 	return &pgConfigRowIter{
-		configs: defaultPgConfigs,
+		configs: configs,
 		idx:     0,
 	}, nil
 }
@@ -66,8 +68,12 @@ var pgConfigSchema = sql.Schema{
 
 // pgConfigVersion returns the value for the VERSION row of pg_config, matching the Postgres version
 // that Doltgres reports through the server_version configuration parameter.
-func pgConfigVersion() string {
-	if param, ok := config.PostgresConfigParameters()["server_version"].(*config.Parameter); ok {
+func pgConfigVersion(ctx *sql.Context) string {
+	if definition, _, ok := ctx.SystemVariables().GetGlobal("server_version"); ok {
+		param, ok := definition.(*config.Parameter)
+		if !ok {
+			return "PostgreSQL"
+		}
 		if version, ok := param.Default.(string); ok {
 			return "PostgreSQL " + version
 		}
@@ -107,7 +113,7 @@ var defaultPgConfigs = []pgConfig{
 	{name: "LDFLAGS_EX", setting: ""},
 	{name: "LDFLAGS_SL", setting: ""},
 	{name: "LIBS", setting: ""},
-	{name: "VERSION", setting: pgConfigVersion()},
+	{name: "VERSION"},
 }
 
 // pgConfigRowIter is the sql.RowIter for the pg_config table.

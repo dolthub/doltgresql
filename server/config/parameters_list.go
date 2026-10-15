@@ -25,23 +25,11 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/types"
 )
 
-// IsValidPostgresConfigParameter returns true if the given parameter name is a valid postgres configuration parameter.
-func IsValidPostgresConfigParameter(name string) bool {
-	_, ok := postgresConfigParameters[strings.ToLower(name)]
-	return ok
-}
-
-// PostgresConfigParameters returns the full set of Postgres configuration parameters, keyed by lowercase
-// parameter name. The returned map is shared, so callers must not modify it (or the parameters within it).
-func PostgresConfigParameters() map[string]sql.SystemVariable {
-	return postgresConfigParameters
-}
-
 // PostgresConfigParametersForRegistry returns PostgreSQL definitions owned by
 // this registry. The returned map is a snapshot of references to its definitions.
 func PostgresConfigParametersForRegistry(vars sql.SystemVariableRegistry) map[string]sql.SystemVariable {
-	params := make(map[string]sql.SystemVariable, len(postgresConfigParameters))
-	for name := range postgresConfigParameters {
+	params := make(map[string]sql.SystemVariable)
+	for name := range vars.GetAllGlobalVariables() {
 		if definition, _, ok := vars.GetGlobal(name); ok {
 			if _, isPostgres := definition.(*Parameter); isPostgres {
 				params[name] = definition
@@ -100,27 +88,6 @@ func IsListQuoteConfigParameter(name string) bool {
 	return ok
 }
 
-// IsValidDoltConfigParameter returns true if the given parameter name is a valid Dolt configuration parameter.
-func IsValidDoltConfigParameter(name string) bool {
-	_, ok := doltConfigParameters[strings.ToLower(name)]
-	return ok
-}
-
-// IsGlobalOnlySystemVariable returns true if the given name refers to a registered system variable that has no
-// session scope (e.g. Dolt's cluster replication variables such as dolt_cluster_role). Such variables can only
-// meaningfully be read from and written to the global scope: sessions snapshot system variables at creation time,
-// so a session copy would go stale (on read) or be invisible to the rest of the server (on write).
-func IsGlobalOnlySystemVariable(name string) bool {
-	_, ok := GlobalOnlySystemVariableScope(name)
-	return ok
-}
-
-// GlobalOnlySystemVariableScope returns the declared scope of the given system variable and true if the variable
-// is registered and has no session scope (Global, Persist, or PersistOnly). See IsGlobalOnlySystemVariable.
-func GlobalOnlySystemVariableScope(name string) (sql.MysqlSVScopeType, bool) {
-	return GlobalOnlySystemVariableScopeInRegistry(sql.SystemVariables, name)
-}
-
 func GlobalOnlySystemVariableScopeInRegistry(vars sql.SystemVariableRegistry, name string) (sql.MysqlSVScopeType, bool) {
 	sysVar, _, ok := vars.GetGlobal(strings.ToLower(name))
 	if !ok {
@@ -138,8 +105,26 @@ func GlobalOnlySystemVariableScopeInRegistry(vars sql.SystemVariableRegistry, na
 	}
 }
 
-// postgresConfigParameters is a list of configuration parameters that can be used in SET statement.
-var postgresConfigParameters = map[string]sql.SystemVariable{
+// newPostgresCatalog keeps its templates private and returns fresh definitions.
+// Runtime code can only access definitions through an engine registry.
+func newPostgresCatalog(templates map[string]*Parameter) func() map[string]*Parameter {
+	return func() map[string]*Parameter {
+		params := make(map[string]*Parameter, len(templates))
+		for name, original := range templates {
+			param := *original
+			if scope, ok := original.Scope.(*PgsqlScope); ok {
+				copyScope := *scope
+				param.Scope = &copyScope
+			}
+			params[name] = &param
+		}
+		return params
+	}
+}
+
+// postgresConfigParameters constructs the parameter catalog anew for each
+// registration. Its templates are private to the factory closure.
+var postgresConfigParameters = newPostgresCatalog(map[string]*Parameter{
 	"allow_in_place_tablespaces": &Parameter{
 		Name:      "allow_in_place_tablespaces",
 		Default:   int8(0),
@@ -4340,4 +4325,4 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		ResetVal:  int8(0),
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
-}
+})

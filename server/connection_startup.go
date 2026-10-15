@@ -23,6 +23,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
 
 	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
@@ -111,6 +112,11 @@ func (h *ConnectionHandler) sendClientStartupMessages() error {
 // chooseInitialParameters attempts to choose the initial parameter settings for the connection.
 func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.StartupMessage) error {
 	postgresParser := psql.PostgresParser{}
+	parse := func(query string) (sqlparser.Statement, error) {
+		ctx := sql.NewContextWithVariables(context.Background(), h.doltgresHandler.e.Variables())
+		stmt, _, _, err := postgresParser.Parse(ctx, query, false)
+		return stmt, err
+	}
 	for name, value := range startupMessage.Parameters {
 		switch strings.ToLower(name) {
 		case "datestyle":
@@ -119,7 +125,7 @@ func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.Sta
 			}
 		case "timezone":
 			setStmt := fmt.Sprintf("SET timezone TO '%s';", strings.ReplaceAll(value, "'", "''"))
-			parsed, err := postgresParser.ParseSimple(setStmt)
+			parsed, err := parse(setStmt)
 			if err != nil {
 				return err
 			}
@@ -133,7 +139,7 @@ func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.Sta
 		db = h.mysqlConn.User
 	}
 	useStmt := fmt.Sprintf("SET database TO '%s';", db)
-	parsed, err := postgresParser.ParseSimple(useStmt)
+	parsed, err := parse(useStmt)
 	if err != nil {
 		return err
 	}
