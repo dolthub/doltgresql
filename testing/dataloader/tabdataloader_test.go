@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/memory"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/assert"
@@ -34,12 +35,7 @@ import (
 func TestTabDataLoader(t *testing.T) {
 	db := memory.NewDatabase("mydb")
 	provider := memory.NewDBProvider(db)
-	initialization.InitializeProcess(nil, doltgresservercfg.DefaultServerConfig())
-
-	ctx := &sql.Context{
-		Context: context.Background(),
-		Session: memory.NewSession(sql.NewBaseSession(), provider),
-	}
+	ctx := newDataLoaderContext(provider)
 
 	pkCols := []string{"pk", "c1", "c2"}
 	pkSchema := sql.NewPrimaryKeySchema(sql.Schema{
@@ -197,4 +193,11 @@ func TestTabDataLoader(t *testing.T) {
 			{int64(2), int64(200), "bash"},
 		}, rows)
 	})
+}
+
+func newDataLoaderContext(provider sql.DatabaseProvider) *sql.Context {
+	vars := sqle.NewEngineVariables()
+	initialization.InitializeWithVariables(nil, doltgresservercfg.DefaultServerConfig(), vars)
+	session := memory.NewSession(sql.NewBaseSessionWithVariables(vars), provider)
+	return sql.NewContextWithVariables(context.Background(), vars, sql.WithSession(session))
 }

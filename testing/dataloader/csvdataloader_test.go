@@ -17,7 +17,6 @@ package _dataloader
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"io"
 	"testing"
 
@@ -27,21 +26,14 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/core/dataloader"
-	"github.com/dolthub/doltgresql/server/initialization"
 	"github.com/dolthub/doltgresql/server/types"
-	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 )
 
 // TestCsvDataLoader tests the CsvDataLoader implementation.
 func TestCsvDataLoader(t *testing.T) {
 	db := memory.NewDatabase("mydb")
 	provider := memory.NewDBProvider(db)
-	initialization.InitializeProcess(nil, doltgresservercfg.DefaultServerConfig())
-
-	ctx := &sql.Context{
-		Context: context.Background(),
-		Session: memory.NewSession(sql.NewBaseSession(), provider),
-	}
+	ctx := newDataLoaderContext(provider)
 
 	pkCols := []string{"pk", "c1", "c2"}
 	pkSchema := sql.NewPrimaryKeySchema(sql.Schema{
