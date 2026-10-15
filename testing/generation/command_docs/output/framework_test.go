@@ -27,8 +27,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/doltgresql/server/config"
 )
 
 // QueryParses determines whether a query parses, and then whether it has an AST conversion.
@@ -104,6 +106,9 @@ func (c Converts) String() string {
 // RunTests runs the given collection of QueryParses tests.
 
 func RunTests(t *testing.T, tests []QueryParses) {
+	vars := sqle.NewEngineVariables()
+	config.InitWithRegistry(vars.System)
+	options := ast.ConvertOptions{SystemVariables: vars.System}
 	for _, test := range tests {
 		t.Run(test.String(), func(t *testing.T) {
 			statements, err := parser.Parse(test.String())
@@ -122,7 +127,7 @@ func RunTests(t *testing.T, tests []QueryParses) {
 							vitessAST = nil
 						}
 					}()
-					return ast.Convert(statement)
+					return ast.ConvertWithOptions(statement, options)
 				}()
 				if !test.ShouldConvert() {
 					if err == nil && vitessAST != nil {
@@ -143,6 +148,9 @@ var testStatementRegex = regexp.MustCompile(`^(\s*)(Unimplemented|Parses|Convert
 // RewriteTests rewrites the given test file with the given tests to have the new results. This is a utility to avoid
 // having to tediously update tests after implementing some parser / engine functionality.
 func RewriteTests(t *testing.T, tests []QueryParses, file string) {
+	vars := sqle.NewEngineVariables()
+	config.InitWithRegistry(vars.System)
+	options := ast.ConvertOptions{SystemVariables: vars.System}
 	newPath := file + ".new"
 	f, err := os.Open(file)
 	require.NoError(t, err)
@@ -192,7 +200,7 @@ func RewriteTests(t *testing.T, tests []QueryParses, file string) {
 							vitessAST = nil
 						}
 					}()
-					return ast.Convert(statement)
+					return ast.ConvertWithOptions(statement, options)
 				}()
 
 				if err != nil {
