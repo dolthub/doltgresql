@@ -46,23 +46,40 @@ func Init() {
 		// unlikely this would happen since init() in gms package is executed first
 		variables.InitSystemVariables()
 	}
-	// Regression tests assume the Los Angeles timezone, so we'll set that here if the env var is set
-	if _, ok := os.LookupEnv("REGRESSION_TESTING"); ok {
-		timezone := postgresConfigParameters["timezone"].(*Parameter)
-		timezone.Default = "America/Los_Angeles"
-		timezone.ResetVal = "America/Los_Angeles"
-	}
-	params := make([]sql.SystemVariable, len(postgresConfigParameters))
-	i := 0
-	for _, sysVar := range postgresConfigParameters {
-		params[i] = sysVar
-		i++
-	}
+	params := freshPostgresParameters()
 	for _, doltSysVar := range sqle.DoltSystemVariables {
 		doltConfigParameters[doltSysVar.GetName()] = doltSysVar
 	}
 	sql.SystemVariables.AddSystemVariables(params)
 	sqle.AddDoltSystemVariables()
+}
+
+// InitWithRegistry registers fresh PostgreSQL definitions in one engine. Dolt's
+// definitions are registered last so overlapping names use Dolt's definitions.
+func InitWithRegistry(vars sql.SystemVariableRegistry) {
+	vars.AddSystemVariables(freshPostgresParameters())
+	sqle.AddDoltSystemVariablesToRegistry(vars)
+}
+
+func freshPostgresParameters() []sql.SystemVariable {
+	params := make([]sql.SystemVariable, 0, len(postgresConfigParameters))
+	_, regression := os.LookupEnv("REGRESSION_TESTING")
+	for _, definition := range postgresConfigParameters {
+		original := definition.(*Parameter)
+		param := *original
+		param.BootVal = original.Default
+		if scope, ok := original.Scope.(*PgsqlScope); ok {
+			copyScope := *scope
+			param.Scope = &copyScope
+		}
+		if regression && strings.EqualFold(param.Name, "timezone") {
+			param.Default = "America/Los_Angeles"
+			param.BootVal = param.Default
+			param.ResetVal = param.Default
+		}
+		params = append(params, &param)
+	}
+	return params
 }
 
 var (
@@ -76,6 +93,7 @@ type Parameter struct {
 	Name         string
 	Unit         string // Base unit for parsing and display; currently supports "ms".
 	Default      any
+	BootVal      any // immutable startup default for pg_settings
 	Category     string
 	ShortDesc    string
 	Context      ParameterContext
@@ -109,7 +127,9 @@ func (p *Parameter) GetLocalScope() sql.SystemVariableScope {
 
 // SetDefault implements sql.SystemVariable.
 func (p *Parameter) SetDefault(a any) {
-	if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
+	if p.ValidateFunc == nil {
+		p.Default = a
+	} else if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
 		p.Default = validatedVal
 	}
 }
@@ -255,8 +275,11 @@ func (p *PgsqlScope) SetValue(ctx *sql.Context, name string, val any) error {
 // projecting it into the session store used by query execution.
 func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) error {
 	name = strings.ToLower(name)
-	variable, ok := postgresConfigParameters[name]
+	variable, _, ok := ctx.SystemVariables().GetGlobal(name)
 	if !ok {
+		return sql.ErrUnknownSystemVariable.New(name)
+	}
+	if _, ok := variable.(*Parameter); !ok {
 		return sql.ErrUnknownSystemVariable.New(name)
 	}
 	validated, err := variable.SetValue(ctx, val, false)
@@ -269,15 +292,24 @@ func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) er
 // FormatPostgresParameterValue renders values as PostgreSQL reports them in
 // SHOW and current_setting, including boolean on/off spelling.
 func FormatPostgresParameterValue(name string, val any) string {
+	return formatPostgresParameterValue(postgresConfigParameters[strings.ToLower(name)], val)
+}
+
+func FormatPostgresParameterValueInRegistry(vars sql.SystemVariableRegistry, name string, val any) string {
+	definition, _, _ := vars.GetGlobal(strings.ToLower(name))
+	return formatPostgresParameterValue(definition, val)
+}
+
+func formatPostgresParameterValue(definition sql.SystemVariable, val any) string {
 	if val == nil {
 		return ""
 	}
-	if HasMillisecondUnit(name) {
+	if p, ok := definition.(*Parameter); ok && p.Unit == "ms" {
 		if milliseconds, ok := val.(int64); ok {
 			return formatMilliseconds(milliseconds)
 		}
 	}
-	if variable, ok := postgresConfigParameters[strings.ToLower(name)]; ok && variable.GetType().String() == "system_bool" {
+	if p, ok := definition.(*Parameter); ok && p.GetType().String() == "system_bool" {
 		switch v := val.(type) {
 		case bool:
 			if v {

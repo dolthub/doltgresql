@@ -331,7 +331,7 @@ func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
 	}
 
 	h.sm.AddConn(c)
-	sql.StatusVariables.IncrementGlobal("Connections", 1)
+	h.e.Variables().Status.IncrementGlobal("Connections", 1)
 
 	c.DisableClientMultiStatements = true // TODO: h.disableMultiStmts
 	logrus.WithField(sql.ConnectionIdLogField, c.ConnectionID).WithField("DisableClientMultiStatements", c.DisableClientMultiStatements).Infof("NewConnection")

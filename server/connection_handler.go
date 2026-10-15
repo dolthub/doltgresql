@@ -117,6 +117,7 @@ func NewConnectionHandler(conn net.Conn, handler mysql.Handler, sel server.Serve
 	if postgresParser, ok := server.Engine.Parser.(*psql.PostgresParser); ok {
 		convertOptions = postgresParser.ConvertOptions()
 	}
+	convertOptions.SystemVariables = server.Engine.Variables().System
 	doltgresHandler := &DoltgresHandler{
 		e:                 server.Engine,
 		sm:                server.SessionManager(),

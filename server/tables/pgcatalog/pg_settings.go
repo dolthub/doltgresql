@@ -46,7 +46,7 @@ func (p PgSettingsHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgSettingsHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	configParams := config.PostgresConfigParameters()
+	configParams := config.PostgresConfigParametersForRegistry(ctx.SystemVariables())
 	names := make([]string, 0, len(configParams))
 	for name := range configParams {
 		names = append(names, name)
@@ -167,26 +167,34 @@ func (iter *pgSettingsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	param := iter.params[iter.idx-1]
+	resetValue, err := ctx.GetSessionVariableDefault(ctx, param.Name)
+	if err != nil {
+		resetValue = param.ResetVal
+	}
+	bootValue := param.BootVal
+	if bootValue == nil {
+		bootValue = param.Default
+	}
 
 	// TODO: fill in unit, extra_desc, min_val, max_val, and enumvals from the parameter definitions
 	return sql.Row{
-		param.Name,                               // name
-		currentSettingValue(ctx, param),          // setting
-		nil,                                      // unit
-		param.Category,                           // category
-		param.ShortDesc,                          // short_desc
-		nil,                                      // extra_desc
-		string(param.Context),                    // context
-		pgSettingsVarType(param.Type),            // vartype
-		string(param.Source),                     // source
-		nil,                                      // min_val
-		nil,                                      // max_val
-		nil,                                      // enumvals
-		formatSettingValue(param, param.Default), // boot_val
-		formatSettingValue(param, param.ResetVal), // reset_val
-		nil,   // sourcefile
-		nil,   // sourceline
-		false, // pending_restart
+		param.Name,                            // name
+		currentSettingValue(ctx, param),       // setting
+		nil,                                   // unit
+		param.Category,                        // category
+		param.ShortDesc,                       // short_desc
+		nil,                                   // extra_desc
+		string(param.Context),                 // context
+		pgSettingsVarType(param.Type),         // vartype
+		string(param.Source),                  // source
+		nil,                                   // min_val
+		nil,                                   // max_val
+		nil,                                   // enumvals
+		formatSettingValue(param, bootValue),  // boot_val
+		formatSettingValue(param, resetValue), // reset_val
+		nil,                                   // sourcefile
+		nil,                                   // sourceline
+		false,                                 // pending_restart
 	}, nil
 }
 

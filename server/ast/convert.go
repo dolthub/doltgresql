@@ -16,6 +16,7 @@ package ast
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
@@ -33,6 +34,7 @@ const UnknownColSentinelPrefix = "__?column?__"
 // ConvertOptions controls optional behavior during PostgreSQL-to-Vitess AST conversion.
 type ConvertOptions struct {
 	PermitUnsupportedLockingStatements bool
+	SystemVariables                    sql.SystemVariableRegistry
 }
 
 // Convert converts a Postgres AST into a Vitess AST.
