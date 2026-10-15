@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+
 	"github.com/dolthub/doltgresql/utils"
 )
 
