@@ -47,7 +47,6 @@ func initInet() {
 	framework.RegisterFunction(host_inet)
 	framework.RegisterFunction(hostmask_inet)
 	framework.RegisterFunction(inet_same_family)
-	framework.RegisterFunction(inetnot)
 	framework.RegisterFunction(masklen_inet)
 	framework.RegisterFunction(netmask_inet)
 	framework.RegisterFunction(network_inet)
@@ -244,18 +243,6 @@ var inet_same_family = framework.Function2{
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
 		return val1.(ipaddr.IPAddr).Family == val2.(ipaddr.IPAddr).Family, nil
-	},
-}
-
-// inetnot represents the PostgreSQL function of the same name, taking the same parameters.
-var inetnot = framework.Function1{
-	Name:       "inetnot",
-	Return:     pgtypes.Inet,
-	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Inet},
-	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		ip := val.(ipaddr.IPAddr)
-		return ip.Complement(), nil
 	},
 }
 

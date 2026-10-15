@@ -16,6 +16,7 @@ package unary
 
 // Init initializes all unary operators in this package.
 func Init() {
+	initUnaryBitNot()
 	initUnaryMinus()
 	initUnaryPlus()
 }

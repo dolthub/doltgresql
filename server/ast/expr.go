@@ -852,10 +852,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		case tree.UnaryMinus:
 			operator = framework.Operator_UnaryMinus
 		case tree.UnaryComplement:
-			return &vitess.UnaryExpr{
-				Operator: vitess.TildaStr,
-				Expr:     expr,
-			}, nil
+			operator = framework.Operator_UnaryBitNot
 		case tree.UnarySqrt:
 			// TODO: replace with a function
 			return nil, errors.Errorf("square root operator is not yet supported")

@@ -59,6 +59,7 @@ const (
 	Operator_UnaryPlus                                 // +
 	Operator_UnaryMinus                                // -
 	Operator_BinaryArrayOverlap                        // &&
+	Operator_UnaryBitNot                               // ~
 // NOTE: Any new operator should also be added to Operator.String() and GetOperatorFromString() functions.
 )
 
@@ -220,6 +221,8 @@ func (o Operator) String() string {
 		return "<%>"
 	case Operator_BinaryHammingDistance:
 		return "<~>"
+	case Operator_UnaryBitNot:
+		return "~"
 	default:
 		return "unknown operator"
 	}
@@ -228,7 +231,7 @@ func (o Operator) String() string {
 // IsUnary returns whether the operator is a unary operator.
 func (o Operator) IsUnary() bool {
 	switch o {
-	case Operator_UnaryPlus, Operator_UnaryMinus:
+	case Operator_UnaryPlus, Operator_UnaryMinus, Operator_UnaryBitNot:
 		return true
 	default:
 		return false
