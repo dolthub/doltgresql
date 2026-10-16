@@ -76,6 +76,9 @@ for tuple in $OS_ARCH_TUPLES; do
   if [ "$os" = windows ]; then
       bin="$bin.exe"
   fi
+  if [ "$os" = linux ]; then
+      tags="$tags musl"
+  fi
   echo Building "$o/bin/$bin"
   CGO_ENABLED=1 \
       GOOS="$os" \
