@@ -15,6 +15,8 @@
 package framework
 
 import (
+	"slices"
+
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -27,41 +29,43 @@ import (
 type FunctionProvider struct{}
 
 var _ sql.FunctionProvider = (*FunctionProvider)(nil)
+var _ sql.AggregateCallResolver = (*FunctionProvider)(nil)
 
-// Function implements the interface sql.FunctionProvider.
-func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql.Function, bool) {
+// overloads returns every overload of the named function, both functions and aggregates, along with whether any of
+// them is an aggregate. It returns false when the name has no overloads.
+func (fp *FunctionProvider) overloads(ctx *sql.Context, schema, name string) (*Overloads, bool, bool) {
 	// TODO: this should be configurable from within Dolt, rather than set on an external variable
 	if !core.IsContextValid(ctx) {
-		return nil, false
+		return nil, false, false
 	}
 	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx, "")
 	if err != nil {
-		return nil, false
+		return nil, false, false
 	}
 	typesCollection, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
-		return nil, false
+		return nil, false, false
 	}
 	aggCollection, err := core.GetAggregatesCollectionFromContext(ctx, "")
 	if err != nil {
-		return nil, false
+		return nil, false, false
 	}
 	// We check pg_catalog first, but not sure if that's how Postgres resolves function order
 	funcName := id.NewFunction("pg_catalog", name)
 	overloads, err := funcCollection.GetFunctionOverloads(ctx, funcName)
 	if err != nil {
-		return nil, false
+		return nil, false, false
 	}
 	aggOverloads, err := aggCollection.GetAggregateOverloads(ctx, funcName)
 	if err != nil {
-		return nil, false
+		return nil, false, false
 	}
 	if len(overloads) == 0 && len(aggOverloads) == 0 {
 		var schemasToSearch []string
 		if schema == "" {
 			schemasToSearch, err = core.SearchPath(ctx)
 			if err != nil {
-				return nil, false
+				return nil, false, false
 			}
 		} else {
 			schemasToSearch = []string{schema}
@@ -70,18 +74,18 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 			funcName = id.NewFunction(searchSchema, name)
 			overloads, err = funcCollection.GetFunctionOverloads(ctx, funcName)
 			if err != nil {
-				return nil, false
+				return nil, false, false
 			}
 			aggOverloads, err = aggCollection.GetAggregateOverloads(ctx, funcName)
 			if err != nil {
-				return nil, false
+				return nil, false, false
 			}
 			if len(overloads) > 0 || len(aggOverloads) > 0 {
 				break
 			}
 		}
 		if len(overloads) == 0 && len(aggOverloads) == 0 {
-			return nil, false
+			return nil, false, false
 		}
 	}
 
@@ -89,14 +93,14 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 	for _, overload := range overloads {
 		returnType, err := typesCollection.GetType(ctx, overload.ReturnType)
 		if err != nil || returnType == nil {
-			return nil, false
+			return nil, false, false
 		}
 
 		paramTypes := make([]*pgtypes.DoltgresType, len(overload.AllParams))
 		for i, param := range overload.AllParams {
 			paramTypes[i], err = typesCollection.GetType(ctx, param.Type)
 			if err != nil || paramTypes[i] == nil {
-				return nil, false
+				return nil, false, false
 			}
 		}
 		if len(overload.ExtensionName) > 0 {
@@ -111,7 +115,7 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 				ExtensionName:      overload.ExtensionName,
 				ExtensionSymbol:    overload.ExtensionSymbol,
 			}); err != nil {
-				return nil, false
+				return nil, false, false
 			}
 		} else if len(overload.SQLDefinition) > 0 {
 			if err = overloadTree.Add(SQLFunction{
@@ -125,7 +129,7 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 				SqlStatement:       overload.SQLDefinition,
 				SetOf:              overload.SetOf,
 			}); err != nil {
-				return nil, false
+				return nil, false, false
 			}
 		} else {
 			if err = overloadTree.Add(InterpretedFunction{
@@ -139,24 +143,24 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 				SRF:                overload.SetOf,
 				Statements:         overload.Operations,
 			}); err != nil {
-				return nil, false
+				return nil, false, false
 			}
 		}
 	}
 	for _, aggOverload := range aggOverloads {
 		stateType, err := typesCollection.GetType(ctx, aggOverload.SType)
 		if err != nil || stateType == nil {
-			return nil, false
+			return nil, false, false
 		}
 		returnType, err := typesCollection.GetType(ctx, aggOverload.ReturnType)
 		if err != nil || returnType == nil {
-			return nil, false
+			return nil, false, false
 		}
 		paramTypes := make([]*pgtypes.DoltgresType, aggOverload.ID.ParameterCount())
 		for i, param := range aggOverload.ID.Parameters() {
 			paramTypes[i], err = typesCollection.GetType(ctx, param)
 			if err != nil || paramTypes[i] == nil {
-				return nil, false
+				return nil, false, false
 			}
 		}
 		if err = overloadTree.Add(UserAggregate{
@@ -169,17 +173,51 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 			InitCond:       aggOverload.InitCond,
 			HasInitCond:    aggOverload.HasInitCond,
 		}); err != nil {
-			return nil, false
+			return nil, false, false
 		}
 	}
 	if err = addBuiltInOverloads(overloadTree, name); err != nil {
+		return nil, false, false
+	}
+	return overloadTree, len(aggOverloads) > 0 || len(AggregateCatalog[name]) > 0, true
+}
+
+// CallsAggregate implements the interface sql.AggregateCallResolver. A call that resolves to one of the name's function
+// overloads calls that function instead of the aggregate, and the arguments are only built when the name has both
+// kinds of overload.
+func (fp *FunctionProvider) CallsAggregate(ctx *sql.Context, schema, name string, args func() []sql.Expression) (bool, error) {
+	overloadTree, _, ok := fp.overloads(ctx, schema, name)
+	if !ok || !slices.ContainsFunc(overloadTree.AllOverloads, func(overload FunctionInterface) bool {
+		_, isAggregate := overload.(AggregateFunctionInterface)
+		return !isAggregate
+	}) {
+		return true, nil
+	}
+	aggregate := NewCompiledAggregateFunction(ctx, name, args(), overloadTree)
+	if !aggregate.overload.Valid() {
+		return true, nil
+	}
+	_, isAggregate := aggregate.overload.Function().(AggregateFunctionInterface)
+	return isAggregate, nil
+}
+
+// Function implements the interface sql.FunctionProvider.
+func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql.Function, bool) {
+	overloadTree, hasAggregate, ok := fp.overloads(ctx, schema, name)
+	if !ok {
 		return nil, false
 	}
-	if len(aggOverloads) > 0 || len(AggregateCatalog[name]) > 0 {
+	if hasAggregate {
 		return sql.FunctionN{
 			Name: name,
 			Fn: func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
-				return NewCompiledAggregateFunction(ctx, name, params, overloadTree), nil
+				aggregate := NewCompiledAggregateFunction(ctx, name, params, overloadTree)
+				if aggregate.overload.Valid() {
+					if _, ok := aggregate.overload.Function().(AggregateFunctionInterface); !ok {
+						return NewCompiledFunction(ctx, name, params, overloadTree, false), nil
+					}
+				}
+				return aggregate, nil
 			},
 		}, true
 	}

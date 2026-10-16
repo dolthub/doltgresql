@@ -299,5 +299,37 @@ func TestCreateAggregate(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "aggregates and functions that share a name",
+			SetUpScript: []string{
+				`CREATE FUNCTION dgpick(a INT, b INT) RETURNS INT AS $$ SELECT $1 + $2 $$ LANGUAGE sql;`,
+				`CREATE FUNCTION dgpick_step(s int4, v int4) RETURNS int4 AS $$ SELECT $1 + $2 $$ LANGUAGE sql;`,
+				`CREATE AGGREGATE dgpick(int4) (SFUNC = dgpick_step, STYPE = int4, INITCOND = '0');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT dgpick(1, 2);`,
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    `SELECT dgpick(x) FROM (VALUES (1), (2), (3)) t(x);`,
+					Expected: []sql.Row{{6}},
+				},
+				{
+					Query:    `SELECT dgpick(dgpick(x), 10) FROM (VALUES (1), (2), (3)) t(x);`,
+					Expected: []sql.Row{{16}},
+				},
+				{
+					Query:    `SELECT dgpick(x, 1) FROM (VALUES (1), (2), (3)) t(x) ORDER BY 1;`,
+					Expected: []sql.Row{{2}, {3}, {4}},
+				},
+				{
+					Query:           `SELECT dgpick(1, 2, 3);`,
+					ExpectedErr:     `function dgpick(integer, integer, integer) does not exist`,
+					ExpectedErrCode: "42883",
+					Skip:            true,
+				},
+			},
+		},
 	})
 }
