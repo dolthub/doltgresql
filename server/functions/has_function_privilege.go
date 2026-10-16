@@ -201,12 +201,8 @@ func hasFunctionPrivilege(ctx *sql.Context, user, target, privilege any) (any, e
 func functionPrivilegeRoutineExists(ctx *sql.Context, routine id.Id) (exists, builtin bool, err error) {
 	switch routine.Section() {
 	case id.Section_Function:
-		if routine.Segment(0) == "pg_catalog" {
-			for _, f := range framework.Catalog[routine.Segment(1)] {
-				if f.InternalID() == routine {
-					return true, true, nil
-				}
-			}
+		if isBuiltinRoutine(routine) {
+			return true, true, nil
 		}
 		collection, err := core.GetFunctionsCollectionFromContext(ctx, "")
 		if err != nil {

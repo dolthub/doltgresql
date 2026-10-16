@@ -2421,7 +2421,32 @@ func TestHasFunctionPrivilege(t *testing.T) {
 			{Query: `SELECT has_function_privilege('version()', 'execute,invalid')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
 			{Query: `SELECT has_function_privilege('version()', 'execute,')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
 			{Query: `SELECT has_function_privilege('version()', 'EXECUTE WITH  GRANT OPTION')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT has_function_privilege('function_outsider', 'sum(integer)', 'execute'), has_function_privilege('function_outsider', 'sum(integer)'::regprocedure::oid, 'execute')`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT has_function_privilege('function_outsider', 'row_number()', 'execute'), has_function_privilege('function_outsider', 'row_number()'::regprocedure::oid, 'execute with grant option')`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT has_function_privilege('function_outsider', '0', 'execute')`, ExpectedErr: "does not exist", ExpectedErrCode: "42883"},
+			{Query: `SELECT has_function_privilege('0', 'invalid')`, ExpectedErr: "does not exist", ExpectedErrCode: "42883"},
 			{Query: `SELECT has_function_privilege(0::oid, 'invalid')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+		},
+	}})
+}
+
+// Routine ownership is not yet stored by the function/procedure collections.
+// ACL grants cannot represent the owner's irrevocable grant option.
+func TestHasFunctionPrivilegeOwner(t *testing.T) {
+	t.Skip("requires persistent routine ownership and owner-aware ACL checks")
+	RunScripts(t, []ScriptTest{{
+		Name: "non-superuser routine owner privileges",
+		SetUpScript: []string{
+			`CREATE ROLE function_owner`,
+			`CREATE SCHEMA function_owner AUTHORIZATION function_owner`,
+			`SET ROLE function_owner`,
+			`CREATE FUNCTION function_owner.f() RETURNS integer LANGUAGE SQL AS 'SELECT 1'`,
+			`REVOKE EXECUTE ON FUNCTION function_owner.f() FROM PUBLIC`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: `SELECT has_function_privilege('function_owner.f()', 'execute'), has_function_privilege('function_owner.f()', 'execute with grant option')`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `REVOKE EXECUTE ON FUNCTION function_owner.f() FROM function_owner`},
+			{Query: `SELECT has_function_privilege('function_owner.f()', 'execute'), has_function_privilege('function_owner.f()', 'execute with grant option')`, Expected: []sql.Row{{"f", "t"}}},
 		},
 	}})
 }
