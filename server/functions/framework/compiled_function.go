@@ -1035,7 +1035,9 @@ func (*CompiledFunction) preferredTypeMatches(argTypes []*pgtypes.DoltgresType, 
 		currentPreferredCount := 0
 		for argIdx := range argTypes {
 			argType := cand.params.argTypes[argIdx]
-			if argTypes[argIdx].ID != argType.ID && argType.IsPreferred {
+			// Unknown literals have no category yet. Let the next resolution
+			// step apply their string-category preference before preferring OID.
+			if argTypes[argIdx].ID != pgtypes.Unknown.ID && argTypes[argIdx].ID != argType.ID && argType.IsPreferred {
 				currentPreferredCount++
 			}
 		}
@@ -1055,35 +1057,55 @@ func (*CompiledFunction) preferredTypeMatches(argTypes []*pgtypes.DoltgresType, 
 func (c *CompiledFunction) unknownTypeCategoryMatches(argTypes []*pgtypes.DoltgresType, candidates []overloadMatch) ([]overloadMatch, bool) {
 	matches := make([]overloadMatch, len(candidates))
 	copy(matches, candidates)
-	// For our first loop, we'll filter matches based on whether they accept the string category
-	for argIdx := range argTypes {
-		// We're only concerned with `unknown` types
-		if argTypes[argIdx].ID != pgtypes.Unknown.ID {
+	// Resolve the category before choosing a preferred type within it. In
+	// particular, a preferred OID must not beat a non-preferred name for an
+	// unknown string literal, while timestamptz can still beat timestamp.
+	// Inspect the original candidates for every argument so resolution does
+	// not depend on argument order. For example, (text, int) and (int, text)
+	// remain ambiguous for two unknowns: each position prefers string, but
+	// neither overload satisfies both positions.
+	for argIdx, argType := range argTypes {
+		if argType.ID != pgtypes.Unknown.ID {
 			continue
 		}
-		var newMatches []overloadMatch
-		for _, match := range matches {
-			if match.params.argTypes[argIdx].TypCategory == pgtypes.TypeCategory_StringTypes {
-				newMatches = append(newMatches, match)
+		var category pgtypes.TypeCategory
+		conflict := false
+		for _, match := range candidates {
+			candidateCategory := match.params.argTypes[argIdx].TypCategory
+			if candidateCategory == pgtypes.TypeCategory_StringTypes {
+				category = candidateCategory
+				conflict = false
+				break
+			}
+			if category == "" {
+				category = candidateCategory
+			} else if category != candidateCategory {
+				conflict = true
 			}
 		}
-		// If we've found matches in this step, then we'll update our match set
-		if len(newMatches) > 0 {
-			matches = newMatches
+		if conflict {
+			return nil, false
 		}
+		prefer := false
+		for _, match := range candidates {
+			param := match.params.argTypes[argIdx]
+			if param.TypCategory == category && param.IsPreferred {
+				prefer = true
+				break
+			}
+		}
+		var remaining []overloadMatch
+		for _, match := range matches {
+			param := match.params.argTypes[argIdx]
+			if param.TypCategory == category && (!prefer || param.IsPreferred) {
+				remaining = append(remaining, match)
+			}
+		}
+		matches = remaining
 	}
-	// Return early if we've filtered down to a single match
-	if len(matches) == 1 {
-		return matches, true
-	}
-	// TODO: implement the remainder of step 4.e. from the documentation (following code assumes it has been implemented)
-	// ...
-
-	// If we've discarded every function, then we'll actually return all original candidates
 	if len(matches) == 0 {
 		return candidates, true
 	}
-	// In this case, we've trimmed at least one candidate, so we'll return our new matches
 	return matches, true
 }
 
