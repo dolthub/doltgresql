@@ -2360,3 +2360,93 @@ func TestPgHasRole(t *testing.T) {
 		},
 	}})
 }
+
+func TestHasFunctionPrivilege(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "has_function_privilege",
+		SetUpScript: []string{
+			`CREATE ROLE function_reader`,
+			`CREATE ROLE function_member`,
+			`CREATE ROLE function_noinherit NOINHERIT`,
+			`CREATE ROLE function_outsider`,
+			`GRANT function_reader TO function_member, function_noinherit`,
+			`CREATE FUNCTION public.privilege_test(integer) RETURNS integer LANGUAGE SQL AS 'SELECT $1'`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: `SELECT has_function_privilege('pg_catalog.version()', 'EXECUTE')`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_function_privilege('version()'::regprocedure::oid, 'execute')`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_function_privilege('function_outsider', 'version()', 'execute'), has_function_privilege('function_outsider', 'version()', 'EXECUTE WITH GRANT OPTION')`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT has_function_privilege('public', 'privilege_test(integer)', 'execute'), has_function_privilege(0::oid, 'privilege_test(integer)', 'execute')`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `REVOKE EXECUTE ON FUNCTION public.privilege_test(integer) FROM PUBLIC`},
+			{Query: `SELECT has_function_privilege('function_outsider', 'privilege_test(integer)', 'execute'), has_function_privilege('privilege_test(integer)', 'execute with grant option')`, Expected: []sql.Row{{"f", "t"}}},
+			{Query: `GRANT EXECUTE ON FUNCTION public.privilege_test(integer) TO function_reader WITH GRANT OPTION`},
+			{Query: `SELECT has_function_privilege('function_member', 'privilege_test(integer)', ' execute , EXECUTE WITH GRANT OPTION '), has_function_privilege('function_noinherit', 'privilege_test(integer)', 'execute')`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT has_function_privilege('function_reader'::name, oid, 'execute') FROM pg_proc WHERE proname='privilege_test'`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_function_privilege(oid, 'privilege_test(integer)'::text, 'execute') FROM pg_roles WHERE rolname='function_reader'`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_function_privilege(r.oid, p.oid, 'execute') FROM pg_roles r CROSS JOIN pg_proc p WHERE r.rolname='function_reader' AND p.proname='privilege_test'`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_function_privilege(0::oid, 'execute'), has_function_privilege('function_reader', 0::oid, 'execute'), has_function_privilege(0::oid, 0::oid, 'execute')`, Expected: []sql.Row{{nil, nil, nil}}},
+			{Query: `SELECT has_function_privilege(NULL::text, 'execute'), has_function_privilege(NULL::oid, 'execute'), has_function_privilege('version()', NULL::text), has_function_privilege(NULL::name, 'version()', 'execute')`, Expected: []sql.Row{{nil, nil, nil, nil}}},
+			{Query: `CREATE PROCEDURE privilege_procedure() LANGUAGE SQL AS 'SELECT 1';`},
+			{Query: `SELECT has_function_privilege('public', 'privilege_procedure()', 'execute');`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_function_privilege(oid, 'execute') FROM pg_proc WHERE proname='privilege_procedure';`, Expected: []sql.Row{{"t"}}},
+			{Query: `SET ROLE function_member`},
+			{Query: `SELECT has_function_privilege(oid, 'execute') FROM pg_proc WHERE proname='privilege_test';`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_function_privilege('privilege_test(integer)', 'execute'), has_function_privilege('privilege_test(integer)', 'execute with grant option')`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `RESET ROLE`},
+			{Query: `REVOKE GRANT OPTION FOR EXECUTE ON FUNCTION public.privilege_test(integer) FROM function_reader`},
+			{Query: `SELECT has_function_privilege('function_member', 'privilege_test(integer)', 'execute with grant option'), has_function_privilege('function_member', 'privilege_test(integer)', 'execute with grant option, execute')`, Expected: []sql.Row{{"f", "t"}}},
+			{Query: `REVOKE EXECUTE ON FUNCTION public.privilege_test(integer) FROM function_reader`},
+			{Query: `SELECT has_function_privilege('function_member', 'privilege_test(integer)', 'execute')`, Expected: []sql.Row{{"f"}}},
+			{Query: `SELECT has_function_privilege('0', 'execute');`, ExpectedErr: "does not exist", ExpectedErrCode: "42883"},
+			{Query: `SELECT has_function_privilege('99999999', 'execute');`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_function_privilege('public', '99999999', 'execute');`, ExpectedErr: "does not exist", ExpectedErrCode: "42883"},
+			{Query: `CREATE SCHEMA privilege_schema;`},
+			{Query: `CREATE FUNCTION privilege_schema."MixedFunction"(text) RETURNS text LANGUAGE SQL AS 'SELECT $1';`},
+			{Query: `SET search_path TO privilege_schema, public;`},
+			{Query: `SELECT has_function_privilege('public', '"MixedFunction"(text)', 'execute');`, Expected: []sql.Row{{"t"}}},
+			{Query: `RESET search_path;`},
+			{Query: `SELECT has_function_privilege('public', 'privilege_schema."MixedFunction"(text)', 'execute');`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_function_privilege('privilege_schema."MixedFunction"(integer)', 'execute');`, ExpectedErr: "does not exist", ExpectedErrCode: "42883"},
+			{Query: `CREATE TABLE saved_function_oid AS SELECT oid FROM pg_proc WHERE proname = 'MixedFunction';`},
+			{Query: `DROP FUNCTION privilege_schema."MixedFunction"(text);`},
+			{Query: `SELECT has_function_privilege(oid, 'execute') FROM saved_function_oid;`, Expected: []sql.Row{{nil}}},
+			{Query: `ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;`},
+			{Query: `CREATE FUNCTION privilege_private() RETURNS integer LANGUAGE SQL AS 'SELECT 1';`},
+			{Query: `SELECT has_function_privilege('public', 'privilege_private()', 'execute');`, Expected: []sql.Row{{"f"}}},
+			{Query: `ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO PUBLIC;`},
+			{Query: `SELECT has_function_privilege('missing_function()', 'execute')`, ExpectedErr: "does not exist", ExpectedErrCode: "42883"},
+			{Query: `SELECT has_function_privilege('missing_role', 'version()', 'execute')`, ExpectedErr: "does not exist", ExpectedErrCode: "42704"},
+			{Query: `SELECT has_function_privilege('version()', '')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT has_function_privilege('version()', 'USAGE')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT has_function_privilege('version()', 'execute,invalid')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT has_function_privilege('version()', 'execute,')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT has_function_privilege('version()', 'EXECUTE WITH  GRANT OPTION')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT has_function_privilege('function_outsider', 'sum(integer)', 'execute'), has_function_privilege('function_outsider', 'sum(integer)'::regprocedure::oid, 'execute')`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT has_function_privilege('function_outsider', 'row_number()', 'execute'), has_function_privilege('function_outsider', 'row_number()'::regprocedure::oid, 'execute with grant option')`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT has_function_privilege('function_outsider', '0', 'execute')`, ExpectedErr: "does not exist", ExpectedErrCode: "42883"},
+			{Query: `SELECT has_function_privilege('0', 'invalid')`, ExpectedErr: "does not exist", ExpectedErrCode: "42883"},
+			{Query: `SELECT has_function_privilege(0::oid, 'invalid')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+		},
+	}})
+}
+
+// Routine ownership is not yet stored by the function/procedure collections.
+// ACL grants cannot represent the owner's irrevocable grant option.
+func TestHasFunctionPrivilegeOwner(t *testing.T) {
+	t.Skip("requires persistent routine ownership and owner-aware ACL checks")
+	RunScripts(t, []ScriptTest{{
+		Name: "non-superuser routine owner privileges",
+		SetUpScript: []string{
+			`CREATE ROLE function_owner`,
+			`CREATE SCHEMA function_owner AUTHORIZATION function_owner`,
+			`SET ROLE function_owner`,
+			`CREATE FUNCTION function_owner.f() RETURNS integer LANGUAGE SQL AS 'SELECT 1'`,
+			`REVOKE EXECUTE ON FUNCTION function_owner.f() FROM PUBLIC`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: `SELECT has_function_privilege('function_owner.f()', 'execute'), has_function_privilege('function_owner.f()', 'execute with grant option')`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `REVOKE EXECUTE ON FUNCTION function_owner.f() FROM function_owner`},
+			{Query: `SELECT has_function_privilege('function_owner.f()', 'execute'), has_function_privilege('function_owner.f()', 'execute with grant option')`, Expected: []sql.Row{{"f", "t"}}},
+		},
+	}})
+}

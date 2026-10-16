@@ -149,6 +149,7 @@ func Init() {
 	initGenerateSubscripts()
 	initGetdatabaseencoding()
 	initHasDatabasePrivilege()
+	initHasFunctionPrivilege()
 	initHasSchemaPrivilege()
 	initHashText()
 	initInitcap()
