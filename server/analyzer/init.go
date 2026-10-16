@@ -58,6 +58,7 @@ const (
 	ruleId_ParenthesizeColumnDefaults                                    // parenthesizeColumnDefaults
 	ruleId_HoistInsertTriggers                                           // hoistInsertTriggers
 	ruleId_SplitRowComparisons                                           // splitRowComparisons
+	ruleId_RemoveIdentityUpdates                                         // removeIdentityUpdates
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -84,6 +85,7 @@ func Init() {
 		analyzer.Rule{Id: ruleId_ValidateColumnDefaults, Apply: ValidateColumnDefaults},
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
+		analyzer.Rule{Id: ruleId_RemoveIdentityUpdates, Apply: RemoveIdentityUpdates},
 		analyzer.Rule{Id: ruleId_AssignTriggers, Apply: AssignTriggers},
 		analyzer.Rule{Id: ruleId_ValidateCreateFunction, Apply: ValidateCreateFunction},
 		analyzer.Rule{Id: ruleId_ValidateCreateSchema, Apply: ValidateCreateSchema},

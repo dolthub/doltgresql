@@ -1523,6 +1523,8 @@ func (t *T) SQLStandardNameWithTypmod(haveTypmod bool, typmod int) string {
 			return "regproc"
 		case oid.T_regprocedure:
 			return "regprocedure"
+		case oid.T_regrole:
+			return "regrole"
 		case oid.T_regtype:
 			return "regtype"
 		case oid.T_xid:
@@ -2588,6 +2590,7 @@ var unreservedTypeTokens = map[string]*T{
 	"regproc":      RegProc,
 	"regprocedure": RegProcedure,
 	"regnamespace": RegNamespace,
+	"regrole":      RegRole,
 	"regtype":      RegType,
 
 	"serial2":     &Serial2Type,

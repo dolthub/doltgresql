@@ -13596,7 +13596,7 @@ a_expr:
   }
 | a_expr INET_CONTAINED_BY_OR_EQUALS a_expr
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("inet_contained_by_or_equals"), Exprs: tree.Exprs{$1.expr(), $3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("network_subeq"), Exprs: tree.Exprs{$1.expr(), $3.expr()}}
   }
 | a_expr AND_AND a_expr
   {
@@ -13604,7 +13604,7 @@ a_expr:
   }
 | a_expr INET_CONTAINS_OR_EQUALS a_expr
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("inet_contains_or_equals"), Exprs: tree.Exprs{$1.expr(), $3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("network_supeq"), Exprs: tree.Exprs{$1.expr(), $3.expr()}}
   }
 | a_expr LESS_EQUALS a_expr
   {
@@ -13923,7 +13923,7 @@ a_expr:
   }
  | a_expr OPERATOR '(' schema_name '.' INET_CONTAINED_BY_OR_EQUALS ')' a_expr
    {
-     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("inet_contained_by_or_equals", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
+     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("network_subeq", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
    }
  | a_expr OPERATOR '(' schema_name '.' AND_AND ')' a_expr
    {
@@ -13931,7 +13931,7 @@ a_expr:
    }
  | a_expr OPERATOR '(' schema_name '.' INET_CONTAINS_OR_EQUALS ')' a_expr
    {
-     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("inet_contains_or_equals", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
+     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("network_supeq", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
    }
  | a_expr OPERATOR '(' schema_name '.' LESS_EQUALS ')' a_expr
    {

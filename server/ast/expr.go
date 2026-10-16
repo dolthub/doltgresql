@@ -559,7 +559,9 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.DGeometry:
 		return nil, errors.Errorf("the statement is not yet supported")
 	case *tree.DIPAddr:
-		return nil, errors.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralInet(node.IPAddr),
+		}, nil
 	case *tree.DInt:
 		return vitess.InjectedExpr{
 			Expression: pgexprs.NewRawLiteralInt64(int64(*node)),
@@ -850,10 +852,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		case tree.UnaryMinus:
 			operator = framework.Operator_UnaryMinus
 		case tree.UnaryComplement:
-			return &vitess.UnaryExpr{
-				Operator: vitess.TildaStr,
-				Expr:     expr,
-			}, nil
+			operator = framework.Operator_UnaryBitNot
 		case tree.UnarySqrt:
 			// TODO: replace with a function
 			return nil, errors.Errorf("square root operator is not yet supported")

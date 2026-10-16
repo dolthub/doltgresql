@@ -40,7 +40,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/utils"
 )
 
-var errResultOutOfRange = pgerror.WithCandidateCode(errors.New("result out of range"), pgcode.NumericValueOutOfRange)
+var errResultOutOfRange = pgerror.WithCandidateCode(errors.New("result is out of range"), pgcode.NumericValueOutOfRange)
 
 // Addr is the representation of the IP address. The Uint128 takes 16-bytes for
 // both IPv4 and IPv6.
@@ -184,6 +184,21 @@ func getFamily(addr string) IPFamily {
 	return IPv4family
 }
 
+// trimIPv4LeadingZeros removes the leading zeros from each octet of an IPv4 address. Postgres reads such octets as
+// decimal (e.g. "010" is 10), while net.ParseIP rejects them.
+func trimIPv4LeadingZeros(addr string) string {
+	octets := strings.Split(addr, ".")
+	for i, octet := range octets {
+		if len(octet) > 1 && strings.Trim(octet, "0123456789") == "" {
+			if octet = strings.TrimLeft(octet, "0"); octet == "" {
+				octet = "0"
+			}
+			octets[i] = octet
+		}
+	}
+	return strings.Join(octets, ".")
+}
+
 // ParseINet parses postgres style INET types. See TestIPAddrParseINet for
 // examples.
 func ParseINet(s string, dest *IPAddr) error {
@@ -196,7 +211,7 @@ func ParseINet(s string, dest *IPAddr) error {
 		// Trims IPv4 suffix "." to match postgres compitibility.
 		addr := s
 		if family == IPv4family {
-			addr = strings.TrimRight(addr, ".")
+			addr = trimIPv4LeadingZeros(strings.TrimRight(addr, "."))
 			maskSize = 32
 		} else {
 			maskSize = 128
@@ -246,8 +261,7 @@ func ParseINet(s string, dest *IPAddr) error {
 		for i := 0; i < 4-octetCount; i++ {
 			buffer.WriteString(".0")
 		}
-		addr = buffer.String()
-
+		addr = trimIPv4LeadingZeros(buffer.String())
 	}
 
 	ip := net.ParseIP(addr)
@@ -460,7 +474,7 @@ func (ipAddr *IPAddr) SubIPAddr(other *IPAddr) (int64, error) {
 	var diff int64
 	if ipAddr.Family != other.Family {
 		return diff, pgerror.WithCandidateCode(
-			errors.New("cannot subtract inet addresses with different sizes"),
+			errors.New("cannot subtract inet values of different sizes"),
 			pgcode.InvalidParameterValue)
 	}
 
