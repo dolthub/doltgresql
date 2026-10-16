@@ -21,14 +21,13 @@ import (
 	"testing"
 )
 
-// We generate various TLS keys and certificates and some JWKS/JWT material
-// which the tests reference. We do this once for the test run, because it can
-// be expensive, and we expose the location of the generated files through an
-// environment variable. The test definitions interpolate that environment
-// variable into a few fields.
+// We generate various TLS keys and certificates which the tests reference. We
+// do this once for the test run, because it can be expensive, and we expose
+// the location of the generated files through an environment variable. The
+// test definitions interpolate that environment variable into a few fields.
 //
-// It's good enough for now, and it keeps us from checking in certificates or
-// JWT which will expire at some point in the future.
+// It's good enough for now, and it keeps us from checking in certificates
+// which will expire at some point in the future.
 func TestMain(m *testing.M) {
 	old := os.Getenv("TESTGENDIR")
 	defer func() {
@@ -39,10 +38,6 @@ func TestMain(m *testing.M) {
 		log.Fatalf("could not create temp dir: %v", err)
 	}
 	defer os.RemoveAll(gendir)
-	err = GenerateTestJWTs(gendir)
-	if err != nil {
-		log.Fatalf("%v", err)
-	}
 	err = GenerateX509Certs(gendir)
 	if err != nil {
 		log.Fatalf("%v", err)
