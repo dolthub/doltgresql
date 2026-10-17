@@ -23,6 +23,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
 
 	psql "github.com/dolthub/doltgresql/postgres/parser/parser/sql"
@@ -112,12 +113,17 @@ func (h *ConnectionHandler) sendClientStartupMessages() error {
 // chooseInitialParameters attempts to choose the initial parameter settings for the connection.
 func (h *ConnectionHandler) chooseInitialParameters(startupMessage *pgproto3.StartupMessage) error {
 	postgresParser := psql.PostgresParser{}
+	parse := func(query string) (sqlparser.Statement, error) {
+		ctx := sql.NewContextWithVariables(context.Background(), h.doltgresHandler.e.Variables())
+		stmt, _, _, err := postgresParser.Parse(ctx, query, false)
+		return stmt, err
+	}
 	db, ok := startupMessage.Parameters["database"]
 	if !ok || len(db) == 0 {
 		db = h.mysqlConn.User
 	}
 	useStmt := fmt.Sprintf("SET database TO '%s';", db)
-	parsed, err := postgresParser.ParseSimple(useStmt)
+	parsed, err := parse(useStmt)
 	if err != nil {
 		return err
 	}
