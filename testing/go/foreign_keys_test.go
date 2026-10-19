@@ -2248,3 +2248,43 @@ func TestImplicitForeignKeys(t *testing.T) {
 		},
 	})
 }
+
+func TestImplicitForeignKeyRegressionCleanup(t *testing.T) {
+	for _, reference := range []string{"", "(id)"} {
+		t.Run("reference"+reference, func(t *testing.T) {
+			RunScripts(t, []ScriptTest{
+				{
+					Name:        "reject numeric references to integer keys without leaving a table",
+					SetUpScript: []string{`CREATE TABLE parent (id integer PRIMARY KEY)`, `INSERT INTO parent VALUES (42)`},
+					Assertions: []ScriptTestAssertion{
+						{Query: `CREATE TABLE child (id numeric REFERENCES parent` + reference + `)`, ExpectedErr: "incompatible types"},
+						{Query: `DROP TABLE parent`},
+						{Query: `CREATE TABLE parent (id numeric PRIMARY KEY)`},
+						{Query: `INSERT INTO parent VALUES (42)`},
+						{Query: `CREATE TABLE child (id integer REFERENCES parent` + reference + `)`},
+						{Query: `INSERT INTO child VALUES (42)`},
+						{Query: `INSERT INTO child VALUES (43)`, ExpectedErr: "Foreign key violation"},
+					},
+				},
+				{
+					Name: "drop interdependent tables in parent first order",
+					SetUpScript: []string{
+						`CREATE TABLE a (id integer PRIMARY KEY)`,
+						`CREATE TABLE c (id integer PRIMARY KEY)`,
+						`CREATE TABLE b (id integer REFERENCES a` + reference + `)`,
+						`CREATE TABLE d (id integer REFERENCES c` + reference + `)`,
+						`CREATE TABLE e (id integer REFERENCES a` + reference + `, other integer REFERENCES c` + reference + `)`,
+						`ALTER TABLE a ADD FOREIGN KEY (id) REFERENCES c` + reference,
+					},
+					Assertions: []ScriptTestAssertion{
+						{Query: `ALTER TABLE c ADD FOREIGN KEY (id) REFERENCES a` + reference},
+						{Query: `DROP TABLE a,c,b,d,e CASCADE`},
+						{Query: `CREATE TABLE a (id integer PRIMARY KEY)`},
+						{Query: `TRUNCATE a`},
+						{Query: `DROP TABLE a`},
+					},
+				},
+			})
+		})
+	}
+}

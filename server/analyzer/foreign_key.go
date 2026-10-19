@@ -68,12 +68,20 @@ func foreignKeyComparableTypes(ctx *sql.Context, castColl *casts.Collection, fro
 		return true
 	}
 
+	// Comparing numeric to an integer by promoting the integer is not a valid
+	// lookup in the referenced integer index. The child must cast implicitly.
+	if dtFrom.ID == types.Numeric.ID && (dtTo.ID == types.Int16.ID || dtTo.ID == types.Int32.ID || dtTo.ID == types.Int64.ID) {
+		cast, err := castColl.GetImplicitCast(ctx, dtFrom, dtTo)
+		if err != nil || !cast.ID.IsValid() {
+			return false
+		}
+	}
+
 	fromLiteral := expression.NewLiteral(dtFrom.Zero(), from)
 	toLiteral := expression.NewLiteral(dtTo.Zero(), to)
 
 	// a foreign key between two different types is valid if there is an equality operator on the two types
-	// TODO: there are some subtleties in postgres not captured by this logic, e.g. a foreign key from double -> int
-	//  is valid, but the reverse is not. This works fine, but is more permissive than postgres is.
+	// TODO: validate equality operator families for other cross-type references.
 	eq := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "=", fromLiteral, toLiteral)
 	if eq == nil || eq.StashedError() != nil {
 		return false
