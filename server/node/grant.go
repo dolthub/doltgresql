@@ -67,6 +67,7 @@ type GrantSequence struct {
 type GrantRoutine struct {
 	Privileges []auth.Privilege
 	Routines   []PrivilegeTarget
+	Kind       RoutineKind
 }
 
 // GrantRole specifically handles the GRANT <roles> TO <roles> statement.
@@ -195,7 +196,7 @@ func (g *Grant) withResolvedTargets(ctx *sql.Context) (*Grant, error) {
 		resolved.GrantSequence = &grantSequence
 	case g.GrantRoutine != nil:
 		grantRoutine := *g.GrantRoutine
-		if grantRoutine.Routines, err = resolveRoutineTargets(ctx, g.GrantRoutine.Routines); err != nil {
+		if grantRoutine.Routines, err = resolveRoutineTargets(ctx, g.GrantRoutine.Kind, g.GrantRoutine.Routines); err != nil {
 			return nil, err
 		}
 		resolved.GrantRoutine = &grantRoutine

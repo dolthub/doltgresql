@@ -85,6 +85,7 @@ func nodeGrant(ctx *Context, node *tree.Grant) (vitess.Statement, error) {
 		grantRoutine = &pgnodes.GrantRoutine{
 			Privileges: privileges,
 			Routines:   routinePrivilegeTargets(node.Targets),
+			Kind:       routineKind(node.Targets.TargetType),
 		}
 	default:
 		return nil, errors.Errorf("this form of GRANT is not yet supported")
@@ -161,7 +162,8 @@ func routinePrivilegeTargets(targets tree.TargetList) []pgnodes.PrivilegeTarget 
 		routine := objectPrivilegeTarget(r.Name)
 		// TODO: there can be 2 routines with the same name but different argument types
 		//  need a fix for getting argument types from parsing CALL statement, which would set routine.ArgTypes
-		routine.Args = routineArgTypesKey(r.Args)
+		routine.Args = routineArgTypesDisplay(r.Args)
+		routine.ArgsOmitted = r.ArgsOmitted
 		routines = append(routines, routine)
 	}
 	for _, schema := range targets.InSchema {
@@ -185,6 +187,18 @@ func objectPrivilegeTarget(name *tree.UnresolvedObjectName) pgnodes.PrivilegeTar
 	return target
 }
 
+// routineKind returns the kind of routine targeted by a GRANT or REVOKE statement.
+func routineKind(targetType privilege.ObjectType) pgnodes.RoutineKind {
+	switch targetType {
+	case privilege.Procedure:
+		return pgnodes.RoutineKind_Procedure
+	case privilege.Routine:
+		return pgnodes.RoutineKind_Routine
+	default:
+		return pgnodes.RoutineKind_Function
+	}
+}
+
 // routineArgTypesKey builds a canonical string key from a RoutineArgs list using only the argument types.
 func routineArgTypesKey(args tree.RoutineArgs) string {
 	parts := make([]string, len(args))
@@ -192,6 +206,15 @@ func routineArgTypesKey(args tree.RoutineArgs) string {
 		parts[i] = arg.Type.SQLString()
 	}
 	return strings.Join(parts, ",")
+}
+
+// routineArgTypesDisplay formats a RoutineArgs list's argument types the way PostgreSQL shows them in error messages.
+func routineArgTypesDisplay(args tree.RoutineArgs) string {
+	parts := make([]string, len(args))
+	for i, arg := range args {
+		parts[i] = strings.ToLower(arg.Type.SQLString())
+	}
+	return strings.Join(parts, ", ")
 }
 
 // convertPrivilegeKind converts a privilege from its parser representation to the server representation.

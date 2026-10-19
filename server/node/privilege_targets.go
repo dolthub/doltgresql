@@ -36,6 +36,8 @@ type PrivilegeTarget struct {
 	// TODO: there can be 2 routines with the same name but different argument types, so ArgTypes is always empty
 	//  until we can get argument types from a CALL statement
 	Args string // A routine's argument types as written, which are used only in error messages
+	// ArgsOmitted is true when a routine was named without an argument list, which is used only in error messages
+	ArgsOmitted bool
 }
 
 // String returns the target's name as written.
@@ -245,8 +247,9 @@ func sequenceSchema(ctx *sql.Context, target PrivilegeTarget) (string, error) {
 }
 
 // resolveRoutineTargets resolves each target of a GRANT or REVOKE ON FUNCTION/PROCEDURE/ROUTINE to the schema it lives
-// in, returning an error for targets that do not exist or that are in another database.
-func resolveRoutineTargets(ctx *sql.Context, targets []PrivilegeTarget) ([]PrivilegeTarget, error) {
+// in, returning an error for targets that do not exist, that are not of the given kind, or that are in another
+// database.
+func resolveRoutineTargets(ctx *sql.Context, kind RoutineKind, targets []PrivilegeTarget) ([]PrivilegeTarget, error) {
 	resolved := make([]PrivilegeTarget, len(targets))
 	for i, target := range targets {
 		if err := checkTargetDatabase(ctx, target, false); err != nil {
@@ -256,7 +259,7 @@ func resolveRoutineTargets(ctx *sql.Context, targets []PrivilegeTarget) ([]Privi
 		if len(target.Name) == 0 {
 			target.Schema, err = resolveTargetSchema(ctx, target.Schema)
 		} else {
-			target.Schema, err = routineSchema(ctx, target)
+			target.Schema, err = routineSchema(ctx, kind, target)
 		}
 		if err != nil {
 			return nil, err
@@ -267,9 +270,27 @@ func resolveRoutineTargets(ctx *sql.Context, targets []PrivilegeTarget) ([]Privi
 	return resolved, nil
 }
 
+// RoutineKind is the kind of routine named by a GRANT or REVOKE ON FUNCTION/PROCEDURE/ROUTINE statement.
+type RoutineKind string
+
+const (
+	RoutineKind_Function  RoutineKind = "function"
+	RoutineKind_Procedure RoutineKind = "procedure"
+	RoutineKind_Routine   RoutineKind = "routine" // either a function or a procedure
+)
+
+// noun returns how PostgreSQL names this kind of routine in error messages. ROUTINE targets are called functions.
+func (kind RoutineKind) noun() string {
+	if kind == RoutineKind_Procedure {
+		return "procedure"
+	}
+	return "function"
+}
+
 // routineSchema returns the schema containing the function, aggregate, or procedure named by the target, mirroring
-// how an unqualified routine resolves on the search path.
-func routineSchema(ctx *sql.Context, target PrivilegeTarget) (string, error) {
+// how an unqualified routine resolves on the search path. As in PostgreSQL, the first routine found with the name must
+// be of the given kind.
+func routineSchema(ctx *sql.Context, kind RoutineKind, target PrivilegeTarget) (string, error) {
 	candidates, err := candidateSchemas(ctx, target)
 	if err != nil {
 		return "", err
@@ -287,33 +308,36 @@ func routineSchema(ctx *sql.Context, target PrivilegeTarget) (string, error) {
 		return "", err
 	}
 	for _, candidate := range candidates {
-		if candidate == "pg_catalog" && isBuiltInRoutine(target.Name) {
-			return candidate, nil
-		}
-		funcID := id.NewFunction(candidate, target.Name)
-		overloads, err := funcCollection.GetFunctionOverloads(ctx, funcID)
-		if err != nil {
-			return "", err
-		}
-		if len(overloads) > 0 {
-			return candidate, nil
-		}
-		aggOverloads, err := aggCollection.GetAggregateOverloads(ctx, funcID)
-		if err != nil {
-			return "", err
-		}
-		if len(aggOverloads) > 0 {
-			return candidate, nil
+		isFunction := candidate == "pg_catalog" && isBuiltInRoutine(target.Name)
+		if !isFunction {
+			funcID := id.NewFunction(candidate, target.Name)
+			overloads, err := funcCollection.GetFunctionOverloads(ctx, funcID)
+			if err != nil {
+				return "", err
+			}
+			aggOverloads, err := aggCollection.GetAggregateOverloads(ctx, funcID)
+			if err != nil {
+				return "", err
+			}
+			isFunction = len(overloads) > 0 || len(aggOverloads) > 0
 		}
 		procOverloads, err := procCollection.GetProcedureOverloads(ctx, id.NewProcedure(candidate, target.Name))
 		if err != nil {
 			return "", err
 		}
-		if len(procOverloads) > 0 {
-			return candidate, nil
+		isProcedure := len(procOverloads) > 0
+		switch {
+		case !isFunction && !isProcedure:
+			continue
+		case kind == RoutineKind_Function && !isFunction, kind == RoutineKind_Procedure && !isProcedure:
+			return "", pgerror.Newf(pgcode.WrongObjectType, `%s(%s) is not a %s`, target.String(), target.Args, kind.noun())
 		}
+		return candidate, nil
 	}
-	return "", pgerror.Newf(pgcode.UndefinedFunction, `function %s(%s) does not exist`, target.String(), target.Args)
+	if target.ArgsOmitted {
+		return "", pgerror.Newf(pgcode.UndefinedFunction, `could not find a %s named "%s"`, kind.noun(), target.String())
+	}
+	return "", pgerror.Newf(pgcode.UndefinedFunction, `%s %s(%s) does not exist`, kind.noun(), target.String(), target.Args)
 }
 
 // isBuiltInRoutine returns whether a built-in function or aggregate has the given name. Built-in routines live in

@@ -68,6 +68,7 @@ type RevokeSequence struct {
 type RevokeRoutine struct {
 	Privileges []auth.Privilege
 	Routines   []PrivilegeTarget
+	Kind       RoutineKind
 }
 
 // RevokeRole specifically handles the REVOKE <roles> FROM <roles> statement.
@@ -200,7 +201,7 @@ func (r *Revoke) withResolvedTargets(ctx *sql.Context) (*Revoke, error) {
 		resolved.RevokeSequence = &revokeSequence
 	case r.RevokeRoutine != nil:
 		revokeRoutine := *r.RevokeRoutine
-		if revokeRoutine.Routines, err = resolveRoutineTargets(ctx, r.RevokeRoutine.Routines); err != nil {
+		if revokeRoutine.Routines, err = resolveRoutineTargets(ctx, r.RevokeRoutine.Kind, r.RevokeRoutine.Routines); err != nil {
 			return nil, err
 		}
 		resolved.RevokeRoutine = &revokeRoutine

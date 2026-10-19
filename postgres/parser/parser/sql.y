@@ -5959,11 +5959,11 @@ other_targets:
   }
 | FUNCTION routine_with_args_list
   {
-    $$.val = tree.TargetList{TargetType: privilege.Routine, Routines: $2.routines()}
+    $$.val = tree.TargetList{TargetType: privilege.Function, Routines: $2.routines()}
   }
 | PROCEDURE routine_with_args_list
   {
-    $$.val = tree.TargetList{TargetType: privilege.Routine, Routines: $2.routines()}
+    $$.val = tree.TargetList{TargetType: privilege.Procedure, Routines: $2.routines()}
   }
 | ROUTINE routine_with_args_list
   {
@@ -6027,7 +6027,7 @@ routine_with_args_list:
 routine_with_args:
   routine_name
   {
-    $$.val = tree.Routine{Name: $1.unresolvedObjectName(), Args: nil}
+    $$.val = tree.Routine{Name: $1.unresolvedObjectName(), Args: nil, ArgsOmitted: true}
   }
 | routine_name '(' opt_routine_args ')'
   {

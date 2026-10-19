@@ -84,6 +84,7 @@ func nodeRevoke(ctx *Context, node *tree.Revoke) (vitess.Statement, error) {
 		revokeRoutine = &pgnodes.RevokeRoutine{
 			Privileges: privileges,
 			Routines:   routinePrivilegeTargets(node.Targets),
+			Kind:       routineKind(node.Targets.TargetType),
 		}
 	default:
 		return nil, errors.Errorf("this form of REVOKE is not yet supported")

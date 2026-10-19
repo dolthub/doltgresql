@@ -56,8 +56,29 @@ func TestGrantConformance(t *testing.T) {
 					ExpectedErrCode: "42883",
 				},
 				{
+					Query:           `GRANT EXECUTE ON FUNCTION nosuchf(int, text) TO ne;`,
+					ExpectedErr:     `function nosuchf(integer, text) does not exist`,
+					ExpectedErrCode: "42883",
+				},
+				{
 					Query:           `GRANT EXECUTE ON PROCEDURE nosuchp() TO ne;`,
-					ExpectedErr:     `function nosuchp() does not exist`,
+					ExpectedErr:     `procedure nosuchp() does not exist`,
+					ExpectedErrCode: "42883",
+				},
+				{
+					// PostgreSQL calls ROUTINE targets functions
+					Query:           `GRANT EXECUTE ON ROUTINE nosuchr() TO ne;`,
+					ExpectedErr:     `function nosuchr() does not exist`,
+					ExpectedErrCode: "42883",
+				},
+				{
+					Query:           `GRANT EXECUTE ON FUNCTION nosuchf TO ne;`,
+					ExpectedErr:     `could not find a function named "nosuchf"`,
+					ExpectedErrCode: "42883",
+				},
+				{
+					Query:           `GRANT EXECUTE ON PROCEDURE nosuchp TO ne;`,
+					ExpectedErr:     `could not find a procedure named "nosuchp"`,
 					ExpectedErrCode: "42883",
 				},
 				{
@@ -144,6 +165,24 @@ func TestGrantConformance(t *testing.T) {
 				},
 				{
 					Query:    `GRANT EXECUTE ON PROCEDURE s.p() TO ex;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `GRANT EXECUTE ON FUNCTION s.p() TO ex;`,
+					ExpectedErr:     `s.p() is not a function`,
+					ExpectedErrCode: "42809",
+				},
+				{
+					Query:           `GRANT EXECUTE ON PROCEDURE s.f() TO ex;`,
+					ExpectedErr:     `s.f() is not a procedure`,
+					ExpectedErrCode: "42809",
+				},
+				{
+					Query:    `GRANT EXECUTE ON ROUTINE s.f(), s.p() TO ex;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `GRANT EXECUTE ON FUNCTION s.f TO ex;`,
 					Expected: []sql.Row{},
 				},
 				{
