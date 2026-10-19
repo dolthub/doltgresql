@@ -343,8 +343,23 @@ func (h *AuthorizationHandler) HandleAuthNode(ctx *sql.Context, aqs sql.Authoriz
 	if err := state.authorizationError(); err != nil {
 		return err
 	}
-	// TODO: implement this
-	return nil
+	globalLock.RLock()
+	defer globalLock.RUnlock()
+	// Nodes such as Dolt's table functions describe the privileges that they need as MySQL privileged operations, which
+	// the checker answers using Doltgres privileges.
+	checker := &privilegedOperationChecker{state: state}
+	if !node.CheckAuth(ctx, checker) {
+		if checker.err != nil {
+			return checker.err
+		}
+		return errPermissionDenied()
+	}
+	return checker.checkAllTablesRead(ctx, node)
+}
+
+// errPermissionDenied returns the error for an authorization failure that is not specific to a single object.
+func errPermissionDenied() error {
+	return pgerror.New(pgcode.InsufficientPrivilege, "permission denied")
 }
 
 // CheckDatabase implements the sql.AuthorizationHandler interface.
