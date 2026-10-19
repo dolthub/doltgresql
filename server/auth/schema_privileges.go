@@ -180,7 +180,7 @@ func (sp *SchemaPrivileges) serialize(writer *utils.Writer) {
 func (sp *SchemaPrivileges) deserialize(version uint32, reader *utils.Reader) {
 	sp.Data = make(map[SchemaPrivilegeKey]SchemaPrivilegeValue)
 	switch version {
-	case 0, 1, 2:
+	case 0, 1, 2, 3:
 		// Read the total number of values
 		dataCount := reader.Uint64()
 		for dataIdx := uint64(0); dataIdx < dataCount; dataIdx++ {

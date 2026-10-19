@@ -271,7 +271,7 @@ func (membership *RoleMembership) serialize(writer *utils.Writer) {
 func (membership *RoleMembership) deserialize(version uint32, reader *utils.Reader) {
 	membership.Data = make(map[RoleID]map[RoleID]RoleMembershipValue)
 	switch version {
-	case 0, 1, 2:
+	case 0, 1, 2, 3:
 		// Read the total number of members
 		memberCount := reader.Uint64()
 		for memberIdx := uint64(0); memberIdx < memberCount; memberIdx++ {
