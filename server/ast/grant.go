@@ -18,7 +18,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/privilege"
@@ -39,35 +38,9 @@ func nodeGrant(ctx *Context, node *tree.Grant) (vitess.Statement, error) {
 	var grantRoutine *pgnodes.GrantRoutine
 	switch node.Targets.TargetType {
 	case privilege.Table:
-		tables := make([]doltdb.TableName, 0, len(node.Targets.Tables)+len(node.Targets.InSchema))
-		for _, table := range node.Targets.Tables {
-			normalizedTable, err := table.NormalizeTablePattern()
-			if err != nil {
-				return nil, err
-			}
-			switch normalizedTable := normalizedTable.(type) {
-			case *tree.TableName:
-				if normalizedTable.ExplicitCatalog {
-					return nil, errors.Errorf("granting privileges to other databases is not yet supported")
-				}
-				tables = append(tables, doltdb.TableName{
-					Name:   string(normalizedTable.ObjectName),
-					Schema: string(normalizedTable.SchemaName),
-				})
-			case *tree.AllTablesSelector:
-				tables = append(tables, doltdb.TableName{
-					Name:   "",
-					Schema: string(normalizedTable.SchemaName),
-				})
-			default:
-				return nil, errors.Errorf(`unexpected table type in GRANT: %T`, normalizedTable)
-			}
-		}
-		for _, schema := range node.Targets.InSchema {
-			tables = append(tables, doltdb.TableName{
-				Name:   "",
-				Schema: schema,
-			})
+		tables, err := tablePrivilegeTargets(node.Targets, "GRANT")
+		if err != nil {
+			return nil, err
 		}
 		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_TABLE, node.Privileges)
 		if err != nil {
@@ -96,51 +69,22 @@ func nodeGrant(ctx *Context, node *tree.Grant) (vitess.Statement, error) {
 			Databases:  node.Targets.Databases.ToStrings(),
 		}
 	case privilege.Sequence:
-		sequences := make([]auth.SequencePrivilegeKey, 0, len(node.Targets.Sequences)+len(node.Targets.InSchema))
-		for _, seq := range node.Targets.Sequences {
-			sequences = append(sequences, auth.SequencePrivilegeKey{
-				Schema: sequenceSchema(seq),
-				Name:   seq.Parts[0],
-			})
-		}
-		for _, schema := range node.Targets.InSchema {
-			sequences = append(sequences, auth.SequencePrivilegeKey{
-				Schema: schema,
-				Name:   "",
-			})
-		}
 		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_SEQUENCE, node.Privileges)
 		if err != nil {
 			return nil, err
 		}
 		grantSequence = &pgnodes.GrantSequence{
 			Privileges: privileges,
-			Sequences:  sequences,
+			Sequences:  sequencePrivilegeTargets(node.Targets),
 		}
 	case privilege.Function, privilege.Procedure, privilege.Routine:
-		routines := make([]auth.RoutinePrivilegeKey, 0, len(node.Targets.Routines)+len(node.Targets.InSchema))
-		for _, r := range node.Targets.Routines {
-			routines = append(routines, auth.RoutinePrivilegeKey{
-				Schema: routineSchema(r.Name),
-				Name:   r.Name.Parts[0],
-				// TODO: there can be 2 routines with the same name but different argument types
-				//  need a fix for getting argument types from parsing CALL statement
-				//ArgTypes: routineArgTypesKey(r.Args),
-			})
-		}
-		for _, schema := range node.Targets.InSchema {
-			routines = append(routines, auth.RoutinePrivilegeKey{
-				Schema: schema,
-				Name:   "",
-			})
-		}
 		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_FUNCTION, node.Privileges)
 		if err != nil {
 			return nil, err
 		}
 		grantRoutine = &pgnodes.GrantRoutine{
 			Privileges: privileges,
-			Routines:   routines,
+			Routines:   routinePrivilegeTargets(node.Targets),
 		}
 	default:
 		return nil, errors.Errorf("this form of GRANT is not yet supported")
@@ -161,20 +105,84 @@ func nodeGrant(ctx *Context, node *tree.Grant) (vitess.Statement, error) {
 	}, nil
 }
 
-// sequenceSchema returns the schema portion of an UnresolvedObjectName for a sequence.
-func sequenceSchema(name *tree.UnresolvedObjectName) string {
-	if name.NumParts >= 2 {
-		return name.Parts[1]
+// tablePrivilegeTargets returns the tables named by a GRANT or REVOKE ON TABLE statement.
+func tablePrivilegeTargets(targets tree.TargetList, statement string) ([]pgnodes.PrivilegeTarget, error) {
+	tables := make([]pgnodes.PrivilegeTarget, 0, len(targets.Tables)+len(targets.InSchema))
+	for _, table := range targets.Tables {
+		normalizedTable, err := table.NormalizeTablePattern()
+		if err != nil {
+			return nil, err
+		}
+		switch normalizedTable := normalizedTable.(type) {
+		case *tree.TableName:
+			tables = append(tables, pgnodes.PrivilegeTarget{
+				Database: string(normalizedTable.CatalogName),
+				Schema:   string(normalizedTable.SchemaName),
+				Name:     string(normalizedTable.ObjectName),
+			})
+		case *tree.AllTablesSelector:
+			tables = append(tables, pgnodes.PrivilegeTarget{
+				Database: string(normalizedTable.CatalogName),
+				Schema:   string(normalizedTable.SchemaName),
+				Name:     "",
+			})
+		default:
+			return nil, errors.Errorf(`unexpected table type in %s: %T`, statement, normalizedTable)
+		}
 	}
-	return ""
+	for _, schema := range targets.InSchema {
+		tables = append(tables, pgnodes.PrivilegeTarget{
+			Schema: schema,
+			Name:   "",
+		})
+	}
+	return tables, nil
 }
 
-// routineSchema returns the schema portion of an UnresolvedObjectName for a routine.
-func routineSchema(name *tree.UnresolvedObjectName) string {
-	if name.NumParts >= 2 {
-		return name.Parts[1]
+// sequencePrivilegeTargets returns the sequences named by a GRANT or REVOKE ON SEQUENCE statement.
+func sequencePrivilegeTargets(targets tree.TargetList) []pgnodes.PrivilegeTarget {
+	sequences := make([]pgnodes.PrivilegeTarget, 0, len(targets.Sequences)+len(targets.InSchema))
+	for _, seq := range targets.Sequences {
+		sequences = append(sequences, objectPrivilegeTarget(seq))
 	}
-	return ""
+	for _, schema := range targets.InSchema {
+		sequences = append(sequences, pgnodes.PrivilegeTarget{
+			Schema: schema,
+			Name:   "",
+		})
+	}
+	return sequences
+}
+
+// routinePrivilegeTargets returns the routines named by a GRANT or REVOKE ON FUNCTION/PROCEDURE/ROUTINE statement.
+func routinePrivilegeTargets(targets tree.TargetList) []pgnodes.PrivilegeTarget {
+	routines := make([]pgnodes.PrivilegeTarget, 0, len(targets.Routines)+len(targets.InSchema))
+	for _, r := range targets.Routines {
+		routine := objectPrivilegeTarget(r.Name)
+		// TODO: there can be 2 routines with the same name but different argument types
+		//  need a fix for getting argument types from parsing CALL statement, which would set routine.ArgTypes
+		routine.Args = routineArgTypesKey(r.Args)
+		routines = append(routines, routine)
+	}
+	for _, schema := range targets.InSchema {
+		routines = append(routines, pgnodes.PrivilegeTarget{
+			Schema: schema,
+			Name:   "",
+		})
+	}
+	return routines
+}
+
+// objectPrivilegeTarget returns the privilege target for the given sequence or routine name.
+func objectPrivilegeTarget(name *tree.UnresolvedObjectName) pgnodes.PrivilegeTarget {
+	target := pgnodes.PrivilegeTarget{Name: name.Parts[0]}
+	if name.NumParts >= 2 {
+		target.Schema = name.Parts[1]
+	}
+	if name.NumParts >= 3 {
+		target.Database = name.Parts[2]
+	}
+	return target
 }
 
 // routineArgTypesKey builds a canonical string key from a RoutineArgs list using only the argument types.
