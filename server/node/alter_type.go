@@ -48,22 +48,29 @@ type AlterTypeAddValue struct {
 var _ sql.ExecSourceRel = (*AlterTypeAddValue)(nil)
 var _ vitess.Injectable = (*AlterTypeAddValue)(nil)
 
-func (a *AlterTypeAddValue) Children() []sql.Node               { return nil }
-func (a *AlterTypeAddValue) IsReadOnly() bool                   { return false }
-func (a *AlterTypeAddValue) Resolved() bool                     { return true }
+func (a *AlterTypeAddValue) Children() []sql.Node { return nil }
+
+func (a *AlterTypeAddValue) IsReadOnly() bool { return false }
+
+func (a *AlterTypeAddValue) Resolved() bool { return true }
+
 func (a *AlterTypeAddValue) Schema(ctx *sql.Context) sql.Schema { return nil }
+
 func (a *AlterTypeAddValue) String() string {
 	return fmt.Sprintf("ALTER TYPE %s ADD VALUE %q", a.Name, a.Value)
 }
+
 func (a *AlterTypeAddValue) WithChildren(ctx *sql.Context, children ...sql.Node) (sql.Node, error) {
 	return plan.NillaryWithChildren(a, children...)
 }
+
 func (a *AlterTypeAddValue) WithResolvedChildren(ctx context.Context, children []any) (any, error) {
 	if len(children) != 0 {
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}
 	return a, nil
 }
+
 func (a *AlterTypeAddValue) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) {
 	var err error
 	auth.LockRead(func() { _, err = auth.CurrentRoleLocked(ctx) })

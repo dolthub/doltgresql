@@ -150,6 +150,7 @@ func (cv *contextValues) DoltgresTransactionStarted() {
 	}
 	cv.settingsSavepoints = nil
 }
+
 func (cv *contextValues) DoltgresTransactionCommitted() {
 	cv.identity.Commit()
 	cv.enumChanges.Commit()
@@ -159,6 +160,7 @@ func (cv *contextValues) DoltgresTransactionCommitted() {
 	cv.settingsSavepoints = nil
 	cv.restoreSettings()
 }
+
 func (cv *contextValues) DoltgresTransactionRolledBack() {
 	cv.identity.Rollback()
 	cv.enumChanges.Rollback()
@@ -168,6 +170,7 @@ func (cv *contextValues) DoltgresTransactionRolledBack() {
 	cv.settingsSavepoints = nil
 	cv.restoreSettings()
 }
+
 func (cv *contextValues) DoltgresSavepointCreated(name string) {
 	cv.identity.Savepoint(name)
 	cv.enumChanges.Savepoint(name)
@@ -176,6 +179,7 @@ func (cv *contextValues) DoltgresSavepointCreated(name string) {
 	}
 	cv.settingsSavepoints = append(cv.settingsSavepoints, name)
 }
+
 func (cv *contextValues) DoltgresSavepointRolledBack(name string) {
 	cv.identity.RollbackTo(name)
 	cv.enumChanges.RollbackTo(name)
@@ -185,6 +189,7 @@ func (cv *contextValues) DoltgresSavepointRolledBack(name string) {
 	cv.trimSettingsSavepoints(name, false)
 	cv.restoreSettings()
 }
+
 func (cv *contextValues) DoltgresSavepointReleased(name string) {
 	cv.identity.Release(name)
 	cv.enumChanges.Release(name)
