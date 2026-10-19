@@ -180,6 +180,10 @@ func (c *privilegedOperationChecker) checkAllTablesRead(ctx *sql.Context, node s
 
 // readsAllTables returns whether the node is one of Dolt's table functions that reads every table of its database,
 // either always or because it was not given a table name.
+// TODO: this mirrors each function's argument parsing, so it silently goes stale if Dolt adds a function that reads
+// every table or changes an argument layout. Dolt's table functions should implement an interface that reports
+// whether they read every table, or their CheckAuth should list the tables of every schema rather than calling
+// GetTableNames, which only covers the current schema. Either would let us remove this.
 func readsAllTables(node sql.AuthorizationCheckerNode) bool {
 	switch node := node.(type) {
 	case *dtablefunctions.LogTableFunction, *dtablefunctions.MergeBasesTableFunction,
