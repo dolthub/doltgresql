@@ -1,6 +1,6 @@
 module github.com/dolthub/doltgresql/integration-tests/go-sql-server-driver
 
-go 1.26.2
+go 1.27.3
 
 require (
 	github.com/creasty/defaults v1.6.0
