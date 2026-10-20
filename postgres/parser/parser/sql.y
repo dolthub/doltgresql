@@ -935,6 +935,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> alter_index_stmt
 %type <tree.Statement> alter_materialized_view_stmt
 %type <tree.Statement> alter_function_stmt
+%type <tree.Statement> alter_extension_stmt
 %type <tree.Statement> alter_language_stmt
 %type <tree.Statement> alter_procedure_stmt
 %type <tree.Statement> alter_view_stmt
@@ -1682,6 +1683,7 @@ alter_ddl_stmt:
 | alter_type_stmt               // EXTEND WITH HELP: ALTER TYPE
 | alter_trigger_stmt            // EXTEND WITH HELP: ALTER TRIGGER
 | alter_language_stmt           // EXTEND WITH HELP: ALTER LANGUAGE
+| alter_extension_stmt          // EXTEND WITH HELP: ALTER EXTENSION
 | alter_domain_stmt             // EXTEND WITH HELP: ALTER DOMAIN
 
 // %Help: ALTER TABLE - change the definition of a table
@@ -2004,6 +2006,16 @@ alter_index_stmt:
 // ALTER INDEX has its error help token here because the ALTER INDEX
 // prefix is spread over multiple non-terminals.
 | ALTER INDEX error // SHOW HELP: ALTER INDEX
+
+alter_extension_stmt:
+  ALTER EXTENSION name UPDATE
+  {
+    $$.val = &tree.AlterExtension{Name: tree.Name($3)}
+  }
+| ALTER EXTENSION name UPDATE TO non_reserved_word_or_sconst
+  {
+    $$.val = &tree.AlterExtension{Name: tree.Name($3), Version: $6}
+  }
 
 alter_language_stmt:
   ALTER opt_procedural LANGUAGE name RENAME TO name
