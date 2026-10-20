@@ -154,7 +154,7 @@ func TestIdentityJournalThroughDoltTransactions(t *testing.T) {
 		}})
 	}
 	sess := dsess.DefaultSessionWithVariables(identityTestProvider{}, nil, vars)
-	ctx := sql.NewContext(context.Background(), sql.WithSession(sess), sql.WithEngineVariables(vars))
+	ctx := sql.NewContext(context.Background(), sql.WithSession(sess))
 	if err := InitializeIdentity(ctx, 17, true); err != nil {
 		t.Fatal(err)
 	}
