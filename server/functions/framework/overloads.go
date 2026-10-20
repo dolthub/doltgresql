@@ -67,7 +67,7 @@ func keyForParamTypes(types []*pgtypes.DoltgresType) string {
 		if i > 0 {
 			sb.WriteByte(',')
 		}
-		sb.WriteString(typ.String())
+		sb.WriteString(string(typ.ID))
 	}
 	return sb.String()
 }
@@ -136,10 +136,10 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 				argTypes:   params,
 				variadic:   -1,
 			})
-		} else if sqlFunc, ok := overload.(SQLFunction); ok && len(params) > numParams {
+		} else if allParams, _, ok := defaultableParams(overload); ok && len(params) > numParams {
 			// if it's SQL function and has fewer arguments than parameters, check for default values.
 			restIsDefaultValues := true
-			for i, param := range sqlFunc.AllParams {
+			for i, param := range allParams {
 				if i >= numParams && param.Mode != procedures.ParameterMode_OUT {
 					if param.Default == "" {
 						restIsDefaultValues = false
@@ -157,6 +157,21 @@ func (o *Overloads) overloadsForParams(numParams int) []Overload {
 		}
 	}
 	return results
+}
+
+// defaultableParams returns every parameter of a function whose parameters may have default values, along with the
+// parameters' types. The boolean is false for every other kind of function.
+func defaultableParams(f FunctionInterface) ([]procedures.Parameter, []*pgtypes.DoltgresType, bool) {
+	switch f := f.(type) {
+	case SQLFunction:
+		return f.AllParams, f.AllTypes, true
+	case ExtensionFunction:
+		return f.AllParams, f.ParameterTypes, true
+	case ExtensionWindowFunction:
+		return f.AllParams, f.ParameterTypes, true
+	default:
+		return nil, nil, false
+	}
 }
 
 // ExactMatchForTypes returns the function that exactly matches the given parameter types, or nil if no overload with

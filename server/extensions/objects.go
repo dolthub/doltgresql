@@ -15,7 +15,9 @@
 package extensions
 
 import (
+	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -38,23 +40,25 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// CreateObjects writes every object that the given extension declares into the given schema.
-func CreateObjects(ctx *sql.Context, ext *extdef.Extension, schemaName string) error {
+// CreateObjects writes every object that the given extension declares into the given schema, running the statements
+// that create its tables and views on the given runner.
+func CreateObjects(ctx *sql.Context, runner sql.StatementRunner, ext *extdef.Extension, schemaName string) error {
 	typColl, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return err
 	}
-	return extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl}.materialize(ctx)
+	return extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl, runner: runner}.materialize(ctx)
 }
 
 // UpdateObjects rewrites every object that the given extension declares in the given schema to match the declaration,
-// creating the objects that are missing and removing the extension's functions that it no longer declares.
-func UpdateObjects(ctx *sql.Context, ext *extdef.Extension, schemaName string) error {
+// creating the objects that are missing and removing the extension's functions that it no longer declares. A declared
+// table that already exists keeps its rows, and the statements that write tables and views run on the given runner.
+func UpdateObjects(ctx *sql.Context, runner sql.StatementRunner, ext *extdef.Extension, schemaName string) error {
 	typColl, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return err
 	}
-	objects := extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl, replace: true}
+	objects := extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl, runner: runner, replace: true}
 	if err = objects.materialize(ctx); err != nil {
 		return err
 	}
@@ -71,13 +75,14 @@ func CheckDependents(ctx *sql.Context, ext *extdef.Extension, schemaName string)
 	return extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl}.checkDependents(ctx)
 }
 
-// DropObjects removes every object that the given extension declares from the given schema.
-func DropObjects(ctx *sql.Context, ext *extdef.Extension, schemaName string) error {
+// DropObjects removes every object that the given extension declares from the given schema, running the statements
+// that drop its tables and views on the given runner.
+func DropObjects(ctx *sql.Context, runner sql.StatementRunner, ext *extdef.Extension, schemaName string) error {
 	typColl, err := core.GetTypesCollectionFromContext(ctx, "")
 	if err != nil {
 		return err
 	}
-	return extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl}.drop(ctx)
+	return extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl, runner: runner}.drop(ctx)
 }
 
 // extensionObjects materializes the objects that an extension declares.
@@ -85,6 +90,7 @@ type extensionObjects struct {
 	ext        *extdef.Extension
 	schemaName string
 	typColl    *typecollection.TypeCollection
+	runner     sql.StatementRunner
 	// replace is whether materializing removes an existing object before writing the declared one.
 	replace bool
 }
@@ -103,7 +109,93 @@ func (e extensionObjects) materialize(ctx *sql.Context) error {
 	if err := e.materializeCasts(ctx); err != nil {
 		return err
 	}
-	return e.materializeAggregates(ctx)
+	if err := e.materializeAggregates(ctx); err != nil {
+		return err
+	}
+	if err := e.createTables(ctx); err != nil {
+		return err
+	}
+	return e.createViews(ctx)
+}
+
+// createTables creates the declared tables and inserts their rows, leaving a table that already exists alone when
+// replacing.
+func (e extensionObjects) createTables(ctx *sql.Context) error {
+	for _, table := range e.ext.Tables {
+		if e.replace {
+			existing, err := core.GetSqlTableFromContext(ctx, "", doltdb.TableName{Name: table.Name, Schema: e.schemaName})
+			if err != nil {
+				return err
+			}
+			if existing != nil {
+				continue
+			}
+		}
+		name := e.qualifiedName(table.Name)
+		if err := hook.RunStatement(ctx, e.runner, "CREATE TABLE "+name+" "+table.Definition); err != nil {
+			return err
+		}
+		rows, err := table.Rows(ctx)
+		if err != nil {
+			return err
+		}
+		for start := 0; start < len(rows); start += insertBatchSize {
+			var sb strings.Builder
+			sb.WriteString("INSERT INTO " + name + " VALUES ")
+			for i, row := range rows[start:min(start+insertBatchSize, len(rows))] {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				sb.WriteString("(")
+				for j, val := range row {
+					if j > 0 {
+						sb.WriteString(", ")
+					}
+					sb.WriteString(sqlLiteral(val))
+				}
+				sb.WriteString(")")
+			}
+			if err = hook.RunStatement(ctx, e.runner, sb.String()); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// insertBatchSize is the number of rows that each INSERT statement of a declared table's rows holds.
+const insertBatchSize = 500
+
+// sqlLiteral returns the SQL literal for a value of a declared table's row, which is nil, an integer, or a string.
+func sqlLiteral(val any) string {
+	switch val := val.(type) {
+	case nil:
+		return "NULL"
+	case string:
+		return "'" + strings.ReplaceAll(val, "'", "''") + "'"
+	default:
+		return fmt.Sprint(val)
+	}
+}
+
+// createViews creates the declared views, replacing a view that already exists when replacing.
+func (e extensionObjects) createViews(ctx *sql.Context) error {
+	for _, view := range e.ext.Views {
+		if e.replace {
+			if err := hook.RunStatement(ctx, e.runner, "DROP VIEW IF EXISTS "+e.qualifiedName(view.Name)); err != nil {
+				return err
+			}
+		}
+		if err := hook.RunStatement(ctx, e.runner, "CREATE VIEW "+e.qualifiedName(view.Name)+" AS "+view.Query); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// qualifiedName returns the quoted name of a relation in the extension's schema.
+func (e extensionObjects) qualifiedName(name string) string {
+	return hook.QuoteIdentifier(e.schemaName) + "." + hook.QuoteIdentifier(name)
 }
 
 // materializeTypes writes the declared types into the types collection.
@@ -145,6 +237,34 @@ func (e extensionObjects) materializeTypes(ctx *sql.Context) error {
 			return err
 		}
 	}
+	for _, declared := range e.ext.Composites {
+		attrs := make([]pgtypes.CompositeAttribute, len(declared.Attributes))
+		for i, attr := range declared.Attributes {
+			attrTypeID, err := e.typeID(ctx, attr.Type)
+			if err != nil {
+				return err
+			}
+			attrType, err := e.typColl.GetType(ctx, attrTypeID)
+			if err != nil {
+				return err
+			}
+			attrs[i] = pgtypes.NewCompositeAttribute(ctx, id.Null, attr.Name, attrType, int16(i+1), "")
+		}
+		typeID := id.NewType(e.schemaName, declared.Name)
+		arrayType := &pgtypes.DoltgresType{ID: id.NewType(e.schemaName, "_"+declared.Name), IsUnresolved: true}
+		newType := pgtypes.NewCompositeType(ctx, id.Null, arrayType, typeID, attrs)
+		if e.replace && e.typColl.HasType(ctx, typeID) {
+			if err := e.typColl.DropType(ctx, typeID, arrayType.ID); err != nil {
+				return err
+			}
+		}
+		if err := e.typColl.CreateType(ctx, newType); err != nil {
+			return err
+		}
+		if err := e.typColl.CreateType(ctx, pgtypes.CreateArrayTypeFromBaseType(newType)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -158,17 +278,28 @@ func (e extensionObjects) materializeRoutines(ctx *sql.Context) error {
 		return err
 	}
 	for _, routine := range e.ext.Routines {
-		returnType, err := e.typeID(ctx, routine.Returns)
-		if err != nil {
-			return err
-		}
 		paramTypes, err := e.parameterTypes(ctx, routine.Parameters)
 		if err != nil {
 			return err
 		}
 		allParams := make([]procedures.Parameter, len(routine.Parameters))
 		for i, param := range routine.Parameters {
-			allParams[i] = procedures.Parameter{Name: param.Name, Type: paramTypes[i]}
+			allParams[i] = procedures.Parameter{Name: param.Name, Type: paramTypes[i], Default: param.Default}
+		}
+		outputTypes, err := e.parameterTypes(ctx, routine.Outputs)
+		if err != nil {
+			return err
+		}
+		returnType, err := e.returnType(ctx, routine, outputTypes)
+		if err != nil {
+			return err
+		}
+		for i, output := range routine.Outputs {
+			allParams = append(allParams, procedures.Parameter{Mode: procedures.ParameterMode_OUT, Name: output.Name, Type: outputTypes[i]})
+		}
+		volatility := routine.Volatility
+		if volatility == 0 {
+			volatility = tree.VolatilityVolatile
 		}
 		funcID := id.NewFunction(e.schemaName, routine.Name, paramTypes...)
 		if e.replace && funcCollection.HasFunction(ctx, funcID) {
@@ -182,6 +313,9 @@ func (e extensionObjects) materializeRoutines(ctx *sql.Context) error {
 			AllParams:          allParams,
 			IsNonDeterministic: true,
 			Strict:             routine.Strict,
+			SetOf:              routine.SetOf,
+			Window:             routine.WindowImpl != nil,
+			Volatility:         volatility,
 			ExtensionName:      e.ext.Name,
 			ExtensionSymbol:    routine.Symbol,
 		})
@@ -344,6 +478,16 @@ func (e extensionObjects) materializeAggregates(ctx *sql.Context) error {
 
 // drop removes every object that the extension declares, in the reverse order of materialize.
 func (e extensionObjects) drop(ctx *sql.Context) error {
+	for _, view := range e.ext.Views {
+		if err := hook.RunStatement(ctx, e.runner, "DROP VIEW IF EXISTS "+e.qualifiedName(view.Name)); err != nil {
+			return err
+		}
+	}
+	for _, table := range e.ext.Tables {
+		if err := hook.RunStatement(ctx, e.runner, "DROP TABLE IF EXISTS "+e.qualifiedName(table.Name)); err != nil {
+			return err
+		}
+	}
 	if err := e.dropAggregates(ctx); err != nil {
 		return err
 	}
@@ -381,6 +525,11 @@ func (e extensionObjects) checkDependents(ctx *sql.Context) error {
 			return err
 		}
 		for _, tableName := range tableNames {
+			if schema.SchemaName() == e.schemaName && slices.ContainsFunc(e.ext.Tables, func(table extdef.Table) bool {
+				return strings.EqualFold(table.Name, tableName)
+			}) {
+				continue
+			}
 			table, ok, err := schema.GetTableInsensitive(ctx, tableName)
 			if err != nil {
 				return err
@@ -405,7 +554,24 @@ func (e extensionObjects) checkDependents(ctx *sql.Context) error {
 		}
 	}
 	if !finder.found {
-		if err = hook.WalkViewExpressions(ctx, &finder); err != nil {
+		ownView := func(schemaName string, viewName string) bool {
+			return schemaName == e.schemaName && slices.ContainsFunc(e.ext.Views, func(view extdef.View) bool {
+				return strings.EqualFold(view.Name, viewName)
+			})
+		}
+		if err = hook.WalkViewExpressions(ctx, &finder, ownView); err != nil {
+			return err
+		}
+	}
+	if !finder.found && len(e.ext.Tables)+len(e.ext.Views) > 0 {
+		var relations []doltdb.TableName
+		for _, table := range e.ext.Tables {
+			relations = append(relations, doltdb.TableName{Name: table.Name, Schema: e.schemaName})
+		}
+		for _, view := range e.ext.Views {
+			relations = append(relations, doltdb.TableName{Name: view.Name, Schema: e.schemaName})
+		}
+		if finder.found, err = hook.DependentViewExists(ctx, relations); err != nil {
 			return err
 		}
 	}
@@ -530,7 +696,7 @@ func (e extensionObjects) dropRoutinesExcept(ctx *sql.Context, kept map[id.Funct
 
 // dropTypes removes the declared types and their array types from the types collection.
 func (e extensionObjects) dropTypes(ctx *sql.Context) error {
-	if len(e.ext.Types) == 0 {
+	if len(e.ext.Types) == 0 && len(e.ext.Composites) == 0 {
 		return nil
 	}
 	var typeIDs []id.Type
@@ -544,8 +710,11 @@ func (e extensionObjects) dropTypes(ctx *sql.Context) error {
 
 // declaredTypeIDs returns the IDs of the declared types and their array types.
 func (e extensionObjects) declaredTypeIDs() []id.Type {
-	typeIDs := make([]id.Type, 0, len(e.ext.Types)*2)
+	typeIDs := make([]id.Type, 0, (len(e.ext.Types)+len(e.ext.Composites))*2)
 	for _, declared := range e.ext.Types {
+		typeIDs = append(typeIDs, id.NewType(e.schemaName, declared.Name), id.NewType(e.schemaName, "_"+declared.Name))
+	}
+	for _, declared := range e.ext.Composites {
 		typeIDs = append(typeIDs, id.NewType(e.schemaName, declared.Name), id.NewType(e.schemaName, "_"+declared.Name))
 	}
 	return typeIDs
@@ -558,6 +727,11 @@ func (e extensionObjects) typeID(ctx *sql.Context, name string) (id.Type, error)
 			return id.NewType(e.schemaName, name), nil
 		}
 	}
+	for _, declared := range e.ext.Composites {
+		if declared.Name == name {
+			return id.NewType(e.schemaName, name), nil
+		}
+	}
 	_, typeID, err := e.typColl.ResolveName(ctx, doltdb.TableName{Name: name})
 	if err != nil {
 		return id.NullType, err
@@ -566,6 +740,19 @@ func (e extensionObjects) typeID(ctx *sql.Context, name string) (id.Type, error)
 		return id.NullType, pgtypes.ErrTypeDoesNotExist.New(name)
 	}
 	return id.Type(typeID), nil
+}
+
+// returnType returns the type ID that a routine returns, given the types of its outputs. A routine with outputs
+// returns the anonymous composite type of its outputs, as a function declared with RETURNS TABLE does.
+func (e extensionObjects) returnType(ctx *sql.Context, routine extdef.Routine, outputTypes []id.Type) (id.Type, error) {
+	if len(routine.Outputs) == 0 {
+		return e.typeID(ctx, routine.Returns)
+	}
+	attributes := make([]string, len(routine.Outputs))
+	for i, output := range routine.Outputs {
+		attributes[i] = output.Name + ":" + outputTypes[i].SchemaName() + "." + outputTypes[i].TypeName()
+	}
+	return id.NewType("", "table("+strings.Join(attributes, ",")+")"), nil
 }
 
 // parameterTypes returns the type IDs of the given parameters.

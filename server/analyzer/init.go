@@ -188,13 +188,20 @@ func IsAggregateFunc(ctx *sql.Context, name string) (bool, error) {
 }
 
 // IsWindowFunc checks if the given function name is a window function. This is the entire set supported by
-// MySQL plus some postgres specific ones, along with every user-defined aggregate.
+// MySQL plus some postgres specific ones, along with every stored window function and user-defined aggregate.
 func IsWindowFunc(ctx *sql.Context, name string) (bool, error) {
 	isWindow, err := planbuilder.IsMySQLWindowFuncName(ctx, name)
 	if err != nil {
 		return false, err
 	}
 	if isWindow || postgresOnlyAggregateFuncNames[name] || postgresOnlyWindowFuncNames[name] {
+		return true, nil
+	}
+	functionCollection, err := core.GetFunctionsCollectionFromContext(ctx, "")
+	if err != nil {
+		return false, err
+	}
+	if functionCollection.HasWindowName(ctx, name) {
 		return true, nil
 	}
 	collection, err := core.GetAggregatesCollectionFromContext(ctx, "")
