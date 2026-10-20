@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
@@ -60,16 +61,18 @@ func IsValidPostgresConfigParameterInRegistry(vars sql.SystemVariableRegistry, n
 	return isPostgres
 }
 
+// doltExportedVariableNames holds the lowercase names in Dolt's exported variable catalog.
+var doltExportedVariableNames = sync.OnceValue(func() map[string]struct{} {
+	names := make(map[string]struct{})
+	for _, name := range sqle.DoltSystemVariableNames() {
+		names[strings.ToLower(name)] = struct{}{}
+	}
+	return names
+})
+
 func IsValidDoltConfigParameterInRegistry(vars sql.SystemVariableRegistry, name string) bool {
 	name = strings.ToLower(name)
-	listed := false
-	for _, definition := range sqle.DoltSystemVariables {
-		if strings.EqualFold(definition.GetName(), name) {
-			listed = true
-			break
-		}
-	}
-	if !listed {
+	if _, listed := doltExportedVariableNames()[name]; !listed {
 		return false
 	}
 	definition, _, ok := vars.GetGlobal(name)

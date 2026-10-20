@@ -66,3 +66,20 @@ func TestPostgresParametersSkipDoltNames(t *testing.T) {
 	require.True(t, ok)
 	require.IsType(t, &Parameter{}, app)
 }
+
+func TestDoltConfigParametersAreExportedNames(t *testing.T) {
+	vars := sqle.NewEngineVariables()
+	InitWithRegistry(vars.System)
+	exported := make(map[string]struct{})
+	for _, name := range sqle.DoltSystemVariableNames() {
+		exported[name] = struct{}{}
+		require.True(t, IsValidDoltConfigParameterInRegistry(vars.System, name), name)
+	}
+	// Dolt's inline-only definitions are not settable Dolt parameters.
+	for _, name := range []string{"gpgsign", "signingkey", "sql_warnings"} {
+		require.NotContains(t, exported, name)
+		_, _, ok := vars.System.GetGlobal(name)
+		require.True(t, ok, name)
+		require.False(t, IsValidDoltConfigParameterInRegistry(vars.System, name), name)
+	}
+}

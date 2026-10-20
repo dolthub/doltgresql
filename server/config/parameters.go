@@ -36,7 +36,7 @@ import (
 )
 
 // doltConfigParameters is a list of Dolt-specific configuration parameters that can be used in SET statement.
-var doltConfigParameters = make(map[string]sql.SystemVariable)
+var doltConfigParameters = make(map[string]struct{})
 
 // Init initializes or appends to SystemVariables as it functions as a global variable.
 // Currently, we append all of postgres configuration parameters to sql.SystemVariables.
@@ -50,8 +50,8 @@ func Init() {
 		variables.InitSystemVariables()
 	}
 	params := freshPostgresParameters()
-	for _, doltSysVar := range sqle.DoltSystemVariables {
-		doltConfigParameters[doltSysVar.GetName()] = doltSysVar
+	for _, name := range sqle.DoltSystemVariableNames() {
+		doltConfigParameters[name] = struct{}{}
 	}
 	sql.SystemVariables.AddSystemVariables(params)
 	sqle.AddDoltSystemVariables()
