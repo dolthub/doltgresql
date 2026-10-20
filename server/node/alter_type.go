@@ -81,9 +81,25 @@ func (a *AlterTypeAddValue) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, e
 	if err != nil {
 		return nil, err
 	}
-	typ, err := collection.ResolveType(ctx, id.NewType(a.SchemaName, a.Name))
-	if err != nil {
-		return nil, err
+	schemas := []string{a.SchemaName}
+	if a.SchemaName == "" {
+		schemas, err = core.SearchPath(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var typ *types.DoltgresType
+	for _, schemaName := range schemas {
+		typ, err = collection.GetType(ctx, id.NewType(schemaName, a.Name))
+		if err != nil {
+			return nil, err
+		}
+		if typ != nil {
+			break
+		}
+	}
+	if typ == nil {
+		return nil, pgerror.Newf(pgcode.UndefinedObject, "unable to resolve type `%s`", a.Name)
 	}
 	if typ.TypType != types.TypeType_Enum {
 		return nil, pgerror.Newf(pgcode.WrongObjectType, "%s is not an enum", typ.Name())

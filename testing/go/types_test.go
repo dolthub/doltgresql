@@ -4842,3 +4842,34 @@ func TestAlterEnumAddValueOrdering(t *testing.T) {
 		{Query: `SELECT count(*) FROM ordered_enum WHERE v > 'a' AND v < 'z'`, Expected: []sql.Row{{int64(30)}}},
 	}}})
 }
+
+func TestAlterEnumAddValueSearchPath(t *testing.T) {
+	RunScripts(t, []ScriptTest{{Name: "resolve enum through search path", SetUpScript: []string{
+		`CREATE SCHEMA enum_first`,
+		`CREATE SCHEMA enum_second`,
+		`CREATE TYPE enum_first.mood AS ENUM ('old')`,
+		`CREATE TYPE enum_second.mood AS ENUM ('old')`,
+		`CREATE TYPE enum_second.hidden AS ENUM ('old')`,
+	}, Assertions: []ScriptTestAssertion{
+		{Query: `SET search_path = enum_first, enum_second`},
+		{Query: `ALTER TYPE mood ADD VALUE 'first'`},
+		{Query: `SELECT 'first'::enum_first.mood`, Expected: []sql.Row{{"first"}}},
+		{Query: `SELECT 'first'::enum_second.mood`, ExpectedErr: "invalid input value"},
+		{Query: `SET search_path = enum_second, enum_first`},
+		{Query: `ALTER TYPE mood ADD VALUE 'second'`},
+		{Query: `SELECT 'second'::enum_second.mood`, Expected: []sql.Row{{"second"}}},
+		{Query: `SELECT 'second'::enum_first.mood`, ExpectedErr: "invalid input value"},
+		{Query: `SET search_path = enum_first`},
+		{Query: `ALTER TYPE hidden ADD VALUE 'invisible'`, ExpectedErr: "unable to resolve type", ExpectedErrCode: "42704"},
+		{Query: `ALTER TYPE enum_second.hidden ADD VALUE 'qualified'`},
+		{Query: `SELECT 'qualified'::enum_second.hidden`, Expected: []sql.Row{{"qualified"}}},
+		{Query: `SELECT 'invisible'::enum_second.hidden`, ExpectedErr: "invalid input value"},
+		{Query: `SET search_path = missing_schema, enum_first, enum_second`},
+		{Query: `ALTER TYPE hidden ADD VALUE 'later'`},
+		{Query: `SELECT 'later'::enum_second.hidden`, Expected: []sql.Row{{"later"}}},
+		{Query: `ALTER TYPE enum_first.hidden ADD VALUE 'wrong_schema'`, ExpectedErr: "unable to resolve type", ExpectedErrCode: "42704"},
+		{Query: `CREATE TYPE enum_first.hidden AS (value integer)`},
+		{Query: `ALTER TYPE hidden ADD VALUE 'shadowed'`, ExpectedErr: "not an enum", ExpectedErrCode: "42809"},
+		{Query: `ALTER TYPE int4 ADD VALUE 'x'`, ExpectedErr: "not an enum", ExpectedErrCode: "42809"},
+	}}})
+}
