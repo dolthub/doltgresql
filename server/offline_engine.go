@@ -19,7 +19,6 @@ import (
 
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/engine"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/auth"
@@ -37,8 +36,10 @@ import (
 // This is useful for certain offline, non-server admin tasks where starting a server is either undesirable
 // or impossible.
 func NewOfflineSqlEngine(ctx context.Context, mrEnv *env.MultiRepoEnv) (*engine.SqlEngine, error) {
-	vars := sqle.NewEngineVariables()
-	initialization.InitializeWithVariables(nil, servercfg.DefaultServerConfig(), vars)
+	vars, err := initialization.NewPostgresEngineVariables(nil, servercfg.DefaultServerConfig())
+	if err != nil {
+		return nil, err
+	}
 	user, _ := auth.GetSuperUserAndPassword()
 	return engine.NewSqlEngine(ctx, mrEnv, &engine.SqlEngineConfig{
 		ServerUser:      user,

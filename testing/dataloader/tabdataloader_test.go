@@ -20,7 +20,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/memory"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/assert"
@@ -35,7 +34,7 @@ import (
 func TestTabDataLoader(t *testing.T) {
 	db := memory.NewDatabase("mydb")
 	provider := memory.NewDBProvider(db)
-	ctx := newDataLoaderContext(provider)
+	ctx := newDataLoaderContext(t, provider)
 
 	pkCols := []string{"pk", "c1", "c2"}
 	pkSchema := sql.NewPrimaryKeySchema(sql.Schema{
@@ -195,9 +194,9 @@ func TestTabDataLoader(t *testing.T) {
 	})
 }
 
-func newDataLoaderContext(provider sql.DatabaseProvider) *sql.Context {
-	vars := sqle.NewEngineVariables()
-	initialization.InitializeWithVariables(nil, doltgresservercfg.DefaultServerConfig(), vars)
+func newDataLoaderContext(t *testing.T, provider sql.DatabaseProvider) *sql.Context {
+	vars, err := initialization.NewPostgresEngineVariables(nil, doltgresservercfg.DefaultServerConfig())
+	require.NoError(t, err)
 	session := memory.NewSession(sql.NewBaseSessionWithVariables(vars), provider)
 	return sql.NewContextWithVariables(context.Background(), vars, sql.WithSession(session))
 }

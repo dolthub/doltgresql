@@ -28,7 +28,6 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	doltservercfg "github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
-	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dfunctions"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
@@ -89,8 +88,10 @@ func RunInMemory(cfg *servercfg.DoltgresConfig, protocolListenerFactory server.P
 // runServer starts the server based on the given args, using the provided file system as the backing store.
 // The returned WaitGroup may be used to wait for the server to close.
 func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.DoltEnv, protocolListenerFactory server.ProtocolListenerFunc) (*svcs.Controller, error) {
-	engineVars := sqle.NewEngineVariables()
-	initialization.InitializeWithVariables(dEnv, cfg, engineVars)
+	engineVars, err := initialization.NewPostgresEngineVariables(dEnv, cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	if dEnv.HasDoltDataDir() {
 		cwd, _ := dEnv.FS.Abs(".")
@@ -104,7 +105,7 @@ func runServer(ctx context.Context, cfg *servercfg.DoltgresConfig, dEnv *env.Dol
 		return nil, err
 	}
 
-	err := dsess.InitPersistedSystemVarsWithRegistry(engineVars.System, dEnv)
+	err = dsess.InitPersistedSystemVarsWithRegistry(engineVars.System, dEnv)
 	if err != nil {
 		return nil, errors.Errorf("failed to load persisted system variables: %w", err)
 	}

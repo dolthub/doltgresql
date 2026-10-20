@@ -33,7 +33,7 @@ import (
 func TestCsvDataLoader(t *testing.T) {
 	db := memory.NewDatabase("mydb")
 	provider := memory.NewDBProvider(db)
-	ctx := newDataLoaderContext(provider)
+	ctx := newDataLoaderContext(t, provider)
 
 	pkCols := []string{"pk", "c1", "c2"}
 	pkSchema := sql.NewPrimaryKeySchema(sql.Schema{
