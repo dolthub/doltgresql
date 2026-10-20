@@ -18,7 +18,11 @@ import (
 	"fmt"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
+	"github.com/dolthub/dolt/go/store/val"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/casts"
@@ -32,6 +36,7 @@ import (
 func Init() {
 	doltdb.EmptyRootValue = emptyRootValue
 	doltdb.NewRootValue = newRootValue
+	dsess.TransactionRowMergePolicy = transactionRowMergePolicy
 	types.DoltgresRootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
 	types.DoltgresRootValueWalkAddrs = rootValueWalkAddrs
 	plpgsql.GetTypesCollectionFromContext = GetTypesCollectionFromContext
@@ -97,4 +102,10 @@ func Init() {
 		}
 		return pgtypes.Text
 	}
+}
+
+// transactionRowMergePolicy treats every row written by two concurrent transactions as a conflict, so the later commit
+// fails with a serialization failure rather than silently losing the earlier transaction's write.
+func transactionRowMergePolicy(*sql.Context, merge.RowMergeInput) (val.Tuple, tree.RowMergeStatus, error) {
+	return nil, tree.RowMergeConflict, nil
 }
