@@ -19,6 +19,7 @@ import (
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/servercfg"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -46,9 +47,30 @@ import (
 )
 
 var once = &sync.Once{}
+var legacyVariablesOnce sync.Once
 
 // Initialize initializes each package across the project. This function should be used instead of an init() function.
 func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
+	initializeProcess(dEnv, cfg)
+	legacyVariablesOnce.Do(config.Init)
+}
+
+// InitializeWithVariables initializes process-wide catalogs once and registers
+// PostgreSQL parameters in the supplied engine's registry on every call.
+func InitializeWithVariables(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig, vars *sql.EngineVariables) {
+	initializeProcess(dEnv, cfg)
+	config.InitWithRegistry(vars.System)
+}
+
+// NewPostgresEngineVariables initializes process-wide catalogs once and returns
+// a new engine bundle with Dolt's and PostgreSQL's definitions registered.
+func NewPostgresEngineVariables(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) (*sql.EngineVariables, error) {
+	vars := sqle.NewEngineVariables()
+	InitializeWithVariables(dEnv, cfg, vars)
+	return vars, nil
+}
+
+func initializeProcess(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 	once.Do(func() {
 		core.Init()
 		rootobject.Init()
@@ -56,7 +78,6 @@ func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 		auth.Init(dEnv, cfg)
 		pgtypes.Init()
 		analyzer.Init()
-		config.Init()
 		binary.Init()
 		unary.Init()
 		functions.Init()

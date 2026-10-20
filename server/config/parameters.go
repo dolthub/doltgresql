@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dolthub/doltgresql/core"
@@ -67,6 +68,65 @@ func Init() {
 	sqle.AddDoltSystemVariables()
 }
 
+// InitWithRegistry registers fresh PostgreSQL definitions in a registry from
+// sqle.NewEngineVariables. A name Dolt also defines keeps Dolt's definition.
+func InitWithRegistry(vars sql.SystemVariableRegistry) {
+	addPostgresParameters(vars, doltVariableNames())
+}
+
+func addPostgresParameters(vars sql.SystemVariableRegistry, skip map[string]struct{}) {
+	params := freshPostgresParameters()
+	kept := params[:0]
+	for _, param := range params {
+		if _, ok := skip[strings.ToLower(param.GetName())]; !ok {
+			kept = append(kept, param)
+		}
+	}
+	vars.AddSystemVariables(kept)
+}
+
+// doltVariableNames returns the lowercase names Dolt registers in an engine.
+var doltVariableNames = sync.OnceValue(func() map[string]struct{} {
+	names := nameRecorder{names: make(map[string]struct{})}
+	sqle.AddDoltSystemVariablesToRegistry(names)
+	return names.names
+})
+
+// nameRecorder only records the names passed to AddSystemVariables.
+type nameRecorder struct {
+	sql.SystemVariableRegistry
+	names map[string]struct{}
+}
+
+func (r nameRecorder) AddSystemVariables(defs []sql.SystemVariable) {
+	for _, def := range defs {
+		if def != nil {
+			r.names[strings.ToLower(def.GetName())] = struct{}{}
+		}
+	}
+}
+
+func freshPostgresParameters() []sql.SystemVariable {
+	params := make([]sql.SystemVariable, 0, len(postgresConfigParameters))
+	_, regression := os.LookupEnv("REGRESSION_TESTING")
+	for _, definition := range postgresConfigParameters {
+		original := definition.(*Parameter)
+		param := *original
+		param.BootVal = original.Default
+		if scope, ok := original.Scope.(*PgsqlScope); ok {
+			copyScope := *scope
+			param.Scope = &copyScope
+		}
+		if regression && strings.EqualFold(param.Name, "timezone") {
+			param.Default = "America/Los_Angeles"
+			param.BootVal = param.Default
+			param.ResetVal = param.Default
+		}
+		params = append(params, &param)
+	}
+	return params
+}
+
 var (
 	ErrInvalidValue          = errors.NewKind("ERROR:  invalid value for parameter \"%s\": \"%s\"")
 	ErrCannotChangeAtRuntime = errors.NewKind("ERROR:  parameter \"%s\" cannot be changed now")
@@ -78,6 +138,7 @@ type Parameter struct {
 	Name         string
 	Default      any
 	Unit         string
+	BootVal      any // immutable startup default for pg_settings
 	Category     string
 	ShortDesc    string
 	Context      ParameterContext
@@ -111,7 +172,9 @@ func (p *Parameter) GetLocalScope() sql.SystemVariableScope {
 
 // SetDefault implements sql.SystemVariable.
 func (p *Parameter) SetDefault(a any) {
-	if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
+	if p.ValidateFunc == nil {
+		p.Default = a
+	} else if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
 		p.Default = validatedVal
 	}
 }
@@ -289,15 +352,24 @@ func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) er
 // SHOW and current_setting, including boolean on/off spelling and the units of
 // integer and real parameters.
 func FormatPostgresParameterValue(name string, val any) string {
+	return formatPostgresParameterValue(postgresConfigParameters[strings.ToLower(name)], val)
+}
+
+func FormatPostgresParameterValueInRegistry(vars sql.SystemVariableRegistry, name string, val any) string {
+	definition, _, _ := vars.GetGlobal(strings.ToLower(name))
+	return formatPostgresParameterValue(definition, val)
+}
+
+func formatPostgresParameterValue(definition sql.SystemVariable, val any) string {
 	if val == nil {
 		return ""
 	}
-	if param, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter); ok {
+	if param, ok := definition.(*Parameter); ok {
 		if formatted, ok := param.formatWithUnit(val); ok {
 			return formatted
 		}
 	}
-	if variable, ok := postgresConfigParameters[strings.ToLower(name)]; ok && variable.GetType().String() == "system_bool" {
+	if p, ok := definition.(*Parameter); ok && p.GetType().String() == "system_bool" {
 		switch v := val.(type) {
 		case bool:
 			if v {
