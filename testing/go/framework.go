@@ -636,7 +636,11 @@ func CreateServerWithPort(t *testing.T, database string, port int) (context.Cont
 }
 
 // CreateServerWithPortAndConfig creates a server with the given database, port, and configuration.
+// If the environment variable named by |externalServerBinaryEnvVar| is set, then the server is run in an external process.
 func CreateServerWithPortAndConfig(t *testing.T, database string, port int, config *servercfg.DoltgresConfig) (context.Context, *Connection, *svcs.Controller) {
+	if binary, ok := externalServerBinary(); ok {
+		return createExternalServer(t, binary, database, port, config)
+	}
 	require.NotEmpty(t, database)
 	config = testServerConfig(config, port)
 	controller, err := dserver.RunInMemory(config, dserver.NewListener)
@@ -656,8 +660,13 @@ func CreateServerLocalWithPort(t *testing.T, database string, port int) (context
 	return CreateServerLocalWithPortAndConfig(t, database, port, nil)
 }
 
-// CreateServerLocalWithPortAndConfig creates a server using the local file system and the given configuration.
+// CreateServerLocalWithPortAndConfig creates a server using the local file system and the given configuration. If the
+// environment variable named by |externalServerBinaryEnvVar| is set, then the server is run in an external process
+// (which always uses the local file system).
 func CreateServerLocalWithPortAndConfig(t *testing.T, database string, port int, config *servercfg.DoltgresConfig) (context.Context, *Connection, *svcs.Controller) {
+	if binary, ok := externalServerBinary(); ok {
+		return createExternalServer(t, binary, database, port, config)
+	}
 	// We avoid using [T.TempDir] because it results in a file lock conflict on Windows. [T.TempDir] registers a
 	// [T.Cleanup] function that runs without checking the [svcs.Controller] and it cannot be overwritten.
 	// TODO(elianddb): Setup an optional [T.Cleanup] function for the temporary directory. Our default setup for now is
