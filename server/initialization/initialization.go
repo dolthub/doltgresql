@@ -90,7 +90,7 @@ func initializeProcess(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig)
 			return false
 		}, &framework.FunctionProvider{})
 		cast.Init(builtInCasts)
-		framework.Initialize(ast.Convert)
+		framework.Initialize(ast.ConvertWithContext)
 		servercfg.DefaultUnixSocketFilePath = cfgdetails.DefaultPostgresUnixSocketFilePath
 		tables.Init()
 		pgcatalog.Init()

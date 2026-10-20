@@ -97,7 +97,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 		case "sql":
 			as, ok := options[tree.OptionAs1]
 			if ok {
-				sqlDef, sqlDefParsedStmts, err = handleLanguageSQLAs(as.Definition, params)
+				sqlDef, sqlDefParsedStmts, err = handleLanguageSQLAs(ctx, as.Definition, params)
 				if err != nil {
 					return nil, err
 				}
@@ -116,7 +116,7 @@ func nodeCreateFunction(ctx *Context, node *tree.CreateFunction) (vitess.Stateme
 						SQL: s.String(),
 					}
 				}
-				sqlDef, sqlDefParsedStmts, err = convertSQLStmts(stmts, params)
+				sqlDef, sqlDefParsedStmts, err = convertSQLStmts(ctx, stmts, params)
 				if err != nil {
 					return nil, err
 				}
@@ -219,18 +219,19 @@ func createAnonymousCompositeType(fieldTypes []tree.SimpleColumnDef) *pgtypes.Do
 
 // handleLanguageSQLAs handles parsing SQL definition strings in both CREATE FUNCTION and CREATE PROCEDURE
 // and returns converted the sql statements into vitess statements.
-func handleLanguageSQLAs(definition string, params []pgnodes.RoutineParam) (string, []vitess.Statement, error) {
+func handleLanguageSQLAs(ctx *Context, definition string, params []pgnodes.RoutineParam) (string, []vitess.Statement, error) {
 	stmts, err := parser.Parse(definition)
 	if err != nil {
 		return "", nil, err
 	}
 
-	return convertSQLStmts(stmts, params)
+	return convertSQLStmts(ctx, stmts, params)
 }
 
 // convertSQLStmts takes parser.Statements and routine parameters and
-// returns converted to string representation and vitess statements.
-func convertSQLStmts(stmts parser.Statements, params []pgnodes.RoutineParam) (string, []vitess.Statement, error) {
+// returns converted to string representation and vitess statements. The statements are converted with ctx's
+// variable registry, so SET and SHOW resolve against the engine that is creating the routine.
+func convertSQLStmts(ctx *Context, stmts parser.Statements, params []pgnodes.RoutineParam) (string, []vitess.Statement, error) {
 	paramMap := make(map[string]*framework.ParamTypAndValue, len(params))
 	for i, param := range params {
 		tv := &framework.ParamTypAndValue{
@@ -257,7 +258,7 @@ func convertSQLStmts(stmts parser.Statements, params []pgnodes.RoutineParam) (st
 			return "", nil, err
 		}
 		// stmt.AST is updated at this point with FunctionColumn
-		vitessASTs[i], err = Convert(stmt)
+		vitessASTs[i], err = ConvertWithOptions(stmt, ConvertOptions{SystemVariables: ctx.systemVariables})
 		if err != nil {
 			return "", nil, err
 		}
