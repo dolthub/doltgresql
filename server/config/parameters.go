@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dolthub/doltgresql/core"
@@ -56,11 +57,42 @@ func Init() {
 	sqle.AddDoltSystemVariables()
 }
 
-// InitWithRegistry registers fresh PostgreSQL definitions in one engine. Dolt's
-// definitions are registered last so overlapping names use Dolt's definitions.
+// InitWithRegistry registers fresh PostgreSQL definitions in a registry from
+// sqle.NewEngineVariables. A name Dolt also defines keeps Dolt's definition.
 func InitWithRegistry(vars sql.SystemVariableRegistry) {
-	vars.AddSystemVariables(freshPostgresParameters())
-	sqle.AddDoltSystemVariablesToRegistry(vars)
+	addPostgresParameters(vars, doltVariableNames())
+}
+
+func addPostgresParameters(vars sql.SystemVariableRegistry, skip map[string]struct{}) {
+	params := freshPostgresParameters()
+	kept := params[:0]
+	for _, param := range params {
+		if _, ok := skip[strings.ToLower(param.GetName())]; !ok {
+			kept = append(kept, param)
+		}
+	}
+	vars.AddSystemVariables(kept)
+}
+
+// doltVariableNames returns the lowercase names Dolt registers in an engine.
+var doltVariableNames = sync.OnceValue(func() map[string]struct{} {
+	names := nameRecorder{names: make(map[string]struct{})}
+	sqle.AddDoltSystemVariablesToRegistry(names)
+	return names.names
+})
+
+// nameRecorder only records the names passed to AddSystemVariables.
+type nameRecorder struct {
+	sql.SystemVariableRegistry
+	names map[string]struct{}
+}
+
+func (r nameRecorder) AddSystemVariables(defs []sql.SystemVariable) {
+	for _, def := range defs {
+		if def != nil {
+			r.names[strings.ToLower(def.GetName())] = struct{}{}
+		}
+	}
 }
 
 func freshPostgresParameters() []sql.SystemVariable {
