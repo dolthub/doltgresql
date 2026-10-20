@@ -22,6 +22,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/auth"
+	"github.com/dolthub/doltgresql/server/initialization"
+	"github.com/dolthub/doltgresql/servercfg"
 )
 
 // NewOfflineSqlEngine constructs a SqlEngine over the databases in |mrEnv| for offline administrative
@@ -29,16 +31,21 @@ import (
 // the same kind a running server would create for a query, which storage-level code requires in some
 // cases: for example, deserializing a table schema that uses a user-defined data type resolves the type
 // through the session's Doltgres state, and panics on a bare session. The caller must Close the
-// returned engine. initialization.Initialize must have been called first.
+// returned engine. Process-wide catalogs are initialized on first use.
 //
 // This is useful for certain offline, non-server admin tasks where starting a server is either undesirable
 // or impossible.
 func NewOfflineSqlEngine(ctx context.Context, mrEnv *env.MultiRepoEnv) (*engine.SqlEngine, error) {
+	vars, err := initialization.NewPostgresEngineVariables(nil, servercfg.DefaultServerConfig())
+	if err != nil {
+		return nil, err
+	}
 	user, _ := auth.GetSuperUserAndPassword()
 	return engine.NewSqlEngine(ctx, mrEnv, &engine.SqlEngineConfig{
 		ServerUser:      user,
 		Autocommit:      true,
 		ProviderFactory: DoltgresProviderFactory{},
+		EngineVariables: vars,
 	})
 }
 
