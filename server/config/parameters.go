@@ -36,7 +36,7 @@ import (
 )
 
 // doltConfigParameters is a list of Dolt-specific configuration parameters that can be used in SET statement.
-var doltConfigParameters = make(map[string]sql.SystemVariable)
+var doltConfigParameters = make(map[string]struct{})
 
 // Init initializes or appends to SystemVariables as it functions as a global variable.
 // Currently, we append all of postgres configuration parameters to sql.SystemVariables.
@@ -49,20 +49,9 @@ func Init() {
 		// unlikely this would happen since init() in gms package is executed first
 		variables.InitSystemVariables()
 	}
-	// Regression tests assume the Los Angeles timezone, so we'll set that here if the env var is set
-	if _, ok := os.LookupEnv("REGRESSION_TESTING"); ok {
-		timezone := postgresConfigParameters["timezone"].(*Parameter)
-		timezone.Default = "America/Los_Angeles"
-		timezone.ResetVal = "America/Los_Angeles"
-	}
-	params := make([]sql.SystemVariable, len(postgresConfigParameters))
-	i := 0
-	for _, sysVar := range postgresConfigParameters {
-		params[i] = sysVar
-		i++
-	}
-	for _, doltSysVar := range sqle.DoltSystemVariables {
-		doltConfigParameters[doltSysVar.GetName()] = doltSysVar
+	params := freshPostgresParameters()
+	for _, name := range sqle.DoltSystemVariableNames() {
+		doltConfigParameters[name] = struct{}{}
 	}
 	sql.SystemVariables.AddSystemVariables(params)
 	sqle.AddDoltSystemVariables()
@@ -337,8 +326,11 @@ func (p *PgsqlScope) SetValue(ctx *sql.Context, name string, val any) error {
 // projecting it into the session store used by query execution.
 func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) error {
 	name = strings.ToLower(name)
-	variable, ok := postgresConfigParameters[name]
+	variable, _, ok := ctx.SystemVariables().GetGlobal(name)
 	if !ok {
+		return sql.ErrUnknownSystemVariable.New(name)
+	}
+	if _, ok := variable.(*Parameter); !ok {
 		return sql.ErrUnknownSystemVariable.New(name)
 	}
 	validated, err := variable.SetValue(ctx, val, false)
@@ -460,7 +452,8 @@ func TzOffsetToDuration(d string) (time.Duration, error) {
 // applied when later sessions start. Returns the canonical name of the parameter, and whether only superusers may set
 // it.
 func ValidatePostgresParameterValue(ctx *sql.Context, name string, value string) (string, bool, error) {
-	variable, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter)
+	definition, _, _ := ctx.SystemVariables().GetGlobal(strings.ToLower(name))
+	variable, ok := definition.(*Parameter)
 	if !ok {
 		return "", false, pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, name)
 	}

@@ -178,7 +178,7 @@ func (c *AlterRoleSetting) validateParameter(ctx *sql.Context) (name string, val
 			return "", "", false, err
 		}
 	}
-	if config.IsValidPostgresConfigParameter(name) {
+	if config.IsValidPostgresConfigParameterInRegistry(ctx.SystemVariables(), name) {
 		if c.Reset {
 			// Stored names are matched case-insensitively, so there's nothing else to validate when removing
 			return name, "", false, nil
@@ -203,14 +203,14 @@ func currentSettingText(ctx *sql.Context, name string) (string, error) {
 	if value, ok, err := core.Setting(ctx, name); err != nil {
 		return "", err
 	} else if ok {
-		return config.FormatPostgresParameterValue(name, value), nil
+		return config.FormatPostgresParameterValueInRegistry(ctx.SystemVariables(), name, value), nil
 	}
-	if config.IsValidPostgresConfigParameter(name) {
+	if config.IsValidPostgresConfigParameterInRegistry(ctx.SystemVariables(), name) {
 		value, err := ctx.GetSessionVariable(ctx, name)
 		if err != nil {
 			return "", err
 		}
-		return config.FormatPostgresParameterValue(name, value), nil
+		return config.FormatPostgresParameterValueInRegistry(ctx.SystemVariables(), name, value), nil
 	}
 	return "", pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, name)
 }

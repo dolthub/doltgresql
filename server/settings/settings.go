@@ -30,7 +30,7 @@ import (
 // set_config use this path so validation and transaction scoping agree.
 func Set(ctx *sql.Context, name string, value any, reset, local bool) error {
 	name = strings.ToLower(name)
-	if config.IsValidPostgresConfigParameter(name) {
+	if config.IsValidPostgresConfigParameterInRegistry(ctx.SystemVariables(), name) {
 		_ = core.SetDateStyleOutputFormat(ctx, "")
 		if reset {
 			var err error
@@ -79,7 +79,7 @@ func InitResetValue(ctx *sql.Context, name string) error {
 		return err
 	}
 	if !ok {
-		if !config.IsValidPostgresConfigParameter(name) {
+		if !config.IsValidPostgresConfigParameterInRegistry(ctx.SystemVariables(), name) {
 			return nil
 		}
 		if value, err = ctx.GetSessionVariable(ctx, name); err != nil {
