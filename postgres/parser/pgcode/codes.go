@@ -286,7 +286,6 @@ var (
 	ObjectInUse                  = MakeCode("55006")
 	CantChangeRuntimeParam       = MakeCode("55P02")
 	LockNotAvailable             = MakeCode("55P03")
-	UnsafeNewEnumValueUsage      = MakeCode("55P04")
 	// Section: Class 57 - Operator Intervention
 	OperatorIntervention = MakeCode("57000")
 	QueryCanceled        = MakeCode("57014")

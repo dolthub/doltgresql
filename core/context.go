@@ -45,7 +45,6 @@ import (
 // identity and resource bookkeeping survive root/cache invalidation; the
 // collection, catalog, runner, and formatting fields are disposable caches.
 type contextValues struct {
-	enumChanges        sessionstate.Journal[enumTransactionChanges]
 	identity           sessionstate.Journal[sessionstate.Identity]
 	settings           map[string]*sessionSetting
 	settingsSavepoints []string
@@ -144,55 +143,44 @@ func (cv *contextValues) DoltgresTransactionStarted() {
 		return
 	}
 	cv.identity.Begin()
-	cv.enumChanges.Begin()
 	for _, setting := range cv.settings {
 		setting.journal.Begin()
 	}
 	cv.settingsSavepoints = nil
 }
-
 func (cv *contextValues) DoltgresTransactionCommitted() {
 	cv.identity.Commit()
-	cv.enumChanges.Commit()
 	for _, setting := range cv.settings {
 		setting.journal.Commit()
 	}
 	cv.settingsSavepoints = nil
 	cv.restoreSettings()
 }
-
 func (cv *contextValues) DoltgresTransactionRolledBack() {
 	cv.identity.Rollback()
-	cv.enumChanges.Rollback()
 	for _, setting := range cv.settings {
 		setting.journal.Rollback()
 	}
 	cv.settingsSavepoints = nil
 	cv.restoreSettings()
 }
-
 func (cv *contextValues) DoltgresSavepointCreated(name string) {
 	cv.identity.Savepoint(name)
-	cv.enumChanges.Savepoint(name)
 	for _, setting := range cv.settings {
 		setting.journal.Savepoint(name)
 	}
 	cv.settingsSavepoints = append(cv.settingsSavepoints, name)
 }
-
 func (cv *contextValues) DoltgresSavepointRolledBack(name string) {
 	cv.identity.RollbackTo(name)
-	cv.enumChanges.RollbackTo(name)
 	for _, setting := range cv.settings {
 		setting.journal.RollbackTo(name)
 	}
 	cv.trimSettingsSavepoints(name, false)
 	cv.restoreSettings()
 }
-
 func (cv *contextValues) DoltgresSavepointReleased(name string) {
 	cv.identity.Release(name)
-	cv.enumChanges.Release(name)
 	for _, setting := range cv.settings {
 		setting.journal.Release(name)
 	}

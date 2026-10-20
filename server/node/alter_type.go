@@ -104,8 +104,8 @@ func (a *AlterTypeAddValue) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, e
 	if typ.TypType != types.TypeType_Enum {
 		return nil, pgerror.Newf(pgcode.WrongObjectType, "%s is not an enum", typ.Name())
 	}
-	if len(a.Value) > 63 {
-		return nil, pgerror.New(pgcode.InvalidName, "invalid enum label: labels must be 63 bytes or less")
+	if err := validateEnumLabel(a.Value); err != nil {
+		return nil, err
 	}
 	if _, ok := typ.EnumLabels[a.Value]; ok {
 		if !a.IfNotExists {
@@ -171,10 +171,26 @@ func (a *AlterTypeAddValue) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, e
 	if err != nil {
 		return nil, err
 	}
+	newRoot, err := updateEnumTableSchemas(ctx, root, updated)
+	if err != nil {
+		return nil, err
+	}
+	// Persist type and dependent schema metadata in the same working-root update.
+	typ.EnumLabels = labels
+	rootWithType, err := collection.UpdateRoot(ctx, newRoot.(*core.RootValue))
+	if err != nil {
+		return nil, err
+	}
+	if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), rootWithType.(*core.RootValue)); err != nil {
+		return nil, err
+	}
+	return sql.RowsToRowIter(), nil
+}
+
+// updateEnumTableSchemas refreshes dependent column types without rewriting rows or indexes.
+func updateEnumTableSchemas(ctx *sql.Context, root doltdb.RootValue, updated *types.DoltgresType) (doltdb.RootValue, error) {
 	var newRoot doltdb.RootValue = root
-	// Dolt's index comparisons can run without a SQL context. Refresh the stored
-	// column definitions during DDL, keeping the row and index data unchanged.
-	err = root.IterTables(ctx, func(name doltdb.TableName, table *doltdb.Table, sch schema.Schema) (bool, error) {
+	err := root.IterTables(ctx, func(name doltdb.TableName, table *doltdb.Table, sch schema.Schema) (bool, error) {
 		cols := append([]schema.Column(nil), sch.GetAllCols().GetColumns()...)
 		changed := false
 		for i := range cols {
@@ -208,19 +224,7 @@ func (a *AlterTypeAddValue) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, e
 	if err != nil {
 		return nil, err
 	}
-	// Persist type and dependent schema metadata in the same working-root update.
-	typ.EnumLabels = labels
-	rootWithType, err := collection.UpdateRoot(ctx, newRoot.(*core.RootValue))
-	if err != nil {
-		return nil, err
-	}
-	if err = core.RecordEnumValueAdded(ctx, typ.ID, a.Value); err != nil {
-		return nil, err
-	}
-	if err = session.SetWorkingRoot(ctx, ctx.GetCurrentDatabase(), rootWithType.(*core.RootValue)); err != nil {
-		return nil, err
-	}
-	return sql.RowsToRowIter(), nil
+	return newRoot, nil
 }
 
 // replaceEnumType refreshes enum dependencies without modifying cached types.

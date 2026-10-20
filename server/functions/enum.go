@@ -57,9 +57,6 @@ var enum_in = framework.Function2{
 		if _, exists := typ.EnumLabels[value]; !exists {
 			return nil, pgtypes.ErrInvalidInputValueForEnum.New(typ.Name(), value)
 		}
-		if err := core.CheckEnumValueUsage(ctx, typ.ID, value); err != nil {
-			return nil, err
-		}
 		// TODO: should return the index instead of label?
 		return value, nil
 	},
