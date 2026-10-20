@@ -7397,3 +7397,61 @@ $$ LANGUAGE plpgsql;`,
 		},
 	)
 }
+
+func TestPgRelationIsUpdatable(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "relation capabilities and invalid OIDs",
+			SetUpScript: []string{
+				`CREATE TABLE updatable_probe (id INT PRIMARY KEY)`,
+				`CREATE INDEX probe_idx ON updatable_probe (id)`,
+				`CREATE SEQUENCE probe_seq`,
+				`CREATE TABLE saved_oid (relation regclass)`,
+				`CREATE TABLE dropped_probe (id INT)`,
+				`INSERT INTO saved_oid VALUES ('dropped_probe'::regclass)`,
+				`DROP TABLE dropped_probe`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT pg_catalog.pg_relation_is_updatable(0::regclass, true)`, Expected: []sql.Row{{int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable(4294967295::oid::regclass, false)`, Expected: []sql.Row{{int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable('updatable_probe'::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, false)`, Expected: []sql.Row{{int32(28), int32(28)}}},
+				{Query: `SELECT pg_relation_is_updatable('probe_idx'::regclass, true), pg_relation_is_updatable('probe_seq'::regclass, true)`, Expected: []sql.Row{{int32(0), int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable(NULL::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, NULL)`, Expected: []sql.Row{{nil, nil}}},
+				{Query: `SELECT pg_relation_is_updatable(relation, true) FROM saved_oid`, Expected: []sql.Row{{int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable('missing_relation'::regclass, true)`, ExpectedErr: `relation "missing_relation" does not exist`},
+				{Query: `SELECT pg_typeof(pg_relation_is_updatable('updatable_probe'::regclass, true))`, Expected: []sql.Row{{"integer"}}},
+				{Query: `SELECT (pg_relation_is_updatable('updatable_probe'::regclass, true) & 8) = 8, (pg_relation_is_updatable('updatable_probe'::regclass, true) & 4) = 4, (pg_relation_is_updatable('updatable_probe'::regclass, true) & 16) = 16`, Expected: []sql.Row{{"t", "t", "t"}}},
+			},
+		},
+		{
+			Name: "read-only relations",
+			SetUpScript: []string{
+				`CREATE TABLE view_source (id INT)`,
+				`CREATE VIEW simple_probe AS SELECT id FROM view_source`,
+				`CREATE VIEW aggregate_probe AS SELECT count(*) FROM view_source`,
+				`CREATE VIEW nested_probe AS SELECT * FROM simple_probe`,
+			},
+			Assertions: []ScriptTestAssertion{
+				// Doltgres does not yet support writes through views, including simple views.
+				{Query: `SELECT pg_relation_is_updatable('simple_probe'::regclass, true), pg_relation_is_updatable('simple_probe'::regclass, false)`, Expected: []sql.Row{{int32(0), int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable('aggregate_probe'::regclass, true), pg_relation_is_updatable('nested_probe'::regclass, true)`, Expected: []sql.Row{{int32(0), int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable('pg_catalog.pg_class'::regclass, true)`, Expected: []sql.Row{{int32(0)}}},
+				{Query: `INSERT INTO simple_probe VALUES (1)`, ExpectedErr: "expected insert destination to be resolved or unresolved table"},
+				{Query: `UPDATE simple_probe SET id = 2`, ExpectedErr: "doesn't support UPDATE"},
+				{Query: `DELETE FROM simple_probe`, ExpectedErr: "doesn't support DELETE"},
+			},
+		},
+		{
+			Name: "capabilities do not depend on table privileges",
+			SetUpScript: []string{
+				`CREATE TABLE protected_probe (id INT)`,
+				`CREATE USER capability_reader PASSWORD 'password'`,
+				`REVOKE ALL ON protected_probe FROM PUBLIC`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Username: "capability_reader", Password: "password", Query: `SELECT pg_relation_is_updatable('public.protected_probe'::regclass, true)`, Expected: []sql.Row{{int32(28)}}},
+				{Username: "capability_reader", Password: "password", Query: `INSERT INTO public.protected_probe VALUES (1)`, ExpectedErr: "permission denied"},
+			},
+		},
+	})
+}

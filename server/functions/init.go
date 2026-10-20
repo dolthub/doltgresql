@@ -208,6 +208,7 @@ func Init() {
 	initPgPartitionAncestors()
 	initPgPostmasterStartTime()
 	initPgRelationIsPublishable()
+	initPgRelationIsUpdatable()
 	initPgRelationSize()
 	initPgShowAllSettings()
 	initPgSleep()
