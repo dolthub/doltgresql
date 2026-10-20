@@ -2125,6 +2125,14 @@ func TestSystemInformationFunctions(t *testing.T) {
 						{"???"},
 					},
 				},
+				{
+					Query:    `SELECT format_type('json'::regtype, NULL), format_type('json'::regtype, -1), format_type('_json'::regtype, NULL), format_type('jsonb'::regtype, NULL), format_type('_jsonb'::regtype, NULL);`,
+					Expected: []sql.Row{{"json", "json", "json[]", "jsonb", "jsonb[]"}},
+				},
+				{
+					Query:    `SELECT 'json'::regtype, 'jsonb'::regtype, '_json'::regtype, 'json[]'::regtype;`,
+					Expected: []sql.Row{{"json", "jsonb", "json[]", "json[]"}},
+				},
 			},
 		},
 		{
@@ -3832,6 +3840,7 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					INSERT INTO cp_test VALUES(a, b);
 					INSERT INTO cp_test VALUES(c, b);
 				$$;`,
+				`CREATE FUNCTION json_func(a json, b jsonb, c json[]) RETURNS int LANGUAGE sql AS 'SELECT 1';`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -3859,6 +3868,10 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{"a integer, b text, c integer DEFAULT 100"},
 					},
+				},
+				{
+					Query:    `SELECT pg_get_function_arguments('json_func'::regproc);`,
+					Expected: []sql.Row{{"a json, b jsonb, c json[]"}},
 				},
 			},
 		},
