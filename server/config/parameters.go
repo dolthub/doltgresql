@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 
+	"github.com/cockroachdb/apd/v3"
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -74,8 +76,8 @@ var _ sql.SystemVariable = (*Parameter)(nil)
 
 type Parameter struct {
 	Name         string
-	Unit         string // Base unit for parsing and display; currently supports "ms".
 	Default      any
+	Unit         string
 	Category     string
 	ShortDesc    string
 	Context      ParameterContext
@@ -121,20 +123,11 @@ func (p *Parameter) GetDefault() any {
 
 // InitValue implements sql.SystemVariable.
 func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
-	switch p.Unit {
-	case "":
-		// Unitless parameters use the normal type conversion below.
-	case "ms":
-		milliseconds, err := parseMilliseconds(p.Name, fmt.Sprint(val))
-		if err != nil {
-			return sql.SystemVarValue{}, err
-		}
-		val = milliseconds
-	default:
-		return sql.SystemVarValue{}, pgerror.Newf(pgcode.FeatureNotSupported, `unsupported unit "%s" for parameter "%s"`, p.Unit, p.Name)
-	}
 	convertedVal, _, err := p.Type.Convert(ctx, val)
 	if err != nil {
+		if sql.ErrInvalidSystemVariableValue.Is(err) {
+			return sql.SystemVarValue{}, p.invalidValueError(fmt.Sprint(val), "")
+		}
 		return sql.SystemVarValue{}, err
 	}
 	currVal, err := ctx.GetSessionVariable(ctx, p.Name)
@@ -160,7 +153,33 @@ func (p *Parameter) SetValue(ctx *sql.Context, val any, global bool) (sql.System
 	if p.IsReadOnly() {
 		return sql.SystemVarValue{}, pgerror.Newf(pgcode.CantChangeRuntimeParam, `parameter "%s" cannot be changed now`, p.Name)
 	}
-	// TODO: Support units for the remaining memory and time parameters.
+	// Integer parameters accept fractional values, which are rounded, so we parse those the same way as strings
+	if p.Type.String() == "system_int" {
+		switch v := val.(type) {
+		case float32:
+			val = strconv.FormatFloat(float64(v), 'g', -1, 32)
+		case float64:
+			val = strconv.FormatFloat(v, 'g', -1, 64)
+		case *apd.Decimal:
+			val = v.String()
+		}
+	}
+	if str, ok := val.(string); ok {
+		switch p.Type.String() {
+		case "system_int":
+			parsed, err := p.parseNumericValue(str, true)
+			if err != nil {
+				return sql.SystemVarValue{}, err
+			}
+			val = parsed
+		case "system_double":
+			parsed, err := p.parseNumericValue(str, false)
+			if err != nil {
+				return sql.SystemVarValue{}, err
+			}
+			val = parsed
+		}
+	}
 	return p.InitValue(ctx, val, global)
 }
 
@@ -267,14 +286,15 @@ func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) er
 }
 
 // FormatPostgresParameterValue renders values as PostgreSQL reports them in
-// SHOW and current_setting, including boolean on/off spelling.
+// SHOW and current_setting, including boolean on/off spelling and the units of
+// integer and real parameters.
 func FormatPostgresParameterValue(name string, val any) string {
 	if val == nil {
 		return ""
 	}
-	if HasMillisecondUnit(name) {
-		if milliseconds, ok := val.(int64); ok {
-			return formatMilliseconds(milliseconds)
+	if param, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter); ok {
+		if formatted, ok := param.formatWithUnit(val); ok {
+			return formatted
 		}
 	}
 	if variable, ok := postgresConfigParameters[strings.ToLower(name)]; ok && variable.GetType().String() == "system_bool" {
@@ -361,4 +381,19 @@ func TzOffsetToDuration(d string) (time.Duration, error) {
 	} else {
 		return -1, cerrors.Errorf("error: unable to process time")
 	}
+}
+
+// ValidatePostgresParameterValue validates that the built-in parameter may be set to the given value, without changing
+// the session's value. This is used by ALTER ROLE ... SET and ALTER DATABASE ... SET, which store the value to be
+// applied when later sessions start. Returns the canonical name of the parameter, and whether only superusers may set
+// it.
+func ValidatePostgresParameterValue(ctx *sql.Context, name string, value string) (string, bool, error) {
+	variable, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter)
+	if !ok {
+		return "", false, pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, name)
+	}
+	if _, err := variable.SetValue(ctx, value, false); err != nil {
+		return "", false, err
+	}
+	return variable.Name, variable.Context == ParameterContextSuperUser, nil
 }

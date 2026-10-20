@@ -1129,18 +1129,56 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Inet type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_inet (id INTEGER primary key, v1 INET);",
 			"INSERT INTO t_inet VALUES (1, '192.168.1.1'), (2, '10.0.0.1');",
+			`CREATE TABLE ips (ip inet)`,
+			`INSERT INTO ips VALUES ('1.2.3.4'), ('1.2.3.4/32'), ('1.2.3.4/24'), ('::1')`,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "SELECT * FROM t_inet ORDER BY id;",
-				Expected: []sql.Row{
-					{1, "192.168.1.1"},
-					{2, "10.0.0.1"},
-				},
+				Query:    "SELECT * FROM t_inet ORDER BY id;",
+				Expected: []sql.Row{{1, "192.168.1.1"}, {2, "10.0.0.1"}},
+			},
+			{
+				Query:    `SELECT host(ip), masklen(ip), count(*) FROM ips GROUP BY ip ORDER BY ip`,
+				Expected: []sql.Row{{"1.2.3.4", 24, 1}, {"1.2.3.4", 32, 2}, {"::1", 128, 1}},
+			},
+			{
+				Query:    `SELECT count(*) FROM ips a JOIN ips b ON a.ip = b.ip`,
+				Expected: []sql.Row{{6}},
+			},
+			{
+				Query:    `SELECT ~ inet '192.168.1.6'`,
+				Expected: []sql.Row{{"63.87.254.249"}},
+			},
+			{
+				Query:    `SELECT ~ inet '::1'`,
+				Expected: []sql.Row{{"ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffe"}},
+			},
+			{
+				Query:    `SELECT inetnot('192.168.1.6/24'), ~ inet '192.168.1.6/24', ~ '1.2.3.0004'::inet`,
+				Expected: []sql.Row{{"63.87.254.249/24", "63.87.254.249/24", "254.253.252.251"}},
+			},
+			{
+				Query:    `SELECT ~5, ~5::int2, ~5::int8, pg_typeof(~5::int2)`,
+				Expected: []sql.Row{{-6, -6, -6, "smallint"}},
+			},
+			{
+				Query:    `SELECT host('192.168.001.010'::inet)`,
+				Expected: []sql.Row{{"192.168.1.10"}},
+			},
+			{
+				Query:    `SELECT host('010.000.000.001/8'::inet)`,
+				Expected: []sql.Row{{"10.0.0.1"}},
+			},
+			{
+				Query:    `SELECT '192.168.1.6'::inet::varchar(5)`,
+				Expected: []sql.Row{{"192.1"}},
+			},
+			{
+				Query:    `SELECT '192.168.1.6'::inet::char(5)`,
+				Expected: []sql.Row{{"192.1"}},
 			},
 		},
 	},

@@ -1576,8 +1576,24 @@ func TestDoltMerge(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"dolt_preview_merge_conflicts_summary(", // returns schema qualified table names
 		"CALL DOLT_MERGE with schema conflicts can be correctly resolved using dolt_conflicts_resolve when autocommit is off", // alter table
-		"CALL DOLT_MERGE fails on non-branch revision",                      // MySQL semantics: postgres aborts a transaction on any error, rejecting further statements
-		"CALL DOLT_MERGE complains when a merge overrides local changes",    // MySQL semantics: postgres aborts a transaction on any error, rejecting further statements
+		"CALL DOLT_MERGE fails on non-branch revision",                   // MySQL semantics: postgres aborts a transaction on any error, rejecting further statements
+		"CALL DOLT_MERGE complains when a merge overrides local changes", // MySQL semantics: postgres aborts a transaction on any error, rejecting further statements
+		// These scripts read pending edits after an expected error. PostgreSQL aborts
+		// the transaction on that error and rejects reads until rollback.
+		"merge abort rejects pending edits on mydb/b2",
+		"merge abort rejects pending edits on other",
+		"merge 'b1' rejects pending edits on mydb",
+		"merge 'b1' rejects pending edits on mydb/b2",
+		"merge 'b1' rejects pending edits on other",
+		"merge '--no-ff', 'b1' rejects pending edits on mydb",
+		"merge '--no-ff', 'b1' rejects pending edits on mydb/b2",
+		"merge '--no-ff', 'b1' rejects pending edits on other",
+		"merge '--squash', 'b1' rejects pending edits on mydb",
+		"merge '--squash', 'b1' rejects pending edits on mydb/b2",
+		"merge '--squash', 'b1' rejects pending edits on other",
+		"merge '--no-commit', 'b1' rejects pending edits on mydb",
+		"merge '--no-commit', 'b1' rejects pending edits on mydb/b2",
+		"merge '--no-commit', 'b1' rejects pending edits on other",
 		"merge conflicts prevent new branch creation",                       // different error message
 		"Drop and add primary key on two branches converges to same schema", // alter table
 		"insert two tables with the same name and different schema",
@@ -1608,6 +1624,9 @@ func TestDoltRevert(t *testing.T) {
 		"dolt_revert() automatically resolves some conflicts",    // panic: interface conversion: sql.Type is types.VarCharType, not types.StringType
 		"select count(*) from dolt_log;",                         // Doltgres creates an additional commit that Dolt doesn't have
 		"dolt_revert() --continue: ignored table in working set", // ERROR: ASSIGNMENT_CAST: target is of type boolean but expression is of type integer: 1
+		// This script needs autocommit=0 to remain in effect after COMMIT, but the
+		// converter maps it to one BEGIN, so the later edits are committed immediately.
+		"dolt_revert() --abort rejects other dirty working sets before resetting HEAD",
 	})
 	denginetest.RunDoltRevertTests(t, h)
 }

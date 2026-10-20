@@ -23,6 +23,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/ipaddr"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
@@ -138,6 +139,11 @@ func NewRawLiteralJSON(val string) *expression.Literal {
 // NewRawLiteralOid returns a new *expression.Literal containing a OID value.
 func NewRawLiteralOid(val id.Id) *expression.Literal {
 	return expression.NewLiteral(val, pgtypes.Oid)
+}
+
+// NewRawLiteralInet returns a new *expression.Literal containing an inet value.
+func NewRawLiteralInet(val ipaddr.IPAddr) *expression.Literal {
+	return expression.NewLiteral(val, pgtypes.Inet)
 }
 
 // NewRawLiteralUuid returns a new *expression.Literal containing a UUID value.

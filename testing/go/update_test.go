@@ -200,6 +200,57 @@ func TestUpdate(t *testing.T) {
 			},
 		},
 		{
+			Name: "update keeps GENERATED ALWAYS AS IDENTITY values",
+			SetUpScript: []string{
+				"CREATE TABLE claims (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, claim text UNIQUE);",
+				"INSERT INTO claims (claim) VALUES ('one'), ('two');",
+				"CREATE TABLE g (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, c text, supersedes bigint REFERENCES g(id));",
+				"INSERT INTO g (c) VALUES ('old');",
+				"INSERT INTO g (c, supersedes) VALUES ('new', 1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "UPDATE claims SET claim = 'ONE' WHERE id = 1;",
+				},
+				{
+					Query:    "SELECT id, claim FROM claims ORDER BY id;",
+					Expected: []sql.Row{{1, "ONE"}, {2, "two"}},
+				},
+				{
+					Query: "UPDATE claims SET claim = lower(claim);",
+				},
+				{
+					Query:    "SELECT id, claim FROM claims ORDER BY id;",
+					Expected: []sql.Row{{1, "one"}, {2, "two"}},
+				},
+				{
+					Query: "INSERT INTO claims (claim) VALUES ('two') ON CONFLICT (claim) DO UPDATE SET claim = 'TWO';",
+				},
+				{
+					Query:    "SELECT id, claim FROM claims ORDER BY id;",
+					Expected: []sql.Row{{1, "one"}, {2, "TWO"}},
+				},
+				{
+					Query: "UPDATE claims SET id = DEFAULT WHERE id = 1;",
+				},
+				{
+					Query:    "SELECT id, claim FROM claims ORDER BY id;",
+					Expected: []sql.Row{{2, "TWO"}, {4, "one"}},
+				},
+				{
+					Query:    "INSERT INTO claims (claim) VALUES ('three') RETURNING id;",
+					Expected: []sql.Row{{5}},
+				},
+				{
+					Query: "UPDATE g SET c = 'edited' WHERE id = 1;",
+				},
+				{
+					Query:    "SELECT id, c, supersedes FROM g ORDER BY id;",
+					Expected: []sql.Row{{1, "edited", nil}, {2, "new", 1}},
+				},
+			},
+		},
+		{
 			Name: "UPDATE ... RETURNING",
 			SetUpScript: []string{
 				"CREATE TABLE t (pk INT PRIMARY KEY, c1 TEXT);",

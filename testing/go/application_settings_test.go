@@ -15,11 +15,16 @@
 package _go
 
 import (
+	"encoding/binary"
+	"strconv"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/lib/pq/oid"
 	"github.com/stretchr/testify/require"
+
+	"github.com/dolthub/doltgresql/core/id"
 )
 
 // TestApplicationSettingsFormatting checks PostgreSQL text values and the
@@ -179,4 +184,23 @@ func TestApplicationSettingsExecution(t *testing.T) {
 			{Query: "SELECT v FROM settings_table", ExpectedErr: "table not found: settings_table"},
 		},
 	}})
+}
+
+func TestRegroleBinaryUncachedOID(t *testing.T) {
+	ctx, conn, controller := CreateServer(t, "postgres")
+	defer func() {
+		conn.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+	// Select an OID that has not already been registered by another test.
+	uncachedOID := uint32(424242)
+	for id.Cache().ToInternal(uncachedOID).IsValid() {
+		uncachedOID++
+	}
+	data := make([]byte, 4)
+	binary.BigEndian.PutUint32(data, uncachedOID)
+	result := conn.Default.PgConn().ExecParams(ctx, "SELECT $1::oid::text", [][]byte{data}, []uint32{uint32(oid.T_regrole)}, []int16{1}, []int16{0}).Read()
+	require.NoError(t, result.Err)
+	require.Equal(t, [][][]byte{{[]byte(strconv.FormatUint(uint64(uncachedOID), 10))}}, result.Rows)
 }

@@ -1035,8 +1035,6 @@ func (*CompiledFunction) preferredTypeMatches(argTypes []*pgtypes.DoltgresType, 
 		currentPreferredCount := 0
 		for argIdx := range argTypes {
 			argType := cand.params.argTypes[argIdx]
-			// Unknown literals have no category yet. Let the next resolution
-			// step apply their string-category preference before preferring OID.
 			if argTypes[argIdx].ID != pgtypes.Unknown.ID && argTypes[argIdx].ID != argType.ID && argType.IsPreferred {
 				currentPreferredCount++
 			}
@@ -1057,13 +1055,8 @@ func (*CompiledFunction) preferredTypeMatches(argTypes []*pgtypes.DoltgresType, 
 func (c *CompiledFunction) unknownTypeCategoryMatches(argTypes []*pgtypes.DoltgresType, candidates []overloadMatch) ([]overloadMatch, bool) {
 	matches := make([]overloadMatch, len(candidates))
 	copy(matches, candidates)
-	// Resolve the category before choosing a preferred type within it. In
-	// particular, a preferred OID must not beat a non-preferred name for an
-	// unknown string literal, while timestamptz can still beat timestamp.
-	// Inspect the original candidates for every argument so resolution does
-	// not depend on argument order. For example, (text, int) and (int, text)
-	// remain ambiguous for two unknowns: each position prefers string, but
-	// neither overload satisfies both positions.
+	// Choose categories and preferred types from all candidates before filtering
+	// so that argument order does not affect resolution.
 	for argIdx, argType := range argTypes {
 		if argType.ID != pgtypes.Unknown.ID {
 			continue

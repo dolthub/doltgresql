@@ -49,6 +49,7 @@ type contextValues struct {
 	settings           map[string]*sessionSetting
 	settingsSavepoints []string
 	settingsRestoreErr error
+	settingResetVals   map[string]any
 	session            sql.Session
 	colls              map[string]*databaseCollections
 
