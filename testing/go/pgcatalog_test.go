@@ -470,6 +470,7 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 					Expected: []sql.Row{
 						{"doltgres_test", "1.0", "f", "f", "f", "t", nil, nil, "test extension to ensure that emulated extensions behave properly"},
 						{"doltgres_test_update", "1.0", "f", "f", "f", "f", nil, nil, "test extension whose declaration changes between releases"},
+						{"postgis", "3.6.4", "f", "t", "f", "f", nil, nil, "PostGIS geometry and geography spatial types and functions"},
 						{"uuid-ossp", "1.1", "f", "t", "t", "t", nil, nil, "generate universally unique identifiers (UUIDs)"},
 						{"vector", "0.8.6", "f", "t", "f", "t", nil, nil, "vector data type and ivfflat and hnsw access methods"},
 					},
@@ -524,6 +525,7 @@ func TestPgAvailableExtensions(t *testing.T) {
 					Expected: []sql.Row{
 						{"doltgres_test", "1.0", nil, "test extension to ensure that emulated extensions behave properly"},
 						{"doltgres_test_update", "1.0", nil, "test extension whose declaration changes between releases"},
+						{"postgis", "3.6.4", nil, "PostGIS geometry and geography spatial types and functions"},
 						{"uuid-ossp", "1.1", nil, "generate universally unique identifiers (UUIDs)"},
 						{"vector", "0.8.6", nil, "vector data type and ivfflat and hnsw access methods"},
 					},

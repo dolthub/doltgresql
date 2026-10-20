@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/transform"
 
+	"github.com/dolthub/doltgresql/core/casts"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -97,7 +98,7 @@ func (c *CompiledAggregateFunction) WithChildren(ctx *sql.Context, children ...s
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	nc := newCompiledAggregateFunctionInternal(ctx, c.Name, children[:numArgs], c.overloads, c.fnOverloads)
+	nc := newCompiledAggregateFunctionInternal(ctx, c.Name, children[:numArgs], c.overloads, c.overloads.overloadsForParams(numArgs))
 	nc.distinctWindow = c.distinctWindow
 	if nc.distinctWindow != nil {
 		if err := nc.distinctWindowError(); err != nil {
@@ -160,7 +161,7 @@ func (c *CompiledAggregateFunction) NewBuffer(ctx *sql.Context) (sql.Aggregation
 	// Buffers evaluate their argument expressions directly, without the GMS value conversion that
 	// CompiledFunction.Eval performs, so any GMS-typed arguments (e.g. columns of the dolt_* system
 	// tables) must be wrapped to convert their values.
-	return agg.NewBuffer(withResolvedAggregateArgumentTypes(castGMSArguments(ctx, args), c.originalTypes))
+	return agg.NewBuffer(withResolvedAggregateArgumentTypes(c.withOverloadCasts(castGMSArguments(ctx, args)), c.originalTypes))
 }
 
 // Id implements the interface sql.Aggregation.
@@ -190,7 +191,67 @@ func (c *CompiledAggregateFunction) NewWindowFunction(ctx *sql.Context) (sql.Win
 		return nil, err
 	}
 	// See the comment in NewBuffer: GMS-typed arguments must convert their values.
-	return newWindowFunc(withResolvedAggregateArgumentTypes(castGMSArguments(ctx, args), c.originalTypes), c.window)
+	return newWindowFunc(withResolvedAggregateArgumentTypes(c.withOverloadCasts(castGMSArguments(ctx, args)), c.originalTypes), c.window)
+}
+
+// withOverloadCasts wraps each argument whose type differs from the matched overload's concrete parameter type in
+// the implicit cast that overload resolution chose, since buffers and window functions evaluate their arguments
+// directly.
+func (c *CompiledFunction) withOverloadCasts(args []sql.Expression) []sql.Expression {
+	paramTypes := c.overload.params.paramTypes
+	if len(c.overload.casts) != len(args) || len(paramTypes) != len(args) {
+		return args
+	}
+	for i, arg := range args {
+		source, target := c.originalTypes[i], paramTypes[i]
+		if source == nil || target.IsPolymorphicType() || source.ID == target.ID || !c.overload.casts[i].ID.IsValid() {
+			continue
+		}
+		args[i] = &overloadCastArgument{child: arg, cast: c.overload.casts[i], source: source, target: target}
+	}
+	return args
+}
+
+// overloadCastArgument applies an overload's implicit cast to an argument of an aggregate or window function.
+type overloadCastArgument struct {
+	child  sql.Expression
+	cast   casts.Cast
+	source *pgtypes.DoltgresType
+	target *pgtypes.DoltgresType
+}
+
+var _ sql.Expression = (*overloadCastArgument)(nil)
+
+// Resolved implements the interface sql.Expression.
+func (e *overloadCastArgument) Resolved() bool { return e.child.Resolved() }
+
+// String implements the interface sql.Expression.
+func (e *overloadCastArgument) String() string { return e.child.String() }
+
+// Type implements the interface sql.Expression.
+func (e *overloadCastArgument) Type(ctx *sql.Context) sql.Type { return e.target }
+
+// IsNullable implements the interface sql.Expression.
+func (e *overloadCastArgument) IsNullable(ctx *sql.Context) bool { return e.child.IsNullable(ctx) }
+
+// Eval implements the interface sql.Expression.
+func (e *overloadCastArgument) Eval(ctx *sql.Context, row sql.Row) (any, error) {
+	val, err := e.child.Eval(ctx, row)
+	if err != nil || val == nil {
+		return val, err
+	}
+	return e.cast.Eval(ctx, val, e.source, e.target)
+}
+
+// Children implements the interface sql.Expression.
+func (e *overloadCastArgument) Children() []sql.Expression { return []sql.Expression{e.child} }
+
+// WithChildren implements the interface sql.Expression.
+func (e *overloadCastArgument) WithChildren(ctx *sql.Context, children ...sql.Expression) (sql.Expression, error) {
+	if len(children) != 1 {
+		return nil, sql.ErrInvalidChildrenNumber.New(len(children), 1)
+	}
+	return &overloadCastArgument{child: children[0], cast: e.cast, source: e.source, target: e.target}, nil
 }
 
 // resolvedAggregateArgument preserves the concrete argument type selected for a

@@ -36,6 +36,23 @@ import (
 func OptimizeFunctions(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	_, isInsertNode := node.(*plan.InsertInto)
 	return pgtransform.NodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
+		if window, ok := n.(*plan.Window); ok {
+			var err error
+			for _, selectExpr := range window.SelectExprs {
+				transform.InspectExpr(ctx, selectExpr, func(ctx *sql.Context, expr sql.Expression) bool {
+					if windowFunction, ok := expr.(*framework.CompiledWindowFunction); ok {
+						err = windowFunction.ResolveDefaultValues(ctx, func(defExpr string) (sql.Expression, error) {
+							return getDefaultExpr(ctx, a.Catalog, defExpr)
+						})
+					}
+					return err != nil
+				})
+				if err != nil {
+					return nil, transform.SameTree, err
+				}
+			}
+			return n, transform.SameTree, nil
+		}
 		projectNode, ok := n.(*plan.Project)
 		if !ok {
 			return n, transform.SameTree, nil

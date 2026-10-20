@@ -91,10 +91,8 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 					doltgresType = pgtypes.NewUnresolvedArrayDoltgresType(baseResolvedType.ID.SchemaName(), baseResolvedType.ID.TypeName())
 				}
 			}
-		} else if columnType.Family() == types.GeometryFamily {
-			return nil, nil, errors.Errorf("geometry types are not yet supported")
-		} else if columnType.Family() == types.GeographyFamily {
-			return nil, nil, errors.Errorf("geography types are not yet supported")
+		} else if columnType.Family() == types.GeometryFamily || columnType.Family() == types.GeographyFamily || columnType.Family() == types.Box2DFamily {
+			doltgresType = pgtypes.NewUnresolvedDoltgresType("", columnTypeName)
 		} else {
 			switch columnType.Oid() {
 			case oid.T_record:
@@ -256,6 +254,11 @@ func typeModifierStrings(exprs tree.Exprs) ([]any, error) {
 			strs[i] = e.FormattedString()
 		case *tree.StrVal:
 			strs[i] = e.RawString()
+		case *tree.UnresolvedName:
+			if e.NumParts != 1 {
+				return nil, errors.Errorf("type modifiers must be simple constants or identifiers")
+			}
+			strs[i] = e.Parts[0]
 		default:
 			return nil, errors.Errorf("type modifiers must be simple constants or identifiers")
 		}

@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/vt/proto/query"
+	"github.com/goccy/go-json"
 	"gopkg.in/src-d/go-errors.v1"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -93,6 +94,10 @@ var GetTypesCollectionFromContext func(*sql.Context, string) (TypeCollection, er
 
 // GetCastsCollectionFromContext is a function from the core package, redeclared here to get around import cycles.
 var GetCastsCollectionFromContext func(*sql.Context, string) (CastsCollection, error)
+
+// ValueToJSON is a function from the functions package, redeclared here to get around import cycles. It returns the
+// JSON that to_json produces for a value of the given type.
+var ValueToJSON func(ctx *sql.Context, typ *DoltgresType, val any) (json.RawMessage, error)
 
 // FromGmsType returns a DoltgresType that is most similar to the given GMS type.
 // It returns UNKNOWN type for GMS types that are not handled.
