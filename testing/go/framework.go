@@ -93,6 +93,7 @@ type ScriptTest struct {
 // ExpectedNotice specifies what notices are expected during a script test assertion.
 type ExpectedNotice struct {
 	Severity string
+	Code     string
 	Message  string
 }
 
@@ -362,6 +363,9 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 					if len(assertion.ExpectedNotices) == len(receivedNotices) {
 						for i, notice := range receivedNotices {
 							assert.Equal(t, assertion.ExpectedNotices[i].Severity, notice.Severity)
+							if assertion.ExpectedNotices[i].Code != "" {
+								assert.Equal(t, assertion.ExpectedNotices[i].Code, notice.Code)
+							}
 							assert.Equal(t, assertion.ExpectedNotices[i].Message, notice.Message)
 						}
 					} else {

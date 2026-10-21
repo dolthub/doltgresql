@@ -22,7 +22,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
-	"github.com/dolthub/doltgresql/server/config"
+	"github.com/dolthub/doltgresql/server/settings"
 )
 
 // ResetSettings restores changed PostgreSQL GUCs to their connection defaults.
@@ -51,15 +51,7 @@ func (*ResetSettings) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) 
 		return nil, err
 	}
 	for _, name := range names {
-		if config.IsValidPostgresConfigParameter(name) {
-			value, err := ctx.GetSessionVariableDefault(ctx, name)
-			if err != nil {
-				return nil, err
-			}
-			if err := config.SetPostgresParameter(ctx, name, value, false); err != nil {
-				return nil, err
-			}
-		} else if err := core.SetSetting(ctx, name, "", false); err != nil {
+		if err := settings.Set(ctx, name, nil, true, false); err != nil {
 			return nil, err
 		}
 	}

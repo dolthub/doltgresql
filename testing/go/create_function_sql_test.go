@@ -23,6 +23,22 @@ import (
 func TestCreateFunctionsLanguageSQL(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "unknown arguments with crossed overloads",
+			SetUpScript: []string{
+				`CREATE FUNCTION crossed_overload(text, integer) RETURNS text LANGUAGE SQL AS 'SELECT ''text-int''::text';`,
+				`CREATE FUNCTION crossed_overload(integer, text) RETURNS text LANGUAGE SQL AS 'SELECT ''int-text''::text';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				// PostgreSQL also rejects this as ambiguous. Doltgres currently
+				// reports unresolved overloads as "does not exist" (42883).
+				{Query: `SELECT crossed_overload('1', '2');`, ExpectedErr: "does not exist", ExpectedErrCode: "42883"},
+				{Query: `SELECT crossed_overload('1'::text, '2');`, Expected: []sql.Row{{"text-int"}}},
+				{Query: `SELECT crossed_overload('1', '2'::text);`, Expected: []sql.Row{{"int-text"}}},
+				{Query: `SELECT crossed_overload('1', 2);`, Expected: []sql.Row{{"text-int"}}},
+				{Query: `SELECT crossed_overload(1, '2');`, Expected: []sql.Row{{"int-text"}}},
+			},
+		},
+		{
 			Name:        "unnamed parameter",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{

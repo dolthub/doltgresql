@@ -16,6 +16,7 @@ package _go
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -4740,4 +4741,185 @@ func TestCompositeTypes(t *testing.T) {
 			},
 		},
 	})
+}
+
+func TestAlterEnumAddValue(t *testing.T) {
+	RunScripts(t, []ScriptTest{{Name: "add enum labels", SetUpScript: []string{
+		`CREATE TYPE mood AS ENUM ('sad', 'happy')`,
+		`CREATE TABLE enum_rows (id int PRIMARY KEY, value mood, vals mood[])`,
+		`INSERT INTO enum_rows VALUES (1, 'sad', ARRAY['sad']::mood[])`,
+		`CREATE INDEX mood_idx ON enum_rows(value)`,
+	}, Assertions: []ScriptTestAssertion{
+		{Query: `ALTER TYPE mood ADD VALUE 'great'`},
+		{Query: `SELECT 'great'::mood`, Expected: []sql.Row{{"great"}}},
+		{Query: `INSERT INTO enum_rows VALUES (2, 'great', ARRAY['great']::mood[])`},
+		{Query: `ALTER TYPE mood ADD VALUE 'okay' BEFORE 'happy'`},
+		{Query: `ALTER TYPE mood ADD VALUE 'bad' BEFORE 'sad'`},
+		{Query: `ALTER TYPE mood ADD VALUE 'fine' AFTER 'okay'`},
+		{Query: `INSERT INTO enum_rows VALUES (3, 'okay', ARRAY['okay','great']::mood[]), (4, 'bad', NULL), (5, 'fine', NULL)`},
+		{Query: `SELECT value::text FROM enum_rows ORDER BY enum_rows.value`, Expected: []sql.Row{{"bad"}, {"sad"}, {"okay"}, {"fine"}, {"great"}}},
+		{Query: `SELECT id FROM enum_rows WHERE value = 'great'`, Expected: []sql.Row{{int32(2)}}},
+		{Query: `SELECT id FROM enum_rows WHERE value = 'great'`, Username: "postgres", Password: "password", Expected: []sql.Row{{int32(2)}}},
+		{Query: `SELECT vals::text FROM enum_rows WHERE id = 3`, Expected: []sql.Row{{"{okay,great}"}}},
+		{Query: `ALTER TYPE mood ADD VALUE IF NOT EXISTS 'sad' BEFORE 'missing'`},
+		{Query: `ALTER TYPE mood ADD VALUE 'sad'`, ExpectedErr: "already exists", ExpectedErrCode: "42710"},
+		{Query: `ALTER TYPE mood ADD VALUE 'nope' AFTER 'missing'`, ExpectedErr: "not an existing enum label", ExpectedErrCode: "22023"},
+		{Query: `ALTER TYPE int4 ADD VALUE 'x'`, ExpectedErr: "not an enum", ExpectedErrCode: "42809"},
+		{Query: `ALTER TYPE missing_type ADD VALUE 'x'`, ExpectedErr: "unable to resolve type", ExpectedErrCode: "42704"},
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'temporary'`},
+		{Query: `ROLLBACK`},
+		{Query: `SELECT 'temporary'::mood`, ExpectedErr: "invalid input value"},
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'committed'`},
+		{Query: `COMMIT`},
+		{Query: `SELECT 'committed'::mood`, Expected: []sql.Row{{"committed"}}},
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'unsafe'`},
+		{Query: `SELECT 'unsafe'::mood`, Expected: []sql.Row{{"unsafe"}}},
+		{Query: `ROLLBACK`},
+		{Query: `BEGIN`},
+		{Query: `CREATE TYPE new_mood AS ENUM ('old')`},
+		{Query: `ALTER TYPE new_mood ADD VALUE 'new'`},
+		{Query: `SELECT 'new'::new_mood`, Expected: []sql.Row{{"new"}}},
+		{Query: `COMMIT`},
+		{Query: `CREATE TYPE empty_enum AS ENUM ()`},
+		{Query: `ALTER TYPE empty_enum ADD VALUE ''`},
+		{Query: `SELECT ''::empty_enum`, Expected: []sql.Row{{""}}},
+	}}})
+}
+
+func TestAlterEnumAddValueSavepoints(t *testing.T) {
+	RunScripts(t, []ScriptTest{{Name: "enum savepoints", SetUpScript: []string{
+		`CREATE TYPE mood AS ENUM ('old')`,
+	}, Assertions: []ScriptTestAssertion{
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'outer'`},
+		{Query: `SAVEPOINT s`},
+		{Query: `ALTER TYPE mood ADD VALUE 'inner'`},
+		{Query: `ROLLBACK TO s`},
+		{Query: `SELECT 'inner'::mood`, ExpectedErr: "invalid input value"},
+		{Query: `ROLLBACK TO s`},
+		{Query: `SELECT 'outer'::mood`, Expected: []sql.Row{{"outer"}}},
+		{Query: `ROLLBACK TO s`},
+		{Query: `ALTER TYPE mood ADD VALUE 'kept'`},
+		{Query: `RELEASE s`},
+		{Query: `COMMIT`},
+		{Query: `SELECT 'outer'::mood, 'kept'::mood`, Expected: []sql.Row{{"outer", "kept"}}},
+		{Query: `ALTER TYPE mood ADD VALUE 'inner'`},
+		{Query: `SELECT 'inner'::mood`, Expected: []sql.Row{{"inner"}}},
+		{Query: `CREATE SCHEMA enum_schema`},
+		{Query: `CREATE TYPE enum_schema."Mixed" AS ENUM ('a')`},
+		{Query: `SET search_path = enum_schema, public`},
+		{Query: `ALTER TYPE "Mixed" ADD VALUE 'b'`},
+		{Query: `RESET search_path`},
+		{Query: `SELECT 'b'::enum_schema."Mixed"`, Expected: []sql.Row{{"b"}}},
+		{Query: `ALTER TYPE mood ADD VALUE 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'`, ExpectedErr: "invalid enum label", ExpectedErrCode: "42602"},
+		{Query: `ALTER TYPE mood ADD VALUE 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'`},
+		{Query: `ALTER TYPE mood ADD VALUE 'café'`},
+		{Query: `SELECT 'café'::mood`, Expected: []sql.Row{{"café"}}},
+	}}})
+}
+
+func TestAlterEnumAddValueOrdering(t *testing.T) {
+	setup := []string{
+		`CREATE TYPE mood AS ENUM ('a', 'z')`,
+		`CREATE TABLE ordered_enum (v mood PRIMARY KEY)`,
+		`INSERT INTO ordered_enum VALUES ('a'), ('z')`,
+	}
+	// More than 24 midpoint insertions force float32 sort-order renumbering.
+	for i := 0; i < 30; i++ {
+		label := fmt.Sprintf("v%d", i)
+		setup = append(setup, fmt.Sprintf("ALTER TYPE mood ADD VALUE '%s' AFTER 'a'", label), fmt.Sprintf("INSERT INTO ordered_enum VALUES ('%s')", label))
+	}
+	expected := []sql.Row{{"a"}}
+	for i := 29; i >= 0; i-- {
+		expected = append(expected, sql.Row{fmt.Sprintf("v%d", i)})
+	}
+	expected = append(expected, sql.Row{"z"})
+	RunScripts(t, []ScriptTest{{Name: "enum order after repeated insertion", SetUpScript: setup, Assertions: []ScriptTestAssertion{
+		{Query: `SELECT v::text FROM ordered_enum ORDER BY ordered_enum.v`, Expected: expected},
+		{Query: `SELECT count(*) FROM ordered_enum WHERE v > 'a' AND v < 'z'`, Expected: []sql.Row{{int64(30)}}},
+	}}})
+}
+
+func TestAlterEnumAddValueSearchPath(t *testing.T) {
+	RunScripts(t, []ScriptTest{{Name: "resolve enum through search path", SetUpScript: []string{
+		`CREATE SCHEMA enum_first`,
+		`CREATE SCHEMA enum_second`,
+		`CREATE TYPE enum_first.mood AS ENUM ('old')`,
+		`CREATE TYPE enum_second.mood AS ENUM ('old')`,
+		`CREATE TYPE enum_second.hidden AS ENUM ('old')`,
+	}, Assertions: []ScriptTestAssertion{
+		{Query: `SET search_path = enum_first, enum_second`},
+		{Query: `ALTER TYPE mood ADD VALUE 'first'`},
+		{Query: `SELECT 'first'::enum_first.mood`, Expected: []sql.Row{{"first"}}},
+		{Query: `SELECT 'first'::enum_second.mood`, ExpectedErr: "invalid input value"},
+		{Query: `SET search_path = enum_second, enum_first`},
+		{Query: `ALTER TYPE mood ADD VALUE 'second'`},
+		{Query: `SELECT 'second'::enum_second.mood`, Expected: []sql.Row{{"second"}}},
+		{Query: `SELECT 'second'::enum_first.mood`, ExpectedErr: "invalid input value"},
+		{Query: `SET search_path = enum_first`},
+		{Query: `ALTER TYPE hidden ADD VALUE 'invisible'`, ExpectedErr: "unable to resolve type", ExpectedErrCode: "42704"},
+		{Query: `ALTER TYPE enum_second.hidden ADD VALUE 'qualified'`},
+		{Query: `SELECT 'qualified'::enum_second.hidden`, Expected: []sql.Row{{"qualified"}}},
+		{Query: `SELECT 'invisible'::enum_second.hidden`, ExpectedErr: "invalid input value"},
+		{Query: `SET search_path = missing_schema, enum_first, enum_second`},
+		{Query: `ALTER TYPE hidden ADD VALUE 'later'`},
+		{Query: `SELECT 'later'::enum_second.hidden`, Expected: []sql.Row{{"later"}}},
+		{Query: `ALTER TYPE enum_first.hidden ADD VALUE 'wrong_schema'`, ExpectedErr: "unable to resolve type", ExpectedErrCode: "42704"},
+		{Query: `CREATE TYPE enum_first.hidden AS (value integer)`},
+		{Query: `ALTER TYPE hidden ADD VALUE 'shadowed'`, ExpectedErr: "not an enum", ExpectedErrCode: "42809"},
+		{Query: `ALTER TYPE int4 ADD VALUE 'x'`, ExpectedErr: "not an enum", ExpectedErrCode: "42809"},
+	}}})
+}
+
+func TestAlterEnumAddValueTransactionalRows(t *testing.T) {
+	RunScripts(t, []ScriptTest{{Name: "enum definitions and rows share the transaction", SetUpScript: []string{
+		`CREATE TYPE mood AS ENUM ('old')`,
+		`CREATE TABLE enum_tx (v mood PRIMARY KEY, vals mood[])`,
+		`INSERT INTO enum_tx VALUES ('old', ARRAY['old']::mood[])`,
+	}, Assertions: []ScriptTestAssertion{
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'committed'`},
+		{Query: `INSERT INTO enum_tx VALUES ('committed', ARRAY['committed']::mood[])`},
+		{Query: `SELECT vals::text FROM enum_tx WHERE v = 'committed'`, Expected: []sql.Row{{"{committed}"}}},
+		{Query: `COMMIT`},
+		{Query: `SELECT vals::text FROM enum_tx WHERE v = 'committed'`, Username: "postgres", Password: "password", Expected: []sql.Row{{"{committed}"}}},
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'abandoned' BEFORE 'old'`},
+		{Query: `INSERT INTO enum_tx VALUES ('abandoned', ARRAY['abandoned']::mood[])`},
+		{Query: `ROLLBACK`},
+		{Query: `SELECT v::text FROM enum_tx ORDER BY enum_tx.v`, Expected: []sql.Row{{"old"}, {"committed"}}},
+		{Query: `SELECT 'abandoned'::mood`, ExpectedErr: "invalid input value"},
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'outer'`},
+		{Query: `INSERT INTO enum_tx VALUES ('outer', ARRAY['outer']::mood[])`},
+		{Query: `SAVEPOINT s`},
+		{Query: `ALTER TYPE mood ADD VALUE 'inner' BEFORE 'old'`},
+		{Query: `INSERT INTO enum_tx VALUES ('inner', ARRAY['inner']::mood[])`},
+		{Query: `ROLLBACK TO s`},
+		{Query: `SELECT vals::text FROM enum_tx WHERE v = 'outer'`, Expected: []sql.Row{{"{outer}"}}},
+		{Query: `COMMIT`},
+		{Query: `SELECT v::text FROM enum_tx ORDER BY enum_tx.v`, Expected: []sql.Row{{"old"}, {"committed"}, {"outer"}}},
+		{Query: `SELECT 'inner'::mood`, ExpectedErr: "invalid input value"},
+		{Query: `BEGIN`},
+		{Query: `CREATE TYPE new_enum AS ENUM ('a')`},
+		{Query: `ALTER TYPE new_enum ADD VALUE 'b'`},
+		{Query: `CREATE TABLE new_enum_rows (v new_enum PRIMARY KEY)`},
+		{Query: `INSERT INTO new_enum_rows VALUES ('b')`},
+		{Query: `COMMIT`},
+		{Query: `SELECT v FROM new_enum_rows`, Expected: []sql.Row{{"b"}}},
+	}}})
+}
+
+func TestEnumLabelValidation(t *testing.T) {
+	RunScripts(t, []ScriptTest{{Name: "shared enum label validation", Assertions: []ScriptTestAssertion{
+		{Query: `CREATE TYPE invalid_enum AS ENUM ('` + strings.Repeat("a", 64) + `')`, ExpectedErr: "invalid enum label", ExpectedErrCode: "42602"},
+		{Query: `CREATE TYPE invalid_enum AS ENUM ('` + strings.Repeat("é", 32) + `')`, ExpectedErr: "invalid enum label", ExpectedErrCode: "42602"},
+		{Query: `CREATE TYPE valid_enum AS ENUM ('', '` + strings.Repeat("a", 63) + `')`},
+		{Query: `ALTER TYPE valid_enum ADD VALUE '` + strings.Repeat("é", 32) + `'`, ExpectedErr: "invalid enum label", ExpectedErrCode: "42602"},
+		{Query: `ALTER TYPE valid_enum ADD VALUE '` + strings.Repeat("é", 31) + `'`},
+		{Query: `SELECT '` + strings.Repeat("é", 31) + `'::valid_enum`, Expected: []sql.Row{{strings.Repeat("é", 31)}}},
+	}}})
 }
