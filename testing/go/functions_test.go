@@ -7440,3 +7440,36 @@ $$ LANGUAGE plpgsql;`,
 		},
 	)
 }
+
+func TestPgIsOtherTempSchema(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "ordinary namespaces and invalid OIDs",
+			SetUpScript: []string{`CREATE SCHEMA temp_schema_probe`},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT pg_catalog.pg_is_other_temp_schema(0::oid), pg_is_other_temp_schema(4294967295::oid)`, Expected: []sql.Row{{"f", "f"}}},
+				{Query: `SELECT pg_is_other_temp_schema(NULL::oid)`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT nspname, pg_is_other_temp_schema(oid) FROM pg_catalog.pg_namespace WHERE nspname IN ('public', 'pg_catalog', 'temp_schema_probe') ORDER BY nspname`, Expected: []sql.Row{{"pg_catalog", "f"}, {"public", "f"}, {"temp_schema_probe", "f"}}},
+				{Query: `SELECT pg_typeof(pg_is_other_temp_schema(0::oid))`, Expected: []sql.Row{{"boolean"}}},
+				{Query: `SELECT pg_is_other_temp_schema('invalid'::oid)`, ExpectedErr: `invalid input syntax for type oid`},
+			},
+		},
+		{
+			Name: "temporary tables do not create session namespaces",
+			SetUpScript: []string{
+				`CREATE TEMP TABLE temp_schema_probe (id INT)`,
+				`INSERT INTO temp_schema_probe VALUES (1)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
+				// An explicit username opens a second connection while keeping the default session alive.
+				{Username: "postgres", Password: "password", Query: `CREATE TEMP TABLE temp_schema_probe (id INT)`},
+				{Username: "postgres", Password: "password", Query: `INSERT INTO temp_schema_probe VALUES (2)`},
+				{Username: "postgres", Password: "password", Query: `SELECT * FROM temp_schema_probe`, Expected: []sql.Row{{int32(2)}}},
+				{Username: "postgres", Password: "password", Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
+				{Query: `SELECT * FROM temp_schema_probe`, Expected: []sql.Row{{int32(1)}}},
+				{Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
+			},
+		},
+	})
+}
