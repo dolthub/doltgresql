@@ -935,6 +935,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> alter_index_stmt
 %type <tree.Statement> alter_materialized_view_stmt
 %type <tree.Statement> alter_function_stmt
+%type <tree.Statement> alter_extension_stmt
 %type <tree.Statement> alter_language_stmt
 %type <tree.Statement> alter_procedure_stmt
 %type <tree.Statement> alter_view_stmt
@@ -1098,6 +1099,8 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> set_constraints_stmt
 %type <tree.Statement> set_exprs_internal
 %type <tree.Statement> generic_set_single_config
+%type <tree.Statement> generic_reset_single_config
+%type <str> opt_in_database
 %type <tree.Statement> set_session_or_local_cmd
 %type <tree.Statement> set_session_authorization
 %type <tree.Statement> set_var
@@ -1680,6 +1683,7 @@ alter_ddl_stmt:
 | alter_type_stmt               // EXTEND WITH HELP: ALTER TYPE
 | alter_trigger_stmt            // EXTEND WITH HELP: ALTER TRIGGER
 | alter_language_stmt           // EXTEND WITH HELP: ALTER LANGUAGE
+| alter_extension_stmt          // EXTEND WITH HELP: ALTER EXTENSION
 | alter_domain_stmt             // EXTEND WITH HELP: ALTER DOMAIN
 
 // %Help: ALTER TABLE - change the definition of a table
@@ -1845,9 +1849,9 @@ opt_alter_database:
   {
     $$.val = &tree.AlterDatabase{Name: tree.Name($3), SetVar: $5.setVar()}
   }
-| ALTER DATABASE database_name RESET name
+| ALTER DATABASE database_name RESET generic_reset_single_config
   {
-    $$.val = &tree.AlterDatabase{Name: tree.Name($3), Tablespace: $5}
+    $$.val = &tree.AlterDatabase{Name: tree.Name($3), SetVar: $5.setVar()}
   }
 | ALTER DATABASE database_name RESET ALL
   {
@@ -2002,6 +2006,16 @@ alter_index_stmt:
 // ALTER INDEX has its error help token here because the ALTER INDEX
 // prefix is spread over multiple non-terminals.
 | ALTER INDEX error // SHOW HELP: ALTER INDEX
+
+alter_extension_stmt:
+  ALTER EXTENSION name UPDATE
+  {
+    $$.val = &tree.AlterExtension{Name: tree.Name($3)}
+  }
+| ALTER EXTENSION name UPDATE TO non_reserved_word_or_sconst
+  {
+    $$.val = &tree.AlterExtension{Name: tree.Name($3), Version: $6}
+  }
 
 alter_language_stmt:
   ALTER opt_procedural LANGUAGE name RENAME TO name
@@ -6515,6 +6529,20 @@ generic_set_single_config:
   {
     $$.val = &tree.SetVar{Name: $1, FromCurrent: true}
   }
+| name '.' name FROM CURRENT
+  {
+    $$.val = &tree.SetVar{Namespace: $1, Name: $3, FromCurrent: true}
+  }
+
+generic_reset_single_config:
+  name
+  {
+    $$.val = &tree.SetVar{Name: $1, Reset: true, Values: tree.Exprs{tree.DefaultVal{}}}
+  }
+| name '.' name
+  {
+    $$.val = &tree.SetVar{Namespace: $1, Name: $3, Reset: true, Values: tree.Exprs{tree.DefaultVal{}}}
+  }
 
 var_list:
   var_value
@@ -9550,7 +9578,41 @@ alter_role_stmt:
 {
   $$.val = &tree.AlterRole{Name: $5, IfExists: true, KVOptions: $6.kvOptions(), IsRole: $2.bool()}
 }
+| ALTER role_or_group_or_user role_spec opt_in_database SET generic_set_single_config
+{
+  $$.val = &tree.AlterRole{Name: $3, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user role_spec opt_in_database RESET generic_reset_single_config
+{
+  $$.val = &tree.AlterRole{Name: $3, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user role_spec opt_in_database RESET ALL
+{
+  $$.val = &tree.AlterRole{Name: $3, InDatabase: $4, ResetAll: true, IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user ALL opt_in_database SET generic_set_single_config
+{
+  $$.val = &tree.AlterRole{AllRoles: true, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user ALL opt_in_database RESET generic_reset_single_config
+{
+  $$.val = &tree.AlterRole{AllRoles: true, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user ALL opt_in_database RESET ALL
+{
+  $$.val = &tree.AlterRole{AllRoles: true, InDatabase: $4, ResetAll: true, IsRole: $2.bool()}
+}
 | ALTER role_or_group_or_user error // SHOW HELP: ALTER ROLE
+
+opt_in_database:
+  /* EMPTY */
+  {
+    $$ = ""
+  }
+| IN DATABASE database_name
+  {
+    $$ = $3
+  }
 
 // "CREATE GROUP is now an alias for CREATE ROLE"
 // https://www.postgresql.org/docs/10/static/sql-creategroup.html

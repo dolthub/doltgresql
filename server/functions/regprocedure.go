@@ -228,12 +228,8 @@ func regprocedure_FindRoutine(ctx *sql.Context, schemas []string, name string, p
 	}
 	for _, schema := range schemas {
 		funcID := id.NewFunction(schema, name, paramTypes...)
-		if schema == "pg_catalog" {
-			for _, f := range framework.Catalog[name] {
-				if f.InternalID() == funcID.AsId() {
-					return funcID.AsId(), nil
-				}
-			}
+		if isBuiltinRoutine(funcID.AsId()) {
+			return funcID.AsId(), nil
 		}
 		if funcCollection.HasFunction(ctx, funcID) {
 			return funcID.AsId(), nil
@@ -243,4 +239,29 @@ func regprocedure_FindRoutine(ctx *sql.Context, schemas []string, name string, p
 		}
 	}
 	return id.Null, nil
+}
+
+// isBuiltinRoutine includes aggregates and window functions, which PostgreSQL
+// exposes as routines alongside ordinary functions.
+func isBuiltinRoutine(routine id.Id) bool {
+	if routine.Section() != id.Section_Function || routine.Segment(0) != "pg_catalog" {
+		return false
+	}
+	name := routine.Segment(1)
+	for _, f := range framework.Catalog[name] {
+		if f.InternalID() == routine {
+			return true
+		}
+	}
+	for _, f := range framework.AggregateCatalog[name] {
+		if f.InternalID() == routine {
+			return true
+		}
+	}
+	for _, f := range framework.WindowCatalog[name] {
+		if f.InternalID() == routine {
+			return true
+		}
+	}
+	return false
 }

@@ -55,7 +55,7 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 			}
 		} else if supportedOnConflictClause(node.OnConflict) {
 			// TODO: we are ignoring the column names, which are used to infer which index under conflict is to be checked
-			updateExprs, err := nodeUpdateExprs(ctx, node.OnConflict.Exprs)
+			updateExprs, err := nodeUpdateExprs(ctx, node.OnConflict.Exprs, vitess.TableName{})
 			if err != nil {
 				return nil, err
 			}

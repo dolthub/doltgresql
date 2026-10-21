@@ -203,7 +203,7 @@ func (tp *TablePrivileges) serialize(writer *utils.Writer) {
 func (tp *TablePrivileges) deserialize(version uint32, reader *utils.Reader) {
 	tp.Data = make(map[TablePrivilegeKey]TablePrivilegeValue)
 	switch version {
-	case 0, 1, 2:
+	case 0, 1, 2, 3:
 		// Read the total number of values
 		dataCount := reader.Uint64()
 		for dataIdx := uint64(0); dataIdx < dataCount; dataIdx++ {

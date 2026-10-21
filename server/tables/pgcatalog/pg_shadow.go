@@ -103,7 +103,7 @@ func (iter *pgShadowRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		role.CanBypassRowLevelSecurity, // usebypassrls
 		passwd,                         // passwd
 		valUntil,                       // valuntil
-		nil,                            // useconfig (per-role settings are not supported)
+		roleConfig(role),               // useconfig
 	}, nil
 }
 

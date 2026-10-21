@@ -381,7 +381,7 @@ func (dp *DefaultPrivileges) deserialize(version uint32, reader *utils.Reader) {
 	switch version {
 	case 0:
 	case 1:
-	case 2:
+	case 2, 3:
 		dataCount := reader.Uint64()
 		for i := uint64(0); i < dataCount; i++ {
 			dpv := DefaultPrivilegeValue{
