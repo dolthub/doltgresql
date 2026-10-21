@@ -61,3 +61,13 @@ built-in behavior expectations. It distinguishes those differences from prolly
 codec/index defects. All type assertions that failed after successful setup on
 prolly also failed on heap in this verification pass. Do not use the prolly
 profile when auditing the control, since that would hide the differences.
+
+## Bootstrap history discrepancy
+
+Doltgres records an extra CREATE DATABASE commit as an artifact of the Dolt
+storage library. This is not desired behavior for the PostgreSQL fork, which
+creates only the repository initialization commit before user commits. The
+shared compatibility test accepts either three or four total commits after two
+user commits and separately verifies both user commits in order. Do not add
+synthetic history to the fork to equalize these counts. Existing histories are
+not rewritten by the correction.
