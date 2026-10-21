@@ -163,7 +163,7 @@ func newExternalServer(t *testing.T, binary string, config *servercfg.DoltgresCo
 		if output, err := initdb.CombinedOutput(); err != nil {
 			return nil, errors.Errorf("initdb failed: %s: %w", output, err)
 		}
-		cmd = exec.Command(path, "-D", dataDir, "-p", strconv.Itoa(port), "-h", serverHost, "-k", dir, "-c", "default_table_access_method=dolt_prolly_table", "-c", "max_prepared_transactions=10")
+		cmd = exec.Command(path, "-D", dataDir, "-p", strconv.Itoa(port), "-h", serverHost, "-k", "", "-c", "default_table_access_method=dolt_prolly_table", "-c", "max_prepared_transactions=10")
 	}
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout

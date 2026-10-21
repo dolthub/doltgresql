@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -25,19 +26,21 @@ func TestExternalPostgresIsolation(t *testing.T) {
 	if !externalPostgres() {
 		t.Skip("PostgreSQL external backend only")
 	}
-	for i := 0; i < 2; i++ {
-		ctx, conn, controller := CreateServer(t, "isolated")
-		var count int
-		require.NoError(t, conn.Default.QueryRow(ctx, "SELECT count(*) FROM pg_dolt_ref").Scan(&count))
-		require.Zero(t, count)
-		_, err := conn.Exec(ctx, "CREATE TABLE reused (id int PRIMARY KEY)")
-		require.NoError(t, err)
-		_, err = conn.Exec(ctx, "INSERT INTO reused VALUES (1)")
-		require.NoError(t, err)
-		_, err = conn.Exec(ctx, "SELECT dolt_commit('-Am','first')")
-		require.NoError(t, err)
-		conn.Close(ctx)
-		controller.Stop()
-		require.NoError(t, controller.WaitForStop())
-	}
+	t.Run("long,comma-name-"+strings.Repeat("x", 90), func(t *testing.T) {
+		for i := 0; i < 2; i++ {
+			ctx, conn, controller := CreateServer(t, "isolated")
+			var count int
+			require.NoError(t, conn.Default.QueryRow(ctx, "SELECT count(*) FROM pg_dolt_ref").Scan(&count))
+			require.Zero(t, count)
+			_, err := conn.Exec(ctx, "CREATE TABLE reused (id int PRIMARY KEY)")
+			require.NoError(t, err)
+			_, err = conn.Exec(ctx, "INSERT INTO reused VALUES (1)")
+			require.NoError(t, err)
+			_, err = conn.Exec(ctx, "SELECT dolt_commit('-Am','first')")
+			require.NoError(t, err)
+			conn.Close(ctx)
+			controller.Stop()
+			require.NoError(t, controller.WaitForStop())
+		}
+	})
 }
