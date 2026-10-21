@@ -137,20 +137,6 @@ func TestAsOf(t *testing.T) {
 			},
 		},
 	}
-	// The native projection experiment requires preparation in a writable
-	// transaction; the queries below perform no implicit catalog writes.
-	// Keep the existing Doltgres queries and expected results unchanged.
-	if externalPostgres() {
-		for i := range scripts {
-			revisions := []string{"HEAD", "HEAD^"}
-			if scripts[i].Name != "Single table" {
-				revisions = append(revisions, "HEAD~3", "HEAD~")
-			}
-			for _, revision := range revisions {
-				scripts[i].SetUpScript = append(scripts[i].SetUpScript,
-					"SELECT dolt_catalog_materialize('"+revision+"')")
-			}
-		}
-	}
+
 	RunScripts(t, scripts)
 }

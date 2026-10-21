@@ -6,7 +6,7 @@ import (
 )
 
 // Extends TestAsOf's cross-revision joins to incompatible table definitions.
-// Preparation is specific to the native catalog experiment, not query semantics.
+// No preparation or engine-specific setup is permitted.
 func TestCatalogHistory(t *testing.T) {
 	setup := []string{
 		"CREATE TABLE t (id int PRIMARY KEY, v int)",
@@ -19,12 +19,15 @@ func TestCatalogHistory(t *testing.T) {
 		"INSERT INTO t VALUES (1,'ten','new schema')",
 		"SELECT dolt_commit('-Am','text schema')",
 	}
-	if externalPostgres() {
-		setup = append(setup, "SELECT dolt_catalog_materialize('HEAD~1')", "SELECT dolt_catalog_materialize('HEAD')")
-	}
+
 	RunScripts(t, []ScriptTest{{Name: "incompatible retained schemas", SetUpScript: setup, Assertions: []ScriptTestAssertion{
 		{Query: "SELECT old.v,cur.v,cur.note FROM t AS OF 'HEAD~1' old JOIN t AS OF 'HEAD' cur USING(id)", Expected: []sql.Row{{10, "ten", "new schema"}}},
 		{Query: "SELECT * FROM removed AS OF 'HEAD~1'", Expected: []sql.Row{{42}}},
 		{Query: "SELECT count(*) FROM t AS OF 'HEAD~1' old JOIN t cur USING(id)", Expected: []sql.Row{{int64(1)}}},
+		{Query: "CREATE TABLE restored (id int,v int)"},
+		{Query: "INSERT INTO restored SELECT * FROM t AS OF 'HEAD~1'"},
+		{Query: "SELECT * FROM restored", Expected: []sql.Row{{1, 10}}},
+		{Query: "UPDATE t cur SET note=old.v::text FROM t AS OF 'HEAD~1' old WHERE cur.id=old.id"},
+		{Query: "SELECT note FROM t", Expected: []sql.Row{{"10"}}},
 	}}})
 }
