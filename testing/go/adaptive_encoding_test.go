@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
+	"github.com/dolthub/go-mysql-server/enginetest/setup"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/dolthub/go-mysql-server/sql"
