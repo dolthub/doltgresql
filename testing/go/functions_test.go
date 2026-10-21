@@ -2125,6 +2125,14 @@ func TestSystemInformationFunctions(t *testing.T) {
 						{"???"},
 					},
 				},
+				{
+					Query:    `SELECT format_type('json'::regtype, NULL), format_type('json'::regtype, -1), format_type('_json'::regtype, NULL), format_type('jsonb'::regtype, NULL), format_type('_jsonb'::regtype, NULL);`,
+					Expected: []sql.Row{{"json", "json", "json[]", "jsonb", "jsonb[]"}},
+				},
+				{
+					Query:    `SELECT 'json'::regtype, 'jsonb'::regtype, '_json'::regtype, 'json[]'::regtype;`,
+					Expected: []sql.Row{{"json", "jsonb", "json[]", "json[]"}},
+				},
 			},
 		},
 		{
@@ -3832,6 +3840,7 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					INSERT INTO cp_test VALUES(a, b);
 					INSERT INTO cp_test VALUES(c, b);
 				$$;`,
+				`CREATE FUNCTION json_func(a json, b jsonb, c json[]) RETURNS int LANGUAGE sql AS 'SELECT 1';`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -3859,6 +3868,10 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{"a integer, b text, c integer DEFAULT 100"},
 					},
+				},
+				{
+					Query:    `SELECT pg_get_function_arguments('json_func'::regproc);`,
+					Expected: []sql.Row{{"a json, b jsonb, c json[]"}},
 				},
 			},
 		},
@@ -3998,15 +4011,45 @@ ORDER BY i.indisprimary DESC, c2.relname;`,
 			},
 		},
 		{
-			Name:        "pg_get_function_result",
-			SetUpScript: []string{},
+			Name: "pg_get_function_result",
+			SetUpScript: []string{
+				`CREATE TABLE rt_t (a int, b text);`,
+				`CREATE FUNCTION rf1(int) RETURNS int LANGUAGE sql AS 'SELECT $1';`,
+				`CREATE FUNCTION rf2() RETURNS SETOF text LANGUAGE sql AS 'SELECT ''a''';`,
+				`CREATE FUNCTION rf3(OUT a int, OUT b text) LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf4(OUT a int, OUT b text) RETURNS SETOF record LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf5() RETURNS TABLE(a int, b varchar(10)) LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf6(x int, OUT y int) LANGUAGE sql AS 'SELECT $1';`,
+				`CREATE FUNCTION rf7() RETURNS rt_t LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf8() RETURNS void LANGUAGE sql AS '';`,
+				`CREATE FUNCTION rf9() RETURNS int[] LANGUAGE sql AS 'SELECT NULL::int[]';`,
+				`CREATE PROCEDURE rp1(a int) LANGUAGE sql AS '';`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: not supported yet
 					Query: `SELECT pg_get_function_result(22)`,
 					Expected: []sql.Row{
-						{""},
+						{nil},
 					},
+				},
+				{
+					Query: `SELECT proname, pg_get_function_result(oid) FROM pg_proc WHERE proname IN ('rf1', 'rf2', 'rf3', 'rf4', 'rf6', 'rf7', 'rf8', 'rf9', 'rp1') ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"rf1", "integer"},
+						{"rf2", "SETOF text"},
+						{"rf3", "record"},
+						{"rf4", "SETOF record"},
+						{"rf6", "integer"},
+						{"rf7", "rt_t"},
+						{"rf8", "void"},
+						{"rf9", "integer[]"},
+						{"rp1", nil},
+					},
+				},
+				{
+					Query:    `SELECT pg_get_function_result(oid) FROM pg_proc WHERE proname = 'rf5';`,
+					Expected: []sql.Row{{"TABLE(a integer, b character varying)"}},
+					Skip:     true,
 				},
 			},
 		},
@@ -7451,6 +7494,39 @@ func TestPgRelationIsUpdatable(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{Username: "capability_reader", Password: "password", Query: `SELECT pg_relation_is_updatable('public.protected_probe'::regclass, true)`, Expected: []sql.Row{{int32(28)}}},
 				{Username: "capability_reader", Password: "password", Query: `INSERT INTO public.protected_probe VALUES (1)`, ExpectedErr: "permission denied"},
+			},
+		},
+	})
+}
+
+func TestPgIsOtherTempSchema(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "ordinary namespaces and invalid OIDs",
+			SetUpScript: []string{`CREATE SCHEMA temp_schema_probe`},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT pg_catalog.pg_is_other_temp_schema(0::oid), pg_is_other_temp_schema(4294967295::oid)`, Expected: []sql.Row{{"f", "f"}}},
+				{Query: `SELECT pg_is_other_temp_schema(NULL::oid)`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT nspname, pg_is_other_temp_schema(oid) FROM pg_catalog.pg_namespace WHERE nspname IN ('public', 'pg_catalog', 'temp_schema_probe') ORDER BY nspname`, Expected: []sql.Row{{"pg_catalog", "f"}, {"public", "f"}, {"temp_schema_probe", "f"}}},
+				{Query: `SELECT pg_typeof(pg_is_other_temp_schema(0::oid))`, Expected: []sql.Row{{"boolean"}}},
+				{Query: `SELECT pg_is_other_temp_schema('invalid'::oid)`, ExpectedErr: `invalid input syntax for type oid`},
+			},
+		},
+		{
+			Name: "temporary tables do not create session namespaces",
+			SetUpScript: []string{
+				`CREATE TEMP TABLE temp_schema_probe (id INT)`,
+				`INSERT INTO temp_schema_probe VALUES (1)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
+				// An explicit username opens a second connection while keeping the default session alive.
+				{Username: "postgres", Password: "password", Query: `CREATE TEMP TABLE temp_schema_probe (id INT)`},
+				{Username: "postgres", Password: "password", Query: `INSERT INTO temp_schema_probe VALUES (2)`},
+				{Username: "postgres", Password: "password", Query: `SELECT * FROM temp_schema_probe`, Expected: []sql.Row{{int32(2)}}},
+				{Username: "postgres", Password: "password", Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
+				{Query: `SELECT * FROM temp_schema_probe`, Expected: []sql.Row{{int32(1)}}},
+				{Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
 			},
 		},
 	})

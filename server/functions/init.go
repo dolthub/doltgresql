@@ -201,6 +201,7 @@ func Init() {
 	initPgGetViewDef()
 	initPgIndexesSize()
 	initPgIsInRecovery()
+	initPgIsOtherTempSchema()
 	initPgIsWalReplayPaused()
 	initPgOpclassIsVisible()
 	initPgOperatorIsVisible()

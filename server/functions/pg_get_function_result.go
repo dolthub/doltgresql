@@ -17,6 +17,7 @@ package functions
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -34,7 +35,24 @@ var pg_get_function_result_oid = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		// TODO: real implementation
-		return "", nil
+		var result any
+		err := RunCallback(ctx, val.(id.Id), Callbacks{
+			Function: func(ctx *sql.Context, schema ItemSchema, function ItemFunction) (cont bool, err error) {
+				if function.Item.ReturnType.SchemaName() == "" {
+					//TODO: show RETURNS TABLE functions as TABLE(...) once they can be called, as their columns are only stored in the type's name
+					return false, nil
+				}
+				returnType, err := FormatType(ctx, function.Item.ReturnType.AsId(), nil)
+				if err != nil {
+					return false, err
+				}
+				if function.Item.SetOf {
+					returnType = "SETOF " + returnType
+				}
+				result = returnType
+				return false, nil
+			},
+		})
+		return result, err
 	},
 }

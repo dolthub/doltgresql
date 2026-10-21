@@ -455,6 +455,7 @@ func TestPgAuthid(t *testing.T) {
 
 func TestPgAvailableExtensionVersions(t *testing.T) {
 	registerTestExtension()
+	registerUpdateTestExtension()
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_available_extension_versions",
@@ -468,6 +469,7 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 					Query: `SELECT name, version, installed, superuser, trusted, relocatable, schema, requires, comment FROM "pg_catalog"."pg_available_extension_versions" ORDER BY name;`,
 					Expected: []sql.Row{
 						{"doltgres_test", "1.0", "f", "f", "f", "t", nil, nil, "test extension to ensure that emulated extensions behave properly"},
+						{"doltgres_test_update", "1.0", "f", "f", "f", "f", nil, nil, "test extension whose declaration changes between releases"},
 						{"uuid-ossp", "1.1", "f", "t", "t", "t", nil, nil, "generate universally unique identifiers (UUIDs)"},
 						{"vector", "0.8.6", "f", "t", "f", "t", nil, nil, "vector data type and ivfflat and hnsw access methods"},
 					},
@@ -507,6 +509,7 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 
 func TestPgAvailableExtensions(t *testing.T) {
 	registerTestExtension()
+	registerUpdateTestExtension()
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_available_extensions",
@@ -520,6 +523,7 @@ func TestPgAvailableExtensions(t *testing.T) {
 					Query: `SELECT name, default_version, installed_version, comment FROM "pg_catalog"."pg_available_extensions" ORDER BY name;`,
 					Expected: []sql.Row{
 						{"doltgres_test", "1.0", nil, "test extension to ensure that emulated extensions behave properly"},
+						{"doltgres_test_update", "1.0", nil, "test extension whose declaration changes between releases"},
 						{"uuid-ossp", "1.1", nil, "generate universally unique identifiers (UUIDs)"},
 						{"vector", "0.8.6", nil, "vector data type and ivfflat and hnsw access methods"},
 					},

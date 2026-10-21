@@ -52,6 +52,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeAlterDefaultPrivileges(ctx, stmt)
 	case *tree.AlterDomain:
 		return nodeAlterDomain(ctx, stmt)
+	case *tree.AlterExtension:
+		return nodeAlterExtension(ctx, stmt)
 	case *tree.AlterFunction:
 		return nodeAlterFunction(ctx, stmt)
 	case *tree.AlterIndex:

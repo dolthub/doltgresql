@@ -211,5 +211,172 @@ func TestMerge(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "merge columns with defaults into rows added on the other branch",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a TEXT NOT NULL)",
+				"INSERT INTO t VALUES (1, 'a1')",
+				"SELECT DOLT_COMMIT('-Am', 'base')",
+				"SELECT DOLT_BRANCH('br')",
+				"ALTER TABLE t ADD COLUMN n1 NUMERIC DEFAULT 0",
+				"ALTER TABLE t ADD COLUMN n2 NUMERIC(10,2) NOT NULL DEFAULT 0.00",
+				"ALTER TABLE t ADD COLUMN n3 NUMERIC DEFAULT 1 + 1",
+				"ALTER TABLE t ADD COLUMN n4 NUMERIC DEFAULT 2.5::numeric",
+				"ALTER TABLE t ADD COLUMN n5 NUMERIC DEFAULT abs(-2)",
+				"ALTER TABLE t ADD COLUMN n6 NUMERIC DEFAULT '3'",
+				"ALTER TABLE t ADD COLUMN n7 NUMERIC(10,2) DEFAULT 1 + 1",
+				"ALTER TABLE t ADD COLUMN i1 INT DEFAULT 7",
+				"ALTER TABLE t ADD COLUMN i2 INT DEFAULT 2.5",
+				"ALTER TABLE t ADD COLUMN i3 BIGINT DEFAULT 5",
+				"ALTER TABLE t ADD COLUMN i4 SMALLINT DEFAULT -1",
+				"ALTER TABLE t ADD COLUMN i5 BIGINT DEFAULT 1 + 1",
+				"ALTER TABLE t ADD COLUMN i6 INT DEFAULT '4'",
+				"ALTER TABLE t ADD COLUMN f1 DOUBLE PRECISION DEFAULT 1.5",
+				"ALTER TABLE t ADD COLUMN f2 REAL DEFAULT 0",
+				"SELECT DOLT_COMMIT('-Am', 'add columns')",
+				"SELECT DOLT_CHECKOUT('br')",
+				"INSERT INTO t VALUES (5, 'b5')",
+				"SELECT DOLT_COMMIT('-Am', 'row 5')",
+				"SELECT DOLT_CHECKOUT('-b', 'br2')",
+				"INSERT INTO t VALUES (6, 'b6')",
+				"SELECT DOLT_COMMIT('-Am', 'row 6')",
+				"SELECT DOLT_CHECKOUT('main')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT DOLT_MERGE('br', '--no-ff', '-m', 'merge br')",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "SELECT * FROM t ORDER BY id",
+					Expected: []sql.Row{
+						{1, "a1", Numeric("0"), Numeric("0.00"), Numeric("2"), Numeric("2.5"), Numeric("2"), Numeric("3"), Numeric("2.00"), 7, 3, 5, -1, 2, 4, 1.5, 0.0},
+						{5, "b5", Numeric("0"), Numeric("0.00"), Numeric("2"), Numeric("2.5"), Numeric("2"), Numeric("3"), Numeric("2.00"), 7, 3, 5, -1, 2, 4, 1.5, 0.0},
+					},
+				},
+				{
+					Query:            "SELECT DOLT_CHECKOUT('br2')",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT DOLT_MERGE('main', '--no-ff', '-m', 'merge main')",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "SELECT * FROM t ORDER BY id",
+					Expected: []sql.Row{
+						{1, "a1", Numeric("0"), Numeric("0.00"), Numeric("2"), Numeric("2.5"), Numeric("2"), Numeric("3"), Numeric("2.00"), 7, 3, 5, -1, 2, 4, 1.5, 0.0},
+						{5, "b5", Numeric("0"), Numeric("0.00"), Numeric("2"), Numeric("2.5"), Numeric("2"), Numeric("3"), Numeric("2.00"), 7, 3, 5, -1, 2, 4, 1.5, 0.0},
+						{6, "b6", Numeric("0"), Numeric("0.00"), Numeric("2"), Numeric("2.5"), Numeric("2"), Numeric("3"), Numeric("2.00"), 7, 3, 5, -1, 2, 4, 1.5, 0.0},
+					},
+				},
+			},
+		},
+		{
+			Name: "merge a numeric default without committing the merge",
+			SetUpScript: []string{
+				"CREATE TABLE public.t (id integer PRIMARY KEY, a text NOT NULL)",
+				"SELECT dolt_commit('-Am', 'base')",
+				"SELECT dolt_branch('br')",
+				"ALTER TABLE public.t ADD COLUMN x numeric DEFAULT 0",
+				"SELECT dolt_commit('-Am', 'add x')",
+				"SELECT dolt_checkout('br')",
+				"INSERT INTO public.t VALUES (5, 'b5')",
+				"SELECT dolt_commit('-Am', 'row 5')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "BEGIN",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT dolt_merge('main', '--no-ff', '--no-commit')",
+					Expected: []sql.Row{{[]any{"", int64(0), int64(0), "merge successful"}}},
+				},
+				{
+					Query:    "SELECT * FROM public.t",
+					Expected: []sql.Row{{5, "b5", Numeric("0")}},
+				},
+			},
+		},
+		{
+			Name: "merge a default set in a later commit",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a TEXT NOT NULL)",
+				"INSERT INTO t VALUES (1, 'a1')",
+				"SELECT DOLT_COMMIT('-Am', 'base')",
+				"SELECT DOLT_BRANCH('br')",
+				"ALTER TABLE t ADD COLUMN x NUMERIC",
+				"SELECT DOLT_COMMIT('-Am', 'add x')",
+				"ALTER TABLE t ALTER COLUMN x SET DEFAULT 0",
+				"SELECT DOLT_COMMIT('-Am', 'default x')",
+				"SELECT DOLT_CHECKOUT('br')",
+				"INSERT INTO t VALUES (5, 'b5')",
+				"SELECT DOLT_COMMIT('-Am', 'row 5')",
+				"SELECT DOLT_CHECKOUT('main')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT DOLT_MERGE('br', '--no-ff', '-m', 'merge br')",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY id",
+					Expected: []sql.Row{{1, "a1", nil}, {5, "b5", Numeric("0")}},
+				},
+			},
+		},
+		{
+			Name: "merge a default set in the same commit as its column",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a TEXT NOT NULL)",
+				"INSERT INTO t VALUES (1, 'a1')",
+				"SELECT DOLT_COMMIT('-Am', 'base')",
+				"SELECT DOLT_BRANCH('br')",
+				"ALTER TABLE t ADD COLUMN x NUMERIC",
+				"ALTER TABLE t ALTER COLUMN x SET DEFAULT 0",
+				"SELECT DOLT_COMMIT('-Am', 'add x')",
+				"SELECT DOLT_CHECKOUT('br')",
+				"INSERT INTO t VALUES (5, 'b5')",
+				"SELECT DOLT_COMMIT('-Am', 'row 5')",
+				"SELECT DOLT_CHECKOUT('main')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT DOLT_MERGE('br', '--no-ff', '-m', 'merge br')",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY id",
+					Expected: []sql.Row{{1, "a1", nil}, {5, "b5", Numeric("0")}},
+				},
+			},
+		},
+		{
+			Name: "merge a default whose column was backfilled",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a TEXT NOT NULL)",
+				"INSERT INTO t VALUES (1, 'a1')",
+				"SELECT DOLT_COMMIT('-Am', 'base')",
+				"SELECT DOLT_BRANCH('br')",
+				"ALTER TABLE t ADD COLUMN x NUMERIC DEFAULT 0",
+				"UPDATE t SET x = 0 WHERE x IS NULL",
+				"SELECT DOLT_COMMIT('-Am', 'add x')",
+				"SELECT DOLT_CHECKOUT('br')",
+				"INSERT INTO t VALUES (5, 'b5')",
+				"SELECT DOLT_COMMIT('-Am', 'row 5')",
+				"SELECT DOLT_CHECKOUT('main')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT DOLT_MERGE('br', '--no-ff', '-m', 'merge br')",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY id",
+					Expected: []sql.Row{{1, "a1", Numeric("0")}, {5, "b5", Numeric("0")}},
+				},
+			},
+		},
 	})
 }
