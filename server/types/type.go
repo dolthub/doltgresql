@@ -1492,3 +1492,21 @@ func (t *DoltgresType) Copy() *DoltgresType {
 // TypeCastFunction is a function that takes a value of a particular kind of type, and returns it as another kind of type.
 // The targetType given should match the "To" type used to obtain the cast.
 type TypeCastFunction func(ctx *sql.Context, val any, sourceType *DoltgresType, targetType *DoltgresType) (any, error)
+
+// CanWidenForeignKeyTypeTo implements sql.ForeignKeyTypeWidening. Integer
+// widening preserves all existing values and uses the same cross-integer
+// equality semantics already supported when creating foreign keys.
+func (t *DoltgresType) CanWidenForeignKeyTypeTo(other sql.Type) bool {
+	target, ok := other.(*DoltgresType)
+	if !ok {
+		return false
+	}
+	switch t.ID {
+	case Int16.ID:
+		return target.ID == Int32.ID || target.ID == Int64.ID
+	case Int32.ID:
+		return target.ID == Int64.ID
+	default:
+		return false
+	}
+}
