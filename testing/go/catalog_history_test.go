@@ -24,5 +24,10 @@ func TestCatalogHistory(t *testing.T) {
 		{Query: "SELECT old.v,cur.v,cur.note FROM t AS OF 'HEAD~1' old JOIN t AS OF 'HEAD' cur USING(id)", Expected: []sql.Row{{10, "ten", "new schema"}}},
 		{Query: "SELECT * FROM removed AS OF 'HEAD~1'", Expected: []sql.Row{{42}}},
 		{Query: "SELECT count(*) FROM t AS OF 'HEAD~1' old JOIN t cur USING(id)", Expected: []sql.Row{{int64(1)}}},
+		{Query: "CREATE TABLE restored (id int,v int)"},
+		{Query: "INSERT INTO restored SELECT * FROM t AS OF 'HEAD~1'"},
+		{Query: "SELECT * FROM restored", Expected: []sql.Row{{1, 10}}},
+		{Query: "UPDATE t cur SET note=old.v::text FROM t AS OF 'HEAD~1' old WHERE cur.id=old.id"},
+		{Query: "SELECT note FROM t", Expected: []sql.Row{{"10"}}},
 	}}})
 }
