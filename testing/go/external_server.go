@@ -53,6 +53,11 @@ const externalServerStartTimeout = 30 * time.Second
 const externalServerStopTimeout = 10 * time.Second
 
 // externalServerBinary returns the binary named by |externalServerBinaryEnvVar|, and whether it was set.
+// externalPostgres selects PostgreSQL process startup rather than Doltgres CLI flags.
+func externalPostgres() bool {
+	return os.Getenv("DOLTGRES_TEST_SERVER_KIND") == "postgres"
+}
+
 func externalServerBinary() (string, bool) {
 	binary, ok := os.LookupEnv(externalServerBinaryEnvVar)
 	return binary, ok && len(binary) > 0
@@ -77,6 +82,10 @@ func createExternalServer(t *testing.T, binary string, database string, port int
 	initializeTestProcess(config)
 	server, err := newExternalServer(t, binary, config, port)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, server.stop())
+		require.NoError(t, server.cleanup())
+	})
 
 	controller := svcs.NewController()
 	require.NoError(t, controller.Register(svcs.AnonService{
@@ -123,6 +132,12 @@ func newExternalServer(t *testing.T, binary string, config *servercfg.DoltgresCo
 	if err != nil {
 		return nil, err
 	}
+	success := false
+	defer func() {
+		if !success {
+			_ = os.RemoveAll(dir)
+		}
+	}()
 	dataDir := filepath.Join(dir, "databases")
 	if err = os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, err
@@ -139,9 +154,25 @@ func newExternalServer(t *testing.T, binary string, config *servercfg.DoltgresCo
 	}
 
 	cmd := exec.Command(binary, "--config", configPath, "--data-dir", dataDir)
+	if externalPostgres() {
+		path, err := exec.LookPath(binary)
+		if err != nil {
+			return nil, err
+		}
+		initdb := exec.Command(filepath.Join(filepath.Dir(path), "initdb"), "-D", dataDir, "-U", "postgres", "--auth=trust", "--encoding=UTF8", "--locale=C", "--no-sync")
+		if output, err := initdb.CombinedOutput(); err != nil {
+			return nil, errors.Errorf("initdb failed: %s: %w", output, err)
+		}
+		tableAM := os.Getenv("DOLTGRES_TEST_TABLE_AM")
+		if tableAM == "" {
+			tableAM = "dolt_prolly_table"
+		}
+		cmd = exec.Command(path, "-D", dataDir, "-p", strconv.Itoa(port), "-h", serverHost, "-k", "", "-c", "default_table_access_method="+tableAM, "-c", "max_prepared_transactions=10")
+	}
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+	success = true
 	return &externalServer{
 		cmd:    cmd,
 		dir:    dir,
@@ -184,6 +215,9 @@ func (s *externalServer) waitForListener() error {
 
 // stop interrupts the server process and waits for it to exit, killing it if it does not exit in time.
 func (s *externalServer) stop() error {
+	if s.cmd.Process == nil {
+		return nil
+	}
 	select {
 	case <-s.exited:
 		return nil
@@ -206,8 +240,5 @@ func (s *externalServer) stop() error {
 // cleanup is called after the external server process has stopped, and is responsible for removing any state that
 // would otherwise allow one test to affect another. This is only executed when |externalServerBinaryEnvVar| is set.
 func (s *externalServer) cleanup() error {
-	// TODO: determine the precise cleanup requirements for external servers (e.g. removing |s.dir|, any global Dolt
-	//  configuration written by the server, etc.). For now this is a no-op, which also leaves the server's directory in
-	//  place for debugging after a failure.
-	return nil
+	return os.RemoveAll(s.dir)
 }

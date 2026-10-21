@@ -177,6 +177,15 @@ var receivedNotices []*pgconn.Notice
 
 // RunScript runs the given script.
 func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
+	t.Run(script.Name, func(t *testing.T) {
+		if reason := prollyScriptSkip(t.Name()); reason != "" {
+			t.Skip(reason)
+		}
+		runScriptServer(t, script, normalizeRows)
+	})
+}
+
+func runScriptServer(t *testing.T, script ScriptTest, normalizeRows bool) {
 	scriptDatabase := script.Database
 	if len(scriptDatabase) == 0 {
 		scriptDatabase = "postgres"
@@ -214,9 +223,7 @@ func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
 		}()
 	}
 
-	t.Run(script.Name, func(t *testing.T) {
-		runScript(t, ctx, script, conn, normalizeRows)
-	})
+	runScript(t, ctx, script, conn, normalizeRows)
 }
 
 // runScript runs the script given on the postgres connection provided
@@ -253,6 +260,9 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 	// Run the assertions
 	for _, assertion := range assertions {
 		t.Run(assertion.Query, func(t *testing.T) {
+			if reason := prollyAssertionSkip(assertion.Query); reason != "" {
+				t.Skip(reason)
+			}
 			if assertion.Skip {
 				t.Skip("Skip has been set in the assertion")
 			}
@@ -722,7 +732,16 @@ func newTestDatabaseConnection(t *testing.T, ctx context.Context, database, host
 		}
 		require.NoError(t, err)
 
-		_, err = conn.Exec(ctx, fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", database))
+		if externalPostgres() {
+			var exists bool
+			err = conn.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname=$1)", database).Scan(&exists)
+			require.NoError(t, err)
+			if !exists {
+				_, err = conn.Exec(ctx, "CREATE DATABASE "+pgx.Identifier{database}.Sanitize())
+			}
+		} else {
+			_, err = conn.Exec(ctx, fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", database))
+		}
 		require.NoError(t, err)
 
 		defer require.NoError(t, conn.Close(ctx))
