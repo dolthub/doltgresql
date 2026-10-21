@@ -16,8 +16,6 @@ package ast
 
 import (
 	"github.com/cockroachdb/errors"
-
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -39,17 +37,14 @@ func nodeTruncate(ctx *Context, node *tree.Truncate) (vitess.Statement, error) {
 		return nil, errors.Errorf("CASCADE is not yet supported")
 	}
 	if len(node.Tables) > 1 {
-		tables := make([]doltdb.TableName, 0, len(node.Tables))
+		tables := make([]vitess.TableName, 0, len(node.Tables))
 		authNames := make([]string, 0, len(node.Tables)*3)
 		for _, name := range node.Tables {
-			if name.ExplicitCatalog {
-				return nil, errors.New("cross-database multi-table TRUNCATE is not yet supported")
-			}
 			table, err := nodeTableName(ctx, &name)
 			if err != nil {
 				return nil, err
 			}
-			tables = append(tables, doltdb.TableName{Schema: table.SchemaQualifier.String(), Name: table.Name.String()})
+			tables = append(tables, table)
 			authNames = append(authNames, table.DbQualifier.String(), table.SchemaQualifier.String(), table.Name.String())
 		}
 		return vitess.InjectedStatement{

@@ -31,7 +31,7 @@ import (
 // TruncateTables validates a complete set of tables before truncating any of them.
 // Foreign keys between tables in the set do not prevent truncation.
 type TruncateTables struct {
-	Tables []doltdb.TableName
+	Tables []vitess.TableName
 }
 
 var _ sql.ExecSourceRel = (*TruncateTables)(nil)
@@ -65,7 +65,13 @@ func (t *TruncateTables) RowIter(ctx *sql.Context, row sql.Row) (_ sql.RowIter, 
 	if err != nil {
 		return nil, err
 	}
-	for _, name := range t.Tables {
+	for _, target := range t.Tables {
+		// Preserve database qualifiers, including the information_schema mapping,
+		// so a qualified target can never resolve to a same-named local table.
+		if database := target.DbQualifier.String(); database != "" && database != ctx.GetCurrentDatabase() {
+			return nil, errors.New("cross-database multi-table TRUNCATE is not yet supported")
+		}
+		name := doltdb.TableName{Schema: target.SchemaQualifier.String(), Name: target.Name.String()}
 		table, err := core.GetSqlTableFromContext(ctx, ctx.GetCurrentDatabase(), name)
 		if err != nil {
 			return nil, err

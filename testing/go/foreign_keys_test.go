@@ -2292,6 +2292,24 @@ func TestImplicitForeignKeyRegressionCleanup(t *testing.T) {
 func TestMultiTableTruncate(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "qualified targets preserve database and schema",
+			SetUpScript: []string{
+				`CREATE TABLE public.tables (id INT)`,
+				`CREATE TABLE public.other (id INT)`,
+				`INSERT INTO public.tables VALUES (1)`,
+				`INSERT INTO public.other VALUES (2)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `TRUNCATE public.other, information_schema.tables`, ExpectedErr: `cross-database multi-table TRUNCATE`},
+				{Query: `TRUNCATE public.other, another_db.public.tables`, ExpectedErr: `cross-database multi-table TRUNCATE`},
+				{Query: `SELECT * FROM public.tables`, Expected: []sql.Row{{1}}},
+				{Query: `SELECT * FROM public.other`, Expected: []sql.Row{{2}}},
+				{Query: `TRUNCATE postgres.public.tables, postgres.public.other`},
+				{Query: `SELECT * FROM public.tables`, Expected: []sql.Row{}},
+				{Query: `SELECT * FROM public.other`, Expected: []sql.Row{}},
+			},
+		},
+		{
 			Name: "truncate related tables together",
 			SetUpScript: []string{
 				`CREATE TABLE parent (id INT PRIMARY KEY)`,
@@ -2392,4 +2410,32 @@ func TestForeignKeyIntegerWidening(t *testing.T) {
 			{Query: `SELECT * FROM child`, Expected: []sql.Row{{int64(2)}}},
 		},
 	}})
+}
+
+func TestForeignKeySerialWidening(t *testing.T) {
+	for _, tc := range []struct{ from, to string }{
+		{"SMALLSERIAL", "INT"},
+		{"SMALLSERIAL", "BIGINT"},
+		{"SERIAL", "BIGINT"},
+	} {
+		RunScripts(t, []ScriptTest{{
+			Name: tc.from + " to " + tc.to,
+			SetUpScript: []string{
+				`CREATE TABLE parent (id ` + tc.from + ` PRIMARY KEY)`,
+				`CREATE TABLE child (id INT REFERENCES parent ON DELETE CASCADE)`,
+				`INSERT INTO parent DEFAULT VALUES`,
+				`INSERT INTO child VALUES (1)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `ALTER TABLE parent ALTER COLUMN id TYPE ` + tc.to},
+				{Query: `SELECT id::bigint FROM parent`, Expected: []sql.Row{{int64(1)}}},
+				{Query: `INSERT INTO parent DEFAULT VALUES`},
+				{Query: `SELECT id::bigint FROM parent ORDER BY id`, Expected: []sql.Row{{int64(1)}, {int64(2)}}},
+				{Query: `INSERT INTO child VALUES (2)`},
+				{Query: `INSERT INTO child VALUES (99)`, ExpectedErr: `Foreign key violation`},
+				{Query: `DELETE FROM parent WHERE id = 1`},
+				{Query: `SELECT * FROM child`, Expected: []sql.Row{{2}}},
+			},
+		}})
+	}
 }

@@ -1509,9 +1509,9 @@ func (t *DoltgresType) CanWidenForeignKeyTypeTo(other sql.Type) bool {
 		return false
 	}
 	switch t.ID {
-	case Int16.ID:
+	case Int16.ID, Int16Serial.ID:
 		return target.ID == Int32.ID || target.ID == Int64.ID
-	case Int32.ID:
+	case Int32.ID, Int32Serial.ID:
 		return target.ID == Int64.ID
 	default:
 		return false
