@@ -10,6 +10,14 @@ func prollyScriptSkip(name string) string {
 		return ""
 	}
 	return map[string]string{
+		"TestDoltMerge/Merge_without_conflicts": "mixed schema slice: array PK, sequences, generated columns, triggers and routines; isolated data equivalents in TestDoltMergeData",
+		"TestDoltMerge/Fast_forward":            "mixed schema slice: array PK, defaults, FK, generated columns and routines; isolated data equivalent in TestDoltMergeData",
+		"TestDoltMerge/--no-ff":                 "mixed schema slice: array PK, defaults, FK, generated columns and routines; isolated data equivalent in TestDoltMergeData",
+		"TestDoltMerge/Merge_with_nested_parentheses_in_default,_generated,_and_check_expressions": "not implemented: schema capture with default/generated/check expressions",
+		"TestMerge/merge_with_check_expressions_and_column_defaults":                               "not implemented: schema merges, ALTER constraints and default capture",
+		"TestMerge/merge_with_unique_constraints_and_foreign_keys":                                 "not implemented: foreign keys and schema merges; native tests cover data unique collisions",
+		"TestMerge/merge_a_branch_that_created_a_type":                                             "not implemented: branch-specific schemas and schema merge",
+
 		"TestTypes/Bit_key": "not implemented: index operator class for this type",
 		"TestTypes/Character_comparisons_ignore_trailing_spaces":                           "not implemented: index operator class for this type",
 		"TestTypes/Character_key":                                                          "not implemented: index operator class for this type",
