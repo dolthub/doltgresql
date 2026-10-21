@@ -22,6 +22,13 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// PostgreSQL command-type bits used by pg_relation_is_updatable.
+const (
+	RelationUpdatable  int32 = 4
+	RelationInsertable int32 = 8
+	RelationDeletable  int32 = 16
+)
+
 // initPgRelationIsUpdatable registers the function to the catalog.
 func initPgRelationIsUpdatable() {
 	framework.RegisterFunction(pg_relation_is_updatable)
@@ -33,21 +40,15 @@ var pg_relation_is_updatable = framework.Function2{
 	Return:             pgtypes.Int32,
 	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Regclass, pgtypes.Bool},
 	IsNonDeterministic: true,
-	Strict:             true,
+	Strict:             true, // The framework returns NULL before Callable when either argument is NULL.
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, relation, includeTriggers any) (any, error) {
+		// includeTriggers would include writes enabled by INSTEAD OF triggers.
+		// Doltgres does not support those triggers yet, so it does not affect the mask.
 		var operations int32
+		// No View callback: views currently support no writes in Doltgres.
 		err := RunCallback(ctx, relation.(id.Id), Callbacks{
 			Table: func(ctx *sql.Context, schema ItemSchema, table ItemTable) (bool, error) {
-				// PostgreSQL uses command-type bit positions: UPDATE=4, INSERT=8, DELETE=16.
-				if _, ok := table.Item.(sql.UpdatableTable); ok {
-					operations |= 4
-				}
-				if _, ok := table.Item.(sql.InsertableTable); ok {
-					operations |= 8
-				}
-				if _, ok := table.Item.(sql.DeletableTable); ok {
-					operations |= 16
-				}
+				operations = relationWriteCapabilities(table.Item)
 				return false, nil
 			},
 		})
@@ -55,8 +56,21 @@ var pg_relation_is_updatable = framework.Function2{
 		if sql.ErrTableNotFound.Is(err) {
 			return int32(0), nil
 		}
-		// Views are currently read-only in Doltgres. INSTEAD OF triggers and rules
-		// are not supported, so includeTriggers cannot add write capabilities yet.
 		return operations, err
 	},
+}
+
+// relationWriteCapabilities reports writes supported by a table's interfaces.
+func relationWriteCapabilities(table sql.Table) int32 {
+	var operations int32
+	if _, ok := table.(sql.UpdatableTable); ok {
+		operations |= RelationUpdatable
+	}
+	if _, ok := table.(sql.InsertableTable); ok {
+		operations |= RelationInsertable
+	}
+	if _, ok := table.(sql.DeletableTable); ok {
+		operations |= RelationDeletable
+	}
+	return operations
 }

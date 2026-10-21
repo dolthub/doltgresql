@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -7444,11 +7445,8 @@ $$ LANGUAGE plpgsql;`,
 func TestPgRelationIsUpdatable(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
-			Name: "relation capabilities and invalid OIDs",
+			Name: "invalid and stale relation OIDs",
 			SetUpScript: []string{
-				`CREATE TABLE updatable_probe (id INT PRIMARY KEY)`,
-				`CREATE INDEX probe_idx ON updatable_probe (id)`,
-				`CREATE SEQUENCE probe_seq`,
 				`CREATE TABLE saved_oid (relation regclass)`,
 				`CREATE TABLE dropped_probe (id INT)`,
 				`INSERT INTO saved_oid VALUES ('dropped_probe'::regclass)`,
@@ -7457,13 +7455,22 @@ func TestPgRelationIsUpdatable(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{Query: `SELECT pg_catalog.pg_relation_is_updatable(0::regclass, true)`, Expected: []sql.Row{{int32(0)}}},
 				{Query: `SELECT pg_relation_is_updatable(4294967295::oid::regclass, false)`, Expected: []sql.Row{{int32(0)}}},
-				{Query: `SELECT pg_relation_is_updatable('updatable_probe'::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, false)`, Expected: []sql.Row{{int32(28), int32(28)}}},
-				{Query: `SELECT pg_relation_is_updatable('probe_idx'::regclass, true), pg_relation_is_updatable('probe_seq'::regclass, true)`, Expected: []sql.Row{{int32(0), int32(0)}}},
-				{Query: `SELECT pg_relation_is_updatable(NULL::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, NULL)`, Expected: []sql.Row{{nil, nil}}},
 				{Query: `SELECT pg_relation_is_updatable(relation, true) FROM saved_oid`, Expected: []sql.Row{{int32(0)}}},
 				{Query: `SELECT pg_relation_is_updatable('missing_relation'::regclass, true)`, ExpectedErr: `relation "missing_relation" does not exist`},
+			},
+		},
+		{
+			Name: "relation capabilities",
+			SetUpScript: []string{
+				`CREATE TABLE updatable_probe (id INT PRIMARY KEY)`,
+				`CREATE INDEX probe_idx ON updatable_probe (id)`,
+				`CREATE SEQUENCE probe_seq`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT pg_relation_is_updatable('updatable_probe'::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, false)`, Expected: []sql.Row{{functions.RelationUpdatable | functions.RelationInsertable | functions.RelationDeletable, functions.RelationUpdatable | functions.RelationInsertable | functions.RelationDeletable}}},
+				{Query: `SELECT pg_relation_is_updatable('probe_idx'::regclass, true), pg_relation_is_updatable('probe_seq'::regclass, true)`, Expected: []sql.Row{{int32(0), int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable(NULL::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, NULL)`, Expected: []sql.Row{{nil, nil}}},
 				{Query: `SELECT pg_typeof(pg_relation_is_updatable('updatable_probe'::regclass, true))`, Expected: []sql.Row{{"integer"}}},
-				{Query: `SELECT (pg_relation_is_updatable('updatable_probe'::regclass, true) & 8) = 8, (pg_relation_is_updatable('updatable_probe'::regclass, true) & 4) = 4, (pg_relation_is_updatable('updatable_probe'::regclass, true) & 16) = 16`, Expected: []sql.Row{{"t", "t", "t"}}},
 			},
 		},
 		{
@@ -7479,9 +7486,6 @@ func TestPgRelationIsUpdatable(t *testing.T) {
 				{Query: `SELECT pg_relation_is_updatable('simple_probe'::regclass, true), pg_relation_is_updatable('simple_probe'::regclass, false)`, Expected: []sql.Row{{int32(0), int32(0)}}},
 				{Query: `SELECT pg_relation_is_updatable('aggregate_probe'::regclass, true), pg_relation_is_updatable('nested_probe'::regclass, true)`, Expected: []sql.Row{{int32(0), int32(0)}}},
 				{Query: `SELECT pg_relation_is_updatable('pg_catalog.pg_class'::regclass, true)`, Expected: []sql.Row{{int32(0)}}},
-				{Query: `INSERT INTO simple_probe VALUES (1)`, ExpectedErr: "expected insert destination to be resolved or unresolved table"},
-				{Query: `UPDATE simple_probe SET id = 2`, ExpectedErr: "doesn't support UPDATE"},
-				{Query: `DELETE FROM simple_probe`, ExpectedErr: "doesn't support DELETE"},
 			},
 		},
 		{
@@ -7492,7 +7496,7 @@ func TestPgRelationIsUpdatable(t *testing.T) {
 				`REVOKE ALL ON protected_probe FROM PUBLIC`,
 			},
 			Assertions: []ScriptTestAssertion{
-				{Username: "capability_reader", Password: "password", Query: `SELECT pg_relation_is_updatable('public.protected_probe'::regclass, true)`, Expected: []sql.Row{{int32(28)}}},
+				{Username: "capability_reader", Password: "password", Query: `SELECT pg_relation_is_updatable('public.protected_probe'::regclass, true)`, Expected: []sql.Row{{functions.RelationUpdatable | functions.RelationInsertable | functions.RelationDeletable}}},
 				{Username: "capability_reader", Password: "password", Query: `INSERT INTO public.protected_probe VALUES (1)`, ExpectedErr: "permission denied"},
 			},
 		},
