@@ -31,9 +31,9 @@ type FunctionProvider struct{}
 var _ sql.FunctionProvider = (*FunctionProvider)(nil)
 var _ sql.AggregateCallResolver = (*FunctionProvider)(nil)
 
-// overloads returns every overload of the named function, both functions and aggregates, along with whether any of
-// them is an aggregate. It returns false when the name has no overloads.
-func (fp *FunctionProvider) overloads(ctx *sql.Context, schema, name string) (*Overloads, bool, bool) {
+// overloads returns the overloads of the named function. `overloadTree` holds every overload, both functions and
+// aggregates, `hasAggregate` is whether any of them is an aggregate, and `ok` is false when the name has no overloads.
+func (fp *FunctionProvider) overloads(ctx *sql.Context, schema, name string) (overloadTree *Overloads, hasAggregate bool, ok bool) {
 	// TODO: this should be configurable from within Dolt, rather than set on an external variable
 	if !core.IsContextValid(ctx) {
 		return nil, false, false
@@ -89,7 +89,7 @@ func (fp *FunctionProvider) overloads(ctx *sql.Context, schema, name string) (*O
 		}
 	}
 
-	overloadTree := NewOverloads()
+	overloadTree = NewOverloads()
 	for _, overload := range overloads {
 		returnType, err := typesCollection.GetType(ctx, overload.ReturnType)
 		if err != nil || returnType == nil {
