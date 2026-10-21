@@ -43,3 +43,21 @@ are recorded, not treated as cross-engine passes for those argument forms.
 This is a bounded compatibility pass, not certification of all Doltgres features
 or row-level concurrency. ON CONFLICT, row locks, SSI, branch switching and full
 schema versioning remain outside the current milestone.
+
+Add `TestTypes` to the run expression to include the built-in type suite. Its
+explicit exclusions cover missing index operator classes and the approved
+rejection of persisted OID/XID identifiers. The remaining excluded assertions
+were reproduced against the same PostgreSQL build using heap storage:
+
+```
+DOLTGRES_TEST_SERVER_KIND=postgres \
+DOLTGRES_TEST_SERVER_BINARY=/absolute/path/to/postgres \
+DOLTGRES_TEST_TABLE_AM=heap \
+go test ./testing/go -count=1 -run '^TestTypes$' -v
+```
+
+The heap control is expected to fail some Doltgres-specific casts, messages and
+built-in behavior expectations. It distinguishes those differences from prolly
+codec/index defects. All type assertions that failed after successful setup on
+prolly also failed on heap in this verification pass. Do not use the prolly
+profile when auditing the control, since that would hide the differences.
