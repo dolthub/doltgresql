@@ -22,6 +22,8 @@ func TestCatalogHistory(t *testing.T) {
 
 	RunScripts(t, []ScriptTest{{Name: "incompatible retained schemas", SetUpScript: setup, Assertions: []ScriptTestAssertion{
 		{Query: "SELECT old.v,cur.v,cur.note FROM t AS OF 'HEAD~1' old JOIN t AS OF 'HEAD' cur USING(id)", Expected: []sql.Row{{10, "ten", "new schema"}}},
+		{Query: "SELECT (old).v,(cur).v FROM t AS OF 'HEAD~1' old JOIN t AS OF 'HEAD' cur USING(id)", Expected: []sql.Row{{10, "ten"}}},
+		{Query: "SELECT row_to_json(old)::text,row_to_json(cur)::text FROM t AS OF 'HEAD~1' old JOIN t AS OF 'HEAD' cur USING(id)", Expected: []sql.Row{{`{"id":1,"v":10}`, `{"id":1,"v":"ten","note":"new schema"}`}}},
 		{Query: "SELECT * FROM removed AS OF 'HEAD~1'", Expected: []sql.Row{{42}}},
 		{Query: "SELECT count(*) FROM t AS OF 'HEAD~1' old JOIN t cur USING(id)", Expected: []sql.Row{{int64(1)}}},
 		{Query: "CREATE TABLE restored (id int,v int)"},
