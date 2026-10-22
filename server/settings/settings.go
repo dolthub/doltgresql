@@ -34,7 +34,7 @@ func Set(ctx *sql.Context, name string, value any, reset, local bool) error {
 		_ = core.SetDateStyleOutputFormat(ctx, "")
 		if reset {
 			var err error
-			value, err = resetValue(ctx, name, true)
+			value, err = ResetValue(ctx, name, true)
 			if err != nil {
 				return err
 			}
@@ -44,7 +44,7 @@ func Set(ctx *sql.Context, name string, value any, reset, local bool) error {
 	if config.IsValidCustomParameterName(name) {
 		if reset {
 			var err error
-			value, err = resetValue(ctx, name, false)
+			value, err = ResetValue(ctx, name, false)
 			if err != nil {
 				return err
 			}
@@ -57,10 +57,10 @@ func Set(ctx *sql.Context, name string, value any, reset, local bool) error {
 	return pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, name)
 }
 
-// resetValue returns the value that RESET restores for the parameter. This is the session's reset value if it has
+// ResetValue returns the value that RESET restores for the parameter. This is the session's reset value if it has
 // one, which comes from the role and database settings and the client's startup parameters. Otherwise, it is the
 // default of a built-in parameter, or the empty string for a custom parameter.
-func resetValue(ctx *sql.Context, name string, builtIn bool) (any, error) {
+func ResetValue(ctx *sql.Context, name string, builtIn bool) (any, error) {
 	if value, ok, err := core.SettingResetValue(ctx, name); err != nil || ok {
 		return value, err
 	}

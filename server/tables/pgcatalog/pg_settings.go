@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/config"
+	"github.com/dolthub/doltgresql/server/settings"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -167,7 +168,7 @@ func (iter *pgSettingsRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	iter.idx++
 	param := iter.params[iter.idx-1]
-	resetValue, err := ctx.GetSessionVariableDefault(ctx, param.Name)
+	resetValue, err := settings.ResetValue(ctx, param.Name, true)
 	if err != nil {
 		resetValue = param.ResetVal
 	}
