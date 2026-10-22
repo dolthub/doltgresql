@@ -40,7 +40,7 @@ var pg_relation_is_updatable = framework.Function2{
 	Return:             pgtypes.Int32,
 	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Regclass, pgtypes.Bool},
 	IsNonDeterministic: true,
-	Strict:             true, // The framework returns NULL before Callable when either argument is NULL.
+	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, relation, includeTriggers any) (any, error) {
 		// includeTriggers would include writes enabled by INSTEAD OF triggers.
 		// Doltgres does not support those triggers yet, so it does not affect the mask.
@@ -48,7 +48,15 @@ var pg_relation_is_updatable = framework.Function2{
 		// No View callback: views currently support no writes in Doltgres.
 		err := RunCallback(ctx, relation.(id.Id), Callbacks{
 			Table: func(ctx *sql.Context, schema ItemSchema, table ItemTable) (bool, error) {
-				operations = relationWriteCapabilities(table.Item)
+				if _, ok := table.Item.(sql.UpdatableTable); ok {
+					operations |= RelationUpdatable
+				}
+				if _, ok := table.Item.(sql.InsertableTable); ok {
+					operations |= RelationInsertable
+				}
+				if _, ok := table.Item.(sql.DeletableTable); ok {
+					operations |= RelationDeletable
+				}
 				return false, nil
 			},
 		})
@@ -58,19 +66,4 @@ var pg_relation_is_updatable = framework.Function2{
 		}
 		return operations, err
 	},
-}
-
-// relationWriteCapabilities reports writes supported by a table's interfaces.
-func relationWriteCapabilities(table sql.Table) int32 {
-	var operations int32
-	if _, ok := table.(sql.UpdatableTable); ok {
-		operations |= RelationUpdatable
-	}
-	if _, ok := table.(sql.InsertableTable); ok {
-		operations |= RelationInsertable
-	}
-	if _, ok := table.(sql.DeletableTable); ok {
-		operations |= RelationDeletable
-	}
-	return operations
 }

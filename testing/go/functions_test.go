@@ -7467,7 +7467,8 @@ func TestPgRelationIsUpdatable(t *testing.T) {
 				`CREATE SEQUENCE probe_seq`,
 			},
 			Assertions: []ScriptTestAssertion{
-				{Query: `SELECT pg_relation_is_updatable('updatable_probe'::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, false)`, Expected: []sql.Row{{functions.RelationUpdatable | functions.RelationInsertable | functions.RelationDeletable, functions.RelationUpdatable | functions.RelationInsertable | functions.RelationDeletable}}},
+				// Also check the literal PostgreSQL mask independently of the implementation constants.
+				{Query: `SELECT pg_relation_is_updatable('updatable_probe'::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, false)`, Expected: []sql.Row{{functions.RelationUpdatable | functions.RelationInsertable | functions.RelationDeletable, int32(28)}}},
 				{Query: `SELECT pg_relation_is_updatable('probe_idx'::regclass, true), pg_relation_is_updatable('probe_seq'::regclass, true)`, Expected: []sql.Row{{int32(0), int32(0)}}},
 				{Query: `SELECT pg_relation_is_updatable(NULL::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, NULL)`, Expected: []sql.Row{{nil, nil}}},
 				{Query: `SELECT pg_typeof(pg_relation_is_updatable('updatable_probe'::regclass, true))`, Expected: []sql.Row{{"integer"}}},
