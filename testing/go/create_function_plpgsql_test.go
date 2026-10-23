@@ -1369,6 +1369,7 @@ $$ LANGUAGE plpgsql;`},
 			},
 		},
 		{
+			// Dolt uses 32-character hashes; the PostgreSQL fork uses SHA-256 hex.
 			Name: "Branching",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -1388,7 +1389,11 @@ $$ LANGUAGE plpgsql;`,
 					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
+					Query:            "SELECT dolt_commit('-m', 'initial');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    "SELECT length(commit_hash) IN (32, 64) FROM dolt_log LIMIT 1",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -1408,7 +1413,11 @@ $$ LANGUAGE plpgsql;`,
 					Expected: []sql.Row{{int64(0)}},
 				},
 				{
-					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 32;",
+					Query:            "SELECT dolt_commit('-m', 'updated func');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    "SELECT length(commit_hash) IN (32, 64) FROM dolt_log LIMIT 1",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
