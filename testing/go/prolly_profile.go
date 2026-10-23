@@ -162,6 +162,7 @@ func prollyAssertionSkip(fullName, query string) string {
 }
 
 var prollyScopedAssertionSkip = map[string]string{
+	"TestUserSpaceDoltTables/dolt_rebase/select_message_from_dolt_log;":                                                                                                                                                                     "repository history starts at dolt_init; there is no CREATE DATABASE commit",
 	"TestDoltFunctionSmokeTests/smoke_test_select_dolt_add_and_dolt_commit/select_count(*)_from_dolt.log":                                                                                                                                   "repository history starts at dolt_init; there is no CREATE DATABASE commit",
 	"TestUserSpaceDoltTables/dolt_blame_with_tablename/SELECT_schemaname,_viewname_FROM_pg_views_WHERE_viewname_LIKE_'dolt_blame%'_ORDER_BY_1,_2":                                                                                           "not implemented: generated dolt_*_<table> tables are parser rewrites, not catalog relations",
 	"TestUserSpaceDoltTables/dolt_blame_with_tablename/SELECT_relname,_relkind_FROM_pg_class_WHERE_relname_LIKE_'dolt_blame%'_ORDER_BY_1":                                                                                                   "not implemented: generated dolt_*_<table> tables are parser rewrites, not catalog relations",
