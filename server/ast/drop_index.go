@@ -38,9 +38,6 @@ func nodeDropIndex(ctx *Context, node *tree.DropIndex) (*vitess.AlterTable, erro
 	if len(node.IndexList) > 1 {
 		return nil, errors.Errorf("multi-index dropping is not yet supported")
 	}
-	if node.Concurrently {
-		return nil, errors.Errorf("concurrent indexes are not yet supported")
-	}
 	var tableName vitess.TableName
 	ddls := make([]*vitess.DDL, len(node.IndexList))
 	for i, index := range node.IndexList {

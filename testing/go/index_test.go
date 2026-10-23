@@ -25,6 +25,50 @@ import (
 func TestBasicIndexing(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			// https://github.com/dolthub/doltgresql/issues/3532
+			Name: "CREATE INDEX CONCURRENTLY",
+			SetUpScript: []string{
+				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT, v2 TEXT);",
+				"INSERT INTO test VALUES (1, 10, 'a'), (2, 20, 'b'), (3, 30, 'c');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE INDEX CONCURRENTLY v1_idx ON test (v1);",
+				},
+				{
+					Query: "CREATE INDEX CONCURRENTLY IF NOT EXISTS v1_idx ON test (v1);",
+				},
+				{
+					Query: "CREATE UNIQUE INDEX CONCURRENTLY v2_idx ON test (v2);",
+				},
+				{
+					Query:       "INSERT INTO test VALUES (4, 40, 'a');",
+					ExpectedErr: "duplicate",
+				},
+				{
+					Query: "SELECT indexname FROM pg_indexes WHERE tablename = 'test' ORDER BY indexname;",
+					Expected: []sql.Row{
+						{"test_pkey"},
+						{"v1_idx"},
+						{"v2_idx"},
+					},
+				},
+				{
+					Query: "DROP INDEX CONCURRENTLY v1_idx;",
+				},
+				{
+					Query: "DROP INDEX CONCURRENTLY IF EXISTS v1_idx;",
+				},
+				{
+					Query: "SELECT indexname FROM pg_indexes WHERE tablename = 'test' ORDER BY indexname;",
+					Expected: []sql.Row{
+						{"test_pkey"},
+						{"v2_idx"},
+					},
+				},
+			},
+		},
+		{
 			Name: "Covering Index",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
