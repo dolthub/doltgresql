@@ -192,6 +192,83 @@ func TestPostgresDoltTables(t *testing.T) {
 			},
 		},
 		{
+			Name: "typed conflict tables and constraint violations",
+			SetUpScript: []string{
+				"CREATE TABLE test (id INT PRIMARY KEY, col1 TEXT)",
+				"CREATE TABLE cv (pk int primary key, col1 int unique)",
+				"SELECT dolt_commit('-Am', 'first commit')",
+				"SELECT dolt_branch('b1')",
+				"SELECT dolt_checkout('-b', 'b2')",
+				"INSERT INTO test VALUES (1, 'a')",
+				"INSERT INTO cv VALUES (2, 1)",
+				"SELECT dolt_commit('-Am', 'commit b2')",
+				"SELECT dolt_checkout('b1')",
+				"INSERT INTO test VALUES (1, 'b')",
+				"INSERT INTO cv VALUES (1, 1)",
+				"SELECT dolt_commit('-Am', 'commit b1')",
+				"SELECT dolt_checkout('main')",
+				"SELECT dolt_merge('b1')",
+				"SELECT dolt_merge('b2')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT base_id, base_col1, our_id, our_col1, their_id, their_col1 FROM dolt_conflicts_test",
+					Expected: []sql.Row{{nil, nil, 1, "b", 1, "a"}},
+				},
+				{
+					Query:    "SELECT our_col1, their_col1 FROM public.dolt_conflicts_test",
+					Expected: []sql.Row{{"b", "a"}},
+				},
+				{
+					Query:    "SELECT dolt_conflicts_test.their_col1 FROM public.dolt_conflicts_test",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT * FROM dolt.constraint_violations",
+					Expected: []sql.Row{{"cv", Numeric("2")}},
+				},
+				{
+					Query: "SELECT violation_type, pk, col1, violation_info FROM dolt_constraint_violations_cv ORDER BY pk",
+					Expected: []sql.Row{
+						{"unique index", 1, 1, `{"Columns":["col1"],"Name":"cv_col1_key"}`},
+						{"unique index", 2, 1, `{"Columns":["col1"],"Name":"cv_col1_key"}`},
+					},
+				},
+				{
+					Query:    "SELECT * FROM public.dolt_constraint_violations_cv WHERE violation_type = 'foreign key'",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "SELECT * FROM other.dolt_conflicts_test",
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:       "SELECT * FROM public.dolt_conflicts_none",
+					ExpectedErr: "table not found",
+				},
+				{
+					Query:    "DELETE FROM public.dolt_conflicts_test",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT base_id, base_col1, our_id, our_col1, their_id, their_col1 FROM dolt_conflicts_test",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DELETE FROM public.dolt_constraint_violations_cv",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM dolt_constraint_violations_cv",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM dolt.schema_conflicts",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
 			Name: "docs keep the default agent document",
 			SetUpScript: []string{
 				"INSERT INTO dolt.docs VALUES ('README.md', 'testing')",

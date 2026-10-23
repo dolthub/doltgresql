@@ -1305,6 +1305,8 @@ func postgresErrorEquivalent(err error, expected string) bool {
 		return pgErr.Code == "42P01"
 	case strings.HasPrefix(expected, "schema exists"):
 		return pgErr.Code == "42P06"
+	case strings.Contains(expected, "could not be found in any table in scope"):
+		return pgErr.Code == "42703"
 	}
 	return false
 }
