@@ -93,5 +93,25 @@ func TestPostgresProvisionalCatalogDDL(t *testing.T) {
 			{Query: "INSERT INTO t VALUES(3,'three',NULL)"},
 			{Query: "SELECT count(*) FROM t", Expected: []sql.Row{{3}}},
 		},
+	}, {
+		Name: "native rewrites preserve historical types and evaluate defaults",
+		SetUpScript: []string{
+			"CREATE TABLE t(id int PRIMARY KEY,v text)",
+			"INSERT INTO t VALUES(1,'12'),(2,'30')",
+			"SELECT dolt_commit('-Am','text base')",
+			"SELECT dolt_checkout('-b','other')",
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: "ALTER TABLE t ALTER COLUMN v TYPE integer USING v::integer, ADD COLUMN added int NOT NULL DEFAULT 42, ADD CONSTRAINT positive CHECK(added>0)"},
+			{Query: "SELECT * FROM t ORDER BY id", Expected: []sql.Row{{1, 12, 42}, {2, 30, 42}}},
+			{Query: "INSERT INTO t(id,v) VALUES(3,50)"},
+			{Query: "SELECT added FROM t WHERE id=3", Expected: []sql.Row{{42}}},
+			{Query: "INSERT INTO t VALUES(4,20,-1)", ExpectedErrCode: "23514"},
+			{Query: "ALTER TABLE t ADD COLUMN failed int DEFAULT -1 CHECK(failed>0)", ExpectedErrCode: "23514"},
+			{Query: "SELECT count(*) FROM pg_attribute WHERE attrelid='t'::regclass AND attname='failed'", Expected: []sql.Row{{0}}},
+			{Query: "SELECT dolt_commit('-Am','native rewrite')", SkipResultsCheck: true},
+			{Query: `SELECT pg_typeof(a.v)::text,pg_typeof(b.v)::text,a.v,b.v FROM "postgres/other".public.t a JOIN "postgres/main".public.t b USING(id) WHERE id=1`, Expected: []sql.Row{{"integer", "text", 12, "12"}}},
+			{Query: "SELECT * FROM t AS OF 'HEAD~1' ORDER BY id", Expected: []sql.Row{{1, "12"}, {2, "30"}}},
+		},
 	}})
 }
