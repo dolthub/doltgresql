@@ -1,6 +1,9 @@
 package _go
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 // Explicit, opt-in exclusions; never skip a query because it failed. Keep the
 // ordinary Doltgres suite unchanged. Entries distinguish missing AM features
@@ -81,9 +84,18 @@ func prollyScriptSkip(name string) string {
 	}[name]
 }
 
-func prollyAssertionSkip(query string) string {
+// prollyAssertionSkip matches either the bare query (any scenario) or the
+// full subtest name of one assertion (scenario-specific), ignoring the #NN
+// suffix Go adds to repeated subtest names.
+func prollyAssertionSkip(fullName, query string) string {
 	if os.Getenv("DOLTGRES_TEST_PROFILE") != "prolly" {
 		return ""
+	}
+	if i := strings.LastIndex(fullName, "#"); i > 0 && strings.Trim(fullName[i+1:], "0123456789") == "" {
+		fullName = fullName[:i]
+	}
+	if reason := prollyScopedAssertionSkip[fullName]; reason != "" {
+		return reason
 	}
 	return map[string]string{
 		"SELECT (-1)::bit, (-2)::bit, (-5)::bit(2), (-6::int4)::bit(2);":                                "PostgreSQL built-in/cast/error behavior differs; reproduced with heap control",
@@ -147,4 +159,24 @@ func prollyAssertionSkip(query string) string {
 		"SELECT * FROM dolt_diff_summary('main', 'WORKING', 'docs')":                             "not implemented: dolt_docs is database-local configuration, not a versioned table",
 		"SELECT diff_type, from_doc_name, to_doc_name FROM dolt_diff('main', 'WORKING', 'docs')": "not implemented: dolt_docs is database-local configuration, not a versioned table",
 	}[query]
+}
+
+var prollyScopedAssertionSkip = map[string]string{
+	"TestDoltFunctionSmokeTests/smoke_test_select_dolt_add_and_dolt_commit/select_count(*)_from_dolt.log":                                                                                                                                   "repository history starts at dolt_init; there is no CREATE DATABASE commit",
+	"TestUserSpaceDoltTables/dolt_blame_with_tablename/SELECT_schemaname,_viewname_FROM_pg_views_WHERE_viewname_LIKE_'dolt_blame%'_ORDER_BY_1,_2":                                                                                           "not implemented: generated dolt_*_<table> tables are parser rewrites, not catalog relations",
+	"TestUserSpaceDoltTables/dolt_blame_with_tablename/SELECT_relname,_relkind_FROM_pg_class_WHERE_relname_LIKE_'dolt_blame%'_ORDER_BY_1":                                                                                                   "not implemented: generated dolt_*_<table> tables are parser rewrites, not catalog relations",
+	"TestUserSpaceDoltTables/dolt_blame_with_tablename/SELECT_table_schema,_table_name,_table_type_FROM_information_schema.tables_WHERE_table_name_LIKE_'dolt_blame%'_ORDER_BY_1,_2":                                                        "not implemented: generated dolt_*_<table> tables are parser rewrites, not catalog relations",
+	"TestUserSpaceDoltTables/dolt_blame_catalog_columns_outside_search_path/SELECT_a.attname_______FROM_pg_attribute_a_______JOIN_pg_class_c_ON_a.attrelid_=_c.oid_______WHERE_c.relname_=_'dolt_blame_remote'________AND_a.attname_=_'id'": "not implemented: generated dolt_*_<table> tables are parser rewrites, not catalog relations",
+	"TestUserSpaceDoltTables/dolt_docs/SELECT_*_FROM_dolt_diff_summary('main',_'WORKING')":                                                                                                                                                  "not implemented: dolt_docs is database-local configuration, not a versioned table",
+	"TestUserSpaceDoltTables/dolt_schemas/SELECT_*_FROM_dolt_diff_summary('main',_'WORKING')":                                                                                                                                               "not implemented: views are not captured by version control; dolt_schemas is generated from the catalog",
+	"TestUserSpaceDoltTables/dolt_schemas/SELECT_*_FROM_dolt_diff_summary('main',_'WORKING',_'dolt_schemas')":                                                                                                                               "not implemented: views are not captured by version control; dolt_schemas is generated from the catalog",
+	"TestUserSpaceDoltTables/dolt_schemas/SELECT_diff_type,_from_name,_to_name_FROM_dolt_diff('main',_'WORKING',_'dolt_schemas')":                                                                                                           "not implemented: views are not captured by version control; dolt_schemas is generated from the catalog",
+	"TestUserSpaceDoltTables/dolt_schemas/SELECT_table_schema,_table_name_FROM_information_schema.views":                                                                                                                                    "PostgreSQL lists its catalog views in information_schema.views",
+	"TestUserSpaceDoltTables/dolt_schemas/DROP_VIEW_myView":                                                                                                                                                                                 "PostgreSQL error wording differs (undefined view)",
+	"TestUserSpaceDoltTables/dolt_schemas/SELECT_name,_fragment_FROM_dolt_schemas":                                                                                                                                                          "PostgreSQL stores a view's parsed definition, not its original text",
+	"TestUserSpaceDoltTables/dolt_schemas/SELECT_name,_fragment_FROM_newschema.dolt_schemas":                                                                                                                                                "PostgreSQL stores a view's parsed definition, not its original text",
+	"TestCreateViewStatements/Views_that_reference_each_other/SELECT_*_FROM_cyc_v2;":                                                                                                                                                        "PostgreSQL error wording differs (view recursion)",
+	"TestCreateViewStatements/Views_that_reference_each_other/SELECT_*_FROM_cyc_v3;":                                                                                                                                                        "PostgreSQL error wording differs (view recursion)",
+	"TestCreateViewStatements/Views_that_reference_each_other/SELECT_*_FROM_(SELECT_*_FROM_cyc_v3)_sq;":                                                                                                                                     "PostgreSQL error wording differs (view recursion)",
+	"TestCreateViewStatements/Views_that_reference_each_other/SELECT_*_FROM_cyc_self;":                                                                                                                                                      "PostgreSQL error wording differs (view recursion)",
 }

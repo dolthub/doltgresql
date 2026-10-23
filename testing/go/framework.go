@@ -260,7 +260,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 	// Run the assertions
 	for _, assertion := range assertions {
 		t.Run(assertion.Query, func(t *testing.T) {
-			if reason := prollyAssertionSkip(assertion.Query); reason != "" {
+			if reason := prollyAssertionSkip(t.Name(), assertion.Query); reason != "" {
 				t.Skip(reason)
 			}
 			if assertion.Skip {
