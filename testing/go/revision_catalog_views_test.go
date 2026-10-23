@@ -7,8 +7,21 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-// Doltgres currently ignores database/revision qualifiers on these catalog views.
-// Keep the required independent-view contract explicit until its provider is fixed.
+// Required semantics: each qualified catalog view must describe its requested
+// revision independently of the session branch, including multiple revisions in
+// one statement. The PostgreSQL fork's results below are the intended behavior.
+//
+// Doltgres discrepancy observed 2026-10-23: with the session on main, the first
+// query returned id,v instead of id,v,extra; pg_tables omitted other_only; and the
+// cross-branch join failed to expose the distinct schemas. Three assertions failed.
+// The index-name assertion passed because both branches have the same index name;
+// that result alone does not demonstrate correct revision selection.
+//
+// The fork carries a selected database root through each view's expansion. The
+// Doltgres results indicate use of session-branch metadata, but its exact faulty
+// lookup has not been traced. This is a Doltgres bug to fix, not compatibility
+// behavior to reproduce. Remove the fork-only guard once Doltgres honors these
+// qualifiers; preserve the expected rows and independent-revision assertions.
 func TestPostgresRevisionCatalogViews(t *testing.T) {
 	if os.Getenv("DOLTGRES_TEST_SERVER_KIND") != "postgres" {
 		t.Skip("Doltgres catalog views currently use the session branch instead of the qualified revision")
