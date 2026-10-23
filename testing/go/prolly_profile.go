@@ -49,6 +49,13 @@ func prollyScriptSkip(name string) string {
 		"TestUserSpaceDoltTables/dolt_schema_conflicts":                                               "not implemented: schema merges (ALTER TABLE on branches and merging schema changes)",
 		"TestUserSpaceDoltTables/dolt_conflicts":                                                      "approved contract: version-control commands are standalone statements outside transaction blocks; see TestPostgresDoltTables",
 
+		"TestStatsAggregates/aggregate_functions_over_dolt_statistics":                      "not implemented: the prolly access method rejects ANALYZE, so dolt_statistics has no rows for versioned tables",
+		"TestStatsUsage/dolt_statistics_contains_reasonable_values_after_ANALYZE":           "not implemented: the prolly access method rejects ANALYZE, so dolt_statistics has no rows for versioned tables",
+		"TestStatsUsage/ANALYZE_refreshes_statistics_after_data_changes":                    "not implemented: the prolly access method rejects ANALYZE, so dolt_statistics has no rows for versioned tables",
+		"TestStatsUsage/join_planner_puts_small_table_on_the_scan_side_of_a_lookup_join":    "not implemented: the prolly access method rejects ANALYZE; PostgreSQL plans are not Doltgres plans",
+		"TestStatsUsage/join_planner_builds_hash_table_from_the_small_table_in_a_hash_join": "not implemented: the prolly access method rejects ANALYZE; PostgreSQL plans are not Doltgres plans",
+		"TestStatsUsage/planner_uses_cardinality_to_select_more_selective_index":            "not implemented: the prolly access method rejects ANALYZE; PostgreSQL plans are not Doltgres plans",
+		"TestStatsUsage/join_planner_uses_histograms_to_reorder_a_filtered_lookup_join":     "not implemented: the prolly access method rejects ANALYZE; PostgreSQL plans are not Doltgres plans",
 		"TestTypes/Bit_key": "not implemented: index operator class for this type",
 		"TestTypes/Character_comparisons_ignore_trailing_spaces":                           "not implemented: index operator class for this type",
 		"TestTypes/Character_key":                                                          "not implemented: index operator class for this type",
