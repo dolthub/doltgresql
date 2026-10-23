@@ -20,6 +20,7 @@ func TestPostgresCatalogTypedParameters(t *testing.T) {
 	conn := connection.Default
 	exec := func(query string) { _, err := connection.Exec(ctx, query); require.NoError(t, err) }
 	for _, query := range []string{
+		"SET dolt_catalog_cache_entries=1",
 		"CREATE TABLE t(id int PRIMARY KEY,v text)",
 		"SELECT dolt_commit('-Am','base')",
 		"SELECT dolt_checkout('-b','other')",
