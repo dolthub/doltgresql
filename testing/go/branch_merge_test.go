@@ -100,7 +100,7 @@ func TestPostgresMergeConflictStatus(t *testing.T) {
 	}, Assertions: []ScriptTestAssertion{
 		{Query: "SELECT conflicts FROM dolt_merge('main')", Expected: []sql.Row{{int64(1)}}},
 		{Query: "SELECT * FROM t", Expected: []sql.Row{{1, 30}}},
-		{Query: "SELECT num_conflicts FROM dolt_conflicts", Expected: []sql.Row{{int64(1)}}},
+		{Query: "SELECT num_conflicts FROM dolt_conflicts", Expected: []sql.Row{{Numeric("1")}}},
 		{Query: "SELECT status FROM dolt_conflicts_resolve('--theirs','t')", Expected: []sql.Row{{int64(0)}}},
 		{Query: "SELECT * FROM t", Expected: []sql.Row{{1, 20}}},
 		{Query: "SELECT dolt_commit('-Am','resolved')", SkipResultsCheck: true},
