@@ -2288,3 +2288,154 @@ func TestImplicitForeignKeyRegressionCleanup(t *testing.T) {
 		})
 	}
 }
+
+func TestMultiTableTruncate(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "qualified targets preserve database and schema",
+			SetUpScript: []string{
+				`CREATE TABLE public.tables (id INT)`,
+				`CREATE TABLE public.other (id INT)`,
+				`INSERT INTO public.tables VALUES (1)`,
+				`INSERT INTO public.other VALUES (2)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `TRUNCATE public.other, information_schema.tables`, ExpectedErr: `cross-database multi-table TRUNCATE`},
+				{Query: `TRUNCATE public.other, another_db.public.tables`, ExpectedErr: `cross-database multi-table TRUNCATE`},
+				{Query: `SELECT * FROM public.tables`, Expected: []sql.Row{{1}}},
+				{Query: `SELECT * FROM public.other`, Expected: []sql.Row{{2}}},
+				{Query: `TRUNCATE postgres.public.tables, postgres.public.other`},
+				{Query: `SELECT * FROM public.tables`, Expected: []sql.Row{}},
+				{Query: `SELECT * FROM public.other`, Expected: []sql.Row{}},
+			},
+		},
+		{
+			Name: "truncate related tables together",
+			SetUpScript: []string{
+				`CREATE TABLE parent (id INT PRIMARY KEY)`,
+				`CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent)`,
+				`INSERT INTO parent VALUES (1)`,
+				`INSERT INTO child VALUES (2, 1)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `TRUNCATE parent, missing`, ExpectedErr: `table not found`},
+				{Query: `SELECT * FROM parent`, Expected: []sql.Row{{1}}},
+				{Query: `BEGIN`},
+				{Query: `TRUNCATE parent, child RESTRICT`},
+				{Query: `ROLLBACK`},
+				{Query: `SELECT * FROM parent`, Expected: []sql.Row{{1}}},
+				{Query: `SELECT * FROM child`, Expected: []sql.Row{{2, 1}}},
+				{Query: `TRUNCATE parent, child RESTRICT`},
+				{Query: `SELECT * FROM parent`, Expected: []sql.Row{}},
+				{Query: `SELECT * FROM child`, Expected: []sql.Row{}},
+				{Query: `INSERT INTO parent VALUES (1)`},
+				{Query: `INSERT INTO child VALUES (2, 1)`},
+				{Query: `INSERT INTO child VALUES (3, 99)`, ExpectedErr: `Foreign key violation`},
+				{Query: `TRUNCATE child, parent, child`},
+				{Query: `SELECT * FROM parent`, Expected: []sql.Row{}},
+			},
+		},
+		{
+			Name: "external foreign keys prevent every truncate",
+			SetUpScript: []string{
+				`CREATE TABLE parent (id INT PRIMARY KEY)`,
+				`CREATE TABLE child (id INT REFERENCES parent)`,
+				`CREATE TABLE unrelated (id INT)`,
+				`INSERT INTO parent VALUES (1)`,
+				`INSERT INTO unrelated VALUES (2)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `TRUNCATE unrelated, parent`, ExpectedErr: `cannot truncate table parent`},
+				{Query: `SELECT * FROM unrelated`, Expected: []sql.Row{{2}}},
+				{Query: `SELECT * FROM parent`, Expected: []sql.Row{{1}}},
+			},
+		},
+		{
+			Name: "check all truncate privileges before changing rows",
+			SetUpScript: []string{
+				`CREATE TABLE allowed_table (id INT)`,
+				`CREATE TABLE protected_table (id INT)`,
+				`INSERT INTO allowed_table VALUES (1)`,
+				`INSERT INTO protected_table VALUES (2)`,
+				`CREATE USER truncator PASSWORD 'password'`,
+				`GRANT TRUNCATE ON allowed_table TO truncator`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Username: "truncator", Password: "password", Query: `TRUNCATE allowed_table, protected_table`, ExpectedErr: "permission denied"},
+				{Query: `SELECT * FROM allowed_table`, Expected: []sql.Row{{1}}},
+				{Query: `SELECT * FROM protected_table`, Expected: []sql.Row{{2}}},
+			},
+		},
+		{
+			Name: "cross-schema and cyclic references",
+			SetUpScript: []string{
+				`CREATE SCHEMA first_schema`,
+				`CREATE SCHEMA second_schema`,
+				`CREATE TABLE first_schema.t (id INT PRIMARY KEY)`,
+				`CREATE TABLE second_schema.t (id INT PRIMARY KEY REFERENCES first_schema.t)`,
+				`INSERT INTO first_schema.t VALUES (1)`,
+				`INSERT INTO second_schema.t VALUES (1)`,
+				`ALTER TABLE first_schema.t ADD FOREIGN KEY (id) REFERENCES second_schema.t`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `TRUNCATE first_schema.t, second_schema.t`},
+				{Query: `SELECT * FROM first_schema.t`, Expected: []sql.Row{}},
+				{Query: `SELECT * FROM second_schema.t`, Expected: []sql.Row{}},
+			},
+		},
+	})
+}
+
+func TestForeignKeyIntegerWidening(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "widen parent and child while preserving enforcement",
+		SetUpScript: []string{
+			`CREATE TABLE parent (id INT PRIMARY KEY)`,
+			`CREATE TABLE child (id INT REFERENCES parent ON UPDATE CASCADE ON DELETE CASCADE)`,
+			`INSERT INTO parent VALUES (1)`,
+			`INSERT INTO child VALUES (1)`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: `ALTER TABLE parent ALTER COLUMN id TYPE BIGINT`},
+			{Query: `SELECT * FROM parent`, Expected: []sql.Row{{int64(1)}}},
+			{Query: `INSERT INTO child VALUES (99)`, ExpectedErr: `Foreign key violation`},
+			{Query: `UPDATE parent SET id = 2 WHERE id = 1`},
+			{Query: `SELECT * FROM child`, Expected: []sql.Row{{2}}},
+			{Query: `ALTER TABLE child ALTER COLUMN id TYPE BIGINT`},
+			{Query: `INSERT INTO parent VALUES (2147483648)`},
+			{Query: `INSERT INTO child VALUES (2147483648)`},
+			{Query: `SELECT * FROM child ORDER BY id`, Expected: []sql.Row{{int64(2)}, {int64(2147483648)}}},
+			{Query: `ALTER TABLE parent ALTER COLUMN id TYPE INT`, ExpectedErr: `unable to change type`},
+			{Query: `DELETE FROM parent WHERE id = 2147483648`},
+			{Query: `SELECT * FROM child`, Expected: []sql.Row{{int64(2)}}},
+		},
+	}})
+}
+
+func TestForeignKeySerialWidening(t *testing.T) {
+	for _, tc := range []struct{ from, to string }{
+		{"SMALLSERIAL", "INT"},
+		{"SMALLSERIAL", "BIGINT"},
+		{"SERIAL", "BIGINT"},
+	} {
+		RunScripts(t, []ScriptTest{{
+			Name: tc.from + " to " + tc.to,
+			SetUpScript: []string{
+				`CREATE TABLE parent (id ` + tc.from + ` PRIMARY KEY)`,
+				`CREATE TABLE child (id INT REFERENCES parent ON DELETE CASCADE)`,
+				`INSERT INTO parent DEFAULT VALUES`,
+				`INSERT INTO child VALUES (1)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `ALTER TABLE parent ALTER COLUMN id TYPE ` + tc.to},
+				{Query: `SELECT id::bigint FROM parent`, Expected: []sql.Row{{int64(1)}}},
+				{Query: `INSERT INTO parent DEFAULT VALUES`},
+				{Query: `SELECT id::bigint FROM parent ORDER BY id`, Expected: []sql.Row{{int64(1)}, {int64(2)}}},
+				{Query: `INSERT INTO child VALUES (2)`},
+				{Query: `INSERT INTO child VALUES (99)`, ExpectedErr: `Foreign key violation`},
+				{Query: `DELETE FROM parent WHERE id = 1`},
+				{Query: `SELECT * FROM child`, Expected: []sql.Row{{2}}},
+			},
+		}})
+	}
+}

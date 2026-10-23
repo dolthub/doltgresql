@@ -16,15 +16,15 @@ package ast
 
 import (
 	"github.com/cockroachdb/errors"
-
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/auth"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeTruncate handles *tree.Truncate nodes.
-func nodeTruncate(ctx *Context, node *tree.Truncate) (*vitess.DDL, error) {
+func nodeTruncate(ctx *Context, node *tree.Truncate) (vitess.Statement, error) {
 	if node == nil || len(node.Tables) == 0 {
 		return nil, nil
 	}
@@ -32,12 +32,25 @@ func nodeTruncate(ctx *Context, node *tree.Truncate) (*vitess.DDL, error) {
 	case tree.DropDefault:
 		// Default behavior, nothing to do
 	case tree.DropRestrict:
-		return nil, errors.Errorf("RESTRICT is not yet supported")
+		// RESTRICT is the default behavior.
 	case tree.DropCascade:
 		return nil, errors.Errorf("CASCADE is not yet supported")
 	}
 	if len(node.Tables) > 1 {
-		return nil, errors.Errorf("truncating multiple tables at once is not yet supported")
+		tables := make([]vitess.TableName, 0, len(node.Tables))
+		authNames := make([]string, 0, len(node.Tables)*3)
+		for _, name := range node.Tables {
+			table, err := nodeTableName(ctx, &name)
+			if err != nil {
+				return nil, err
+			}
+			tables = append(tables, table)
+			authNames = append(authNames, table.DbQualifier.String(), table.SchemaQualifier.String(), table.Name.String())
+		}
+		return vitess.InjectedStatement{
+			Statement: &pgnodes.TruncateTables{Tables: tables},
+			Auth:      vitess.AuthInformation{AuthType: auth.AuthType_TRUNCATE, TargetType: auth.AuthTargetType_TableIdentifiers, TargetNames: authNames},
+		}, nil
 	}
 	tableName, err := nodeTableName(ctx, &node.Tables[0])
 	if err != nil {
