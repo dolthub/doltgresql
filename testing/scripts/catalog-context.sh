@@ -39,3 +39,6 @@ go test -c -o "$compat_binary" ./testing/go
 # Native dependency diagnostics include structured PostgreSQL Detail fields.
 "$compat_binary" -test.v -test.timeout=5m -test.run '^TestDropTable$/^DROP_TABLE_on_table_type_on_function_parameter$'
 "$compat_binary" -test.v -test.run '^TestScriptErrorDetail$'
+
+# Native metadata tuple proposals and branch-local publication.
+"$compat_binary" -test.v -test.timeout=5m -test.run '^TestBranchMetadataCatalog$'
