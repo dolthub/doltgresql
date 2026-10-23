@@ -281,7 +281,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			if err := conn.Connect(ctx, assertion.Username, assertion.Password); err != nil {
 				if assertion.ExpectedErr != "" {
 					require.Error(t, err)
-					assert.Contains(t, err.Error(), assertion.ExpectedErr)
+					assert.Contains(t, scriptErrorText(err), assertion.ExpectedErr)
 				} else {
 					require.NoError(t, err)
 				}
@@ -305,7 +305,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 				}
 				if assertion.ExpectedErr != "" {
 					require.Error(t, err)
-					assert.Contains(t, err.Error(), assertion.ExpectedErr)
+					assert.Contains(t, scriptErrorText(err), assertion.ExpectedErr)
 				} else {
 					require.NoError(t, err)
 				}
@@ -1281,4 +1281,14 @@ func (conn *Connection) Close(ctx context.Context) {
 	}
 	conn.Default = nil
 	conn.Current = nil
+}
+
+// PostgreSQL transmits dependent-object diagnostics in Detail; Doltgres often
+// includes the same text in Message. Preserve both without weakening assertions.
+func scriptErrorText(err error) string {
+	result := err.Error()
+	if pgerr, ok := err.(*pgconn.PgError); ok && pgerr.Detail != "" {
+		result += "\n" + pgerr.Message + "\n" + pgerr.Detail
+	}
+	return result
 }
