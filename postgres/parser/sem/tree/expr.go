@@ -1107,6 +1107,8 @@ const (
 	NegInnerProduct
 	JaccardDistance
 	HammingDistance
+	// CustomBinary is an operator without a constant of its own, whose symbol is held by the BinaryExpr.
+	CustomBinary
 
 	NumBinaryOperators
 )
@@ -1183,6 +1185,8 @@ type BinaryExpr struct {
 	Left, Right Expr
 	// Schema is only set for operators from a particular named schema using the OPERATOR() syntax
 	Schema Name
+	// CustomOperator is the symbol of a CustomBinary operator.
+	CustomOperator CustomOperator
 
 	typeAnnotation
 	Fn *BinOp
@@ -1226,6 +1230,10 @@ func (node *BinaryExpr) memoizeFn() {
 
 // Format implements the NodeFormatter interface.
 func (node *BinaryExpr) Format(ctx *FmtCtx) {
+	if node.Operator == CustomBinary {
+		binExprFmtWithParen(ctx, node.Left, string(node.CustomOperator), node.Right, true)
+		return
+	}
 	binExprFmtWithParen(ctx, node.Left, node.Operator.String(), node.Right, node.Operator.isPadded())
 }
 

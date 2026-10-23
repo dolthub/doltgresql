@@ -21,6 +21,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression/function/vector"
 
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
+	postgis "github.com/dolthub/doltgresql/server/extensions/postgis/v3_6_4"
 	uuid_ossp "github.com/dolthub/doltgresql/server/extensions/uuid-ossp/v1_1"
 	pgvector "github.com/dolthub/doltgresql/server/extensions/vector/v0_8_6"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -32,7 +33,24 @@ var registry = map[string]*extdef.Extension{}
 // implementations holds every registered extension's routines, keyed by the extension's name and the routine's symbol.
 var implementations = map[string]map[string]extdef.Function{}
 
-// codecs holds every registered type's storage codec, keyed by the name of the type's send routine.
+// queryImplementations holds every registered extension's routines that run queries, keyed by the extension's name and
+// the routine's symbol.
+var queryImplementations = map[string]map[string]extdef.QueryFunction{}
+
+// windowImplementations holds every registered extension's window functions, keyed by the extension's name and the
+// routine's symbol.
+var windowImplementations = map[string]map[string]extdef.WindowFunction{}
+
+// typedImplementations holds every registered extension's routines that receive the types of their arguments, keyed by
+// the extension's name and the routine's symbol.
+var typedImplementations = map[string]map[string]extdef.TypedFunction{}
+
+// triggerImplementations holds every registered extension's routines that triggers fire, keyed by the extension's name
+// and the routine's symbol.
+var triggerImplementations = map[string]map[string]extdef.TriggerFunction{}
+
+// codecs holds every registered type's storage codec, keyed by the name of the type's send routine, or by the type's
+// own name when it has no send routine.
 var codecs = map[string]*pgtypes.TypeCodec{}
 
 // distanceTypes holds the distance type of every tagged distance routine, keyed by the extension's name and the
@@ -50,6 +68,7 @@ func Init() {
 	pgtypes.LoadTypeCodec = getTypeCodec
 	Register(uuid_ossp.Extension())
 	Register(pgvector.Extension())
+	Register(postgis.Extension())
 }
 
 // Register adds the given extension to the registry.
@@ -58,6 +77,10 @@ func Register(ext *extdef.Extension) {
 		panic(errors.Errorf(`extension "%s" has already been registered`, ext.Name))
 	}
 	symbols := make(map[string]extdef.Function, len(ext.Routines))
+	querySymbols := map[string]extdef.QueryFunction{}
+	windowSymbols := map[string]extdef.WindowFunction{}
+	typedSymbols := map[string]extdef.TypedFunction{}
+	triggerSymbols := map[string]extdef.TriggerFunction{}
 	names := make(map[string]string, len(ext.Routines))
 	distances := map[string]vector.DistanceType{}
 	for _, routine := range ext.Routines {
@@ -65,6 +88,18 @@ func Register(ext *extdef.Extension) {
 			panic(errors.Errorf(`extension "%s" declares the symbol "%s" twice`, ext.Name, routine.Symbol))
 		}
 		symbols[routine.Symbol] = routine.Impl
+		if routine.QueryImpl != nil {
+			querySymbols[routine.Symbol] = routine.QueryImpl
+		}
+		if routine.WindowImpl != nil {
+			windowSymbols[routine.Symbol] = routine.WindowImpl
+		}
+		if routine.TypedImpl != nil {
+			typedSymbols[routine.Symbol] = routine.TypedImpl
+		}
+		if routine.TriggerImpl != nil {
+			triggerSymbols[routine.Symbol] = routine.TriggerImpl
+		}
 		names[routine.Symbol] = routine.Name
 		if routine.DistanceType != nil {
 			distances[routine.Symbol] = routine.DistanceType
@@ -75,6 +110,9 @@ func Register(ext *extdef.Extension) {
 			continue
 		}
 		sendName, ok := names[declared.Send]
+		if declared.Send == "" {
+			sendName, ok = declared.Name, true
+		}
 		if !ok {
 			panic(errors.Errorf(`extension "%s" declares a codec for the type "%s", which has no send routine`, ext.Name, declared.Name))
 		}
@@ -97,6 +135,10 @@ func Register(ext *extdef.Extension) {
 	}
 	registry[ext.Name] = ext
 	implementations[ext.Name] = symbols
+	queryImplementations[ext.Name] = querySymbols
+	windowImplementations[ext.Name] = windowSymbols
+	typedImplementations[ext.Name] = typedSymbols
+	triggerImplementations[ext.Name] = triggerSymbols
 	distanceTypes[ext.Name] = distances
 }
 
@@ -114,11 +156,13 @@ func GetAll() map[string]*extdef.Extension {
 	return registry
 }
 
-// GetRoutine returns the routine matching the given name and parameter count within any registered extension.
-func GetRoutine(name string, paramCount int) (extdef.Routine, bool) {
+// GetRoutine returns the routine matching the given name and parameter type names within any registered extension.
+func GetRoutine(name string, paramTypeNames []string) (extdef.Routine, bool) {
 	for _, ext := range registry {
 		for _, routine := range ext.Routines {
-			if routine.Name == name && len(routine.Parameters) == paramCount {
+			if routine.Name == name && slices.EqualFunc(routine.Parameters, paramTypeNames, func(param extdef.Parameter, typeName string) bool {
+				return param.Type == typeName
+			}) {
 				return routine, true
 			}
 		}
@@ -137,6 +181,34 @@ func GetFunction(extensionName string, symbol string) (extdef.Function, error) {
 		return nil, errors.Errorf(`extension "%s" does not declare the function "%s"`, extensionName, symbol)
 	}
 	return f, nil
+}
+
+// GetQueryFunction returns the implementation of the given symbol within the given extension when the symbol names a
+// routine that runs queries.
+func GetQueryFunction(extensionName string, symbol string) (extdef.QueryFunction, bool) {
+	f, ok := queryImplementations[extensionName][symbol]
+	return f, ok
+}
+
+// GetWindowFunction returns the implementation of the given symbol within the given extension when the symbol names a
+// window function.
+func GetWindowFunction(extensionName string, symbol string) (extdef.WindowFunction, bool) {
+	f, ok := windowImplementations[extensionName][symbol]
+	return f, ok
+}
+
+// GetTypedFunction returns the implementation of the given symbol within the given extension when the symbol names a
+// routine that receives the types of its arguments.
+func GetTypedFunction(extensionName string, symbol string) (extdef.TypedFunction, bool) {
+	f, ok := typedImplementations[extensionName][symbol]
+	return f, ok
+}
+
+// GetTriggerFunction returns the implementation of the given symbol within the given extension when the symbol names a
+// routine that triggers fire.
+func GetTriggerFunction(extensionName string, symbol string) (extdef.TriggerFunction, bool) {
+	f, ok := triggerImplementations[extensionName][symbol]
+	return f, ok
 }
 
 // getTypeCodec returns the storage codec registered under the given send routine name, or nil when no registered type

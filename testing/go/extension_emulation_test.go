@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/casts"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/extensions"
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -165,6 +166,18 @@ func TestExtensionEmulation(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Declared routines report their volatility",
+			SetUpScript: []string{
+				"CREATE EXTENSION doltgres_test;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT proname, provolatile FROM pg_proc WHERE proname IN ('dgtest_upper_eq', 'dgtest_upper_text', 'dgtest_upper_distance') ORDER BY 1;",
+					Expected: []sql.Row{{"dgtest_upper_distance", "v"}, {"dgtest_upper_eq", "i"}, {"dgtest_upper_text", "s"}},
+				},
+			},
+		},
 	})
 }
 
@@ -217,6 +230,7 @@ func registerTestExtension() {
 					Parameters: []extdef.Parameter{{Type: "dgtest_upper"}, {Type: "dgtest_upper"}},
 					Returns:    "bool",
 					Strict:     true,
+					Volatility: tree.VolatilityImmutable,
 					Impl: func(ctx *sql.Context, args ...any) (any, error) {
 						return args[0].(string) == args[1].(string), nil
 					},
@@ -227,6 +241,7 @@ func registerTestExtension() {
 					Parameters: []extdef.Parameter{{Type: "dgtest_upper"}},
 					Returns:    "text",
 					Strict:     true,
+					Volatility: tree.VolatilityStable,
 					Impl: func(ctx *sql.Context, args ...any) (any, error) {
 						return args[0].(string), nil
 					},
