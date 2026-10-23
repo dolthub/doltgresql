@@ -115,3 +115,49 @@ func TestPostgresProvisionalCatalogDDL(t *testing.T) {
 		},
 	}})
 }
+
+func TestBranchIndexLifecycle(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "index replacement follows branch schema and transaction rollback",
+		SetUpScript: []string{
+			"CREATE TABLE t(id int PRIMARY KEY,x int,v text)",
+			"INSERT INTO t VALUES(1,10,'a'),(2,20,'b')",
+			"SELECT dolt_commit('-Am','base')",
+			"SELECT dolt_checkout('-b','other')",
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: "CREATE UNIQUE INDEX x_idx ON t(x)"},
+			{Query: "INSERT INTO t VALUES(3,10,'c')", ExpectedErrCode: "23505"},
+			{
+				Query:           "ALTER TABLE t ALTER COLUMN x TYPE bigint USING 1::bigint",
+				ExpectedErrCode: "23505",
+			},
+			{Query: "SELECT x FROM t ORDER BY x", Expected: []sql.Row{{10}, {20}}},
+			{Query: "ALTER TABLE t ALTER COLUMN x TYPE bigint USING x::bigint+1"},
+			{Query: "ALTER TABLE t DROP COLUMN id"},
+			{Query: "SELECT * FROM t ORDER BY x", Expected: []sql.Row{{11, "a"}, {21, "b"}}},
+			{Query: "ALTER TABLE t ADD CONSTRAINT v_unique UNIQUE(v)"},
+			{Query: "INSERT INTO t VALUES(30,'a')", ExpectedErrCode: "23505"},
+			{Query: "BEGIN"},
+			{Query: "SAVEPOINT keep"},
+			{Query: "ALTER TABLE t DROP COLUMN x"},
+			{Query: "ROLLBACK TO keep"},
+			{Query: "COMMIT"},
+			{
+				Query:    "SELECT indexname FROM pg_indexes WHERE tablename='t' ORDER BY indexname",
+				Expected: []sql.Row{{"v_unique"}, {"x_idx"}},
+			},
+			{Query: "SELECT dolt_commit('-Am','indexes')", SkipResultsCheck: true},
+			{
+				Query:    "SELECT id,x,v FROM t AS OF 'HEAD~1' ORDER BY id",
+				Expected: []sql.Row{{1, 10, "a"}, {2, 20, "b"}},
+			},
+			{Query: "SELECT dolt_checkout('main')", SkipResultsCheck: true},
+			{Query: "CREATE INDEX x_idx ON t(v)"},
+			{
+				Query:    `SELECT a.id,b.x FROM "postgres/main".public.t a JOIN "postgres/other".public.t b ON a.v=b.v ORDER BY a.id`,
+				Expected: []sql.Row{{1, 11}, {2, 21}},
+			},
+		},
+	}})
+}
