@@ -18,3 +18,12 @@ they do not establish branch-aware defaults or generated-column DDL support.
 Existing framework profile exclusions are unchanged and remain reported as skips.
 Use the preserved original tests for a broader diagnostic run; do not infer that
 all unselected tests pass, or that tests with no activation cover revision binding.
+
+The revision-view gate adds TestPostgresRevisionCatalogViews, TestBranchSearchPath,
+and five existing TestSchemas scenarios. The view test is explicitly fork-only:
+a direct probe of Doltgres returned current-branch metadata for three qualified
+view assertions. It is skipped on Doltgres until that provider honors revision
+qualifiers. TestBranchSearchPath passes on both implementations. The original
+empty-path and non-default-schema scenarios were also probed; their failures were
+PostgreSQL-versus-Doltgres error wording, so their assertions remain unchanged and
+they are not part of this portable selection. Native tests cover those errors.
