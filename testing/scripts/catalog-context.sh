@@ -10,7 +10,7 @@ compat_binary=$(mktemp /tmp/catalog-compat.XXXXXX)
 trap 'rm -f "$compat_binary"' EXIT
 go test -c -o "$compat_binary" ./testing/go
 # Version semantics and activated-catalog gates, plus native SQL/catalog inputs.
-"$compat_binary" -test.v -test.timeout=15m -test.run '^(TestBranchRoutineCatalog|TestPostgresCatalogTypedParameters|TestBranchBuiltinResolution|TestSelectFromFunctions|TestPostgresRevisionCatalogViews|TestBranchSearchPath|TestBranchCatalogIntrospection|TestBranchCatalogAlter|TestAsOf|TestDoltMergeData|TestPostgresMergeConflictStatus|TestBranchCatalogCreate|TestBranchCatalogDrop|TestBranchCatalogSameName|TestCatalogHistory|TestProllyVersionCompatibility|TestNativeVersionedQueries|TestNativeHistoricalCursors|TestRevisionWorkingSets|TestInfoSchemaTables|TestInfoSchemaPgCharMaxLength|TestWithStatements|TestWithRecursive)$'
+"$compat_binary" -test.v -test.timeout=15m -test.run '^(TestBranchDependencyCatalog|TestBranchRoutineCatalog|TestPostgresCatalogTypedParameters|TestBranchBuiltinResolution|TestSelectFromFunctions|TestPostgresRevisionCatalogViews|TestBranchSearchPath|TestBranchCatalogIntrospection|TestBranchCatalogAlter|TestAsOf|TestDoltMergeData|TestPostgresMergeConflictStatus|TestBranchCatalogCreate|TestBranchCatalogDrop|TestBranchCatalogSameName|TestCatalogHistory|TestProllyVersionCompatibility|TestNativeVersionedQueries|TestNativeHistoricalCursors|TestRevisionWorkingSets|TestInfoSchemaTables|TestInfoSchemaPgCharMaxLength|TestWithStatements|TestWithRecursive)$'
 # Preserve original tests; exclude whole scenarios requiring unimplemented DDL,
 # detached-HEAD USE syntax, fixed OIDs or engine-specific system inventories.
 "$compat_binary" -test.v -test.timeout=5m -test.run '^TestInfoSchemaRevisionDb$/^info_schema_changes_with_dolt_checkout$'
@@ -35,3 +35,7 @@ go test -c -o "$compat_binary" ./testing/go
 
 # Canonical user routine definitions survive capture, replacement and checkout.
 "$compat_binary" -test.v -test.timeout=5m -test.run '^TestCreateFunctionLanguagePlpgsql$/^Branching$'
+
+# Native dependency diagnostics include structured PostgreSQL Detail fields.
+"$compat_binary" -test.v -test.timeout=5m -test.run '^TestDropTable$/^DROP_TABLE_on_table_type_on_function_parameter$'
+"$compat_binary" -test.v -test.run '^TestScriptErrorDetail$'
