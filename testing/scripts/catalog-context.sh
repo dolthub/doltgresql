@@ -45,3 +45,10 @@ go test -c -o "$compat_binary" ./testing/go
 
 # Retained signatures and plan reanalysis across schema revisions.
 "$compat_binary" -test.v -test.timeout=5m -test.run '^TestCatalogLifecycle$'
+
+# Native command-visible catalog mutations, data-layout publication and rollback.
+"$compat_binary" -test.v -test.timeout=5m -test.run '^TestPostgresProvisionalCatalogDDL$'
+# Original Doltgres cases, unchanged. Other ALTER scenarios need expression,
+# foreign-key or independent index-creation codecs; nullability error wording
+# differs and is covered with native SQLSTATE assertions above.
+"$compat_binary" -test.v -test.timeout=5m -test.run '^TestAlterTable$/^(Drop_Column|ADD_COLUMN_IF_NOT_EXISTS|Set_Column_Default|Drop_Constraint|Alter_Column_Type_with_USING_clause|Alter_Column_Type_with_USING_expression_form|Alter_Column_Type_with_USING_in_Django_migration_style|Alter_Column_Type_with_USING_on_a_schema-qualified_table)$'

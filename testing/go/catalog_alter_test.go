@@ -59,3 +59,59 @@ func TestBranchCatalogAlter(t *testing.T) {
 		},
 	}})
 }
+
+// Native multi-pass DDL must publish one matching schema/data state. Keep this
+// separate from Dolt's nontransactional DDL semantics: SQL rollback is PostgreSQL's.
+func TestPostgresProvisionalCatalogDDL(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "multi-pass native DDL is atomic and branch scoped",
+		SetUpScript: []string{
+			"CREATE TABLE t(id int PRIMARY KEY, old text, v int)",
+			"INSERT INTO t VALUES(1,'one',10),(2,'two',20)",
+			"SELECT dolt_commit('-Am','base')",
+			"SELECT dolt_checkout('-b','other')",
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: "ALTER TABLE t DROP COLUMN old, ADD COLUMN extra text, ALTER COLUMN extra SET STORAGE MAIN, ALTER COLUMN v SET NOT NULL"},
+			{Query: "SELECT * FROM t ORDER BY id", Expected: []sql.Row{{1, 10, nil}, {2, 20, nil}}},
+			{Query: "INSERT INTO t VALUES(3,NULL,'bad')", ExpectedErrCode: "23502"},
+			{Query: "ALTER TABLE t ADD COLUMN bad int, ALTER COLUMN bad SET COMPRESSION pglz", ExpectedErr: "does not support compression"},
+			{Query: "SELECT count(*) FROM pg_attribute WHERE attrelid='t'::regclass AND attname='bad'", Expected: []sql.Row{{0}}},
+			{Query: "ALTER TABLE t ADD COLUMN bad int, ALTER COLUMN bad SET NOT NULL", ExpectedErrCode: "23502"},
+			{Query: "SELECT * FROM t ORDER BY id", Expected: []sql.Row{{1, 10, nil}, {2, 20, nil}}},
+			{Query: "BEGIN"},
+			{Query: "SAVEPOINT schema_change"},
+			{Query: "ALTER TABLE t DROP COLUMN extra, ALTER COLUMN v DROP NOT NULL"},
+			{Query: "INSERT INTO t VALUES(3,NULL)"},
+			{Query: "ROLLBACK TO schema_change"},
+			{Query: "SELECT * FROM t ORDER BY id", Expected: []sql.Row{{1, 10, nil}, {2, 20, nil}}},
+			{Query: "COMMIT"},
+			{Query: "SELECT dolt_commit('-Am','native layout')", SkipResultsCheck: true},
+			{Query: `SELECT a.v,b.old FROM "postgres/other".public.t a JOIN "postgres/main".public.t b USING(id) ORDER BY id`, Expected: []sql.Row{{10, "one"}, {20, "two"}}},
+			{Query: "SELECT * FROM t AS OF 'HEAD~1' ORDER BY id", Expected: []sql.Row{{1, "one", 10}, {2, "two", 20}}},
+			{Query: "SELECT dolt_checkout('main')", SkipResultsCheck: true},
+			{Query: "INSERT INTO t VALUES(3,'three',NULL)"},
+			{Query: "SELECT count(*) FROM t", Expected: []sql.Row{{3}}},
+		},
+	}, {
+		Name: "native rewrites preserve historical types and evaluate defaults",
+		SetUpScript: []string{
+			"CREATE TABLE t(id int PRIMARY KEY,v text)",
+			"INSERT INTO t VALUES(1,'12'),(2,'30')",
+			"SELECT dolt_commit('-Am','text base')",
+			"SELECT dolt_checkout('-b','other')",
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: "ALTER TABLE t ALTER COLUMN v TYPE integer USING v::integer, ADD COLUMN added int NOT NULL DEFAULT 42, ADD CONSTRAINT positive CHECK(added>0)"},
+			{Query: "SELECT * FROM t ORDER BY id", Expected: []sql.Row{{1, 12, 42}, {2, 30, 42}}},
+			{Query: "INSERT INTO t(id,v) VALUES(3,50)"},
+			{Query: "SELECT added FROM t WHERE id=3", Expected: []sql.Row{{42}}},
+			{Query: "INSERT INTO t VALUES(4,20,-1)", ExpectedErrCode: "23514"},
+			{Query: "ALTER TABLE t ADD COLUMN failed int DEFAULT -1 CHECK(failed>0)", ExpectedErrCode: "23514"},
+			{Query: "SELECT count(*) FROM pg_attribute WHERE attrelid='t'::regclass AND attname='failed'", Expected: []sql.Row{{0}}},
+			{Query: "SELECT dolt_commit('-Am','native rewrite')", SkipResultsCheck: true},
+			{Query: `SELECT pg_typeof(a.v)::text,pg_typeof(b.v)::text,a.v,b.v FROM "postgres/other".public.t a JOIN "postgres/main".public.t b USING(id) WHERE id=1`, Expected: []sql.Row{{"integer", "text", 12, "12"}}},
+			{Query: "SELECT * FROM t AS OF 'HEAD~1' ORDER BY id", Expected: []sql.Row{{1, "12"}, {2, "30"}}},
+		},
+	}})
+}

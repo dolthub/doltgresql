@@ -306,7 +306,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 				if assertion.ExpectedErr != "" {
 					require.Error(t, err)
 					assert.Contains(t, scriptErrorText(err), assertion.ExpectedErr)
-				} else {
+				} else if assertion.ExpectedErrCode == "" {
 					require.NoError(t, err)
 				}
 			} else if assertion.ExpectedTag != "" {
