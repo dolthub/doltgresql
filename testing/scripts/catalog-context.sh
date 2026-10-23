@@ -32,3 +32,6 @@ go test -c -o "$compat_binary" ./testing/go
 # Keep the native integer error wording and whole-record NULL behavior; the two
 # Doltgres scenarios expecting different behavior remain outside this gate.
 "$compat_binary" -test.v -test.timeout=5m -test.run '^TestPlpgsqlRecordInto$/^(RECORD_.*|variable_declaration_default_referencing_an_earlier_RECORD|SELECT_INTO_.*|INSERT_RETURNING_INTO_a_RECORD_variable|EXECUTE_INTO_a_RECORD_variable|trigger_function_using_SELECT_INTO_a_RECORD_variable|errors_accessing_RECORD_fields)$'
+
+# Canonical user routine definitions survive capture, replacement and checkout.
+"$compat_binary" -test.v -test.timeout=5m -test.run '^TestCreateFunctionLanguagePlpgsql$/^Branching$'
