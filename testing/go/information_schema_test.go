@@ -710,6 +710,8 @@ func TestInfoSchemaSchemata(t *testing.T) {
 }
 
 func TestInfoSchemaTables(t *testing.T) {
+	// The native fork exposes its built-in Dolt views in a real dolt namespace.
+	// Exclude that implementation-specific inventory from these schema tests.
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "information_schema.tables",
@@ -724,13 +726,13 @@ func TestInfoSchemaTables(t *testing.T) {
 					},
 				},
 				{
-					Query: `SELECT DISTINCT table_schema FROM information_schema.tables order by table_schema;`,
+					Query: `SELECT DISTINCT table_schema FROM information_schema.tables WHERE table_schema <> 'dolt' order by table_schema;`,
 					Expected: []sql.Row{
 						{"information_schema"}, {"pg_catalog"}, {"public"},
 					},
 				},
 				{
-					Query: `SELECT table_catalog, table_schema FROM information_schema.tables group by table_catalog, table_schema order by table_schema;`,
+					Query: `SELECT table_catalog, table_schema FROM information_schema.tables WHERE table_schema <> 'dolt' group by table_catalog, table_schema order by table_schema;`,
 					Expected: []sql.Row{
 						{"postgres", "information_schema"},
 						{"postgres", "pg_catalog"},
@@ -756,13 +758,13 @@ func TestInfoSchemaTables(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query: `SELECT DISTINCT table_schema FROM information_schema.tables order by table_schema;`,
+					Query: `SELECT DISTINCT table_schema FROM information_schema.tables WHERE table_schema <> 'dolt' order by table_schema;`,
 					Expected: []sql.Row{
 						{"information_schema"}, {"pg_catalog"}, {"public"}, {"test_schema"},
 					},
 				},
 				{
-					Query: `SELECT table_catalog, table_schema FROM information_schema.tables group by table_catalog, table_schema order by table_schema;`,
+					Query: `SELECT table_catalog, table_schema FROM information_schema.tables WHERE table_schema <> 'dolt' group by table_catalog, table_schema order by table_schema;`,
 					Expected: []sql.Row{
 						{"postgres", "information_schema"},
 						{"postgres", "pg_catalog"},

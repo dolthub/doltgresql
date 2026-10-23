@@ -143,3 +143,60 @@ func TestPostgresWorkspaceCommands(t *testing.T) {
 		},
 	})
 }
+
+// Cross-feature coverage: version commands must preserve the same schema and
+// storage authority as ordinary branch-aware SQL.
+func TestDoltFunctionCatalogIntegration(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "restore schema with data and replace recreated working sets",
+		SetUpScript: []string{
+			"CREATE TABLE t(id int PRIMARY KEY,v text)",
+			"INSERT INTO t VALUES(1,'base')",
+			"SELECT dolt_commit('-Am','base')",
+			"SELECT dolt_checkout('-b','other')",
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: "ALTER TABLE t ADD COLUMN extra text DEFAULT 'new'"},
+			{
+				Query:    "SELECT count(*) FROM dolt_query_diff('SELECT extra FROM t', $$SELECT 'new'::text AS extra$$)",
+				Expected: []sql.Row{{0}},
+			},
+			{Query: "SELECT dolt_checkout('t')", SkipResultsCheck: true},
+			{Query: "SELECT * FROM t", Expected: []sql.Row{{1, "base"}}},
+			{Query: "UPDATE t SET v='old branch'"},
+			{Query: "SELECT dolt_commit('-Am','old')", SkipResultsCheck: true},
+			{Query: "SELECT dolt_checkout('main')", SkipResultsCheck: true},
+			{Query: "SELECT dolt_branch('-D','other')", SkipResultsCheck: true},
+			{Query: "SELECT dolt_checkout('-b','other')", SkipResultsCheck: true},
+			{Query: "SELECT * FROM t", Expected: []sql.Row{{1, "base"}}},
+			{Query: "SELECT count(*) FROM dolt_status", Expected: []sql.Row{{0}}},
+		},
+	}, {
+		Name: "documents tests and queries follow branches",
+		SetUpScript: []string{
+			"INSERT INTO dolt.docs VALUES('README.md','base')",
+			"INSERT INTO dolt.tests VALUES('rows',NULL,'SELECT 1','expected_single_value','==','1')",
+			"INSERT INTO dolt.query_catalog VALUES('q',1,'one','SELECT 1','base')",
+			"SELECT dolt_commit('-Am','metadata')",
+			"SELECT dolt_checkout('-b','other')",
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: "UPDATE dolt.docs SET doc_text='other' WHERE doc_name='README.md'"},
+			{Query: "UPDATE dolt.tests SET test_query='SELECT 2',assertion_value='2'"},
+			{Query: "UPDATE dolt.query_catalog SET description='other'"},
+			{
+				Query:    "SELECT doc_text FROM dolt.docs WHERE doc_name='README.md'",
+				Expected: []sql.Row{{"other"}},
+			},
+			{Query: "SELECT status FROM dolt_test_run('rows')", Expected: []sql.Row{{"PASS"}}},
+			{Query: "SELECT description FROM dolt.query_catalog", Expected: []sql.Row{{"other"}}},
+			{Query: "SELECT dolt_checkout('main')", SkipResultsCheck: true},
+			{
+				Query:    "SELECT doc_text FROM dolt.docs WHERE doc_name='README.md'",
+				Expected: []sql.Row{{"base"}},
+			},
+			{Query: "SELECT test_query FROM dolt.tests", Expected: []sql.Row{{"SELECT 1"}}},
+			{Query: "SELECT description FROM dolt.query_catalog", Expected: []sql.Row{{"base"}}},
+		},
+	}})
+}
