@@ -104,3 +104,25 @@ func TestOIDMapCompareLearning(t *testing.T) {
 		rows([2]string{"159776", "a"}),
 		rows([2]string{"21005", "a"})))
 }
+
+func TestCompareRowsJSONObjects(t *testing.T) {
+	// JSON objects decode to maps, which must be converted into a form that can be compared with ==
+	jsonbDesc := &pgproto3.RowDescription{Fields: []pgproto3.FieldDescription{
+		{Name: []byte("doc"), DataTypeOID: pgtype.JSONBOID, Format: 0},
+	}}
+	rows := func(vals ...string) []*pgproto3.DataRow {
+		out := make([]*pgproto3.DataRow, len(vals))
+		for i, v := range vals {
+			out[i] = &pgproto3.DataRow{Values: [][]byte{[]byte(v)}}
+		}
+		return out
+	}
+
+	require.NoError(t, CompareRowsOrdered(NewOIDMap(), jsonbDesc, jsonbDesc,
+		rows(`{"a": 1}`, `{"b": [1, 2]}`),
+		rows(`{"a": 1}`, `{"b": [1, 2]}`)))
+	require.Error(t, CompareRowsOrdered(NewOIDMap(), jsonbDesc, jsonbDesc, rows(`{"a": 1}`), rows(`{"a": 2}`)))
+	require.NoError(t, CompareRowsUnordered(NewOIDMap(), jsonbDesc, jsonbDesc,
+		rows(`{"a": 1}`, `{"b": 2}`),
+		rows(`{"b": 2}`, `{"a": 1}`)))
+}

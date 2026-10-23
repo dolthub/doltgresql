@@ -31,9 +31,10 @@ type ReplayOptions struct {
 	File         string
 	Port         int
 	Messages     []pgproto3.Message
-	PrintQueries bool     // Prints both queries and file names to the CLI
-	FailPSQL     bool     // Whether we should automatically fail PSQL commands, since they're slow and we fail them anyway
-	FailQueries  []string // These are queries that cause catastrophic failures, like OOM errors, stack limits, etc.
+	PrintQueries bool          // Prints both queries and file names to the CLI
+	FailPSQL     bool          // Whether we should automatically fail PSQL commands, since they're slow and we fail them anyway
+	FailQueries  []string      // These are queries that cause catastrophic failures, like OOM errors, stack limits, etc.
+	Timeout      time.Duration // How long to wait for each server response; defaults to 15 seconds when zero
 }
 
 // recordedCopyStreams preserves COPY stream boundaries within a recorded simple-query response.
@@ -79,12 +80,16 @@ func Replay(options ReplayOptions) (*ReplayTracker, error) {
 	// the OIDs in the recorded session and the OIDs the Doltgres server actually assigned. The map persists across
 	// the file's connections, since the recorded session's objects do too.
 	oidMap := NewOIDMap()
+	timeout := options.Timeout
+	if timeout == 0 {
+		timeout = 15 * time.Second
+	}
 
 	t := time.Now()
 	fmt.Println("-------------------- ", tracker.File, " --------------------")
 ListenerLoop:
 	for !reader.IsEmpty() {
-		connection, err := NewConnection("127.0.0.1:"+strconv.Itoa(options.Port), reader, 15*time.Second)
+		connection, err := NewConnection("127.0.0.1:"+strconv.Itoa(options.Port), reader, timeout)
 		if err != nil {
 			return nil, err
 		}
@@ -172,7 +177,7 @@ ListenerLoop:
 					case *pgproto3.ErrorResponse:
 						responseError = response
 					case *pgproto3.NoData:
-					case *pgproto3.NoticeResponse:
+					case *pgproto3.NoticeResponse, *pgproto3.NotificationResponse, *pgproto3.ParameterStatus:
 					case *pgproto3.ParameterDescription:
 					case *pgproto3.ReadyForQuery:
 						break DescribeResponseLoop
@@ -312,7 +317,7 @@ ListenerLoop:
 						responseError = response
 					case *pgproto3.FunctionCallResponse:
 						responseData = response
-					case *pgproto3.NoticeResponse:
+					case *pgproto3.NoticeResponse, *pgproto3.NotificationResponse, *pgproto3.ParameterStatus:
 					case *pgproto3.ReadyForQuery:
 						break FunctionResponseLoop
 					default:
@@ -444,7 +449,7 @@ ListenerLoop:
 					case *pgproto3.ErrorResponse:
 						responseError = response
 					case *pgproto3.NoData:
-					case *pgproto3.NoticeResponse:
+					case *pgproto3.NoticeResponse, *pgproto3.NotificationResponse, *pgproto3.ParameterStatus:
 					case *pgproto3.ParseComplete:
 					case *pgproto3.ReadyForQuery:
 						break ParseResponseLoop
@@ -618,7 +623,7 @@ ListenerLoop:
 					case *pgproto3.EmptyQueryResponse:
 					case *pgproto3.ErrorResponse:
 						responseError = response
-					case *pgproto3.NoticeResponse:
+					case *pgproto3.NoticeResponse, *pgproto3.NotificationResponse, *pgproto3.ParameterStatus:
 					case *pgproto3.ReadyForQuery:
 						break ResponseLoop
 					case *pgproto3.RowDescription:

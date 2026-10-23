@@ -17,7 +17,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"testing"
+	"time"
+
+	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 
 	"github.com/dolthub/doltgresql/server"
 
@@ -30,13 +34,20 @@ func TestRegressionTests(t *testing.T) {
 		t.Skip()
 	}
 	server.EnableAuthentication = false // We have to disable authentication, since we can't replay the messages due to nonces
-	controller, port, err := CreateDoltgresServer()
+	port, err := externalServerPort()
 	require.NoError(t, err)
-	defer func() {
-		controller.Stop()
-		err = controller.WaitForStop()
+	timeout, err := replayTimeout()
+	require.NoError(t, err)
+	if port == 0 {
+		var controller *svcs.Controller
+		controller, port, err = CreateDoltgresServer()
 		require.NoError(t, err)
-	}()
+		defer func() {
+			controller.Stop()
+			err = controller.WaitForStop()
+			require.NoError(t, err)
+		}()
+	}
 
 	trackers := make([]*ReplayTracker, 0, len(AllTestResultFilesNames))
 	for _, fileName := range AllTestResultFilesNames {
@@ -49,13 +60,53 @@ func TestRegressionTests(t *testing.T) {
 			PrintQueries: false,
 			FailPSQL:     true,
 			FailQueries:  queriesToSkip,
+			Timeout:      timeout,
 		})
 		require.NoError(t, err)
 		trackers = append(trackers, tracker)
 	}
-	fmt.Printf("Finished, writing output to `%s`\n", regressionFolder.GetAbsolutePath("out/results.trackers"))
-	err = regressionFolder.WriteReplayTrackers("out/results.trackers", trackers, 0644)
+	outputPath := "out/results.trackers"
+	if path, ok := os.LookupEnv("REGRESSION_OUTPUT"); ok {
+		outputPath = path
+	}
+	fmt.Printf("Finished, writing output to `%s`\n", regressionFolder.GetAbsolutePath(outputPath))
+	err = regressionFolder.WriteReplayTrackers(outputPath, trackers, 0644)
 	require.NoError(t, err)
+}
+
+// replayTimeout returns how long to wait for each server response, as given by REGRESSION_TIMEOUT (a Go duration such
+// as "10m"). Slow servers otherwise time out mid-statement and the replay moves on while the statement still runs.
+// Returns zero, meaning the replay default, when the variable is not set.
+func replayTimeout() (time.Duration, error) {
+	value, ok := os.LookupEnv("REGRESSION_TIMEOUT")
+	if !ok {
+		return 0, nil
+	}
+
+	timeout, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid REGRESSION_TIMEOUT `%s`: %w", value, err)
+	}
+
+	return timeout, nil
+}
+
+// externalServerPort returns the port of an already-running server named by REGRESSION_SERVER_PORT, such as a
+// PostgreSQL build, so that the recorded sessions may be replayed against it instead of an in-memory Doltgres
+// server. Returns zero when the variable is not set. The external server must accept the recorded `postgres` user on
+// 127.0.0.1 without password authentication.
+func externalServerPort() (int, error) {
+	value, ok := os.LookupEnv("REGRESSION_SERVER_PORT")
+	if !ok {
+		return 0, nil
+	}
+
+	port, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid REGRESSION_SERVER_PORT `%s`: %w", value, err)
+	}
+
+	return port, nil
 }
 
 var queriesToSkip = []string{
