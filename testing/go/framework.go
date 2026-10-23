@@ -260,7 +260,7 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 	// Run the assertions
 	for _, assertion := range assertions {
 		t.Run(assertion.Query, func(t *testing.T) {
-			if reason := prollyAssertionSkip(assertion.Query); reason != "" {
+			if reason := prollyAssertionSkip(t.Name(), assertion.Query); reason != "" {
 				t.Skip(reason)
 			}
 			if assertion.Skip {
@@ -281,7 +281,9 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			if err := conn.Connect(ctx, assertion.Username, assertion.Password); err != nil {
 				if assertion.ExpectedErr != "" {
 					require.Error(t, err)
-					assert.Contains(t, scriptErrorText(err), assertion.ExpectedErr)
+					if !postgresErrorEquivalent(err, assertion.ExpectedErr) {
+						assert.Contains(t, scriptErrorText(err), assertion.ExpectedErr)
+					}
 				} else {
 					require.NoError(t, err)
 				}
@@ -305,7 +307,9 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 				}
 				if assertion.ExpectedErr != "" {
 					require.Error(t, err)
-					assert.Contains(t, scriptErrorText(err), assertion.ExpectedErr)
+					if !postgresErrorEquivalent(err, assertion.ExpectedErr) {
+						assert.Contains(t, scriptErrorText(err), assertion.ExpectedErr)
+					}
 				} else if assertion.ExpectedErrCode == "" {
 					require.NoError(t, err)
 				}
@@ -1291,4 +1295,28 @@ func scriptErrorText(err error) string {
 		result += "\n" + pgerr.Message + "\n" + pgerr.Detail
 	}
 	return result
+}
+
+// postgresErrorEquivalent reports whether a PostgreSQL error satisfies a Doltgres
+// error expectation whose wording is engine-specific. The external PostgreSQL
+// fork keeps PostgreSQL's native messages, so the mapping is explicit and keyed
+// by SQLSTATE: "table not found" is undefined_table (42P01) and "schema exists"
+// is duplicate_schema (42P06). Any other expectation still requires its text.
+func postgresErrorEquivalent(err error, expected string) bool {
+	if !externalPostgres() {
+		return false
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(expected, "table not found"):
+		return pgErr.Code == "42P01"
+	case strings.HasPrefix(expected, "schema exists"):
+		return pgErr.Code == "42P06"
+	case strings.Contains(expected, "could not be found in any table in scope"):
+		return pgErr.Code == "42703"
+	}
+	return false
 }
