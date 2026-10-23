@@ -71,3 +71,25 @@ shared compatibility test accepts either three or four total commits after two
 user commits and separately verifies both user commits in order. Do not add
 synthetic history to the fork to equalize these counts. Existing histories are
 not rewritten by the correction.
+
+### Named-type and nested SQL checkpoint
+
+`catalog-context.sh` now includes `TestBranchBuiltinResolution`, the original
+`TestSelectFromFunctions`, 19 original operator scenarios, and 16 original
+set-returning-function scenarios. The new activated-branch scenario passes on
+both engines: qualified/unqualified bootstrap functions, explicit operator
+qualification, native overloads and array helpers consume independent branch
+inputs. Native PostgreSQL TAP tests separately exercise canonical composite
+names and nested SQL execution, including arguments from historical catalogs.
+Those tests use shared bootstrap helper routines; versioned user routines are
+not implemented.
+
+An exploratory run of five complete function/operator suites exposed 11 failing
+scenarios. The same 11 fail on the preceding fork build, before this checkpoint:
+unknown-function/operator error wording; numeric modulo infinity expectations;
+JSONB comparison ordering; case-insensitive non-ASCII regex under the harness's
+C locale; generate_series NaN error wording; and a partition-ancestor scenario
+whose setup requires unsupported foreign keys. Their original assertions remain
+unchanged. The routine gate selects complete passing scenarios explicitly;
+it does not assert that the full five suites pass or that these are all catalog
+consumer gaps.
