@@ -826,8 +826,9 @@ func TestAlterTable(t *testing.T) {
 					Expected: []sql.Row{{1, 10}, {2, 20}, {3, 30}},
 				},
 				{
-					Query:       "INSERT INTO t1 VALUES (1, 11);",
-					ExpectedErr: "duplicate primary key",
+					Query: "INSERT INTO t1 VALUES (1, 11);",
+					// PostgreSQL and Doltgres use different wording for this violation.
+					ExpectedErrCode: "23505",
 				},
 				{
 					// Changing the type of a column with a secondary index
