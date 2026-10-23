@@ -42,3 +42,6 @@ go test -c -o "$compat_binary" ./testing/go
 
 # Native metadata tuple proposals and branch-local publication.
 "$compat_binary" -test.v -test.timeout=5m -test.run '^TestBranchMetadataCatalog$'
+
+# Retained signatures and plan reanalysis across schema revisions.
+"$compat_binary" -test.v -test.timeout=5m -test.run '^TestCatalogLifecycle$'
