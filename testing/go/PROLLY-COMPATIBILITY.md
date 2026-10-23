@@ -93,3 +93,13 @@ whose setup requires unsupported foreign keys. Their original assertions remain
 unchanged. The routine gate selects complete passing scenarios explicitly;
 it does not assert that the full five suites pass or that these are all catalog
 consumer gaps.
+
+### Procedural execution and typed parameters
+
+The gate also runs the fork-specific immutable-composite extended-protocol test,
+six original parameter-binding tests, and 18 original PL record scenarios.
+The remaining FOR-loop record scenario expects `int4` rather than PostgreSQL's
+`integer` in an error; the whole-record scenario expects an error for an
+unassigned whole record where this PostgreSQL version returns NULL. Their original
+assertions are unchanged and excluded as whole scenarios. Existing native
+PL/pgSQL regression tests run separately, including native record semantics.
