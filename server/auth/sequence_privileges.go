@@ -41,6 +41,24 @@ func NewSequencePrivileges() *SequencePrivileges {
 	return &SequencePrivileges{make(map[SequencePrivilegeKey]SequencePrivilegeValue)}
 }
 
+// AddOwnerSequencePrivileges gives the role that created a sequence every sequence privilege with the grant option,
+// which matches what PostgreSQL allows the owner of a sequence. Superusers already have every privilege, so nothing
+// is added for them. Returns whether any privileges were added. Must be called under LockWrite.
+func AddOwnerSequencePrivileges(ownerRoleID RoleID, schemaName, seqName string) bool {
+	if IsSuperUser(ownerRoleID) {
+		return false
+	}
+	key := SequencePrivilegeKey{
+		Role:   ownerRoleID,
+		Schema: schemaName,
+		Name:   seqName,
+	}
+	for _, privilege := range PrivilegeObject_SEQUENCE.AllPrivileges() {
+		AddSequencePrivilege(key, GrantedPrivilege{Privilege: privilege, GrantedBy: ownerRoleID}, true)
+	}
+	return true
+}
+
 // AddSequencePrivilege adds the given sequence privilege to the global database.
 func AddSequencePrivilege(key SequencePrivilegeKey, privilege GrantedPrivilege, withGrantOption bool) {
 	seqPrivilegeValue, ok := globalDatabase.sequencePrivileges.Data[key]

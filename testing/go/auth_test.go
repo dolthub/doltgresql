@@ -78,6 +78,83 @@ func TestAuthTests(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3534
+			Name: `Table creator can use the table without a grant`,
+			SetUpScript: []string{
+				`CREATE USER storage_admin PASSWORD 'pw';`,
+				`CREATE USER other PASSWORD 'pw';`,
+				`CREATE SCHEMA storage;`,
+				`GRANT ALL ON SCHEMA storage TO storage_admin;`,
+				`GRANT USAGE ON SCHEMA storage TO other;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `CREATE TABLE storage.migrations (id integer PRIMARY KEY, name text);`,
+					Username: `storage_admin`,
+					Password: `pw`,
+				},
+				{
+					Query:    `CREATE TABLE storage.objects (id serial PRIMARY KEY, name text);`,
+					Username: `storage_admin`,
+					Password: `pw`,
+				},
+				{
+					Query:    `INSERT INTO storage.migrations (id, name) VALUES (0, 'create-migrations-table');`,
+					Username: `storage_admin`,
+					Password: `pw`,
+				},
+				{
+					Query:    `INSERT INTO storage.objects (name) VALUES ('a'), ('b');`,
+					Username: `storage_admin`,
+					Password: `pw`,
+				},
+				{
+					Query:    `UPDATE storage.migrations SET name = 'renamed' WHERE id = 0;`,
+					Username: `storage_admin`,
+					Password: `pw`,
+				},
+				{
+					Query:    `SELECT * FROM storage.migrations;`,
+					Username: `storage_admin`,
+					Password: `pw`,
+					Expected: []sql.Row{{0, "renamed"}},
+				},
+				{
+					Query:    `SELECT id, name FROM storage.objects ORDER BY id;`,
+					Username: `storage_admin`,
+					Password: `pw`,
+					Expected: []sql.Row{{1, "a"}, {2, "b"}},
+				},
+				{
+					Query:       `SELECT * FROM storage.migrations;`,
+					Username:    `other`,
+					Password:    `pw`,
+					ExpectedErr: `permission denied for table migrations`,
+				},
+				{
+					Query:    `GRANT SELECT ON storage.migrations TO other;`,
+					Username: `storage_admin`,
+					Password: `pw`,
+				},
+				{
+					Query:    `SELECT * FROM storage.migrations;`,
+					Username: `other`,
+					Password: `pw`,
+					Expected: []sql.Row{{0, "renamed"}},
+				},
+				{
+					Query:    `DELETE FROM storage.objects WHERE id = 1;`,
+					Username: `storage_admin`,
+					Password: `pw`,
+				},
+				{
+					Query:    `DROP TABLE storage.objects;`,
+					Username: `storage_admin`,
+					Password: `pw`,
+				},
+			},
+		},
+		{
 			Name: `ALTER PASSWORD`,
 			Assertions: []ScriptTestAssertion{
 				{

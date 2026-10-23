@@ -135,7 +135,9 @@ func (i *createTableDefaultPrivsIter) Next(ctx *sql.Context) (sql.Row, error) {
 	if err == io.EOF && !i.applied {
 		i.applied = true
 		applyErr := applyDefaultPrivilegesForNewObject(ctx, func(owner auth.RoleID) bool {
-			return auth.ApplyDefaultPrivilegesForNewTable(owner, i.schemaName, i.tableName)
+			addedOwner := auth.AddOwnerTablePrivileges(owner, i.schemaName, i.tableName)
+			addedDefault := auth.ApplyDefaultPrivilegesForNewTable(owner, i.schemaName, i.tableName)
+			return addedOwner || addedDefault
 		})
 		if applyErr != nil {
 			return nil, applyErr

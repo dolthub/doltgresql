@@ -243,7 +243,9 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		}
 	}
 	err = applyDefaultPrivilegesForNewObject(ctx, func(owner auth.RoleID) bool {
-		return auth.ApplyDefaultPrivilegesForNewSequence(owner, c.sequence.Id.SchemaName(), c.sequence.Id.SequenceName())
+		addedOwner := auth.AddOwnerSequencePrivileges(owner, c.sequence.Id.SchemaName(), c.sequence.Id.SequenceName())
+		addedDefault := auth.ApplyDefaultPrivilegesForNewSequence(owner, c.sequence.Id.SchemaName(), c.sequence.Id.SequenceName())
+		return addedOwner || addedDefault
 	})
 	if err != nil {
 		return nil, err
