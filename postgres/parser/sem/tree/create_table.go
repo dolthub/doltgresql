@@ -38,7 +38,6 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
-	"golang.org/x/text/language"
 
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
@@ -349,10 +348,7 @@ func NewColumnTableDef(
 	}
 	d.Nullable.Nullability = SilentNull
 	if collation != "" {
-		_, err := language.Parse(collation)
-		if err != nil {
-			return nil, pgerror.Wrapf(err, pgcode.Syntax, "invalid locale %s", collation)
-		}
+		// Collation names like "C" and "en_US.utf8" are not BCP 47 language tags, so they are not checked here
 		collatedTyp, err := processCollationOnType(name, d.Type, collation)
 		if err != nil {
 			// TODO: currently ignore as the test used dummy value // return nil, err
