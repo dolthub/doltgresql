@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// FK rejection assertions use SQLSTATE because PostgreSQL and Doltgres differ in message wording.
 func TestForeignKeys(t *testing.T) {
 	RunScripts(
 		t,
@@ -41,8 +42,9 @@ func TestForeignKeys(t *testing.T) {
 						Query: "INSERT INTO child VALUES (2, 1)",
 					},
 					{
-						Query:       "INSERT INTO child VALUES (2, 2)",
-						ExpectedErr: "Foreign key violation",
+						// Use a fresh primary key: PostgreSQL reports duplicate keys before FK checks.
+						Query:           "INSERT INTO child VALUES (3, 2)",
+						ExpectedErrCode: "23503",
 					},
 				},
 			},
@@ -62,7 +64,8 @@ func TestForeignKeys(t *testing.T) {
 						Query: "INSERT INTO child VALUES (2, 1)",
 					},
 					{
-						Query:       "INSERT INTO child VALUES (2, 2)",
+						// Use a fresh primary key: PostgreSQL reports duplicate keys before FK checks.
+						Query:       "INSERT INTO child VALUES (3, 2)",
 						ExpectedErr: "fk123",
 					},
 				},
@@ -83,7 +86,8 @@ func TestForeignKeys(t *testing.T) {
 						Query: "INSERT INTO child VALUES (2, 1)",
 					},
 					{
-						Query:       "INSERT INTO child VALUES (2, 2)",
+						// Use a fresh primary key: PostgreSQL reports duplicate keys before FK checks.
+						Query:       "INSERT INTO child VALUES (3, 2)",
 						ExpectedErr: "child_b_fkey",
 					},
 				},
@@ -101,8 +105,8 @@ func TestForeignKeys(t *testing.T) {
 						Query: "INSERT INTO child VALUES (1, 1)",
 					},
 					{
-						Query:       "INSERT INTO child VALUES (2, 999)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO child VALUES (2, 999)",
+						ExpectedErrCode: "23503",
 					},
 				},
 			},
@@ -121,8 +125,8 @@ func TestForeignKeys(t *testing.T) {
 						Query: "INSERT INTO towns VALUES (1, 'T01', 'Town1', 'D01')",
 					},
 					{
-						Query:       "INSERT INTO towns VALUES (2, 'T02', 'Town2', 'NOPE')",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO towns VALUES (2, 'T02', 'Town2', 'NOPE')",
+						ExpectedErrCode: "23503",
 					},
 				},
 			},
@@ -141,8 +145,8 @@ func TestForeignKeys(t *testing.T) {
 						Query: "INSERT INTO child VALUES (2, 'a')",
 					},
 					{
-						Query:       "INSERT INTO child VALUES (3, 'b')",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO child VALUES (3, 'b')",
+						ExpectedErrCode: "23503",
 					},
 				},
 			},
@@ -310,20 +314,20 @@ func TestForeignKeys(t *testing.T) {
 						Query: "insert into child values (1, 1, 1, 1.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:00');",
 					},
 					{
-						Query:       "insert into child values (1, 2, 1, 1.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:00');",
-						ExpectedErr: "Foreign key",
+						Query:           "insert into child values (1, 2, 1, 1.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:00');",
+						ExpectedErrCode: "23503",
 					},
 					{
-						Query:       "insert into child values (1, 1, 1, 2.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:00');",
-						ExpectedErr: "Foreign key",
+						Query:           "insert into child values (1, 1, 1, 2.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:00');",
+						ExpectedErrCode: "23503",
 					},
 					{
-						Query:       "insert into child values (1, 1, 1, 1.0, 1.0, 'a', 'a', 'b', '{\"a\": 1}', '2021-01-01 00:00:00');",
-						ExpectedErr: "Foreign key",
+						Query:           "insert into child values (1, 1, 1, 1.0, 1.0, 'a', 'a', 'b', '{\"a\": 1}', '2021-01-01 00:00:00');",
+						ExpectedErrCode: "23503",
 					},
 					{
-						Query:       "insert into child values (1, 1, 1, 1.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:01');",
-						ExpectedErr: "Foreign key",
+						Query:           "insert into child values (1, 1, 1, 1.0, 1.0, 'a', 'a', 'a', '{\"a\": 1}', '2021-01-01 00:00:01');",
+						ExpectedErrCode: "23503",
 					},
 				},
 			},
@@ -343,15 +347,15 @@ func TestForeignKeys(t *testing.T) {
 						Query: "insert into child values (1, 'abc')",
 					},
 					{
-						Query:       "insert into child values (2, 'xyz')",
-						ExpectedErr: "Foreign key",
+						Query:           "insert into child values (2, 'xyz')",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query: "delete from parent where b = 'def'",
 					},
 					{
-						Query:       "delete from parent where b = 'abc'",
-						ExpectedErr: "Foreign key",
+						Query:           "delete from parent where b = 'abc'",
+						ExpectedErrCode: "23503",
 					},
 				},
 			},
@@ -380,15 +384,15 @@ func TestForeignKeys(t *testing.T) {
 						Query: "insert into child values (2, 1)",
 					},
 					{
-						Query:       "insert into child values (2, 2)",
-						ExpectedErr: "Foreign key",
+						Query:           "insert into child values (2, 2)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query: "delete from parent where b = 3.0",
 					},
 					{
-						Query:       "delete from parent where b = 1.0",
-						ExpectedErr: "Foreign key",
+						Query:           "delete from parent where b = 1.0",
+						ExpectedErrCode: "23503",
 					},
 				},
 			},
@@ -408,19 +412,19 @@ func TestForeignKeys(t *testing.T) {
 						Query: "insert into child values (1, 1)",
 					},
 					{
-						Query:       "insert into child values (2, 2)",
-						ExpectedErr: "Foreign key",
+						Query:           "insert into child values (2, 2)",
+						ExpectedErrCode: "23503",
 					},
 					{
-						Query:       "insert into child values (2, 65536)", // above maximum int2
-						ExpectedErr: "Foreign key",
+						Query:           "insert into child values (2, 65536)", // above maximum int2
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query: "delete from parent where b = 3",
 					},
 					{
-						Query:       "delete from parent where b = 1",
-						ExpectedErr: "Foreign key",
+						Query:           "delete from parent where b = 1",
+						ExpectedErrCode: "23503",
 					},
 				},
 			},
@@ -440,8 +444,8 @@ func TestForeignKeys(t *testing.T) {
 						Query: "insert into child values (1, 1)",
 					},
 					{
-						Query:       "insert into child values (2, 2)",
-						ExpectedErr: "Foreign key",
+						Query:           "insert into child values (2, 2)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query:       "insert into child values (2, 65536)",
@@ -451,8 +455,8 @@ func TestForeignKeys(t *testing.T) {
 						Query: "delete from parent where b = 65536",
 					},
 					{
-						Query:       "delete from parent where b = 1",
-						ExpectedErr: "Foreign key",
+						Query:           "delete from parent where b = 1",
+						ExpectedErrCode: "23503",
 					},
 				},
 			},
@@ -489,8 +493,8 @@ func TestForeignKeys(t *testing.T) {
 						Expected: []sql.Row{},
 					},
 					{
-						Query:       "INSERT INTO test_info VALUES (3, 'three', 3)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO test_info VALUES (3, 'three', 3)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query: "SELECT * FROM test_info",
@@ -533,8 +537,8 @@ func TestForeignKeys(t *testing.T) {
 						Expected: []sql.Row{},
 					},
 					{
-						Query:       "INSERT INTO child VALUES (3, 'three', 3)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO child VALUES (3, 'three', 3)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query: "SELECT * FROM child",
@@ -584,8 +588,8 @@ func TestForeignKeys(t *testing.T) {
 						Expected: []sql.Row{},
 					},
 					{
-						Query:       "INSERT INTO child VALUES (3, 'three', 3)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO child VALUES (3, 'three', 3)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query: "SELECT * FROM child.child",
@@ -635,8 +639,8 @@ func TestForeignKeys(t *testing.T) {
 						Expected: []sql.Row{},
 					},
 					{
-						Query:       "INSERT INTO child VALUES (3, 'three', 3)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO child VALUES (3, 'three', 3)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query: "SELECT * FROM child.child",
@@ -685,8 +689,8 @@ func TestForeignKeys(t *testing.T) {
 						Expected: []sql.Row{},
 					},
 					{
-						Query:       "INSERT INTO child.child VALUES (3, 'three', 3)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO child.child VALUES (3, 'three', 3)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query: "SELECT * FROM child.child",
@@ -720,8 +724,8 @@ func TestForeignKeys(t *testing.T) {
 						SkipResultsCheck: true,
 					},
 					{
-						Query:       "INSERT INTO child VALUES (3, 'three', 3)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO child VALUES (3, 'three', 3)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query: "SELECT * FROM child",
@@ -755,8 +759,8 @@ func TestForeignKeys(t *testing.T) {
 						SkipResultsCheck: true,
 					},
 					{
-						Query:       "INSERT INTO child VALUES (3, 'three', 3)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO child VALUES (3, 'three', 3)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query: "SELECT * FROM child",
@@ -789,8 +793,8 @@ func TestForeignKeys(t *testing.T) {
 						SkipResultsCheck: true,
 					},
 					{
-						Query:       "INSERT INTO child.child VALUES (3, 'three', 3)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO child.child VALUES (3, 'three', 3)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query: "SELECT * FROM child.child",
@@ -818,8 +822,8 @@ func TestForeignKeys(t *testing.T) {
 				},
 				Assertions: []ScriptTestAssertion{
 					{
-						Query:       "INSERT INTO child.child VALUES (3, 'three', 3)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO child.child VALUES (3, 'three', 3)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query:            "alter table child DROP constraint fk1;",
@@ -849,8 +853,8 @@ func TestForeignKeys(t *testing.T) {
 				},
 				Assertions: []ScriptTestAssertion{
 					{
-						Query:       "INSERT INTO child.child VALUES (3, 'three', 3)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO child.child VALUES (3, 'three', 3)",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query:            "alter table child.child DROP constraint child_ibfk_1",
@@ -2055,8 +2059,8 @@ func TestForeignKeys(t *testing.T) {
 						Query: "INSERT INTO myschema.t VALUES (3, 2)",
 					},
 					{
-						Query:       "INSERT INTO myschema.t VALUES (4, 99)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO myschema.t VALUES (4, 99)",
+						ExpectedErrCode: "23503",
 					},
 				},
 			},
@@ -2071,8 +2075,8 @@ func TestForeignKeys(t *testing.T) {
 						Query: "INSERT INTO t VALUES (3, 2)",
 					},
 					{
-						Query:       "INSERT INTO t VALUES (4, 99)",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO t VALUES (4, 99)",
+						ExpectedErrCode: "23503",
 					},
 				},
 			},
@@ -2107,8 +2111,8 @@ func TestForeignKeys(t *testing.T) {
 						Expected: []sql.Row{},
 					},
 					{
-						Query:       "INSERT INTO fkbug_child VALUES (2, 2);",
-						ExpectedErr: "Foreign key violation",
+						Query:           "INSERT INTO fkbug_child VALUES (2, 2);",
+						ExpectedErrCode: "23503",
 					},
 					{
 						Query:    "SELECT * FROM fkbug_child;",
@@ -2127,8 +2131,9 @@ func TestForeignKeys(t *testing.T) {
 				},
 				Assertions: []ScriptTestAssertion{
 					{
+						// Doltgres reports XX000; PostgreSQL reports 2BP01 and qualifies the table.
 						Query:       "ALTER TABLE fkbug2_parent DROP COLUMN u;",
-						ExpectedErr: "cannot drop column u of table fkbug2_parent because other objects depend on it",
+						ExpectedErr: "because other objects depend on it",
 					},
 					{
 						Query:    "ALTER TABLE fkbug2_parent DROP COLUMN u CASCADE;",
@@ -2158,4 +2163,39 @@ func TestForeignKeys(t *testing.T) {
 			},
 		},
 	)
+}
+
+// Branch bindings belong to the queued trigger and RI plan, including when two
+// branches initially share exactly the same schema and commit.
+func TestBranchForeignKeyCatalog(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "branch-local foreign key definitions and cascades",
+			SetUpScript: []string{
+				"CREATE TABLE parent(id int PRIMARY KEY)",
+				"CREATE TABLE child(id int PRIMARY KEY, pid int, CONSTRAINT child_fk FOREIGN KEY(pid) REFERENCES parent(id) ON UPDATE CASCADE ON DELETE CASCADE)",
+				"INSERT INTO parent VALUES(1)",
+				"INSERT INTO child VALUES(1,1)",
+				"SELECT dolt_commit('-Am','foreign key base')",
+				"SELECT dolt_checkout('-b','feature')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "INSERT INTO parent VALUES(2)"},
+				{Query: "INSERT INTO child VALUES(2,2)"},
+				{Query: "UPDATE parent SET id=10 WHERE id=1"},
+				{Query: "SELECT pid FROM child ORDER BY id", Expected: []sql.Row{{10}, {2}}},
+				{Query: "SELECT dolt_checkout('main')", SkipResultsCheck: true},
+				{Query: "INSERT INTO child VALUES(2,2)", ExpectedErrCode: "23503"},
+				{Query: "SELECT pid FROM child", Expected: []sql.Row{{1}}},
+				{Query: "DELETE FROM parent WHERE id=1"},
+				{Query: "SELECT count(*) FROM child", Expected: []sql.Row{{int64(0)}}},
+				{Query: "SELECT dolt_checkout('feature')", SkipResultsCheck: true},
+				{Query: "SELECT pid FROM child ORDER BY id", Expected: []sql.Row{{10}, {2}}},
+				{Query: "ALTER TABLE child DROP CONSTRAINT child_fk"},
+				{Query: "INSERT INTO child VALUES(3,99)"},
+				{Query: "SELECT dolt_checkout('main')", SkipResultsCheck: true},
+				{Query: "INSERT INTO child VALUES(3,99)", ExpectedErrCode: "23503"},
+			},
+		},
+	})
 }

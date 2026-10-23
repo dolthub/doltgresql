@@ -59,3 +59,8 @@ go test -c -o "$compat_binary" ./testing/go
 # Index lifecycle, indexed-column rewrites and rollback under canonical publication.
 "$compat_binary" -test.v -test.timeout=5m -test.run '^TestBranchIndexLifecycle$'
 "$compat_binary" -test.v -test.timeout=5m -test.run '^TestAlterTable$/^(Alter_Column_Type_with_USING_on_keys_and_indexes|Alter_Column_Type_with_USING_failure_leaves_the_table_intact)$'
+
+# Foreign-key lifecycle, dependency closure, cascades and branch-local RI plans.
+# Exclude serial/varchar/float index codecs, column-dependent defaults (invalid
+# PostgreSQL syntax), and Dolt merge constraint-violation records.
+"$compat_binary" -test.v -test.timeout=10m -test.run '^TestForeignKeys$/^(simple_foreign_key|named_constraint|unnamed_constraint|inline_column_REFERENCES_enforces_a_foreign_key_constraint|text_foreign_key|type_conversion:_value_out_of_bounds,_child_larger|type_conversion:_value_out_of_bound,_parent_larger|foreign_key_with_.*|foreign_key_in_another_schema.*|add_foreign_key.*|drop_foreign_key.*|Self-referential.*|dropping_a_column_that_removes_the_index_backing_a_foreign_key|DROP_COLUMN_drops_dependent_foreign_keys)$|^TestBranchForeignKeyCatalog$'
