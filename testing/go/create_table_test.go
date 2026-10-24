@@ -376,6 +376,27 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3535
+			Name: "create table with postgres collation names",
+			SetUpScript: []string{
+				`CREATE TABLE collate_test2 (
+	a text COLLATE "C" NOT NULL,
+	b text COLLATE "POSIX",
+	c text COLLATE "default",
+	d text COLLATE pg_catalog."default",
+	e varchar(10) COLLATE "en_US.utf8",
+	f text COLLATE "ucs_basic"
+)`,
+				"insert into collate_test2 values ('a', 'b', 'c', 'd', 'e', 'f');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select * from collate_test2;",
+					Expected: []sql.Row{{"a", "b", "c", "d", "e", "f"}},
+				},
+			},
+		},
+		{
 			Name: "inline comments",
 			Assertions: []ScriptTestAssertion{
 				{
