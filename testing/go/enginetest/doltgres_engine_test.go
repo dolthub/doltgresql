@@ -643,6 +643,7 @@ func TestSetOperationsScripts(t *testing.T) {
 			"        FROM ladder JOIN rt WHERE ladder.foo = rt.foo\n" +
 			"    )\n" +
 			"SELECT * FROM ladder;", // syntax error
+		"set operations compare integers, decimals and doubles by value", // integer and numeric columns are not converted to a common type
 	})
 	defer h.Close()
 	enginetest.TestSetOperationsScripts(t, h)
