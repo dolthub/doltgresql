@@ -1509,7 +1509,9 @@ func (t *T) SQLStandardNameWithTypmod(haveTypmod bool, typmod int) string {
 		// we store it as `IntervalDurationField`.
 		return "interval"
 	case JsonFamily:
-		// Only binary JSON is currently supported.
+		if t.Oid() == oid.T_json {
+			return "json"
+		}
 		return "jsonb"
 	case OidFamily:
 		switch t.Oid() {

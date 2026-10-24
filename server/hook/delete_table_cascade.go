@@ -37,8 +37,7 @@ import (
 // dropped, as are foreign keys on other tables that reference the dropped tables, functions and procedures with a
 // parameter of a dropped table's row type, and columns of other tables whose type is a dropped table's row type.
 // Sequences owned by the dropped tables' columns (e.g. SERIAL columns) are dropped by the standard DROP TABLE path
-// itself. Foreign keys declared by tables that are themselves being dropped (including self-referential keys) are
-// also removed by the standard path.
+// itself. Foreign keys between dropped tables are removed here as well, so table order does not matter.
 func cascadeDropDependencies(ctx *sql.Context, runner sql.StatementRunner, allDeletedTables []doltdb.TableName) error {
 	if err := cascadeDropViews(ctx, runner, allDeletedTables); err != nil {
 		return err
@@ -250,9 +249,6 @@ func cascadeDropForeignKeys(ctx *sql.Context, allDeletedTables []doltdb.TableNam
 			continue
 		}
 		for _, fk := range referencedByFk {
-			if tableNameInSet(fk.TableName, allDeletedTables) {
-				continue
-			}
 			// TODO: issue a notice that the constraint is being dropped ("drop cascades to constraint ... on table ...")
 			if err = fkTable.DropForeignKey(ctx, fk.Name, fk.TableName.Name, fk.TableName.Schema); err != nil {
 				return err

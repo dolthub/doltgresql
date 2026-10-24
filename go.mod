@@ -1,6 +1,6 @@
 module github.com/dolthub/doltgresql
 
-go 1.26.2
+go 1.27.3
 
 require (
 	github.com/PuerkitoBio/goquery v1.8.1
@@ -8,10 +8,10 @@ require (
 	github.com/antchfx/xpath v1.3.3
 	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20261018081218-48829716caa0
+	github.com/dolthub/dolt/go v0.40.5-0.20261023234940-614771d74205
 	github.com/dolthub/eventsapi_schema v0.0.0-20260715220557-d9b4a1c6b4d4
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20261016230655-239e0ad6b2f9
+	github.com/dolthub/go-mysql-server v0.20.1-0.20261023021128-38a1fb50b434
 	github.com/dolthub/pg_query_go/v6 v6.0.0-20260922094746-ae7577e21dfe
 	github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166
 	github.com/dolthub/vitess v0.0.0-20261014211039-3e903c0f05d3

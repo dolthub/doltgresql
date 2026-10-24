@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -2125,6 +2126,14 @@ func TestSystemInformationFunctions(t *testing.T) {
 						{"???"},
 					},
 				},
+				{
+					Query:    `SELECT format_type('json'::regtype, NULL), format_type('json'::regtype, -1), format_type('_json'::regtype, NULL), format_type('jsonb'::regtype, NULL), format_type('_jsonb'::regtype, NULL);`,
+					Expected: []sql.Row{{"json", "json", "json[]", "jsonb", "jsonb[]"}},
+				},
+				{
+					Query:    `SELECT 'json'::regtype, 'jsonb'::regtype, '_json'::regtype, 'json[]'::regtype;`,
+					Expected: []sql.Row{{"json", "jsonb", "json[]", "json[]"}},
+				},
 			},
 		},
 		{
@@ -3832,6 +3841,7 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					INSERT INTO cp_test VALUES(a, b);
 					INSERT INTO cp_test VALUES(c, b);
 				$$;`,
+				`CREATE FUNCTION json_func(a json, b jsonb, c json[]) RETURNS int LANGUAGE sql AS 'SELECT 1';`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -3859,6 +3869,10 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{"a integer, b text, c integer DEFAULT 100"},
 					},
+				},
+				{
+					Query:    `SELECT pg_get_function_arguments('json_func'::regproc);`,
+					Expected: []sql.Row{{"a json, b jsonb, c json[]"}},
 				},
 			},
 		},
@@ -3998,15 +4012,45 @@ ORDER BY i.indisprimary DESC, c2.relname;`,
 			},
 		},
 		{
-			Name:        "pg_get_function_result",
-			SetUpScript: []string{},
+			Name: "pg_get_function_result",
+			SetUpScript: []string{
+				`CREATE TABLE rt_t (a int, b text);`,
+				`CREATE FUNCTION rf1(int) RETURNS int LANGUAGE sql AS 'SELECT $1';`,
+				`CREATE FUNCTION rf2() RETURNS SETOF text LANGUAGE sql AS 'SELECT ''a''';`,
+				`CREATE FUNCTION rf3(OUT a int, OUT b text) LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf4(OUT a int, OUT b text) RETURNS SETOF record LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf5() RETURNS TABLE(a int, b varchar(10)) LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf6(x int, OUT y int) LANGUAGE sql AS 'SELECT $1';`,
+				`CREATE FUNCTION rf7() RETURNS rt_t LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf8() RETURNS void LANGUAGE sql AS '';`,
+				`CREATE FUNCTION rf9() RETURNS int[] LANGUAGE sql AS 'SELECT NULL::int[]';`,
+				`CREATE PROCEDURE rp1(a int) LANGUAGE sql AS '';`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: not supported yet
 					Query: `SELECT pg_get_function_result(22)`,
 					Expected: []sql.Row{
-						{""},
+						{nil},
 					},
+				},
+				{
+					Query: `SELECT proname, pg_get_function_result(oid) FROM pg_proc WHERE proname IN ('rf1', 'rf2', 'rf3', 'rf4', 'rf6', 'rf7', 'rf8', 'rf9', 'rp1') ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"rf1", "integer"},
+						{"rf2", "SETOF text"},
+						{"rf3", "record"},
+						{"rf4", "SETOF record"},
+						{"rf6", "integer"},
+						{"rf7", "rt_t"},
+						{"rf8", "void"},
+						{"rf9", "integer[]"},
+						{"rp1", nil},
+					},
+				},
+				{
+					Query:    `SELECT pg_get_function_result(oid) FROM pg_proc WHERE proname = 'rf5';`,
+					Expected: []sql.Row{{"TABLE(a integer, b character varying)"}},
+					Skip:     true,
 				},
 			},
 		},
@@ -7396,4 +7440,99 @@ $$ LANGUAGE plpgsql;`,
 			},
 		},
 	)
+}
+
+func TestPgRelationIsUpdatable(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "invalid and stale relation OIDs",
+			SetUpScript: []string{
+				`CREATE TABLE saved_oid (relation regclass)`,
+				`CREATE TABLE dropped_probe (id INT)`,
+				`INSERT INTO saved_oid VALUES ('dropped_probe'::regclass)`,
+				`DROP TABLE dropped_probe`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT pg_catalog.pg_relation_is_updatable(0::regclass, true)`, Expected: []sql.Row{{int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable(4294967295::oid::regclass, false)`, Expected: []sql.Row{{int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable(relation, true) FROM saved_oid`, Expected: []sql.Row{{int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable('missing_relation'::regclass, true)`, ExpectedErr: `relation "missing_relation" does not exist`},
+			},
+		},
+		{
+			Name: "relation capabilities",
+			SetUpScript: []string{
+				`CREATE TABLE updatable_probe (id INT PRIMARY KEY)`,
+				`CREATE INDEX probe_idx ON updatable_probe (id)`,
+				`CREATE SEQUENCE probe_seq`,
+			},
+			Assertions: []ScriptTestAssertion{
+				// Also check the literal PostgreSQL mask independently of the implementation constants.
+				{Query: `SELECT pg_relation_is_updatable('updatable_probe'::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, false)`, Expected: []sql.Row{{functions.RelationUpdatable | functions.RelationInsertable | functions.RelationDeletable, int32(28)}}},
+				{Query: `SELECT pg_relation_is_updatable('probe_idx'::regclass, true), pg_relation_is_updatable('probe_seq'::regclass, true)`, Expected: []sql.Row{{int32(0), int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable(NULL::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, NULL)`, Expected: []sql.Row{{nil, nil}}},
+				{Query: `SELECT pg_typeof(pg_relation_is_updatable('updatable_probe'::regclass, true))`, Expected: []sql.Row{{"integer"}}},
+			},
+		},
+		{
+			Name: "read-only relations",
+			SetUpScript: []string{
+				`CREATE TABLE view_source (id INT)`,
+				`CREATE VIEW simple_probe AS SELECT id FROM view_source`,
+				`CREATE VIEW aggregate_probe AS SELECT count(*) FROM view_source`,
+				`CREATE VIEW nested_probe AS SELECT * FROM simple_probe`,
+			},
+			Assertions: []ScriptTestAssertion{
+				// Doltgres does not yet support writes through views, including simple views.
+				{Query: `SELECT pg_relation_is_updatable('simple_probe'::regclass, true), pg_relation_is_updatable('simple_probe'::regclass, false)`, Expected: []sql.Row{{int32(0), int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable('aggregate_probe'::regclass, true), pg_relation_is_updatable('nested_probe'::regclass, true)`, Expected: []sql.Row{{int32(0), int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable('pg_catalog.pg_class'::regclass, true)`, Expected: []sql.Row{{int32(0)}}},
+			},
+		},
+		{
+			Name: "capabilities do not depend on table privileges",
+			SetUpScript: []string{
+				`CREATE TABLE protected_probe (id INT)`,
+				`CREATE USER capability_reader PASSWORD 'password'`,
+				`REVOKE ALL ON protected_probe FROM PUBLIC`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Username: "capability_reader", Password: "password", Query: `SELECT pg_relation_is_updatable('public.protected_probe'::regclass, true)`, Expected: []sql.Row{{functions.RelationUpdatable | functions.RelationInsertable | functions.RelationDeletable}}},
+				{Username: "capability_reader", Password: "password", Query: `INSERT INTO public.protected_probe VALUES (1)`, ExpectedErr: "permission denied"},
+			},
+		},
+	})
+}
+
+func TestPgIsOtherTempSchema(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "ordinary namespaces and invalid OIDs",
+			SetUpScript: []string{`CREATE SCHEMA temp_schema_probe`},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT pg_catalog.pg_is_other_temp_schema(0::oid), pg_is_other_temp_schema(4294967295::oid)`, Expected: []sql.Row{{"f", "f"}}},
+				{Query: `SELECT pg_is_other_temp_schema(NULL::oid)`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT nspname, pg_is_other_temp_schema(oid) FROM pg_catalog.pg_namespace WHERE nspname IN ('public', 'pg_catalog', 'temp_schema_probe') ORDER BY nspname`, Expected: []sql.Row{{"pg_catalog", "f"}, {"public", "f"}, {"temp_schema_probe", "f"}}},
+				{Query: `SELECT pg_typeof(pg_is_other_temp_schema(0::oid))`, Expected: []sql.Row{{"boolean"}}},
+				{Query: `SELECT pg_is_other_temp_schema('invalid'::oid)`, ExpectedErr: `invalid input syntax for type oid`},
+			},
+		},
+		{
+			Name: "temporary tables do not create session namespaces",
+			SetUpScript: []string{
+				`CREATE TEMP TABLE temp_schema_probe (id INT)`,
+				`INSERT INTO temp_schema_probe VALUES (1)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
+				// An explicit username opens a second connection while keeping the default session alive.
+				{Username: "postgres", Password: "password", Query: `CREATE TEMP TABLE temp_schema_probe (id INT)`},
+				{Username: "postgres", Password: "password", Query: `INSERT INTO temp_schema_probe VALUES (2)`},
+				{Username: "postgres", Password: "password", Query: `SELECT * FROM temp_schema_probe`, Expected: []sql.Row{{int32(2)}}},
+				{Username: "postgres", Password: "password", Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
+				{Query: `SELECT * FROM temp_schema_probe`, Expected: []sql.Row{{int32(1)}}},
+				{Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
+			},
+		},
+	})
 }
