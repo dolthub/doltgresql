@@ -66,6 +66,33 @@ func TestBasicIndexing(t *testing.T) {
 						{"v2_idx"},
 					},
 				},
+				{
+					Query: "BEGIN;",
+				},
+				{
+					Query:       "CREATE INDEX CONCURRENTLY v1_idx ON test (v1);",
+					ExpectedErr: "CREATE INDEX CONCURRENTLY cannot run inside a transaction block",
+				},
+				{
+					Query: "ROLLBACK;",
+				},
+				{
+					Query: "BEGIN;",
+				},
+				{
+					Query:       "DROP INDEX CONCURRENTLY v2_idx;",
+					ExpectedErr: "DROP INDEX CONCURRENTLY cannot run inside a transaction block",
+				},
+				{
+					Query: "ROLLBACK;",
+				},
+				{
+					Query: "SELECT indexname FROM pg_indexes WHERE tablename = 'test' ORDER BY indexname;",
+					Expected: []sql.Row{
+						{"test_pkey"},
+						{"v2_idx"},
+					},
+				},
 			},
 		},
 		{
