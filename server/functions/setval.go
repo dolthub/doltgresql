@@ -143,36 +143,6 @@ var setval_text_int64_boolean = framework.Function3{
 	},
 }
 
-// ParseRelationNameWithCurrentSchema parses the schema and relation name from a relation name string, including trimming any
-// identifier quotes used in the name. If the schema is not specified, the current schema is used.
-// For example, passing in 'public."MyTable"' would return 'public' and 'MyTable'.
-func ParseRelationNameWithCurrentSchema(ctx *sql.Context, name string) (schema string, relation string, err error) {
-	pathElems := strings.Split(name, ".")
-	switch len(pathElems) {
-	case 1:
-		schema, err = core.GetCurrentSchema(ctx)
-		if err != nil {
-			return "", "", err
-		}
-		relation = pathElems[0]
-	case 2:
-		schema = pathElems[0]
-		relation = pathElems[1]
-	case 3:
-		// database is not used atm
-		schema = pathElems[1]
-		relation = pathElems[2]
-	default:
-		return "", "", errors.Errorf(`cannot parse relation: %s`, name)
-	}
-
-	// Trim any quotes from the schema and the relation name
-	schema = strings.Trim(schema, `"`)
-	relation = strings.Trim(relation, `"`)
-
-	return schema, relation, nil
-}
-
 func ParseRelationBaseName(ctx *sql.Context, name string) (string, error) {
 	pathElems := strings.Split(name, ".")
 	var relation string
