@@ -59,6 +59,7 @@ const (
 	ruleId_HoistInsertTriggers                                           // hoistInsertTriggers
 	ruleId_SplitRowComparisons                                           // splitRowComparisons
 	ruleId_RemoveIdentityUpdates                                         // removeIdentityUpdates
+	ruleId_ResolveSetOpTypes                                             // resolveSetOpTypes
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -80,6 +81,7 @@ func Init() {
 		analyzer.Rule{Id: ruleId_SetRunner, Apply: SetRunner},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		analyzer.Rule{Id: ruleId_ResolveValuesTypes, Apply: ResolveValuesTypes},
+		analyzer.Rule{Id: ruleId_ResolveSetOpTypes, Apply: ResolveSetOpTypes},
 		analyzer.Rule{Id: ruleId_ResolveForeignKeyDefinitions, Apply: resolveForeignKeyDefinitions},
 		analyzer.Rule{Id: ruleId_AddDomainConstraints, Apply: AddDomainConstraints},
 		analyzer.Rule{Id: ruleId_ValidateColumnDefaults, Apply: ValidateColumnDefaults},

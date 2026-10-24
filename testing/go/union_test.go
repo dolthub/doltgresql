@@ -126,3 +126,74 @@ func TestExcept(t *testing.T) {
 		},
 	})
 }
+
+func TestSetOperationTypes(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "set operations convert columns to a common type",
+			SetUpScript: []string{
+				`CREATE TABLE setop_nums (id INT PRIMARY KEY, d NUMERIC(10,2), f DOUBLE PRECISION, s SMALLINT, b BIGINT);`,
+				`INSERT INTO setop_nums VALUES (1, 1.00, 1, 1, 1), (2, 2.50, 2.5, 2, 20), (5, 5.00, 5, 5, 50);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT pg_typeof(x) FROM (SELECT id AS x FROM setop_nums UNION SELECT d FROM setop_nums) s LIMIT 1;`,
+					Expected: []sql.Row{{"numeric"}},
+				},
+				{
+					Query:    `SELECT d FROM setop_nums UNION ALL SELECT id FROM setop_nums WHERE id = 2 ORDER BY 1;`,
+					Expected: []sql.Row{{Numeric("1.00")}, {Numeric("2")}, {Numeric("2.50")}, {Numeric("5.00")}},
+				},
+				{
+					Query:    `SELECT id FROM setop_nums UNION SELECT f FROM setop_nums ORDER BY 1;`,
+					Expected: []sql.Row{{1.0}, {2.0}, {2.5}, {5.0}},
+				},
+				{
+					Query:    `SELECT pg_typeof(x) FROM (SELECT id AS x FROM setop_nums UNION SELECT f FROM setop_nums) s LIMIT 1;`,
+					Expected: []sql.Row{{"double precision"}},
+				},
+				{
+					Query:    `SELECT s FROM setop_nums UNION SELECT b FROM setop_nums ORDER BY 1;`,
+					Expected: []sql.Row{{1}, {2}, {5}, {20}, {50}},
+				},
+				{
+					Query:    `SELECT pg_typeof(x) FROM (SELECT s AS x FROM setop_nums UNION SELECT b FROM setop_nums) s LIMIT 1;`,
+					Expected: []sql.Row{{"bigint"}},
+				},
+				{
+					Query:    `SELECT * FROM (VALUES (1), (2.5)) v(n) UNION SELECT id FROM setop_nums ORDER BY 1;`,
+					Expected: []sql.Row{{Numeric("1")}, {Numeric("2")}, {Numeric("2.5")}, {Numeric("5")}},
+				},
+				{
+					Query:    `SELECT pg_typeof(x) FROM (SELECT 'x'::varchar(3) AS x UNION SELECT 'yy'::varchar(5)) s LIMIT 1;`,
+					Expected: []sql.Row{{"character varying"}},
+				},
+				{
+					Query:       `SELECT 1 UNION SELECT 'a';`,
+					ExpectedErr: `invalid input syntax for type int4: "a"`,
+				},
+				{
+					// TODO: these need dolthub/go-mysql-server#4068, numerics with a different scale hash differently
+					Skip:     true,
+					Query:    `SELECT 5 UNION SELECT 5.0;`,
+					Expected: []sql.Row{{Numeric("5")}},
+				},
+				{
+					Skip:     true,
+					Query:    `SELECT COUNT(*) FROM (SELECT id FROM setop_nums INTERSECT SELECT d FROM setop_nums) s;`,
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Skip:     true,
+					Query:    `SELECT id FROM setop_nums EXCEPT SELECT d FROM setop_nums;`,
+					Expected: []sql.Row{{Numeric("2")}},
+				},
+				{
+					Skip:     true,
+					Query:    `SELECT COUNT(*) FROM (SELECT id FROM setop_nums UNION SELECT d FROM setop_nums) s;`,
+					Expected: []sql.Row{{4}},
+				},
+			},
+		},
+	})
+}
