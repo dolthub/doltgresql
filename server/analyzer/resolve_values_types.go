@@ -117,41 +117,48 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 		//
 		// This pass catches those: for each GetField, check if its type
 		// disagrees with what the child node actually produces.
-		node, _, err = pgtransform.NodeExprsWithNodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
-			gf, ok := expr.(*expression.GetField)
-			if !ok {
-				return expr, transform.SameTree, nil
-			}
-			// Skip VDT GetFields — the first pass already handled these
-			if _, isVDT := transformedVDTs[gf.TableId()]; isVDT {
-				return expr, transform.SameTree, nil
-			}
-			// Collect the schema that this node's children produce
-			var childSchema sql.Schema
-			for _, child := range n.Children() {
-				childSchema = append(childSchema, child.Schema(ctx)...)
-			}
-			// TODO: GMS is case-insensitive for identifiers, so aggregate
-			// GetField names and child schema names may differ in casing.
-			// We use strings.ToLower to handle this, but Postgres requires
-			// case-sensitivity for quoted identifiers, which this breaks.
-			gfName := strings.ToLower(gf.Name())
-			for _, col := range childSchema {
-				if strings.ToLower(col.Name) == gfName && gf.Type(ctx) != col.Type {
-					return expression.NewGetFieldWithTable(
-						gf.Index(), int(gf.TableId()), col.Type,
-						gf.Database(), gf.Table(), gf.Name(), gf.IsNullable(ctx),
-					), transform.NewTree, nil
-				}
-			}
-			return expr, transform.SameTree, nil
-		})
+		node, err = fixParentGetFieldTypes(ctx, node, transformedVDTs)
 		if err != nil {
 			return nil, transform.SameTree, err
 		}
 	}
 
 	return node, same, nil
+}
+
+// fixParentGetFieldTypes updates each GetField whose type disagrees with the column of the same name that its node's
+// children produce. GetFields reading from the tables in skip are left alone.
+func fixParentGetFieldTypes(ctx *sql.Context, node sql.Node, skip map[sql.TableId]sql.Schema) (sql.Node, error) {
+	node, _, err := pgtransform.NodeExprsWithNodeWithOpaque(ctx, node, func(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		gf, ok := expr.(*expression.GetField)
+		if !ok {
+			return expr, transform.SameTree, nil
+		}
+		// Skip VDT GetFields — the first pass already handled these
+		if _, isVDT := skip[gf.TableId()]; isVDT {
+			return expr, transform.SameTree, nil
+		}
+		// Collect the schema that this node's children produce
+		var childSchema sql.Schema
+		for _, child := range n.Children() {
+			childSchema = append(childSchema, child.Schema(ctx)...)
+		}
+		// TODO: GMS is case-insensitive for identifiers, so aggregate
+		// GetField names and child schema names may differ in casing.
+		// We use strings.ToLower to handle this, but Postgres requires
+		// case-sensitivity for quoted identifiers, which this breaks.
+		gfName := strings.ToLower(gf.Name())
+		for _, col := range childSchema {
+			if strings.ToLower(col.Name) == gfName && gf.Type(ctx) != col.Type {
+				return expression.NewGetFieldWithTable(
+					gf.Index(), int(gf.TableId()), col.Type,
+					gf.Database(), gf.Table(), gf.Name(), gf.IsNullable(ctx),
+				), transform.NewTree, nil
+			}
+		}
+		return expr, transform.SameTree, nil
+	})
+	return node, err
 }
 
 // transformValuesNode transforms a plan.Values or plan.ValueDerivedTable node to use common types
