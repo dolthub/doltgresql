@@ -42,6 +42,23 @@ func NewTablePrivileges() *TablePrivileges {
 	return &TablePrivileges{make(map[TablePrivilegeKey]TablePrivilegeValue)}
 }
 
+// AddOwnerTablePrivileges gives the role that created a table every table privilege with the grant option, which
+// matches what PostgreSQL allows the owner of a table. Superusers already have every privilege, so nothing is added
+// for them. Returns whether any privileges were added. Must be called under LockWrite.
+func AddOwnerTablePrivileges(ownerRoleID RoleID, schemaName, tableName string) bool {
+	if IsSuperUser(ownerRoleID) {
+		return false
+	}
+	key := TablePrivilegeKey{
+		Role:  ownerRoleID,
+		Table: doltdb.TableName{Name: tableName, Schema: schemaName},
+	}
+	for _, privilege := range PrivilegeObject_TABLE.AllPrivileges() {
+		AddTablePrivilege(key, GrantedPrivilege{Privilege: privilege, GrantedBy: ownerRoleID}, true)
+	}
+	return true
+}
+
 // AddTablePrivilege adds the given table privilege to the global database.
 func AddTablePrivilege(key TablePrivilegeKey, privilege GrantedPrivilege, withGrantOption bool) {
 	tablePrivilegeValue, ok := globalDatabase.tablePrivileges.Data[key]
