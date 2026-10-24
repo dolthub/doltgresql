@@ -15,8 +15,10 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
+	"context"
 
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
@@ -33,11 +35,32 @@ const UnknownColSentinelPrefix = "__?column?__"
 // ConvertOptions controls optional behavior during PostgreSQL-to-Vitess AST conversion.
 type ConvertOptions struct {
 	PermitUnsupportedLockingStatements bool
+	// SystemVariables resolves SET and SHOW; an explicit registry wins over the one WithContext reads from a context.
+	SystemVariables sql.SystemVariableRegistry
+}
+
+// WithContext fills in SystemVariables from the engine variables bound to ctx, if the options do not already name a
+// registry. A context with no engine variables leaves it nil, so SET and SHOW fail to convert instead of panicking.
+func (options ConvertOptions) WithContext(ctx context.Context) ConvertOptions {
+	if options.SystemVariables != nil {
+		return options
+	}
+	if sqlCtx, ok := ctx.(*sql.Context); ok {
+		if vars := sqlCtx.EngineVariables(); vars != nil {
+			options.SystemVariables = vars.System
+		}
+	}
+	return options
 }
 
 // Convert converts a Postgres AST into a Vitess AST.
 func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 	return ConvertWithOptions(postgresStmt, ConvertOptions{})
+}
+
+// ConvertWithContext converts a Postgres AST into a Vitess AST using the engine variables bound to ctx.
+func ConvertWithContext(ctx *sql.Context, postgresStmt parser.Statement) (vitess.Statement, error) {
+	return ConvertWithOptions(postgresStmt, ConvertOptions{}.WithContext(ctx))
 }
 
 // ConvertWithOptions converts a Postgres AST into a Vitess AST using the given options.

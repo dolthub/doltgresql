@@ -357,6 +357,38 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 			},
 		},
 		{
+			// Function bodies are converted outside the connection handler, so SET and SHOW must still find the
+			// calling session's engine variables.
+			Name: "SET and SHOW in function body",
+			SetUpScript: []string{
+				`CREATE FUNCTION set_app_name() RETURNS text LANGUAGE sql AS $$
+					SET application_name = 'from_function';
+					SELECT 'set'::text;
+				$$;`,
+				`CREATE FUNCTION show_app_name() RETURNS text LANGUAGE sql AS $$
+					SHOW application_name;
+					SELECT 'shown'::text;
+				$$;`,
+				`CREATE FUNCTION show_timezone() RETURNS void LANGUAGE sql AS 'SHOW timezone';`,
+				`CREATE PROCEDURE set_app_name_proc() LANGUAGE sql AS $$ SET application_name = 'from_procedure' $$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Executing SET in a function body is unsupported, but the body must convert first.
+					Query:       `SELECT set_app_name();`,
+					ExpectedErr: "does not result in a single value",
+				},
+				{
+					Query:    `SELECT show_app_name();`,
+					Expected: []sql.Row{{"shown"}},
+				},
+				{
+					Query:    `SELECT show_timezone();`,
+					Expected: []sql.Row{{""}},
+				},
+			},
+		},
+		{
 			Name: "function with default expression in parameter",
 			SetUpScript: []string{
 				`CREATE TABLE cp_test (a int, b text);`,

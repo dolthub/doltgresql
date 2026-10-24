@@ -20,6 +20,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dolthub/doltgresql/core"
@@ -35,7 +36,7 @@ import (
 )
 
 // doltConfigParameters is a list of Dolt-specific configuration parameters that can be used in SET statement.
-var doltConfigParameters = make(map[string]sql.SystemVariable)
+var doltConfigParameters = make(map[string]struct{})
 
 // Init initializes or appends to SystemVariables as it functions as a global variable.
 // Currently, we append all of postgres configuration parameters to sql.SystemVariables.
@@ -48,23 +49,71 @@ func Init() {
 		// unlikely this would happen since init() in gms package is executed first
 		variables.InitSystemVariables()
 	}
-	// Regression tests assume the Los Angeles timezone, so we'll set that here if the env var is set
-	if _, ok := os.LookupEnv("REGRESSION_TESTING"); ok {
-		timezone := postgresConfigParameters["timezone"].(*Parameter)
-		timezone.Default = "America/Los_Angeles"
-		timezone.ResetVal = "America/Los_Angeles"
-	}
-	params := make([]sql.SystemVariable, len(postgresConfigParameters))
-	i := 0
-	for _, sysVar := range postgresConfigParameters {
-		params[i] = sysVar
-		i++
-	}
-	for _, doltSysVar := range sqle.DoltSystemVariables {
-		doltConfigParameters[doltSysVar.GetName()] = doltSysVar
+	params := freshPostgresParameters()
+	for _, name := range sqle.DoltSystemVariableNames() {
+		doltConfigParameters[name] = struct{}{}
 	}
 	sql.SystemVariables.AddSystemVariables(params)
 	sqle.AddDoltSystemVariables()
+}
+
+// InitWithRegistry registers fresh PostgreSQL definitions in a registry from
+// sqle.NewEngineVariables. A name Dolt also defines keeps Dolt's definition.
+func InitWithRegistry(vars sql.SystemVariableRegistry) {
+	addPostgresParameters(vars, doltVariableNames())
+}
+
+func addPostgresParameters(vars sql.SystemVariableRegistry, skip map[string]struct{}) {
+	params := freshPostgresParameters()
+	kept := params[:0]
+	for _, param := range params {
+		if _, ok := skip[strings.ToLower(param.GetName())]; !ok {
+			kept = append(kept, param)
+		}
+	}
+	vars.AddSystemVariables(kept)
+}
+
+// doltVariableNames returns the lowercase names Dolt registers in an engine.
+var doltVariableNames = sync.OnceValue(func() map[string]struct{} {
+	names := nameRecorder{names: make(map[string]struct{})}
+	sqle.AddDoltSystemVariablesToRegistry(names)
+	return names.names
+})
+
+// nameRecorder only records the names passed to AddSystemVariables.
+type nameRecorder struct {
+	sql.SystemVariableRegistry
+	names map[string]struct{}
+}
+
+func (r nameRecorder) AddSystemVariables(defs []sql.SystemVariable) {
+	for _, def := range defs {
+		if def != nil {
+			r.names[strings.ToLower(def.GetName())] = struct{}{}
+		}
+	}
+}
+
+func freshPostgresParameters() []sql.SystemVariable {
+	params := make([]sql.SystemVariable, 0, len(postgresConfigParameters))
+	_, regression := os.LookupEnv("REGRESSION_TESTING")
+	for _, definition := range postgresConfigParameters {
+		original := definition.(*Parameter)
+		param := *original
+		param.BootVal = original.Default
+		if scope, ok := original.Scope.(*PgsqlScope); ok {
+			copyScope := *scope
+			param.Scope = &copyScope
+		}
+		if regression && strings.EqualFold(param.Name, "timezone") {
+			param.Default = "America/Los_Angeles"
+			param.BootVal = param.Default
+			param.ResetVal = param.Default
+		}
+		params = append(params, &param)
+	}
+	return params
 }
 
 var (
@@ -78,6 +127,7 @@ type Parameter struct {
 	Name         string
 	Default      any
 	Unit         string
+	BootVal      any // immutable startup default for pg_settings
 	Category     string
 	ShortDesc    string
 	Context      ParameterContext
@@ -111,7 +161,9 @@ func (p *Parameter) GetLocalScope() sql.SystemVariableScope {
 
 // SetDefault implements sql.SystemVariable.
 func (p *Parameter) SetDefault(a any) {
-	if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
+	if p.ValidateFunc == nil {
+		p.Default = a
+	} else if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
 		p.Default = validatedVal
 	}
 }
@@ -274,8 +326,11 @@ func (p *PgsqlScope) SetValue(ctx *sql.Context, name string, val any) error {
 // projecting it into the session store used by query execution.
 func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) error {
 	name = strings.ToLower(name)
-	variable, ok := postgresConfigParameters[name]
+	variable, _, ok := ctx.SystemVariables().GetGlobal(name)
 	if !ok {
+		return sql.ErrUnknownSystemVariable.New(name)
+	}
+	if _, ok := variable.(*Parameter); !ok {
 		return sql.ErrUnknownSystemVariable.New(name)
 	}
 	validated, err := variable.SetValue(ctx, val, false)
@@ -289,15 +344,24 @@ func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) er
 // SHOW and current_setting, including boolean on/off spelling and the units of
 // integer and real parameters.
 func FormatPostgresParameterValue(name string, val any) string {
+	return formatPostgresParameterValue(postgresConfigParameters[strings.ToLower(name)], val)
+}
+
+func FormatPostgresParameterValueInRegistry(vars sql.SystemVariableRegistry, name string, val any) string {
+	definition, _, _ := vars.GetGlobal(strings.ToLower(name))
+	return formatPostgresParameterValue(definition, val)
+}
+
+func formatPostgresParameterValue(definition sql.SystemVariable, val any) string {
 	if val == nil {
 		return ""
 	}
-	if param, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter); ok {
+	if param, ok := definition.(*Parameter); ok {
 		if formatted, ok := param.formatWithUnit(val); ok {
 			return formatted
 		}
 	}
-	if variable, ok := postgresConfigParameters[strings.ToLower(name)]; ok && variable.GetType().String() == "system_bool" {
+	if p, ok := definition.(*Parameter); ok && p.GetType().String() == "system_bool" {
 		switch v := val.(type) {
 		case bool:
 			if v {
@@ -388,7 +452,8 @@ func TzOffsetToDuration(d string) (time.Duration, error) {
 // applied when later sessions start. Returns the canonical name of the parameter, and whether only superusers may set
 // it.
 func ValidatePostgresParameterValue(ctx *sql.Context, name string, value string) (string, bool, error) {
-	variable, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter)
+	definition, _, _ := ctx.SystemVariables().GetGlobal(strings.ToLower(name))
+	variable, ok := definition.(*Parameter)
 	if !ok {
 		return "", false, pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, name)
 	}

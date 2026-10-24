@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
@@ -63,6 +64,16 @@ var minNormalFloat64 = math.Float64frombits(0x0010000000000000)
 // HasUnit returns whether the given parameter has a unit, meaning that its value is displayed with a unit.
 func HasUnit(name string) bool {
 	p, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter)
+	return ok && len(p.Unit) > 0
+}
+
+// HasUnitInRegistry returns whether the parameter, as defined in the given registry, has a unit.
+func HasUnitInRegistry(vars sql.SystemVariableRegistry, name string) bool {
+	definition, _, ok := vars.GetGlobal(strings.ToLower(name))
+	if !ok {
+		return false
+	}
+	p, ok := definition.(*Parameter)
 	return ok && len(p.Unit) > 0
 }
 

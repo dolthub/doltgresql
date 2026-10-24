@@ -88,7 +88,7 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 		dbName = strings.TrimPrefix(strings.TrimSuffix(dbName, "`"), "`")
 		return &vitess.Use{DBName: vitess.NewTableIdent(dbName)}, nil
 	}
-	if node.Namespace == "" && !config.IsValidPostgresConfigParameter(node.Name) && !config.IsValidDoltConfigParameter(node.Name) {
+	if node.Namespace == "" && !config.IsValidPostgresConfigParameterInRegistry(ctx.variables(), node.Name) && !config.IsValidDoltConfigParameterInRegistry(ctx.variables(), node.Name) {
 		return nil, pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, node.Name)
 	}
 	var expr vitess.Expr
@@ -123,7 +123,7 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 			}
 		}
 	}
-	if node.Namespace != "" || config.IsValidPostgresConfigParameter(node.Name) {
+	if node.Namespace != "" || config.IsValidPostgresConfigParameterInRegistry(ctx.variables(), node.Name) {
 		name := node.Name
 		if node.Namespace != "" {
 			name = fmt.Sprintf("%s.%s", node.Namespace, node.Name)
@@ -154,7 +154,7 @@ func nodeSetVar(ctx *Context, node *tree.SetVar) (vitess.Statement, error) {
 			// SET LOCAL only applies for the duration of the current transaction; the connection handler restores
 			// the session values when the transaction ends. Global-only variables are rejected by the engine.
 			scope = planbuilder.SetScope_TransactionLocal
-		} else if svScope, ok := config.GlobalOnlySystemVariableScope(node.Name); ok {
+		} else if svScope, ok := config.GlobalOnlySystemVariableScopeInRegistry(ctx.variables(), node.Name); ok {
 			switch svScope {
 			case sql.SystemVariableScope_Persist:
 				scope = vitess.SetScope_Persist
