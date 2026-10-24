@@ -29,6 +29,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/node"
 )
@@ -38,12 +39,18 @@ type ConvertedQuery struct {
 	String       string
 	AST          sqlparser.Statement
 	StatementTag string
+	// NoTransactionBlock names the statement when PostgreSQL refuses to run it inside a transaction block, such as
+	// CREATE INDEX CONCURRENTLY. It is empty for every other statement.
+	NoTransactionBlock string
 }
 
 // handleQueryOutsideEngine handles statements owned by the connection layer instead of the query engine.
 func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery, simpleQuery *simpleQueryExecution) (handled bool, endOfMessages bool, err error) {
 	if handled, err := h.handleTransactionStatement(query); handled || err != nil {
 		return handled, true, err
+	}
+	if query.NoTransactionBlock != "" && h.isInTransactionBlock(simpleQuery) {
+		return true, true, pgerror.Newf(pgcode.ActiveSQLTransaction, "%s cannot run inside a transaction block", query.NoTransactionBlock)
 	}
 
 	switch stmt := query.AST.(type) {
@@ -204,8 +211,25 @@ func (h *ConnectionHandler) convertQuery(query string) ([]ConvertedQuery, error)
 		} else {
 			converted[i] = ConvertedQuery{String: query, AST: vitessAST, StatementTag: stmtTag}
 		}
+		converted[i].NoTransactionBlock = noTransactionBlockStatement(s[i].AST)
 	}
 	return converted, nil
+}
+
+// noTransactionBlockStatement returns the name of the statement if PostgreSQL refuses to run it inside a transaction
+// block, and an empty string otherwise.
+func noTransactionBlockStatement(stmt tree.Statement) string {
+	switch stmt := stmt.(type) {
+	case *tree.CreateIndex:
+		if stmt.Concurrently {
+			return "CREATE INDEX CONCURRENTLY"
+		}
+	case *tree.DropIndex:
+		if stmt.Concurrently {
+			return "DROP INDEX CONCURRENTLY"
+		}
+	}
+	return ""
 }
 
 // makeCommandComplete constructs PostgreSQL's command tag for a completed statement.

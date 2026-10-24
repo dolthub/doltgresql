@@ -35,9 +35,7 @@ func nodeCreateIndex(ctx *Context, node *tree.CreateIndex) (*vitess.AlterTable, 
 	if node == nil {
 		return nil, nil
 	}
-	if node.Concurrently {
-		return nil, errors.Errorf("concurrent index creation is not yet supported")
-	}
+	// CONCURRENTLY only changes how PostgreSQL locks the table while it builds the index, so the index is built as usual
 	var vectorOptions []*vitess.IndexOption
 	columns := node.Columns
 	indexParams := node.IndexParams
