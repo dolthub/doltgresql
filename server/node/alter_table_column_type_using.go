@@ -25,6 +25,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/transform"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
@@ -35,15 +36,18 @@ import (
 
 // AlterTableColumnTypeUsing handles `ALTER TABLE ... ALTER COLUMN ... TYPE ... USING <expr>` statements. Unlike a
 // plain column type change (which converts the existing values directly to the new type), the USING form computes each
-// row's new value by evaluating the given expression against the old row.
+// row's new value by evaluating the given expression against the old row. It also handles lossless integer
+// widening on foreign-key columns using a reference to the original column as its expression.
 type AlterTableColumnTypeUsing struct {
-	DbProvider sql.DatabaseProvider
-	NewType    *pgtypes.DoltgresType
-	SchemaName string
-	TableName  string
-	ColumnName string
-	IfExists   bool
-	usingExpr  sql.Expression
+	DbProvider       sql.DatabaseProvider
+	NewType          *pgtypes.DoltgresType
+	SchemaName       string
+	TableName        string
+	ColumnName       string
+	IfExists         bool
+	usingExpr        sql.Expression
+	integerWidening  bool
+	wideningDatabase sql.Database
 	// table is the resolved target table, assigned during analysis by the resolveTableForDDL rule. It is nil when
 	// the table does not exist, which analysis only tolerates when IfExists is set; execution is then a no-op.
 	table sql.TableNode
@@ -86,10 +90,18 @@ func (a *AlterTableColumnTypeUsing) WithResolvedTable(table sql.TableNode) *Alte
 }
 
 // Schema implements sql.ExecSourceRel.
-func (a *AlterTableColumnTypeUsing) Schema(ctx *sql.Context) sql.Schema { return nil }
+func (a *AlterTableColumnTypeUsing) Schema(ctx *sql.Context) sql.Schema {
+	if a.integerWidening {
+		return types.OkResultSchema
+	}
+	return nil
+}
 
 // String implements sql.ExecSourceRel.
 func (a *AlterTableColumnTypeUsing) String() string {
+	if a.integerWidening {
+		return "ALTER TABLE ALTER COLUMN TYPE"
+	}
 	return "ALTER TABLE ALTER COLUMN TYPE USING"
 }
 
@@ -152,6 +164,18 @@ func (a *AlterTableColumnTypeUsing) RowIter(ctx *sql.Context, r sql.Row) (sql.Ro
 	}
 
 	tbl := a.table.UnderlyingTable()
+	if a.integerWidening {
+		// Earlier clauses of a multi-action ALTER may already have changed the
+		// schema, defaults, or indexes. Always rewrite the current table.
+		current, found, err := a.wideningDatabase.GetTableInsensitive(ctx, a.TableName)
+		if err != nil {
+			return nil, err
+		}
+		if !found {
+			return nil, sql.ErrTableNotFound.New(a.TableName)
+		}
+		tbl = current
+	}
 	rwt, ok := tbl.(sql.RewritableTable)
 	if !ok {
 		return nil, errors.Errorf("ALTER COLUMN ... TYPE ... USING is not supported for table %s", a.TableName)
@@ -166,9 +190,12 @@ func (a *AlterTableColumnTypeUsing) RowIter(ctx *sql.Context, r sql.Row) (sql.Ro
 	newCol := *oldCol
 	newCol.Type = a.NewType
 
-	// Reject type changes for columns that participate in a foreign key, mirroring the behavior of the
-	// non-USING column type change.
-	if err := a.checkForeignKeyUsage(ctx, tbl, oldCol.Name); err != nil {
+	// Only the plain, lossless integer-widening path may rewrite foreign-key
+	// columns. Arbitrary USING expressions can invalidate existing references.
+	if a.integerWidening && !oldCol.Type.Equals(a.NewType) && !isLosslessIntegerWidening(oldCol.Type, a.NewType) {
+		return nil, sql.ErrForeignKeyTypeChange.New(oldCol.Name)
+	}
+	if err := a.checkForeignKeyUsage(ctx, tbl, oldCol.Name); err != nil && !(a.integerWidening && sql.ErrForeignKeyTypeChange.Is(err)) {
 		return nil, err
 	}
 
@@ -181,6 +208,9 @@ func (a *AlterTableColumnTypeUsing) RowIter(ctx *sql.Context, r sql.Row) (sql.Ro
 
 	// Bind any column references in the USING expression to the table's schema.
 	usingExpr, err := a.bindColumnReferences(ctx, sch)
+	if a.integerWidening {
+		usingExpr = expression.NewGetField(colIdx, oldCol.Type, oldCol.Name, oldCol.Nullable)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -202,6 +232,9 @@ func (a *AlterTableColumnTypeUsing) RowIter(ctx *sql.Context, r sql.Row) (sql.Ro
 
 	if err := a.rewriteRows(ctx, rwt, oldPkSchema, newPkSchema, oldCol, &newCol, conversionExpr, usingTypeOk, colIdx); err != nil {
 		return nil, err
+	}
+	if a.integerWidening {
+		return sql.RowsToRowIter(sql.NewRow(types.NewOkResult(0))), nil
 	}
 	return sql.RowsToRowIter(), nil
 }
@@ -443,4 +476,56 @@ func (u *UsingColumn) WithResolvedChildren(ctx context.Context, children []any) 
 	nu := *u
 	nu.typ = sch[idx].Type
 	return &nu, nil
+}
+
+// NewForeignKeyIntegerWidening selects the existing rewrite path for a lossless
+// integer type change. Explicit USING expressions never enter this path.
+func NewForeignKeyIntegerWidening(ctx *sql.Context, m *plan.ModifyColumn, provider sql.DatabaseProvider) (*AlterTableColumnTypeUsing, error) {
+	table, ok := m.Table.(sql.TableNode)
+	if !ok {
+		return nil, nil
+	}
+	schema := table.UnderlyingTable().Schema(ctx)
+	idx := schema.IndexOfColName(m.Column())
+	if idx < 0 || m.NewColumn().Name != m.Column() || m.Order(ctx) != nil {
+		return nil, nil
+	}
+	to, ok := m.NewColumn().Type.(*pgtypes.DoltgresType)
+	if !ok || !isLosslessIntegerWidening(schema[idx].Type, to) {
+		return nil, nil
+	}
+	n := &AlterTableColumnTypeUsing{
+		DbProvider:       provider,
+		NewType:          to,
+		TableName:        table.Name(),
+		ColumnName:       m.Column(),
+		table:            table,
+		usingExpr:        expression.NewGetField(idx, schema[idx].Type, m.Column(), schema[idx].Nullable),
+		integerWidening:  true,
+		wideningDatabase: m.Database(),
+	}
+	// Leave columns without foreign keys on the ordinary type-change path.
+	if err := n.checkForeignKeyUsage(ctx, table.UnderlyingTable(), m.Column()); err != nil {
+		if sql.ErrForeignKeyTypeChange.Is(err) {
+			return n, nil
+		}
+		return nil, err
+	}
+	return nil, nil
+}
+
+// isLosslessIntegerWidening recognizes built-in integer widths, excluding domains.
+func isLosslessIntegerWidening(from sql.Type, to *pgtypes.DoltgresType) bool {
+	source, ok := from.(*pgtypes.DoltgresType)
+	if !ok {
+		return false
+	}
+	switch source.ID {
+	case pgtypes.Int16.ID, pgtypes.Int16Serial.ID:
+		return to.ID == pgtypes.Int32.ID || to.ID == pgtypes.Int64.ID
+	case pgtypes.Int32.ID, pgtypes.Int32Serial.ID:
+		return to.ID == pgtypes.Int64.ID
+	default:
+		return false
+	}
 }
