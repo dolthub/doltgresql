@@ -48,7 +48,7 @@ type AlterTableColumnTypeUsing struct {
 	usingExpr        sql.Expression
 	integerWidening  bool
 	wideningDatabase sql.Database
-	// table is the resolved target table, assigned during analysis by the resolveTableForDDL rule. It is nil when
+	// table is the resolved target table, assigned during analysis. It is nil when
 	// the table does not exist, which analysis only tolerates when IfExists is set; execution is then a no-op.
 	table sql.TableNode
 }
@@ -206,13 +206,16 @@ func (a *AlterTableColumnTypeUsing) RowIter(ctx *sql.Context, r sql.Row) (sql.Ro
 		}
 	}
 
-	// Bind any column references in the USING expression to the table's schema.
-	usingExpr, err := a.bindColumnReferences(ctx, sch)
+	var usingExpr sql.Expression
 	if a.integerWidening {
 		usingExpr = expression.NewGetField(colIdx, oldCol.Type, oldCol.Name, oldCol.Nullable)
-	}
-	if err != nil {
-		return nil, err
+	} else {
+		// Bind explicit USING expressions against the table's current schema.
+		var err error
+		usingExpr, err = a.bindColumnReferences(ctx, sch)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// Values produced by the USING expression are converted to the new column type with an assignment cast,
@@ -336,8 +339,8 @@ func (a *AlterTableColumnTypeUsing) bindColumnReferences(ctx *sql.Context, sch s
 	return boundExpr, nil
 }
 
-// checkForeignKeyUsage returns an error if the named column is used by any foreign key on the given table (either as
-// a child or a parent column), since changing its type would invalidate the foreign key.
+// checkForeignKeyUsage returns ErrForeignKeyTypeChange if the named column participates
+// in a foreign key as a child or parent. Callers separately determine whether a change is safe.
 func (a *AlterTableColumnTypeUsing) checkForeignKeyUsage(ctx *sql.Context, tblNode sql.Table, colName string) error {
 	fkTable, ok := tblNode.(sql.ForeignKeyTable)
 	if !ok {
@@ -478,10 +481,11 @@ func (u *UsingColumn) WithResolvedChildren(ctx context.Context, children []any) 
 	return &nu, nil
 }
 
-// NewForeignKeyIntegerWidening selects the existing rewrite path for a lossless
-// integer type change. Explicit USING expressions never enter this path.
+// NewForeignKeyIntegerWidening selects the rewrite path for lossless integer
+// widening on foreign-key columns. It returns nil for other changes, leaving
+// them on the ordinary execution path. Explicit USING expressions do not enter here.
 func NewForeignKeyIntegerWidening(ctx *sql.Context, m *plan.ModifyColumn, provider sql.DatabaseProvider) (*AlterTableColumnTypeUsing, error) {
-	table, ok := m.Table.(sql.TableNode)
+	table, ok := m.Table.(*plan.ResolvedTable)
 	if !ok {
 		return nil, nil
 	}
@@ -502,7 +506,7 @@ func NewForeignKeyIntegerWidening(ctx *sql.Context, m *plan.ModifyColumn, provid
 		table:            table,
 		usingExpr:        expression.NewGetField(idx, schema[idx].Type, m.Column(), schema[idx].Nullable),
 		integerWidening:  true,
-		wideningDatabase: m.Database(),
+		wideningDatabase: table.Database(),
 	}
 	// Leave columns without foreign keys on the ordinary type-change path.
 	if err := n.checkForeignKeyUsage(ctx, table.UnderlyingTable(), m.Column()); err != nil {
