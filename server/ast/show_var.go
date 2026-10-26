@@ -43,7 +43,7 @@ func nodeShowVar(ctx *Context, node *tree.ShowVar) (vitess.Statement, error) {
 	// See set_var.go
 	isUserVar := strings.Index(node.Name, ".") > 0 || strings.EqualFold(node.Name, "role") || strings.EqualFold(node.Name, "session_authorization")
 	// Unit-bearing settings need the same formatted value as current_setting.
-	if isUserVar || config.HasUnit(node.Name) {
+	if isUserVar || config.HasUnitInRegistry(ctx.variables(), node.Name) {
 		varName := vitess.NewColIdent(node.Name)
 		return &vitess.Select{
 			SelectExprs: vitess.SelectExprs{
@@ -67,7 +67,7 @@ func nodeShowVar(ctx *Context, node *tree.ShowVar) (vitess.Statement, error) {
 		// dolt_stats_enabled) must be read from the global scope, symmetric with how SET routes writes to
 		// them. Reading them through the session scope errors out.
 		scopePrefix := "@@session."
-		if config.IsGlobalOnlySystemVariable(node.Name) {
+		if _, globalOnly := config.GlobalOnlySystemVariableScopeInRegistry(ctx.variables(), node.Name); globalOnly {
 			scopePrefix = "@@global."
 		}
 		varName := vitess.NewColIdent(scopePrefix + node.Name)

@@ -116,7 +116,7 @@ func RegisterWindowFunction(f WindowFunctionInterface) {
 
 // Initialize handles the initialization of the catalog by overwriting the built-in GMS functions, since they do not
 // apply to PostgreSQL (and functions of the same name often have different behavior).
-func Initialize(astConvert func(parser.Statement) (sqlparser.Statement, error)) {
+func Initialize(astConvert func(*sql.Context, parser.Statement) (sqlparser.Statement, error)) {
 	// This should only be called once. We don't use sync.Once since we also want to panic if someone attempts to
 	// register a function after initialization.
 	if initializedFunctions {

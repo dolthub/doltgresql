@@ -15,8 +15,6 @@
 package auth
 
 import (
-	"strings"
-
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -243,21 +241,29 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		}
 		for i := 0; i < len(auth.TargetNames); i += 2 {
 			// TODO: handle database
-			schemaName, err := core.GetSchemaName(ctx, nil, auth.TargetNames[i])
+			schemaName := auth.TargetNames[i]
+			var err error
+			if schemaName == "" {
+				// An unqualified sequence can be in a later search-path schema.
+				// The first existing schema is not necessarily the sequence's schema.
+				schemaName, err = sequenceSchemaOnSearchPath(ctx, auth.TargetNames[i+1])
+			}
 			if err != nil {
 				// If this fails, then there's an issue with the search path.
 				// This will error later in the process, so we'll pass auth for now.
 				return nil
 			}
+			if schemaName == "" {
+				// Leave missing sequences to the normal sequence resolver.
+				return nil
+			}
 			err = checkPrivilegeOnSequence(state, schemaName, auth.TargetNames[i+1], privileges)
 			if err != nil {
-				if checkSchemaForUsage {
-					// there can be schema USAGE privilege for the user/role.
-					err = checkPrivilegeOnSchema(state, schemaName, privileges)
-					if err != nil {
-						return err
-					}
-				} else {
+				if !checkSchemaForUsage {
+					return err
+				}
+				// there can be schema USAGE privilege for the user/role.
+				if checkPrivilegeOnSchema(state, schemaName, privileges) != nil {
 					return err
 				}
 			}
@@ -334,6 +340,45 @@ func tableSchemaOnSearchPath(ctx *sql.Context, databaseName, tableName string) (
 	return "", nil
 }
 
+// sequenceSchemaOnSearchPath returns the schema of the first search-path schema containing the given sequence, matching
+// how nextval resolves an unqualified sequence. Returns an empty string if no schema on the search path contains it.
+func sequenceSchemaOnSearchPath(ctx *sql.Context, seqName string) (string, error) {
+	collection, err := core.GetSequencesCollectionFromContext(ctx, "")
+	if err != nil {
+		return "", err
+	}
+	path, err := core.SearchPath(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, candidate := range path {
+		if collection.HasSequence(ctx, id.NewSequence(candidate, seqName)) {
+			return candidate, nil
+		}
+	}
+	return "", nil
+}
+
+// routineSchemaOnSearchPath returns the schema of the first search-path schema containing a user-defined function or
+// procedure with the given name, matching how an unqualified routine resolves. Returns an empty string if no schema on
+// the search path contains one.
+func routineSchemaOnSearchPath(ctx *sql.Context, routineName string) (string, error) {
+	path, err := core.SearchPath(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, candidate := range path {
+		userDefined, err := isUserDefinedRoutine(ctx, candidate, routineName)
+		if err != nil {
+			return "", err
+		}
+		if userDefined {
+			return candidate, nil
+		}
+	}
+	return "", nil
+}
+
 // HandleAuthNode implements the sql.AuthorizationHandler interface.
 func (h *AuthorizationHandler) HandleAuthNode(ctx *sql.Context, aqs sql.AuthorizationQueryState, node sql.AuthorizationCheckerNode) error {
 	if aqs == nil {
@@ -343,8 +388,23 @@ func (h *AuthorizationHandler) HandleAuthNode(ctx *sql.Context, aqs sql.Authoriz
 	if err := state.authorizationError(); err != nil {
 		return err
 	}
-	// TODO: implement this
-	return nil
+	globalLock.RLock()
+	defer globalLock.RUnlock()
+	// Nodes such as Dolt's table functions describe the privileges that they need as MySQL privileged operations, which
+	// the checker answers using Doltgres privileges.
+	checker := &privilegedOperationChecker{state: state}
+	if !node.CheckAuth(ctx, checker) {
+		if checker.err != nil {
+			return checker.err
+		}
+		return errPermissionDenied()
+	}
+	return checker.checkAllTablesRead(ctx, node)
+}
+
+// errPermissionDenied returns the error for an authorization failure that is not specific to a single object.
+func errPermissionDenied() error {
+	return pgerror.New(pgcode.InsufficientPrivilege, "permission denied")
 }
 
 // CheckDatabase implements the sql.AuthorizationHandler interface.
@@ -412,9 +472,10 @@ func (h *AuthorizationHandler) dbName(ctx *sql.Context, dbName string) string {
 	if len(dbName) == 0 {
 		dbName = ctx.GetCurrentDatabase()
 	}
-	// Revision databases take the form "dbname/revision", so we must split the revision from the database name
-	splitDbName := strings.SplitN(dbName, "/", 2)
-	return splitDbName[0]
+	// Revision databases take the form "dbname/revision" or "dbname@revision", so we must split the revision from the
+	// database name
+	baseName, _ := doltdb.SplitRevisionDbName(dbName)
+	return baseName
 }
 
 // checkPrivilegeOnSchema checks privileges for given schema.
@@ -511,11 +572,23 @@ func checkPrivilegeOnSequence(state AuthorizationQueryState, schemaName, seqName
 // checkPrivilegeOnRoutine checks privileges for given function or procedure provided with schema name.
 func checkPrivilegeOnRoutine(ctx *sql.Context, state AuthorizationQueryState, schemaName, routineName string, privileges []Privilege) error {
 	// TODO: handle database
-	schName, err := core.GetSchemaName(ctx, nil, schemaName)
-	if err != nil {
-		// If this fails, then there's an issue with the search path.
-		// This will error later in the process, so we'll pass auth for now.
-		return nil
+	schName := schemaName
+	if schName == "" {
+		// An unqualified routine can be in a later search-path schema.
+		// The first existing schema is not necessarily the routine's schema.
+		var err error
+		schName, err = routineSchemaOnSearchPath(ctx, routineName)
+		if err != nil {
+			// If this fails, then there's an issue with the search path.
+			// This will error later in the process, so we'll pass auth for now.
+			return nil
+		}
+		if schName == "" {
+			// No user-defined routine has this name, so it is either built-in or missing. Built-in routines are
+			// granted to PUBLIC by default, and missing routines are left to the normal function resolver.
+			//TODO: deny built-in routines once REVOKE ... FROM PUBLIC is supported for them
+			return nil
+		}
 	}
 	roleRoutineKey := RoutinePrivilegeKey{
 		Role:   state.role.ID(),

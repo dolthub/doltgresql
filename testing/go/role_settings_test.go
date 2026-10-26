@@ -436,6 +436,58 @@ func TestRoleSettingsResetDefaults(t *testing.T) {
 	}
 }
 
+// TestRoleSettingsPgSettingsResetVal checks that pg_settings reports the value RESET restores as reset_val, while
+// boot_val stays the built-in default.
+func TestRoleSettingsPgSettingsResetVal(t *testing.T) {
+	ctx, conn, controller := CreateServer(t, "postgres")
+	defer func() {
+		conn.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+	for _, statement := range []string{
+		"CREATE ROLE reset_val_user LOGIN PASSWORD 'pw'",
+		"ALTER ROLE reset_val_user SET work_mem = '16MB'",
+		"ALTER ROLE reset_val_user SET application_name = 'from_role'",
+	} {
+		_, err := conn.Default.Exec(ctx, statement)
+		require.NoError(t, err)
+	}
+	cfg, err := pgx.ParseConfig(fmt.Sprintf("postgres://reset_val_user:pw@127.0.0.1:%d/postgres", conn.Default.Config().Port))
+	require.NoError(t, err)
+	cfg.RuntimeParams["datestyle"] = "ISO, DMY"
+	c, err := pgx.ConnectConfig(ctx, cfg)
+	require.NoError(t, err)
+	defer c.Close(ctx)
+	exec := func(statement string) {
+		t.Helper()
+		_, err := c.Exec(ctx, statement)
+		require.NoError(t, err, statement)
+	}
+	read := func(name string) (setting, bootVal, resetVal string) {
+		t.Helper()
+		require.NoError(t, c.QueryRow(ctx, "SELECT setting, boot_val, reset_val FROM pg_catalog.pg_settings WHERE name = $1", name).
+			Scan(&setting, &bootVal, &resetVal))
+		return setting, bootVal, resetVal
+	}
+	for _, tc := range []struct{ name, set, changed, bootVal, resetVal string }{
+		// The reset value comes from the role's settings
+		{"work_mem", "SET work_mem = '1MB'", "1024", "4096", "16384"},
+		{"application_name", "SET application_name = 'from_session'", "from_session", "psql", "from_role"},
+		// The reset value comes from the client's startup parameters
+		{"DateStyle", "SET datestyle = 'German, DMY'", "German, DMY", "ISO, MDY", "ISO, DMY"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			exec(tc.set)
+			setting, bootVal, resetVal := read(tc.name)
+			require.Equal(t, []string{tc.changed, tc.bootVal, tc.resetVal}, []string{setting, bootVal, resetVal})
+			exec("RESET " + tc.name)
+			setting, bootVal, resetVal = read(tc.name)
+			require.Equal(t, []string{tc.resetVal, tc.bootVal, tc.resetVal}, []string{setting, bootVal, resetVal})
+		})
+	}
+}
+
 func TestRoleSettingsClientDateStyleOverride(t *testing.T) {
 	ctx, conn, controller := CreateServer(t, "postgres")
 	defer func() {

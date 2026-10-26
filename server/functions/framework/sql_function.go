@@ -168,7 +168,7 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 			if err != nil {
 				return nil, err
 			}
-			convertedAST, err := convertToVitess(parsed)
+			convertedAST, err := convertToVitess(ctx, parsed)
 			if err != nil {
 				return nil, err
 			}
@@ -208,7 +208,7 @@ func CallSqlFunction(ctx *sql.Context, f SQLFunction, runner sql.StatementRunner
 	if err != nil {
 		return nil, err
 	}
-	convertedAST, err := convertToVitess(parsed)
+	convertedAST, err := convertToVitess(ctx, parsed)
 	if err != nil {
 		return nil, err
 	}
@@ -375,5 +375,6 @@ func rowIterToRecord(ctx *sql.Context, rowIter sql.RowIter, sch sql.Schema) (sql
 	return sql.RowsToRowIter(newRows...), nil
 }
 
-// convertToVitess is set by init and is used to avoid import cycles
-var convertToVitess func(postgresStmt parser.Statement) (sqlparser.Statement, error)
+// convertToVitess is set by Initialize to avoid import cycles. It takes the caller's context so that SET and SHOW in a
+// function body resolve against that engine's variables.
+var convertToVitess func(ctx *sql.Context, postgresStmt parser.Statement) (sqlparser.Statement, error)

@@ -74,9 +74,6 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		defaultExpr = &vitess.ParenExpr{Expr: defaultExpr}
 	}
 
-	// Callers register column REFERENCES clauses through the table constraint
-	// list, so ForeignKeyDef remains unset here to avoid duplicate constraints.
-
 	if len(node.Computed.Options) > 0 {
 		return nil, errors.Errorf("sequence options are not yet supported, create a sequence separately")
 	}

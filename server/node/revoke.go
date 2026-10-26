@@ -23,7 +23,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/auth"
 )
 
@@ -44,7 +43,7 @@ type Revoke struct {
 // RevokeTable specifically handles the REVOKE ... ON TABLE statement.
 type RevokeTable struct {
 	Privileges []auth.Privilege
-	Tables     []doltdb.TableName
+	Tables     []PrivilegeTarget
 }
 
 // RevokeSchema specifically handles the REVOKE ... ON SCHEMA statement.
@@ -62,13 +61,14 @@ type RevokeDatabase struct {
 // RevokeSequence specifically handles the REVOKE ... ON SEQUENCE statement.
 type RevokeSequence struct {
 	Privileges []auth.Privilege
-	Sequences  []auth.SequencePrivilegeKey
+	Sequences  []PrivilegeTarget
 }
 
 // RevokeRoutine specifically handles the REVOKE ... ON FUNCTION/PROCEDURE/ROUTINE statement.
 type RevokeRoutine struct {
 	Privileges []auth.Privilege
-	Routines   []auth.RoutinePrivilegeKey
+	Routines   []PrivilegeTarget
+	Kind       RoutineKind
 }
 
 // RevokeRole specifically handles the REVOKE <roles> FROM <roles> statement.
@@ -100,32 +100,36 @@ func (r *Revoke) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIter, error) {
 		return nil, errors.New("REVOKE does not yet support CASCADE")
 	}
 
-	var err error
+	// Targets are resolved before any roles, so that a missing object is reported before a missing role
+	resolved, err := r.withResolvedTargets(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
 		switch {
-		case r.RevokeTable != nil:
-			if err = r.revokeTable(ctx); err != nil {
+		case resolved.RevokeTable != nil:
+			if err = resolved.revokeTable(ctx); err != nil {
 				return
 			}
-		case r.RevokeSchema != nil:
-			if err = r.revokeSchema(ctx); err != nil {
+		case resolved.RevokeSchema != nil:
+			if err = resolved.revokeSchema(ctx); err != nil {
 				return
 			}
-		case r.RevokeDatabase != nil:
-			if err = r.revokeDatabase(ctx); err != nil {
+		case resolved.RevokeDatabase != nil:
+			if err = resolved.revokeDatabase(ctx); err != nil {
 				return
 			}
-		case r.RevokeSequence != nil:
-			if err = r.revokeSequence(ctx); err != nil {
+		case resolved.RevokeSequence != nil:
+			if err = resolved.revokeSequence(ctx); err != nil {
 				return
 			}
-		case r.RevokeRoutine != nil:
-			if err = r.revokeRoutine(ctx); err != nil {
+		case resolved.RevokeRoutine != nil:
+			if err = resolved.revokeRoutine(ctx); err != nil {
 				return
 			}
-		case r.RevokeRole != nil:
-			if err = r.revokeRole(ctx); err != nil {
+		case resolved.RevokeRole != nil:
+			if err = resolved.revokeRole(ctx); err != nil {
 				return
 			}
 		default:
@@ -169,6 +173,42 @@ func (r *Revoke) WithResolvedChildren(ctx context.Context, children []any) (any,
 	return r, nil
 }
 
+// withResolvedTargets returns a copy of this Revoke whose tables, sequences, and routines are resolved to the schemas
+// they live in. Returns an error if any target does not exist, or if a target is in another database.
+func (r *Revoke) withResolvedTargets(ctx *sql.Context) (*Revoke, error) {
+	resolved := *r
+	var err error
+	switch {
+	case r.RevokeTable != nil:
+		revokeTable := *r.RevokeTable
+		if revokeTable.Tables, err = resolveTableTargets(ctx, r.RevokeTable.Tables); err != nil {
+			return nil, err
+		}
+		resolved.RevokeTable = &revokeTable
+	case r.RevokeSchema != nil:
+		if err = checkSchemaTargets(ctx, r.RevokeSchema.Schemas); err != nil {
+			return nil, err
+		}
+	case r.RevokeDatabase != nil:
+		if err = checkDatabaseTargets(ctx, r.RevokeDatabase.Databases); err != nil {
+			return nil, err
+		}
+	case r.RevokeSequence != nil:
+		revokeSequence := *r.RevokeSequence
+		if revokeSequence.Sequences, err = resolveSequenceTargets(ctx, r.RevokeSequence.Sequences); err != nil {
+			return nil, err
+		}
+		resolved.RevokeSequence = &revokeSequence
+	case r.RevokeRoutine != nil:
+		revokeRoutine := *r.RevokeRoutine
+		if revokeRoutine.Routines, err = resolveRoutineTargets(ctx, r.RevokeRoutine.Kind, r.RevokeRoutine.Routines); err != nil {
+			return nil, err
+		}
+		resolved.RevokeRoutine = &revokeRoutine
+	}
+	return &resolved, nil
+}
+
 // common handles the initial logic for each REVOKE statement. `roles` are the `FromRoles`. `userRole` is the role of
 // the session's selected user. `grantedByID` is the `GrantedBy` user if specified (or `userRole` if not).
 func (r *Revoke) common(ctx *sql.Context) (roles []auth.Role, userRole auth.Role, grantedByID auth.RoleID, err error) {
@@ -209,10 +249,7 @@ func (r *Revoke) revokeTable(ctx *sql.Context) error {
 	}
 	for _, role := range roles {
 		for _, table := range r.RevokeTable.Tables {
-			schemaName, err := core.GetSchemaName(ctx, nil, table.Schema)
-			if err != nil {
-				return err
-			}
+			schemaName := table.Schema
 			key := auth.TablePrivilegeKey{
 				Role:  userRole.ID(),
 				Table: doltdb.TableName{Name: table.Name, Schema: schemaName},
@@ -303,10 +340,7 @@ func (r *Revoke) revokeSequence(ctx *sql.Context) error {
 	}
 	for _, role := range roles {
 		for _, seq := range r.RevokeSequence.Sequences {
-			schemaName, err := core.GetSchemaName(ctx, nil, seq.Schema)
-			if err != nil {
-				return err
-			}
+			schemaName := seq.Schema
 			key := auth.SequencePrivilegeKey{
 				Role:   userRole.ID(),
 				Schema: schemaName,
@@ -339,10 +373,7 @@ func (r *Revoke) revokeRoutine(ctx *sql.Context) error {
 	}
 	for _, role := range roles {
 		for _, routine := range r.RevokeRoutine.Routines {
-			schemaName, err := core.GetSchemaName(ctx, nil, routine.Schema)
-			if err != nil {
-				return err
-			}
+			schemaName := routine.Schema
 			key := auth.RoutinePrivilegeKey{
 				Role:     userRole.ID(),
 				Schema:   schemaName,
