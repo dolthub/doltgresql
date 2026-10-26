@@ -15,6 +15,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/dolthub/doltgresql/server"
 
@@ -49,6 +51,11 @@ func TestRegressionTests(t *testing.T) {
 		}()
 	}
 
+	outputPath := "out/results.trackers"
+	if path, ok := os.LookupEnv("REGRESSION_OUTPUT"); ok {
+		outputPath = path
+	}
+
 	trackers := make([]*ReplayTracker, 0, len(AllTestResultFilesNames))
 	for _, fileName := range AllTestResultFilesNames {
 		messages, err := regressionFolder.ReadMessages(fileName)
@@ -62,16 +69,46 @@ func TestRegressionTests(t *testing.T) {
 			FailQueries:  queriesToSkip,
 			Timeout:      timeout,
 		})
-		require.NoError(t, err)
+		if err != nil {
+			// An external server may crash or drop the connection mid-file. Record the abort and keep going, so
+			// one crash does not discard the results of every other file.
+			fmt.Printf("REPLAY ABORTED in `%s`: %s\n", fileName, err.Error())
+			tracker = NewReplayTracker(fileName)
+			tracker.Failed = 1
+			tracker.AddFailure(ReplayTrackerItem{
+				Query:           "<replay aborted>",
+				UnexpectedError: err.Error(),
+			})
+			waitForServer(port)
+		}
+
 		trackers = append(trackers, tracker)
+		if port != 0 {
+			// Write partial results after each file, since external replays can take many hours
+			err = regressionFolder.WriteReplayTrackers(outputPath, trackers, 0644)
+			require.NoError(t, err)
+		}
 	}
-	outputPath := "out/results.trackers"
-	if path, ok := os.LookupEnv("REGRESSION_OUTPUT"); ok {
-		outputPath = path
-	}
+
 	fmt.Printf("Finished, writing output to `%s`\n", regressionFolder.GetAbsolutePath(outputPath))
 	err = regressionFolder.WriteReplayTrackers(outputPath, trackers, 0644)
 	require.NoError(t, err)
+}
+
+// waitForServer waits up to five minutes for the server on the given port to accept connections again, such as after
+// it restarts following a backend crash.
+func waitForServer(port int) {
+	url := fmt.Sprintf("postgres://postgres@127.0.0.1:%d/postgres?sslmode=disable", port)
+	deadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		conn, err := pgx.Connect(context.Background(), url)
+		if err == nil {
+			_ = conn.Close(context.Background())
+			return
+		}
+
+		time.Sleep(time.Second)
+	}
 }
 
 // replayTimeout returns how long to wait for each server response, as given by REGRESSION_TIMEOUT (a Go duration such
