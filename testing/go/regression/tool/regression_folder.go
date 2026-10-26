@@ -126,7 +126,7 @@ func (root RegressionFolderLocation) WriteFile(relativePath string, data []byte,
 		return err
 	}
 	if !exists {
-		if err = os.MkdirAll(root.GetAbsolutePath(directory), 0644); err != nil {
+		if err = os.MkdirAll(root.GetAbsolutePath(directory), 0755); err != nil {
 			return err
 		}
 	}
