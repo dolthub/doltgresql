@@ -169,6 +169,9 @@ func newExternalServer(t *testing.T, binary string, config *servercfg.DoltgresCo
 			tableAM = "dolt_prolly_table"
 		}
 		cmd = exec.Command(path, "-D", dataDir, "-p", strconv.Itoa(port), "-h", serverHost, "-k", "", "-c", "default_table_access_method="+tableAM, "-c", "max_prepared_transactions=10")
+		if timeout := os.Getenv("DOLTGRES_TEST_STATEMENT_TIMEOUT"); timeout != "" {
+			cmd.Args = append(cmd.Args, "-c", "statement_timeout="+timeout)
+		}
 		if os.Getenv("DOLTGRES_TEST_POSTGRES_SSL") == "1" {
 			cert, key, err := testcerts.GenerateCerts()
 			if err != nil {
