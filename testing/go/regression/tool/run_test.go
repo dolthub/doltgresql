@@ -18,7 +18,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -56,6 +58,9 @@ func TestRegressionTests(t *testing.T) {
 		outputPath = path
 	}
 
+	failQueries, err := extraSkipQueries()
+	require.NoError(t, err)
+
 	trackers := make([]*ReplayTracker, 0, len(AllTestResultFilesNames))
 	for _, fileName := range AllTestResultFilesNames {
 		messages, err := regressionFolder.ReadMessages(fileName)
@@ -66,7 +71,7 @@ func TestRegressionTests(t *testing.T) {
 			Messages:     messages,
 			PrintQueries: false,
 			FailPSQL:     true,
-			FailQueries:  queriesToSkip,
+			FailQueries:  failQueries,
 			Timeout:      timeout,
 		})
 		if err != nil {
@@ -126,6 +131,42 @@ func replayTimeout() (time.Duration, error) {
 	}
 
 	return timeout, nil
+}
+
+func TestExtraSkipQueries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "skip.txt")
+	require.NoError(t, os.WriteFile(path, []byte("create type nestedcomposite as (x int8_tbl);\n\n  select 1;  \n"), 0644))
+	t.Setenv("REGRESSION_SKIP_QUERIES_FILE", path)
+
+	queries, err := extraSkipQueries()
+	require.NoError(t, err)
+	require.Equal(t, len(queriesToSkip)+2, len(queries))
+	require.Equal(t, queriesToSkip, queries[:len(queriesToSkip)])
+	require.Equal(t, []string{"create type nestedcomposite as (x int8_tbl);", "select 1;"}, queries[len(queriesToSkip):])
+}
+
+// extraSkipQueries returns queriesToSkip plus any queries listed in the file named by REGRESSION_SKIP_QUERIES_FILE, one
+// query substring per non-empty line. This lets a replay against an external server skip statements known to leave it
+// unusable for the remainder of the run, without changing the default list.
+func extraSkipQueries() ([]string, error) {
+	path, ok := os.LookupEnv("REGRESSION_SKIP_QUERIES_FILE")
+	if !ok {
+		return queriesToSkip, nil
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("invalid REGRESSION_SKIP_QUERIES_FILE `%s`: %w", path, err)
+	}
+
+	queries := append([]string{}, queriesToSkip...)
+	for _, line := range strings.Split(string(data), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			queries = append(queries, line)
+		}
+	}
+
+	return queries, nil
 }
 
 // externalServerPort returns the port of an already-running server named by REGRESSION_SERVER_PORT, such as a
