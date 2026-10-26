@@ -19,6 +19,7 @@ import (
 	gosql "database/sql"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"runtime"
 	"strings"
@@ -49,6 +50,7 @@ import (
 	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
+	dtest "github.com/dolthub/doltgresql/testing/go"
 )
 
 type DoltgresHarness struct {
@@ -706,6 +708,11 @@ var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
 const port = 5433
 
 func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQueryEngine {
+	if os.Getenv("DOLTGRES_TEST_SERVER_BINARY") != "" {
+		ctx, initial, ctrl := dtest.CreateServerWithPort(t, "postgres", port)
+		t.Cleanup(func() { initial.Close(ctx) })
+		return &DoltgresQueryEngine{harness: harness, controller: ctrl}
+	}
 	ctrl, err := server.RunInMemory(&servercfg.DoltgresConfig{
 		DoltgresConfig: cfgdetails.DoltgresConfig{
 			LogLevelStr: Ptr("warn"),

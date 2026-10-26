@@ -32,6 +32,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
+	"github.com/madflojo/testcerts"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
@@ -168,6 +169,21 @@ func newExternalServer(t *testing.T, binary string, config *servercfg.DoltgresCo
 			tableAM = "dolt_prolly_table"
 		}
 		cmd = exec.Command(path, "-D", dataDir, "-p", strconv.Itoa(port), "-h", serverHost, "-k", "", "-c", "default_table_access_method="+tableAM, "-c", "max_prepared_transactions=10")
+		if os.Getenv("DOLTGRES_TEST_POSTGRES_SSL") == "1" {
+			cert, key, err := testcerts.GenerateCerts()
+			if err != nil {
+				return nil, err
+			}
+			certPath, keyPath := filepath.Join(dir, "server.crt"), filepath.Join(dir, "server.key")
+			if err = os.WriteFile(certPath, cert, 0600); err != nil {
+				return nil, err
+			}
+			if err = os.WriteFile(keyPath, key, 0600); err != nil {
+				return nil, err
+			}
+			cmd.Args = append(cmd.Args, "-c", "ssl=on", "-c", "ssl_cert_file="+certPath, "-c", "ssl_key_file="+keyPath)
+		}
+
 	}
 	cmd.Dir = dir
 	cmd.Stdout = os.Stdout
