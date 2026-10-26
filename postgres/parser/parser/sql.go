@@ -33888,13 +33888,13 @@ sqldefault:
 		sqlDollar = sqlS[sqlpt-2 : sqlpt+1]
 //line sql-gen.y:5973
 		{
-			sqlVAL.union.val = tree.TargetList{TargetType: privilege.Routine, Routines: sqlDollar[2].union.routines()}
+			sqlVAL.union.val = tree.TargetList{TargetType: privilege.Function, Routines: sqlDollar[2].union.routines()}
 		}
 	case 1029:
 		sqlDollar = sqlS[sqlpt-2 : sqlpt+1]
 //line sql-gen.y:5977
 		{
-			sqlVAL.union.val = tree.TargetList{TargetType: privilege.Routine, Routines: sqlDollar[2].union.routines()}
+			sqlVAL.union.val = tree.TargetList{TargetType: privilege.Procedure, Routines: sqlDollar[2].union.routines()}
 		}
 	case 1030:
 		sqlDollar = sqlS[sqlpt-2 : sqlpt+1]
@@ -33984,7 +33984,7 @@ sqldefault:
 		sqlDollar = sqlS[sqlpt-1 : sqlpt+1]
 //line sql-gen.y:6041
 		{
-			sqlVAL.union.val = tree.Routine{Name: sqlDollar[1].union.unresolvedObjectName(), Args: nil}
+			sqlVAL.union.val = tree.Routine{Name: sqlDollar[1].union.unresolvedObjectName(), Args: nil, ArgsOmitted: true}
 		}
 	case 1045:
 		sqlDollar = sqlS[sqlpt-4 : sqlpt+1]

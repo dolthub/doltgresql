@@ -61,6 +61,9 @@ func (n *AlterDefaultPrivileges) RowIter(ctx *sql.Context, _ sql.Row) (sql.RowIt
 	if n.Cascade {
 		return nil, errors.New("ALTER DEFAULT PRIVILEGES does not yet support CASCADE")
 	}
+	if err := checkSchemaTargets(ctx, n.Schemas); err != nil {
+		return nil, err
+	}
 	var err error
 	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {

@@ -83,7 +83,8 @@ func (p *PostgresParser) ParseWithOptions(ctx context.Context, query string, del
 		return nil, q, "", vitess.ErrEmpty
 	}
 
-	vitessAST, err := ast.ConvertWithOptions(stmts[0], p.ConvertOptions())
+	options := p.ConvertOptions().WithContext(ctx)
+	vitessAST, err := ast.ConvertWithOptions(stmts[0], options)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -95,12 +96,13 @@ func (p *PostgresParser) ParseWithOptions(ctx context.Context, query string, del
 }
 
 // ParseOneWithOptions implements sql.Parser interface.
-func (p *PostgresParser) ParseOneWithOptions(_ context.Context, query string, _ vitess.ParserOptions) (vitess.Statement, int, error) {
+func (p *PostgresParser) ParseOneWithOptions(ctx context.Context, query string, _ vitess.ParserOptions) (vitess.Statement, int, error) {
 	stmt, err := parser.ParseOne(query)
 	if err != nil {
 		return nil, 0, err
 	}
-	vitessAST, err := ast.ConvertWithOptions(stmt, p.ConvertOptions())
+	options := p.ConvertOptions().WithContext(ctx)
+	vitessAST, err := ast.ConvertWithOptions(stmt, options)
 	if err != nil {
 		return nil, 0, err
 	}
