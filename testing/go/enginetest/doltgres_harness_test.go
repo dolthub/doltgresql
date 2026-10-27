@@ -706,6 +706,7 @@ type DoltgresQueryEngine struct {
 	controller  *svcs.Controller
 	conn        *pgx.Conn
 	connections map[string]*pgx.Conn
+	dsn         string
 }
 
 var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
@@ -714,9 +715,14 @@ const port = 5433
 
 func NewDoltgresQueryEngine(t *testing.T, harness *DoltgresHarness) *DoltgresQueryEngine {
 	if os.Getenv("DOLTGRES_TEST_SERVER_BINARY") != "" {
-		ctx, initial, ctrl := dtest.CreateServerWithPort(t, "postgres", port)
+		ctx, initial, ctrl := dtest.CreateServer(t, "postgres")
+		dsn := initial.Current.Config().ConnString()
 		t.Cleanup(func() { initial.Close(ctx) })
-		return &DoltgresQueryEngine{harness: harness, controller: ctrl}
+		return &DoltgresQueryEngine{
+			harness:    harness,
+			controller: ctrl,
+			dsn:        dsn,
+		}
 	}
 	ctrl, err := server.RunInMemory(&servercfg.DoltgresConfig{
 		DoltgresConfig: cfgdetails.DoltgresConfig{
@@ -743,6 +749,13 @@ func (d *DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node,
 
 // TODO: random port
 var doltgresNoDbDsn = fmt.Sprintf("postgresql://postgres:password@127.0.0.1:%d/?sslmode=disable", port)
+
+func (d *DoltgresQueryEngine) connectionString() string {
+	if d.dsn != "" {
+		return d.dsn
+	}
+	return doltgresNoDbDsn
+}
 
 func nativePostgresEngine() bool {
 	return os.Getenv("DOLTGRES_TEST_SERVER_KIND") == "postgres"
@@ -779,7 +792,7 @@ func (d *DoltgresQueryEngine) selectDatabase(name string) error {
 		d.conn = conn
 		return nil
 	}
-	config, err := pgx.ParseConfig(doltgresNoDbDsn)
+	config, err := pgx.ParseConfig(d.connectionString())
 	if err != nil {
 		return err
 	}
@@ -925,7 +938,7 @@ func (d *DoltgresQueryEngine) getConnection() (*pgx.Conn, error) {
 		return d.conn, nil
 	}
 
-	config, err := pgx.ParseConfig(doltgresNoDbDsn)
+	config, err := pgx.ParseConfig(d.connectionString())
 	if err != nil {
 		return nil, err
 	}

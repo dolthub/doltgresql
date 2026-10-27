@@ -1,12 +1,11 @@
 package enginetest
 
 import (
-	"math/rand"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/server"
@@ -23,8 +22,8 @@ func Ptr[T any](v T) *T {
 
 // startServer will start sql-server with given host, unix socket file path and whether to use specific port, which is defined randomly.
 func startServer(t *testing.T, host string, unixSocketPath string) (*svcs.Controller, *servercfg.DoltgresConfig) {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	port := 15403 + rng.Intn(25)
+	port, err := sql.GetEmptyPort()
+	require.NoError(t, err)
 
 	doltgresConfig := servercfg.DoltgresConfig{
 		DoltgresConfig: cfgdetails.DoltgresConfig{
@@ -38,7 +37,7 @@ func startServer(t *testing.T, host string, unixSocketPath string) (*svcs.Contro
 	}
 	if os.Getenv("DOLTGRES_TEST_SERVER_BINARY") != "" {
 		ctx, initial, ctrl := dtest.CreateServerWithPort(t, "postgres", port)
-		t.Cleanup(func() { initial.Close(ctx) })
+		initial.Close(ctx)
 		return ctrl, &doltgresConfig
 	}
 	ctrl, err := server.RunInMemory(&doltgresConfig, server.NewListener)

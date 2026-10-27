@@ -67,6 +67,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--build-dir',type=pathlib.Path,required=True);p.add_argument('--output',type=pathlib.Path,required=True)
     p.add_argument('--stock',required=True);p.add_argument('--fork',required=True);p.add_argument('--doltgres',required=True)
+    p.add_argument('--parallel-engines',action='store_true',help='Requires an engine harness with per-server random ports')
     p.add_argument('--workers',type=int,default=3);p.add_argument('--timeout',type=int,default=1200)
     p.add_argument('--targets',nargs='+',choices=['doltgres','postgres','postgres-fork'],default=['doltgres','postgres','postgres-fork'])
     p.add_argument('--packages',nargs='+',choices=list(PACKAGES),default=list(PACKAGES));p.add_argument('--attempt',default='initial');p.add_argument('--tests',nargs='*',help='Diagnostic reruns only; omit for a full sweep')
@@ -74,7 +75,7 @@ def main():
     env={k:v for k,v in os.environ.items() if k not in ['OPENAI_API_KEY','ANTHROPIC_OAUTH_TOKEN','GITHUB_TOKEN','REPO_ACCESS_TOKEN','DOLTGRES_TEST_PROFILE','PGOPTIONS','GITHUB_ACTION','DOLTGRES_TEST_STATEMENT_TIMEOUT']}
     env.update(LC_ALL='C',GOMAXPROCS='2',DOLTGRES_TEST_RECOVER_PANICS='1')
     jobs=inventory(a.build_dir,env);(a.output/'inventory.json').write_text(json.dumps(jobs,indent=2))
-    metadata={'source_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=SRC,text=True).strip(),'attempt':a.attempt,'targets':a.targets,'tests':a.tests,'packages':a.packages,'timeout_seconds':a.timeout,'recovery_mode':True,'profile':None,'test_binary_sha256':{p:hashlib.sha256((a.build_dir/b).read_bytes()).hexdigest() for p,(_,b) in PACKAGES.items()},'server_binary_sha256':{t:hashlib.sha256(pathlib.Path(b).read_bytes()).hexdigest() for t,b in [('doltgres',a.doltgres),('postgres',a.stock),('postgres-fork',a.fork)] if t in a.targets}}
+    metadata={'source_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=SRC,text=True).strip(),'attempt':a.attempt,'targets':a.targets,'tests':a.tests,'packages':a.packages,'timeout_seconds':a.timeout,'parallel_engines':a.parallel_engines,'recovery_mode':True,'profile':None,'test_binary_sha256':{p:hashlib.sha256((a.build_dir/b).read_bytes()).hexdigest() for p,(_,b) in PACKAGES.items()},'server_binary_sha256':{t:hashlib.sha256(pathlib.Path(b).read_bytes()).hexdigest() for t,b in [('doltgres',a.doltgres),('postgres',a.stock),('postgres-fork',a.fork)] if t in a.targets}}
     (a.output/('metadata-'+a.attempt+'-'+'-'.join(a.targets)+'.json')).write_text(json.dumps(metadata,indent=2))
 
     environments={}
@@ -89,8 +90,8 @@ def main():
         for j,t in todo:
             if j['package']=='enginetest':run(j,t,environments[t],a.output,a.timeout,a.attempt)
     with concurrent.futures.ThreadPoolExecutor(max_workers=a.workers) as pool:
-        fs=[pool.submit(engines)]
-        fs += [pool.submit(run,j,t,environments[t],a.output,a.timeout,a.attempt) for j,t in todo if j['package']!='enginetest']
+        fs=[] if a.parallel_engines else [pool.submit(engines)]
+        fs += [pool.submit(run,j,t,environments[t],a.output,a.timeout,a.attempt) for j,t in todo if j['package']!='enginetest' or a.parallel_engines]
         for future in concurrent.futures.as_completed(fs):future.result()
     print('Sweep complete',flush=True)
 
