@@ -2,6 +2,7 @@ package enginetest
 
 import (
 	"math/rand"
+	"os"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
+	dtest "github.com/dolthub/doltgresql/testing/go"
 )
 
 // Ptr is a helper function that returns a pointer to the value passed in. This is necessary to e.g. get a pointer to
@@ -33,6 +35,11 @@ func startServer(t *testing.T, host string, unixSocketPath string) (*svcs.Contro
 				//Socket:     Ptr(unixSocketPath),
 			},
 		},
+	}
+	if os.Getenv("DOLTGRES_TEST_SERVER_BINARY") != "" {
+		ctx, initial, ctrl := dtest.CreateServerWithPort(t, "postgres", port)
+		t.Cleanup(func() { initial.Close(ctx) })
+		return ctrl, &doltgresConfig
 	}
 	ctrl, err := server.RunInMemory(&doltgresConfig, server.NewListener)
 	require.NoError(t, err)

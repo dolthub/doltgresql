@@ -23,10 +23,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	dserver "github.com/dolthub/doltgresql/server"
-	"github.com/dolthub/doltgresql/servercfg"
-	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
 
 // TestCreateSchemaWithNonExistentDatabase tests that connecting to a non-existent
@@ -43,20 +39,9 @@ func TestCreateSchemaWithNonExistentDatabase(t *testing.T) {
 	port, err := sql.GetEmptyPort()
 	require.NoError(t, err)
 
-	// Start server using the same pattern as CreateServerWithPort
-	controller, err := dserver.RunInMemory(
-		&servercfg.DoltgresConfig{
-			DoltgresConfig: cfgdetails.DoltgresConfig{
-				ListenerConfig: &cfgdetails.DoltgresListenerConfig{
-					PortNumber: &port,
-					HostStr:    &serverHost,
-				},
-				LogLevelStr: &testServerLogLevel,
-			},
-		}, dserver.NewListener,
-	)
-	require.NoError(t, err)
+	_, initial, controller := CreateServerWithPort(t, "postgres", port)
 	defer func() {
+		initial.Close(context.Background())
 		controller.Stop()
 		require.NoError(t, controller.WaitForStop())
 	}()

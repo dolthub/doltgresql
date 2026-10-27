@@ -225,6 +225,8 @@ func TestRootObjectCollections(t *testing.T) {
 				{
 					Query:    `SELECT length(dolt_commit('-m', 'other')::text) = 32;`,
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main');`,

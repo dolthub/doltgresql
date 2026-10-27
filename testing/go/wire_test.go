@@ -2646,6 +2646,25 @@ func TestWireTypesSending(t *testing.T) {
 						&pgproto3.CloseComplete{},
 						&pgproto3.ReadyForQuery{TxStatus: 'I'},
 					},
+
+					PostgresReceive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`{"key1": {"key": "value"}}`),
+								[]byte(`{}`),
+							},
+						},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`{"key1": {"key": [2, 3]}}`),
+								[]byte(`[]`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
 				},
 			},
 		},
@@ -2712,6 +2731,25 @@ func TestWireTypesSending(t *testing.T) {
 						&pgproto3.Sync{},
 					},
 					Receive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`{"key1": {"key": "value"}}`),
+								[]byte(`{}`),
+							},
+						},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`{"key1": {"key": [2, 3]}}`),
+								[]byte(`[]`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+
+					PostgresReceive: []pgproto3.BackendMessage{
 						&pgproto3.BindComplete{},
 						&pgproto3.DataRow{
 							Values: [][]byte{
@@ -5691,6 +5729,25 @@ func TestWireTypesSending(t *testing.T) {
 						&pgproto3.CloseComplete{},
 						&pgproto3.ReadyForQuery{TxStatus: 'I'},
 					},
+
+					PostgresReceive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								[]byte(`<?xml version="1.0" encoding="WIN1252"?><a>x</a>`),
+								[]byte(`<?xml version="1.0" encoding="WIN1252"?>`),
+							},
+						},
+						&pgproto3.DataRow{
+							Values: [][]byte{
+								nil,
+								[]byte(`<?xml version="1.0" encoding="WIN1252"?><b c="1">y&amp;z</b>`),
+							},
+						},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
 				},
 			},
 		},
@@ -8438,6 +8495,10 @@ type WireScriptTestAssertion struct {
 	Send []pgproto3.FrontendMessage
 	// These are the expected results that are received from the server, and must match in both contents and order
 	Receive []pgproto3.BackendMessage
+	// PostgresReceive is an explicit native wire counterpart; Send is identical.
+	PostgresReceive []pgproto3.BackendMessage
+	variant         string
+	variantEnabled  bool
 	// This functions the same as Focus on WireScriptTest, except that it applies to the assertion
 	Focus bool
 	// This is used to skip an assertion
@@ -8790,35 +8851,52 @@ func RunWireScripts(t *testing.T, scripts []WireScriptTest) {
 
 			// Run the assertions
 			for assertionIdx, assertion := range assertions {
-				t.Run(fmt.Sprintf("%d", assertionIdx), func(t *testing.T) {
-					if assertion.Skip {
-						t.Skip("Skip has been set in the assertion")
+				variants := []WireScriptTestAssertion{assertion}
+				if assertion.PostgresReceive != nil {
+					original, native := assertion, assertion
+					original.variant, original.variantEnabled = "doltgres", testTarget(t) == targetDoltgres
+					native.variant, native.variantEnabled = "postgres", testTarget(t) != targetDoltgres
+					native.Receive = assertion.PostgresReceive
+					variants = []WireScriptTestAssertion{original, native}
+				}
+				for _, assertion := range variants {
+					name := fmt.Sprintf("%d", assertionIdx)
+					if assertion.variant != "" {
+						name += "/" + assertion.variant
 					}
-					err := rawConn.Send(t, assertion.Send...)
-					require.NoError(t, err)
-					for _, expectedMessage := range assertion.Receive {
-						actualMessage, err := rawConn.Receive(t)
+					t.Run(name, func(t *testing.T) {
+						if assertion.variant != "" && !assertion.variantEnabled {
+							t.Skip("counterpart selected by DOLTGRES_TEST_TARGET")
+						}
+						if assertion.Skip {
+							t.Skip("Skip has been set in the assertion")
+						}
+						err := rawConn.Send(t, assertion.Send...)
 						require.NoError(t, err)
-						if !assert.Equal(t, IgnoreMessageParameters(expectedMessage), IgnoreMessageParameters(actualMessage)) {
-							// If the assertion fails, and it's a message that we don't expect, then we sync to the next
-							// ReadyForQuery message
-							if reflect.TypeOf(expectedMessage) != reflect.TypeOf(actualMessage) {
-								if _, ok := actualMessage.(*pgproto3.ReadyForQuery); !ok {
-									for {
-										actualMessage, err := rawConn.Receive(t)
-										require.NoError(t, err)
-										if _, ok = actualMessage.(*pgproto3.ReadyForQuery); ok {
-											return
+						for _, expectedMessage := range assertion.Receive {
+							actualMessage, err := rawConn.Receive(t)
+							require.NoError(t, err)
+							if !assert.Equal(t, IgnoreMessageParameters(expectedMessage), IgnoreMessageParameters(actualMessage)) {
+								// If the assertion fails, and it's a message that we don't expect, then we sync to the next
+								// ReadyForQuery message
+								if reflect.TypeOf(expectedMessage) != reflect.TypeOf(actualMessage) {
+									if _, ok := actualMessage.(*pgproto3.ReadyForQuery); !ok {
+										for {
+											actualMessage, err := rawConn.Receive(t)
+											require.NoError(t, err)
+											if _, ok = actualMessage.(*pgproto3.ReadyForQuery); ok {
+												return
+											}
 										}
 									}
 								}
 							}
 						}
-					}
-					// We then ensure that there are no other messages that were not accounted for by the assertion
-					// (which we consider an error)
-					_ = assert.NoError(t, rawConn.EmptyReceiveBuffer())
-				})
+						// We then ensure that there are no other messages that were not accounted for by the assertion
+						// (which we consider an error)
+						_ = assert.NoError(t, rawConn.EmptyReceiveBuffer())
+					})
+				}
 			}
 		})
 	}
