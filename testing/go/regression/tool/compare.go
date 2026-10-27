@@ -302,7 +302,9 @@ func ReadRows(rowDesc *pgproto3.RowDescription, rows []*pgproto3.DataRow) []sql.
 			case pgtype.Multirange[pgtype.Range[interface{}]]:
 				resultRow[colIdx] = string(row.Values[colIdx])
 			case map[string]any:
-				resultRow[colIdx], _ = json.Marshal(val)
+				// Stored as a string, since the marshaled []byte cannot be compared with ==
+				marshaled, _ := json.Marshal(val)
+				resultRow[colIdx] = string(marshaled)
 			case []any:
 				resultRow[colIdx] = "[" + RowToString(val) + "]"
 			case nil:

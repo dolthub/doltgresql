@@ -15,9 +15,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/dolthub/dolt/go/libraries/utils/svcs"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/dolthub/doltgresql/server"
 
@@ -30,16 +38,34 @@ func TestRegressionTests(t *testing.T) {
 		t.Skip()
 	}
 	server.EnableAuthentication = false // We have to disable authentication, since we can't replay the messages due to nonces
-	controller, port, err := CreateDoltgresServer()
+	port, err := externalServerPort()
 	require.NoError(t, err)
-	defer func() {
-		controller.Stop()
-		err = controller.WaitForStop()
+	timeout, err := replayTimeout()
+	require.NoError(t, err)
+	if port == 0 {
+		var controller *svcs.Controller
+		controller, port, err = CreateDoltgresServer()
 		require.NoError(t, err)
-	}()
+		defer func() {
+			controller.Stop()
+			err = controller.WaitForStop()
+			require.NoError(t, err)
+		}()
+	}
 
-	trackers := make([]*ReplayTracker, 0, len(AllTestResultFilesNames))
-	for _, fileName := range AllTestResultFilesNames {
+	outputPath := "out/results.trackers"
+	if path, ok := os.LookupEnv("REGRESSION_OUTPUT"); ok {
+		outputPath = path
+	}
+
+	failQueries, err := extraSkipQueries()
+	require.NoError(t, err)
+
+	fileNames, err := selectedFileNames()
+	require.NoError(t, err)
+
+	trackers := make([]*ReplayTracker, 0, len(fileNames))
+	for _, fileName := range fileNames {
 		messages, err := regressionFolder.ReadMessages(fileName)
 		require.NoError(t, err)
 		tracker, err := Replay(ReplayOptions{
@@ -48,14 +74,162 @@ func TestRegressionTests(t *testing.T) {
 			Messages:     messages,
 			PrintQueries: false,
 			FailPSQL:     true,
-			FailQueries:  queriesToSkip,
+			FailQueries:  failQueries,
+			Timeout:      timeout,
 		})
-		require.NoError(t, err)
+		if err != nil {
+			// An external server may crash or drop the connection mid-file. Record the abort and keep going, so
+			// one crash does not discard the results of every other file.
+			fmt.Printf("REPLAY ABORTED in `%s`: %s\n", fileName, err.Error())
+			tracker = NewReplayTracker(fileName)
+			tracker.Failed = 1
+			tracker.AddFailure(ReplayTrackerItem{
+				Query:           "<replay aborted>",
+				UnexpectedError: err.Error(),
+			})
+			waitForServer(port)
+		}
+
 		trackers = append(trackers, tracker)
+		if port != 0 {
+			// Write partial results after each file, since external replays can take many hours
+			err = regressionFolder.WriteReplayTrackers(outputPath, trackers, 0644)
+			require.NoError(t, err)
+		}
 	}
-	fmt.Printf("Finished, writing output to `%s`\n", regressionFolder.GetAbsolutePath("out/results.trackers"))
-	err = regressionFolder.WriteReplayTrackers("out/results.trackers", trackers, 0644)
+
+	fmt.Printf("Finished, writing output to `%s`\n", regressionFolder.GetAbsolutePath(outputPath))
+	err = regressionFolder.WriteReplayTrackers(outputPath, trackers, 0644)
 	require.NoError(t, err)
+}
+
+// waitForServer waits up to five minutes for the server on the given port to accept connections again, such as after
+// it restarts following a backend crash.
+func waitForServer(port int) {
+	url := fmt.Sprintf("postgres://postgres@127.0.0.1:%d/postgres?sslmode=disable", port)
+	deadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		conn, err := pgx.Connect(context.Background(), url)
+		if err == nil {
+			_ = conn.Close(context.Background())
+			return
+		}
+
+		time.Sleep(time.Second)
+	}
+}
+
+// replayTimeout returns how long to wait for each server response, as given by REGRESSION_TIMEOUT (a Go duration such
+// as "10m"). Slow servers otherwise time out mid-statement and the replay moves on while the statement still runs.
+// Returns zero, meaning the replay default, when the variable is not set.
+func replayTimeout() (time.Duration, error) {
+	value, ok := os.LookupEnv("REGRESSION_TIMEOUT")
+	if !ok {
+		return 0, nil
+	}
+
+	timeout, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid REGRESSION_TIMEOUT `%s`: %w", value, err)
+	}
+
+	return timeout, nil
+}
+
+func TestExtraSkipQueries(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "skip.txt")
+	require.NoError(t, os.WriteFile(path, []byte("create type nestedcomposite as (x int8_tbl);\n\n  select 1;  \n"), 0644))
+	t.Setenv("REGRESSION_SKIP_QUERIES_FILE", path)
+
+	queries, err := extraSkipQueries()
+	require.NoError(t, err)
+	require.Equal(t, len(queriesToSkip)+2, len(queries))
+	require.Equal(t, queriesToSkip, queries[:len(queriesToSkip)])
+	require.Equal(t, []string{"create type nestedcomposite as (x int8_tbl);", "select 1;"}, queries[len(queriesToSkip):])
+}
+
+// selectedFileNames returns the result files to replay, in schedule order. REGRESSION_FILES may name a comma-separated
+// subset of tests (such as "test_setup,collate.icu.utf8"), which lets a long external replay resume after a statement
+// that left the server unusable. Returns all files when the variable is not set.
+func selectedFileNames() ([]string, error) {
+	value, ok := os.LookupEnv("REGRESSION_FILES")
+	if !ok {
+		return AllTestResultFilesNames, nil
+	}
+
+	wanted := make(map[string]bool)
+	for _, name := range strings.Split(value, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			wanted["results/"+name+".results"] = true
+		}
+	}
+
+	var fileNames []string
+	for _, fileName := range AllTestResultFilesNames {
+		if wanted[fileName] {
+			fileNames = append(fileNames, fileName)
+			delete(wanted, fileName)
+		}
+	}
+
+	if len(wanted) > 0 {
+		return nil, fmt.Errorf("unknown REGRESSION_FILES entries: %v", wanted)
+	}
+
+	return fileNames, nil
+}
+
+func TestSelectedFileNames(t *testing.T) {
+	t.Setenv("REGRESSION_FILES", "boolean, test_setup")
+	fileNames, err := selectedFileNames()
+	require.NoError(t, err)
+	require.Equal(t, []string{"results/test_setup.results", "results/boolean.results"}, fileNames)
+
+	t.Setenv("REGRESSION_FILES", "test_setup,no_such_test")
+	_, err = selectedFileNames()
+	require.Error(t, err)
+}
+
+// extraSkipQueries returns queriesToSkip plus any queries listed in the file named by REGRESSION_SKIP_QUERIES_FILE, one
+// query substring per non-empty line. This lets a replay against an external server skip statements known to leave it
+// unusable for the remainder of the run, without changing the default list.
+func extraSkipQueries() ([]string, error) {
+	path, ok := os.LookupEnv("REGRESSION_SKIP_QUERIES_FILE")
+	if !ok {
+		return queriesToSkip, nil
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("invalid REGRESSION_SKIP_QUERIES_FILE `%s`: %w", path, err)
+	}
+
+	queries := append([]string{}, queriesToSkip...)
+	for _, line := range strings.Split(string(data), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			queries = append(queries, line)
+		}
+	}
+
+	return queries, nil
+}
+
+// externalServerPort returns the port of an already-running server named by REGRESSION_SERVER_PORT, such as a
+// PostgreSQL build, so that the recorded sessions may be replayed against it instead of an in-memory Doltgres
+// server. Returns zero when the variable is not set. The external server must accept the recorded `postgres` user on
+// 127.0.0.1 without password authentication.
+func externalServerPort() (int, error) {
+	value, ok := os.LookupEnv("REGRESSION_SERVER_PORT")
+	if !ok {
+		return 0, nil
+	}
+
+	port, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid REGRESSION_SERVER_PORT `%s`: %w", value, err)
+	}
+
+	return port, nil
 }
 
 var queriesToSkip = []string{
