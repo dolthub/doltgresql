@@ -44,3 +44,42 @@ Do not generate expectations from the result being tested, skip after observing 
 - Native transaction lock tests use explicit COMMIT and SET LOCAL; Dolt's original implicit version-control commit/cache behavior remains separately tested. The fork's version-control commands require a standalone statement; aggregate/filter wrappers around a mutation are not a valid native alternative. Capture its result first and validate it separately.
 
 This is an incremental compatibility baseline, not a claim that all Doltgres tests now pass on PostgreSQL. Unsupported fork features and mismatches with independently validated native expectations must continue to fail. Broad GUC suites, remaining catalog families, engine-specific syntax and unconverted feature expectations require later passes.
+
+## Full server-suite validation
+
+The inventory runner discovers every top-level server test in `testing/go`,
+`testing/go/enginetest`, and `testing/go/extensions`. It rejects newly discovered
+unmapped test packages rather than silently omitting them. It excludes regression
+replay and non-server unit tests; the go-sql-driver suite is outside this tree.
+Existing test-defined skips remain visible. This is full-suite execution, not a
+promise that all expectations have native counterparts yet.
+
+Build the three binaries, then run without `--tests`:
+
+```sh
+mkdir -p /tmp/compatibility-tests
+go test -c -o /tmp/compatibility-tests/go.test ./testing/go
+go test -c -o /tmp/compatibility-tests/engine.test ./testing/go/enginetest
+go test -c -o /tmp/compatibility-tests/extensions.test ./testing/go/extensions
+python3 scripts/compatibility/run_server_suite.py \
+  --build-dir /tmp/compatibility-tests --output /tmp/compatibility-results \
+  --stock /path/to/stock/bin/postgres --fork /path/to/fork/bin/postgres \
+  --doltgres /path/to/doltgres
+```
+
+Install pgvector and uuid-ossp in both native server installations before testing
+extensions. Engine groups share a fixed port and must not run concurrently across
+separate runner invocations. Each group has a 20-minute timeout by default.
+The audit's opt-in panic recovery records assertion panics as failures and lets
+later assertions run; it never converts a panic to a pass. Logs, JSON events,
+binary hashes, and every attempt are retained. A rerun uses a different
+`--attempt` name; `--tests` is only for diagnosis after the complete sweep.
+
+Native counterparts now cover boolean SHOW output (`on`/`off` rather than integer
+flags), the restart-only archive_mode setting, and large text/bit payload tests.
+The latter use SQL-generated native fixtures because PostgreSQL has no LOAD_FILE
+and forbids NUL in text. They preserve lengths and value distinctions, comparisons,
+updates, and multi-column checks. Doltgres keeps its original fixtures. External
+servers receive private copies of testdata and test TLS certificates when requested.
+Replication additionally requires a logical-replication primary on port 5432 and
+`GITHUB_ACTION=1`; ordinary discovery retains that test's existing environment guard.

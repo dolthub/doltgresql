@@ -95,7 +95,7 @@ func TestAdaptiveEncodingText(t *testing.T) {
 	columnTypes := []string{"varchar", "text"}
 	for _, columnType := range columnTypes {
 		t.Run(columnType, func(t *testing.T) {
-			RunScripts(t, []ScriptTest{
+			runAdaptiveEncodingScripts(t, []ScriptTest{
 				{
 					Name: "Adaptive Encoding With One Column",
 					SetUpScript: setup.SetupScript{
@@ -378,7 +378,7 @@ func TestByteaFunctionsOnOutOfBandValues(t *testing.T) {
 
 func TestAdaptiveEncodingVarbit(t *testing.T) {
 	columnType := "varbit"
-	RunScripts(t, []ScriptTest{
+	runAdaptiveEncodingScripts(t, []ScriptTest{
 		{
 			Name: "Adaptive Encoding With One Column",
 			SetUpScript: setup.SetupScript{
@@ -458,4 +458,41 @@ func TestAdaptiveEncodingVarbit(t *testing.T) {
 			},
 		},
 	})
+}
+
+// Native PostgreSQL has no LOAD_FILE and text cannot contain NUL. Keep the
+// original fixtures for Doltgres, and exercise the same lengths, comparisons,
+// updates and column combinations with native SQL-generated payloads.
+func runAdaptiveEncodingScripts(t *testing.T, scripts []ScriptTest) {
+	replacements := strings.NewReplacer(
+		"LOAD_FILE('testdata/fullSize')", "(chr(1) || repeat('x', 3999))",
+		"LOAD_FILE('testdata/halfSize')", "(chr(2) || repeat('x', 1999))",
+		"LOAD_FILE('testdata/tinyFile')", "(chr(3) || repeat('x', 9))",
+		"LOAD_FILE('testdata/fullSizeVarbit')", "repeat('10', 2000)",
+		"LOAD_FILE('testdata/halfSizeVarbit')", "repeat('10', 1000)",
+		"LOAD_FILE('testdata/tinyFileVarbit')", "repeat('10', 5)",
+	)
+	for i := range scripts {
+		native := scripts[i]
+		native.SetUpScript = append([]string(nil), native.SetUpScript...)
+		for j, query := range native.SetUpScript {
+			native.SetUpScript[j] = replacements.Replace(query)
+		}
+		native.Assertions = append([]ScriptTestAssertion(nil), native.Assertions...)
+		for j := range native.Assertions {
+			assertion := &native.Assertions[j]
+			assertion.Query = replacements.Replace(assertion.Query)
+			assertion.Expected = append([]sql.Row(nil), assertion.Expected...)
+			for k := range assertion.Expected {
+				assertion.Expected[k] = append(sql.Row(nil), assertion.Expected[k]...)
+				for col, value := range assertion.Expected[k] {
+					if text, ok := value.(string); ok {
+						assertion.Expected[k][col] = strings.ReplaceAll(text, "\x00", "x")
+					}
+				}
+			}
+		}
+		scripts[i].Postgres = &native
+	}
+	RunScripts(t, scripts)
 }

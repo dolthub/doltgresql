@@ -3,7 +3,7 @@
 Build go.test, engine.test and extensions.test first. Excludes the regression
 replay and non-server unit tests; does not use a feature allowlist.
 """
-import argparse,concurrent.futures,json,os,pathlib,re,signal,subprocess,threading,time
+import argparse,concurrent.futures,hashlib,json,os,pathlib,re,signal,subprocess,threading,time
 SRC=pathlib.Path(__file__).resolve().parents[2]
 UNIT_NAMES={'TestParserBehaviors','TestLegacyJsonBRoundTrip','TestLegacyJsonBReserialization','TestScriptErrorDetail','TestJsonbOutCallableWithAnyWrapper','TestJsonOutCallableWithAnyWrapper','TestJsonbSerializeWithAnyWrapper','TestDropRoleCleansPersistedAuthorizationReferences','TestExternalServerCleanup','TestTargetExpectationSelection'}
 PACKAGES={'go':('testing/go','go.test'),'enginetest':('testing/go/enginetest','engine.test'),'extensions':('testing/go/extensions','extensions.test')}
@@ -11,6 +11,13 @@ LOCK=threading.Lock()
 
 def inventory(build,env):
     jobs=[]
+    # Fail closed if a new test-bearing package is added: never silently omit it.
+    listed=subprocess.check_output(['go','list','-f','{{.Dir}}|{{len .TestGoFiles}}|{{len .XTestGoFiles}}','./testing/go/...'],cwd=SRC,env=env,text=True)
+    known={str((SRC/directory).resolve()) for directory,_ in PACKAGES.values()}
+    for line in listed.splitlines():
+        directory,internal,external=line.rsplit('|',2)
+        if int(internal)+int(external) and '/testing/go/regression/' not in directory and directory not in known:
+            raise RuntimeError('New test package needs inventory/build mapping: '+directory)
     for package,(directory,binary) in PACKAGES.items():
         files={}
         for f in (SRC/directory).glob('*_test.go'):
@@ -62,17 +69,20 @@ def main():
     p.add_argument('--stock',required=True);p.add_argument('--fork',required=True);p.add_argument('--doltgres',required=True)
     p.add_argument('--workers',type=int,default=3);p.add_argument('--timeout',type=int,default=1200)
     p.add_argument('--targets',nargs='+',choices=['doltgres','postgres','postgres-fork'],default=['doltgres','postgres','postgres-fork'])
-    p.add_argument('--attempt',default='initial');p.add_argument('--tests',nargs='*',help='Diagnostic reruns only; omit for a full sweep')
+    p.add_argument('--packages',nargs='+',choices=list(PACKAGES),default=list(PACKAGES));p.add_argument('--attempt',default='initial');p.add_argument('--tests',nargs='*',help='Diagnostic reruns only; omit for a full sweep')
     a=p.parse_args();a.output.mkdir(parents=True,exist_ok=True)
     env={k:v for k,v in os.environ.items() if k not in ['OPENAI_API_KEY','ANTHROPIC_OAUTH_TOKEN','GITHUB_TOKEN','REPO_ACCESS_TOKEN','DOLTGRES_TEST_PROFILE','PGOPTIONS','GITHUB_ACTION','DOLTGRES_TEST_STATEMENT_TIMEOUT']}
     env.update(LC_ALL='C',GOMAXPROCS='2',DOLTGRES_TEST_RECOVER_PANICS='1')
     jobs=inventory(a.build_dir,env);(a.output/'inventory.json').write_text(json.dumps(jobs,indent=2))
+    metadata={'source_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=SRC,text=True).strip(),'attempt':a.attempt,'targets':a.targets,'tests':a.tests,'packages':a.packages,'timeout_seconds':a.timeout,'recovery_mode':True,'profile':None,'test_binary_sha256':{p:hashlib.sha256((a.build_dir/b).read_bytes()).hexdigest() for p,(_,b) in PACKAGES.items()},'server_binary_sha256':{t:hashlib.sha256(pathlib.Path(b).read_bytes()).hexdigest() for t,b in [('doltgres',a.doltgres),('postgres',a.stock),('postgres-fork',a.fork)] if t in a.targets}}
+    (a.output/('metadata-'+a.attempt+'-'+'-'.join(a.targets)+'.json')).write_text(json.dumps(metadata,indent=2))
+
     environments={}
     for target in a.targets:
         e=dict(env,DOLTGRES_TEST_TARGET=target,DOLTGRES_TEST_SERVER_KIND='doltgres' if target=='doltgres' else 'postgres',DOLTGRES_TEST_SERVER_BINARY={'doltgres':a.doltgres,'postgres':a.stock,'postgres-fork':a.fork}[target],DOLTGRES_TEST_TABLE_AM='heap' if target=='postgres' else 'dolt_prolly_table')
         environments[target]=e
     done={(r['attempt'],r['target'],r['package'],r['name']) for r in map(json.loads,(a.output/'results.jsonl').read_text().splitlines())} if (a.output/'results.jsonl').exists() else set()
-    todo=[(j,t) for j in jobs for t in a.targets if not j['exclude'] and (not a.tests or j['name'] in a.tests) and (a.attempt,t,j['package'],j['name']) not in done]
+    todo=[(j,t) for j in jobs for t in a.targets if not j['exclude'] and j['package'] in a.packages and (not a.tests or j['name'] in a.tests) and (a.attempt,t,j['package'],j['name']) not in done]
     print('Discovered',len(jobs),'eligible',sum(not j['exclude'] for j in jobs),'target runs queued',len(todo),flush=True)
     # All targets share fixed engine ports. Serialize this package across targets.
     def engines():

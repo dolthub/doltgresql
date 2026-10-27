@@ -36,7 +36,7 @@ func TestApplicationSettingsFormatting(t *testing.T) {
 			{Query: "SELECT current_setting('row_security')", Expected: []sql.Row{{"on"}}},
 			{Query: "SET row_security = off"},
 			{Query: "SELECT current_setting('row_security')", Expected: []sql.Row{{"off"}}},
-			{Query: "SET archive_mode = on", ExpectedErr: "cannot be changed now"},
+			{Query: "SET archive_mode = on", ExpectedErr: "cannot be changed now", Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"}},
 		},
 	}})
 }
