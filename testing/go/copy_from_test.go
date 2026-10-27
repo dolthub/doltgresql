@@ -434,6 +434,8 @@ func TestCopy(t *testing.T) {
 				{
 					Query:             "COPY tbl1 FROM STDIN (FORMAT CSV)",
 					CopyFromStdInFile: "csv-load-basic-cases.sql",
+
+					Postgres: &ScriptTestAssertion{CopyFromStdInFile: "csv-load-basic-cases-postgres.sql"},
 				},
 				{
 					Query: "select * from tbl1 where pk = 6 order by pk;",
@@ -460,6 +462,8 @@ bar`, "baz"},
 				{
 					Query:             " COPY tbl1 FROM STDIN (FORMAT CSV, HEADER TRUE);",
 					CopyFromStdInFile: "csv-load-with-header.sql",
+
+					Postgres: &ScriptTestAssertion{CopyFromStdInFile: "csv-load-with-header-postgres.sql"},
 				},
 				{
 					Query: "select * from tbl1 where pk = 6 order by pk;",
@@ -480,6 +484,8 @@ bar`, "baz"},
 				{
 					Query:             "COPY tbl1 (pk, c1, c2) FROM STDIN (FORMAT CSV)",
 					CopyFromStdInFile: "csv-load-basic-cases.sql",
+
+					Postgres: &ScriptTestAssertion{CopyFromStdInFile: "csv-load-basic-cases-postgres.sql"},
 				},
 				{
 					Query: "select * from tbl1 where pk = 6 order by pk;",
@@ -506,6 +512,8 @@ bar`, "baz", 16},
 				{
 					Query:             "COPY tbl1 FROM STDIN (FORMAT CSV);",
 					CopyFromStdInFile: "csv-load-multi-chunk.sql",
+
+					Postgres: &ScriptTestAssertion{CopyFromStdInFile: "csv-load-multi-chunk-postgres.sql"},
 				},
 				{
 					Query: "select * from tbl1 where pk = 99 order by pk;",
@@ -526,6 +534,8 @@ bar`, "baz", 16},
 				{
 					Query:             "COPY test_info FROM STDIN (FORMAT CSV, HEADER TRUE, DELIMITER '|');",
 					CopyFromStdInFile: "psv-load.sql",
+
+					Postgres: &ScriptTestAssertion{CopyFromStdInFile: "psv-load-postgres.sql"},
 				},
 				{
 					Query: "SELECT * FROM test_info order by 1;",
@@ -546,6 +556,8 @@ bar`, "baz", 16},
 				{
 					Query:            fmt.Sprintf("COPY tbl1 FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					SkipResultsCheck: true,
+
+					Postgres: &ScriptTestAssertion{Query: fmt.Sprintf("COPY tbl1 FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases-postgres.sql"))},
 				},
 				{
 					Query: "select * from tbl1 where pk = 6 order by pk;",
@@ -572,6 +584,8 @@ bar`, "baz"},
 				{
 					Query:            fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					SkipResultsCheck: true,
+
+					Postgres: &ScriptTestAssertion{Query: fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases-postgres.sql"))},
 				},
 				{
 					Query: "select * from tbl1 where pk = 6 order by pk;",
@@ -718,6 +732,8 @@ bar`, "baz"},
 					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
 					CopyFromStdInFile: "binary-load-malformed.bin",
 					ExpectedErr:       "row field count 5, expected 2",
+
+					Postgres: &ScriptTestAssertion{CopyFromStdInFile: "binary-load-malformed.bin", ExpectedErr: "row field count is 5, expected 2"},
 				},
 				{
 					Query: "SELECT count(*) FROM tbl1;",
@@ -759,6 +775,8 @@ bar`, "baz"},
 					Query:             "COPY tbl1 FROM STDIN (FORMAT BINARY);",
 					CopyFromStdInFile: "binary-load-malformed-late.bin",
 					ExpectedErr:       "row field count 5, expected 2",
+
+					Postgres: &ScriptTestAssertion{CopyFromStdInFile: "binary-load-malformed-late.bin", ExpectedErr: "row field count is 5, expected 2"},
 				},
 				{
 					Query: "SELECT count(*) FROM tbl1;",
@@ -811,6 +829,14 @@ bar`, "baz"},
 					},
 				},
 			},
+
+			Postgres: &ScriptTest{SetUpScript: []string{"CREATE TABLE tbl3 (pk int primary key, c1 text, b boolean)"}, Assertions: []ScriptTestAssertion{
+				{Query: "COPY tbl3 FROM STDIN (FORMAT BINARY)", CopyFromStdInFile: "copy-from-missing-trailer.bin"},
+				{Query: "SELECT count(*) FROM tbl3", Expected: []sql.Row{{4}}},
+				{Query: "DELETE FROM tbl3"},
+				{Query: "COPY tbl3 FROM STDIN (FORMAT BINARY)", CopyFromStdInFile: "copy-to-basic.bin"},
+				{Query: "SELECT * FROM tbl3 ORDER BY pk", Expected: []sql.Row{{1, "foo", "t"}, {2, nil, "f"}, {3, "", nil}, {4, "héllo", "t"}}},
+			}},
 		},
 		{
 			Name: "binary errors",
@@ -835,6 +861,8 @@ bar`, "baz"},
 					// Binary data that ends without the file trailer indicates truncation
 					Query:       fmt.Sprintf("COPY tbl3 FROM '%s' (FORMAT BINARY);", filepath.Join(absTestDataDir, "copy-from-missing-trailer.bin")),
 					ExpectedErr: "missing file trailer",
+
+					Postgres: &ScriptTestAssertion{ExpectedTag: "COPY 4"},
 				},
 			},
 		},
@@ -861,10 +889,14 @@ bar`, "baz"},
 				{
 					Query:       fmt.Sprintf("COPY tbl1 (pk, c1) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					ExpectedErr: "extra data after last expected column",
+
+					Postgres: &ScriptTestAssertion{Query: fmt.Sprintf("COPY tbl1 (pk, c1) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases-postgres.sql")), ExpectedErr: "extra data after last expected column"},
 				},
 				{
 					Query:       fmt.Sprintf("COPY tbl1 (pk, c1, c3) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					ExpectedErr: "Unknown column",
+
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42703"},
 				},
 			},
 		},
@@ -877,6 +909,8 @@ bar`, "baz"},
 				{
 					Query:       fmt.Sprintf("COPY tbl2 (pk, c1) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					ExpectedErr: "table not found: tbl2",
+
+					Postgres: &ScriptTestAssertion{Query: fmt.Sprintf("COPY tbl2 (pk, c1) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases-postgres.sql")), ExpectedErr: "table not found: tbl2"},
 				},
 			},
 		},
@@ -886,6 +920,8 @@ bar`, "baz"},
 				{
 					Query:       fmt.Sprintf("COPY dolt_log FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases.sql")),
 					ExpectedErr: "table doesn't support INSERT INTO",
+
+					Postgres: &ScriptTestAssertion{Query: fmt.Sprintf("COPY pg_catalog.pg_views FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "csv-load-basic-cases-postgres.sql")), ExpectedErrCode: "42809"},
 				},
 			},
 		},
@@ -898,6 +934,8 @@ bar`, "baz"},
 				{
 					Query:       fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "missing-columns.sql")),
 					ExpectedErr: "record on line 2: wrong number of fields",
+
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P04"},
 				},
 				{
 					Query:    "select count(*) from tbl1;",
@@ -906,6 +944,8 @@ bar`, "baz"},
 				{
 					Query:       fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "too-many-columns.sql")),
 					ExpectedErr: "record on line 6: wrong number of fields",
+
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P04"},
 				},
 				{
 					Query:    "select count(*) from tbl1;",
@@ -914,6 +954,8 @@ bar`, "baz"},
 				{
 					Query:       fmt.Sprintf("COPY tbl1 (pk, c1, c2) FROM '%s' (FORMAT CSV)", filepath.Join(absTestDataDir, "wrong-types.sql")),
 					ExpectedErr: "invalid input syntax for type int4",
+
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P02"},
 				},
 				{
 					Query:    "select count(*) from tbl1;",

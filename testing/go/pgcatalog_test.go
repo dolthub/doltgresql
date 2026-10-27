@@ -2229,6 +2229,16 @@ func TestPgNamespace(t *testing.T) {
 }
 
 func TestPgNamespaceIndexLookups(t *testing.T) {
+	runTargetPair(t, func(t *testing.T, postgres bool) {
+		if postgres {
+			RunScripts(t, nativeNamespaceIndexScripts())
+		} else {
+			doltgresNamespaceIndexLookups(t)
+		}
+	})
+}
+
+func doltgresNamespaceIndexLookups(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_namespace_index_lookups",
@@ -2897,6 +2907,8 @@ func TestPgProc(t *testing.T) {
 					Expected: []sql.Row{
 						{2891346960, "alt_func1", 2200, 0, 0, 1.0, 0.0, 0, nil, "f", "f", "f", "f", "f", "v", "u", 1, 0, 23, "23", nil, nil, nil, nil, nil, "SELECT $1 + 1", nil, nil, nil, nil},
 						{1886569565, "ptest5", 2200, 0, 0, 1.0, 0.0, 0, nil, "p", "f", "f", "f", "f", "v", "u", 3, 1, 2278, "23 25 23", nil, nil, "{a,b,c}", nil, nil, "INSERT INTO cp_test VALUES (a, b);INSERT INTO cp_test VALUES (c, b)", nil, nil, nil, nil}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT p.oid <> 0, p.proname, p.prokind::text, p.pronargs, p.pronargdefaults, p.proargtypes::text, p.prorettype::regtype::text FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname IN ('alt_func1','ptest5') ORDER BY p.proname", Expected: []sql.Row{{"t", "alt_func1", "f", 1, 0, "23", "integer"}, {"t", "ptest5", "p", 3, 1, "23 25 23", "void"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_proc";`,
@@ -2909,10 +2921,14 @@ func TestPgProc(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT proname FROM PG_catalog.pg_PROC ORDER BY proname;",
 					Expected: []sql.Row{{"alt_func1"}, {"ptest5"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT proname FROM pg_catalog.pg_proc WHERE oid IN ('public.alt_func1(integer)'::regprocedure, 'public.ptest5(integer,text,integer)'::regprocedure) ORDER BY proname", Expected: []sql.Row{{"alt_func1"}, {"ptest5"}}},
 				},
 				{
 					Query:    `SELECT t1.oid, t1.typname, p1.oid, p1.proname FROM pg_type AS t1, pg_proc AS p1 WHERE t1.typinput = p1.oid;`,
 					Expected: []sql.Row{},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT t.typname, p.proname, t.typinput=p.oid FROM pg_type t JOIN pg_proc p ON p.oid=t.typinput WHERE t.oid IN ('int4'::regtype,'text'::regtype) ORDER BY t.typname", Expected: []sql.Row{{"int4", "int4in", "t"}, {"text", "textin", "t"}}},
 				},
 			},
 		},
@@ -5774,6 +5790,8 @@ ORDER BY 1;`,
 					Expected: []sql.Row{
 						{1496157034},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.oid = 'public.t2'::regclass\nFROM pg_catalog.pg_class c \nWHERE c.relname = 't2' and c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname='public') -- public\nORDER BY 1;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT c.relname
@@ -5784,6 +5802,10 @@ ORDER BY 1;`,
 					Expected: []sql.Row{
 						{"t1"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.relname > 't' AND c.relname < 't2' AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname='public') -- public\nAND relkind = 'r'\nORDER BY 1;", Expected: []sql.Row{
+						{"t1"},
+					}},
 				},
 				{
 					Query: `SELECT c.relname
@@ -5795,6 +5817,11 @@ ORDER BY 1;`,
 						{"t1"},
 						{"t2"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.relname >= 't1' AND c.relname <= 't2' AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname='public') -- public\nAND relkind = 'r'\nORDER BY 1;", Expected: []sql.Row{
+						{"t1"},
+						{"t2"},
+					}},
 				},
 				{
 					Query: `SELECT c.relname
@@ -5805,6 +5832,10 @@ ORDER BY 1;`,
 					Expected: []sql.Row{
 						{"t1"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.relname >= 't1' AND c.relname < 't2' AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname='public') -- public\nAND relkind = 'r'\nORDER BY 1;", Expected: []sql.Row{
+						{"t1"},
+					}},
 				},
 				{
 					Query: `SELECT c.relname
@@ -5815,6 +5846,10 @@ ORDER BY 1;`,
 					Expected: []sql.Row{
 						{"t2"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.relname > 't1' AND c.relname <= 't2' AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname='public') -- public\nAND relkind = 'r'\nORDER BY 1;", Expected: []sql.Row{
+						{"t2"},
+					}},
 				},
 				{
 					Query: `SELECT c.relname
@@ -5825,6 +5860,10 @@ ORDER BY 1;`,
 					Expected: []sql.Row{
 						{"t2"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.relname > 't1' AND c.relname <= 't2' AND c.relnamespace > ('public'::regnamespace::oid::bigint-1) AND c.relnamespace < ('public'::regnamespace::oid::bigint+1) -- public\nAND relkind = 'r'\nORDER BY 1;", Expected: []sql.Row{
+						{"t2"},
+					}},
 				},
 				{
 					Query: `SELECT c.relname
@@ -5834,6 +5873,10 @@ ORDER BY 1;`,
 					Expected: []sql.Row{
 						{"t2"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.oid = 'public.t2'::regclass\nORDER BY 1;", Expected: []sql.Row{
+						{"t2"},
+					}},
 				},
 				{
 					Query: `SELECT c.relname
@@ -5843,6 +5886,10 @@ ORDER BY 1;`,
 					Expected: []sql.Row{
 						{"t2"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.oid = ('public.t2'::regclass::oid)::text::oid\nORDER BY 1;", Expected: []sql.Row{
+						{"t2"},
+					}},
 				},
 				{
 					Query: `SELECT c.relname
@@ -5852,6 +5899,10 @@ ORDER BY 1;`,
 					Expected: []sql.Row{
 						{"t2"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.oid IN ('public.t2'::regclass, 0) \nORDER BY 1;", Expected: []sql.Row{
+						{"t2"},
+					}},
 				},
 				{
 					Query: `SELECT c.relname
@@ -5861,11 +5912,17 @@ ORDER BY 1;`,
 					Expected: []sql.Row{
 						{"t2"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.oid > ('public.t2'::regclass::oid::bigint - 1) AND c.oid < ('public.t2'::regclass::oid::bigint + 1)\nORDER BY 1;", Expected: []sql.Row{
+						{"t2"},
+					}},
 				},
 				{
 					// This is to make sure a full range scan works (we don't support a full range scan on the index yet)
 					Query:    `SELECT relname from pg_catalog.pg_class order by oid limit 1;`,
 					Expected: []sql.Row{{"pg_publication_namespace"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT relname FROM pg_class WHERE oid='pg_catalog.pg_class'::regclass", Expected: []sql.Row{{"pg_class"}}},
 				},
 				{
 					Query: `EXPLAIN SELECT c.oid
@@ -5883,6 +5940,10 @@ ORDER BY 1;`,
 						{"                 ├─ index: [pg_class.relname,pg_class.relnamespace]"},
 						{"                 └─ filters: [{[t2, t2], [{Namespace:[\"public\"]}, {Namespace:[\"public\"]}]}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.oid\nFROM pg_catalog.pg_class c \nWHERE c.relname = 't2' and c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname='public')\nORDER BY 1;", ExpectedPlanRelations: []string{"pg_class"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.oid\nFROM pg_catalog.pg_class c \nWHERE c.relname = 't2' and c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname='public')\nORDER BY 1;", ExpectedCatalogScanAliases: []string{"c"}},
 				},
 				{
 					Query: `EXPLAIN SELECT c.relname
@@ -5901,6 +5962,10 @@ ORDER BY 1;`,
 						{"                 ├─ index: [pg_class.relname,pg_class.relnamespace]"},
 						{"                 └─ filters: [{(t, t2), [{Namespace:[\"public\"]}, {Namespace:[\"public\"]}]}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.relname > 't' AND c.relname < 't2' AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname='public') -- public\nAND relkind = 'r'\nORDER BY 1;", ExpectedPlanRelations: []string{"pg_class"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.relname > 't' AND c.relname < 't2' AND c.relnamespace = (SELECT oid FROM pg_namespace WHERE nspname='public') -- public\nAND relkind = 'r'\nORDER BY 1;", ExpectedCatalogScanAliases: []string{"c"}},
 				},
 				{
 					Query: `EXPLAIN SELECT c.relname
@@ -5918,6 +5983,10 @@ ORDER BY 1;`,
 						{"                 ├─ index: [pg_class.oid]"},
 						{"                 └─ filters: [{[{Table:[\"public\",\"t2\"]}, {Table:[\"public\",\"t2\"]}]}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.oid = 'public.t2'::regclass\nORDER BY 1;", ExpectedPlanRelations: []string{"pg_class"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.oid = 'public.t2'::regclass\nORDER BY 1;", ExpectedCatalogScanAliases: []string{"c"}},
 				},
 				{
 					Query: `EXPLAIN SELECT c.relname
@@ -5935,6 +6004,10 @@ ORDER BY 1;`,
 						{"                 ├─ index: [pg_class.oid]"},
 						{"                 └─ filters: [{({OID:[\"1496157033\"]}, {OID:[\"1496157035\"]})}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.oid > ('public.t2'::regclass::oid::bigint - 1) AND c.oid < ('public.t2'::regclass::oid::bigint + 1)\nORDER BY 1;", ExpectedPlanRelations: []string{"pg_class"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.oid > ('public.t2'::regclass::oid::bigint - 1) AND c.oid < ('public.t2'::regclass::oid::bigint + 1)\nORDER BY 1;", ExpectedCatalogScanAliases: []string{"c"}},
 				},
 				{
 					Query: `EXPLAIN SELECT c.relname
@@ -5952,6 +6025,10 @@ ORDER BY 1;`,
 						{"                 ├─ index: [pg_class.oid]"},
 						{"                 └─ filters: [{[{Table:[\"public\",\"t2\"]}, {Table:[\"public\",\"t2\"]}]}, {[{OID:[\"1496157035\"]}, {OID:[\"1496157035\"]}]}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.oid IN ('public.t2'::regclass, ('public.t2'::regclass::oid::bigint + 1)) \nORDER BY 1;", ExpectedPlanRelations: []string{"pg_class"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.relname\nFROM pg_catalog.pg_class c \nWHERE c.oid IN ('public.t2'::regclass, ('public.t2'::regclass::oid::bigint + 1)) \nORDER BY 1;", ExpectedCatalogScanAliases: []string{"c"}},
 				},
 			},
 		},
@@ -6004,6 +6081,10 @@ ORDER BY 1,2;`,
 						{"                     ├─ index: [pg_class.relname,pg_class.relnamespace]"},
 						{"                     └─ filters: [{[t2, t2], [NULL, ∞)}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.relname, a.attname\nFROM pg_catalog.pg_class c\n    JOIN pg_catalog.pg_attribute a\n        ON c.oid = a.attrelid\nWHERE c.relkind = 'r' AND a.attnum > 0\n  AND NOT a.attisdropped\n  AND c.relname = 't2'\nORDER BY 1,2;", ExpectedPlanRelations: []string{"pg_attribute", "pg_class"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT c.relname, a.attname\nFROM pg_catalog.pg_class c\n    JOIN pg_catalog.pg_attribute a\n        ON c.oid = a.attrelid\nWHERE c.relkind = 'r' AND a.attnum > 0\n  AND NOT a.attisdropped\n  AND c.relname = 't2'\nORDER BY 1,2;", ExpectedCatalogScanAliases: []string{"c", "a"}},
 				},
 			},
 		},
@@ -6061,6 +6142,8 @@ order by 1,2`,
 						{"t", 1916695891},
 						{"t", 2153117264},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "select relname, relnamespace::regnamespace::text FROM pg_catalog.pg_class c \nwhere c.relname = 't' and c.relkind = 'r'\norder by 1,2", Expected: []sql.Row{{"t", "s1"}, {"t", "s2"}, {"t", "s3"}}},
 				},
 				{
 					Query: `explain select relname, nspname FROM pg_catalog.pg_class c 
@@ -6083,6 +6166,10 @@ order by 1,2`,
 						{"                 ├─ index: [pg_namespace.oid]"},
 						{"                 └─ keys: c.relnamespace"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) select relname, nspname FROM pg_catalog.pg_class c \njoin pg_catalog.pg_namespace n on c.relnamespace = n.oid\nwhere c.relname = 't' and c.relkind = 'r'\norder by 1,2", ExpectedPlanRelations: []string{"pg_class", "pg_namespace"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) select relname, nspname FROM pg_catalog.pg_class c \njoin pg_catalog.pg_namespace n on c.relnamespace = n.oid\nwhere c.relname = 't' and c.relkind = 'r'\norder by 1,2", ExpectedCatalogScanAliases: []string{"c"}},
 				},
 				{
 					Query: `explain select relname, relnamespace FROM pg_catalog.pg_class c 
@@ -6099,6 +6186,10 @@ order by 1,2`,
 						{"                 ├─ index: [pg_class.relname,pg_class.relnamespace]"},
 						{"                 └─ filters: [{[t, t], [NULL, ∞)}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) select relname, relnamespace FROM pg_catalog.pg_class c \nwhere c.relname = 't' and c.relkind = 'r'\norder by 1,2", ExpectedPlanRelations: []string{"pg_class"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) select relname, relnamespace FROM pg_catalog.pg_class c \nwhere c.relname = 't' and c.relkind = 'r'\norder by 1,2", ExpectedCatalogScanAliases: []string{"c"}},
 				},
 			},
 		},
@@ -6115,6 +6206,17 @@ order by 1,2`,
 					Expected: []sql.Row{{1}},
 				},
 			},
+
+			Postgres: &ScriptTest{SetUpScript: []string{`CREATE ROLE s1`,
+				`CREATE SCHEMA AUTHORIZATION s1`,
+				`create table idxpart (a int, b int, c text) partition by range (a);`,
+				`create index idxpart_idx on idxpart (a);`,
+			}, Assertions: []ScriptTestAssertion{
+				{
+					Query:    `select count(*) from pg_class where relname = 'idxpart_idx';`,
+					Expected: []sql.Row{{1}},
+				},
+			}},
 		},
 	})
 }
@@ -6282,6 +6384,8 @@ func TestPgTypeIndexes(t *testing.T) {
 						{"             ├─ index: [pg_type.oid]"},
 						{"             └─ filters: [{[{Type:[\"pg_catalog\",\"int4\"]}, {Type:[\"pg_catalog\",\"int4\"]}]}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT typname FROM pg_catalog.pg_type WHERE oid = 23 ORDER BY 1;", ExpectedPlanRelations: []string{"pg_type"}},
 				},
 				{
 					Query: `EXPLAIN SELECT typname FROM pg_catalog.pg_type WHERE oid > 22 AND oid < 25 ORDER BY 1;`,
@@ -6295,6 +6399,8 @@ func TestPgTypeIndexes(t *testing.T) {
 						{"             ├─ index: [pg_type.oid]"},
 						{"             └─ filters: [{({Type:[\"pg_catalog\",\"int2vector\"]}, {Type:[\"pg_catalog\",\"text\"]})}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT typname FROM pg_catalog.pg_type WHERE oid > 22 AND oid < 25 ORDER BY 1;", ExpectedPlanRelations: []string{"pg_type"}},
 				},
 				{
 					Query: `EXPLAIN SELECT typname FROM pg_catalog.pg_type WHERE oid IN (23, 25) ORDER BY typname;`,
@@ -6308,6 +6414,8 @@ func TestPgTypeIndexes(t *testing.T) {
 						{"             ├─ index: [pg_type.oid]"},
 						{"             └─ filters: [{[{Type:[\"pg_catalog\",\"int4\"]}, {Type:[\"pg_catalog\",\"int4\"]}]}, {[{Type:[\"pg_catalog\",\"text\"]}, {Type:[\"pg_catalog\",\"text\"]}]}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT typname FROM pg_catalog.pg_type WHERE oid IN (23, 25) ORDER BY typname;", ExpectedPlanRelations: []string{"pg_type"}},
 				},
 			},
 		},
@@ -6321,6 +6429,8 @@ func TestPgTypeIndexes(t *testing.T) {
 				{
 					Query:    `SELECT typname FROM pg_catalog.pg_type WHERE typname > 'int2' AND typname < 'int8' AND typnamespace = 11 ORDER BY 1;`,
 					Expected: []sql.Row{{"int2vector"}, {"int4"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"int2vector"}, {"int4"}, {"int4multirange"}, {"int4range"}}},
 				},
 				{
 					Query:    `SELECT typname FROM pg_catalog.pg_type WHERE typname >= 'int2' AND typname <= 'int4' AND typnamespace = 11 ORDER BY 1;`,
@@ -6346,6 +6456,8 @@ func TestPgTypeIndexes(t *testing.T) {
 						{"             ├─ index: [pg_type.typname,pg_type.typnamespace]"},
 						{"             └─ filters: [{[int4, int4], [{Namespace:[\"pg_catalog\"]}, {Namespace:[\"pg_catalog\"]}]}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT oid FROM pg_catalog.pg_type WHERE typname = 'int4' AND typnamespace = 11 ORDER BY 1;", ExpectedPlanRelations: []string{"pg_type"}},
 				},
 				{
 					Query: `EXPLAIN SELECT typname FROM pg_catalog.pg_type WHERE typname > 'int2' AND typname < 'int8' AND typnamespace = 11 ORDER BY 1;`,
@@ -6359,6 +6471,8 @@ func TestPgTypeIndexes(t *testing.T) {
 						{"             ├─ index: [pg_type.typname,pg_type.typnamespace]"},
 						{"             └─ filters: [{(int2, int8), [{Namespace:[\"pg_catalog\"]}, {Namespace:[\"pg_catalog\"]}]}]"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT typname FROM pg_catalog.pg_type WHERE typname > 'int2' AND typname < 'int8' AND typnamespace = 11 ORDER BY 1;", ExpectedPlanRelations: []string{"pg_type"}},
 				},
 			},
 		},
@@ -6395,6 +6509,8 @@ func TestPgTypeIndexes(t *testing.T) {
 						{"                 ├─ index: [pg_namespace.oid]"},
 						{"                 └─ keys: t.typnamespace"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT t.typname, n.nspname\n\t\t\t\t\t\t\t\tFROM pg_catalog.pg_type t\n\t\t\t\t\t\t\t\tJOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid\n\t\t\t\t\t   \t\t\tWHERE t.typname = 'int4'\n\t\t\t\t\t\t\t\tORDER BY 1;", ExpectedPlanRelations: []string{"pg_namespace", "pg_type"}},
 				},
 			},
 		},
@@ -7308,6 +7424,13 @@ func TestPgAttributeIndexes(t *testing.T) {
 						{"description", int16(3)},
 						{"created_at", int16(4)},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT a.attname, a.attnum FROM pg_catalog.pg_attribute a\n\t\t\t\t\t\t\tJOIN pg_catalog.pg_class c ON a.attrelid = c.oid \n\t\t\t\t\t\t\tWHERE a.attnum > 0 AND c.relname = 'test_table'\n\t\t\t\t\t\t\tORDER BY a.attnum;", Expected: []sql.Row{
+						{"id", int16(1)},
+						{"name", int16(2)},
+						{"description", int16(3)},
+						{"created_at", int16(4)},
+					}},
 				},
 				{
 					// Test unique index on attrelid + attname (using string values for boolean fields)
@@ -7318,6 +7441,10 @@ func TestPgAttributeIndexes(t *testing.T) {
 					Expected: []sql.Row{
 						{int16(2), "t", "f"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT a.attnum, a.attnotnull, a.atthasdef FROM pg_catalog.pg_attribute a\n\t\t\t\t\t\t\tJOIN pg_catalog.pg_class c ON a.attrelid = c.oid\n\t\t\t\t\t\t\tWHERE a.attnum > 0 AND c.relname = 'test_table' \n\t\t\t\t\t\t\tAND a.attname = 'name';", Expected: []sql.Row{
+						{int16(2), "t", "f"},
+					}},
 				},
 				{
 					// Test another unique index lookup
@@ -7328,6 +7455,10 @@ func TestPgAttributeIndexes(t *testing.T) {
 					Expected: []sql.Row{
 						{int16(1)},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT a.attnum FROM pg_catalog.pg_attribute a\n\t\t\t\t\t\t\tJOIN pg_catalog.pg_class c ON a.attrelid = c.oid\n\t\t\t\t\t\t\tWHERE a.attnum > 0 AND c.relname = 'another_table' \n\t\t\t\t\t\t\tAND a.attname = 'pk';", Expected: []sql.Row{
+						{int16(1)},
+					}},
 				},
 				{
 					// Test range lookup on attrelid index
@@ -7339,6 +7470,10 @@ func TestPgAttributeIndexes(t *testing.T) {
 					Expected: []sql.Row{
 						{6},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT COUNT(*) FROM pg_catalog.pg_attribute a\n\t\t\t\t\t\t\tWHERE a.attnum > 0 AND a.attrelid IN (\n\t\t\t\t\t\t\t\tSELECT oid FROM pg_catalog.pg_class \n\t\t\t\t\t\t\t\tWHERE relname IN ('test_table', 'another_table')\n\t\t\t\t\t\t\t);", Expected: []sql.Row{
+						{6},
+					}},
 				},
 				{
 					// Test JOIN using the indexes
@@ -7355,6 +7490,15 @@ func TestPgAttributeIndexes(t *testing.T) {
 						{"test_table", "description", int16(3)},
 						{"test_table", "created_at", int16(4)},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname, a.attname, a.attnum \n\t\t\t\t\t\t\tFROM pg_catalog.pg_class c \n\t\t\t\t\t\t\tJOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid \n\t\t\t\t\t\t\tWHERE a.attnum > 0 AND c.relname IN ('test_table', 'another_table') \n\t\t\t\t\t\t\tORDER BY c.relname, a.attnum;", Expected: []sql.Row{
+						{"another_table", "pk", int16(1)},
+						{"another_table", "value", int16(2)},
+						{"test_table", "id", int16(1)},
+						{"test_table", "name", int16(2)},
+						{"test_table", "description", int16(3)},
+						{"test_table", "created_at", int16(4)},
+					}},
 				},
 			},
 		},

@@ -3470,10 +3470,14 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query:    `SELECT pg_function_is_visible(22);`, // not a function OID
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT pg_function_is_visible(845743985);`, // OID does not exist
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT pg_function_is_visible(NULL);`,
@@ -3508,6 +3512,16 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 						{3508950454, "test_table_pkey", "testschema"},
 						{2590613415, "test_table_v1_key", "testschema"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.oid <> 0, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE (n.nspname='myschema' OR n.nspname='testschema') AND left(relname, 5) <> 'dolt_' order by relname;", Expected: []sql.Row{
+						{"t", "mytable", "myschema"},
+						{"t", "myview", "myschema"},
+						{"t", "test_index", "testschema"},
+						{"t", "test_seq", "testschema"},
+						{"t", "test_table", "testschema"},
+						{"t", "test_table_pkey", "testschema"},
+						{"t", "test_table_v1_key", "testschema"},
+					}},
 				},
 				{
 					Query:    `SHOW search_path;`,
@@ -3516,18 +3530,26 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query:    `select pg_table_is_visible(3057657334);`, // index from testschema
 					Expected: []sql.Row{{"t"}},
+
+					Postgres: &ScriptTestAssertion{Query: "select pg_table_is_visible('testschema.test_index'::regclass);", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `select pg_table_is_visible(1952237395);`, // table from testschema
 					Expected: []sql.Row{{"t"}},
+
+					Postgres: &ScriptTestAssertion{Query: "select pg_table_is_visible('testschema.test_table'::regclass);", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `select pg_table_is_visible(1539973141);`, // sequence from testschema
 					Expected: []sql.Row{{"t"}},
+
+					Postgres: &ScriptTestAssertion{Query: "select pg_table_is_visible('testschema.test_seq'::regclass);", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `select pg_table_is_visible(3983475213);`, // view from myschema
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Query: "select pg_table_is_visible('myschema.myview'::regclass);", Expected: []sql.Row{{"f"}}},
 				},
 				{
 					Query:    `SET search_path = 'myschema';`,
@@ -3540,10 +3562,14 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query:    `select pg_table_is_visible(3983475213);`, // view from myschema
 					Expected: []sql.Row{{"t"}},
+
+					Postgres: &ScriptTestAssertion{Query: "select pg_table_is_visible('myschema.myview'::regclass);", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `select pg_table_is_visible(3905781870);`, // table from myschema
 					Expected: []sql.Row{{"t"}},
+
+					Postgres: &ScriptTestAssertion{Query: "select pg_table_is_visible('myschema.mytable'::regclass);", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -3572,6 +3598,17 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 						{2272253470, "test_domain", "testschema"},
 						{1117094145, "test_enum", "testschema"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT t.oid <> 0, t.typname, n.nspname FROM pg_catalog.pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname='myschema' OR n.nspname='testschema' ORDER BY t.typname;", Expected: []sql.Row{
+						{"t", "_mydomain", "myschema"},
+						{"t", "_myenum", "myschema"},
+						{"t", "_test_domain", "testschema"},
+						{"t", "_test_enum", "testschema"},
+						{"t", "mydomain", "myschema"},
+						{"t", "myenum", "myschema"},
+						{"t", "test_domain", "testschema"},
+						{"t", "test_enum", "testschema"},
+					}},
 				},
 				{
 					Query:    `SHOW search_path;`,
@@ -3580,18 +3617,26 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query:    `SELECT pg_type_is_visible(2272253470);`, // test_domain from testschema
 					Expected: []sql.Row{{"t"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_type_is_visible('testschema.test_domain'::regtype);", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT pg_type_is_visible(1117094145);`, // test_enum from testschema
 					Expected: []sql.Row{{"t"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_type_is_visible('testschema.test_enum'::regtype);", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT pg_type_is_visible(340132571);`, // mydomain from myschema
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_type_is_visible('myschema.mydomain'::regtype);", Expected: []sql.Row{{"f"}}},
 				},
 				{
 					Query:    `SELECT pg_type_is_visible(1684884017);`, // myenum from myschema
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_type_is_visible('myschema.myenum'::regtype);", Expected: []sql.Row{{"f"}}},
 				},
 				{
 					Query:    `SET search_path = 'myschema';`,
@@ -3604,22 +3649,32 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query:    `SELECT pg_type_is_visible(340132571);`, // mydomain from myschema
 					Expected: []sql.Row{{"t"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_type_is_visible('myschema.mydomain'::regtype);", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT pg_type_is_visible(1684884017);`, // myenum from myschema
 					Expected: []sql.Row{{"t"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_type_is_visible('myschema.myenum'::regtype);", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT pg_type_is_visible(2272253470);`, // test_domain from testschema
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_type_is_visible('testschema.test_domain'::regtype);", Expected: []sql.Row{{"f"}}},
 				},
 				{
 					Query:    `SELECT pg_type_is_visible(1117094145);`, // test_enum from testschema
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_type_is_visible('testschema.test_enum'::regtype);", Expected: []sql.Row{{"f"}}},
 				},
 				{
 					Query:    `SELECT pg_type_is_visible(999999);`, // non-existent type oid
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SET search_path = 'pg_catalog';`,
@@ -3650,10 +3705,14 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query:    `SELECT pg_collation_is_visible(397);`, // an operator family, not a collation
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT pg_collation_is_visible(22);`, // invalid
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -3664,14 +3723,20 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query:    `SELECT pg_opclass_is_visible(15000);`, // btree array_ops
 					Expected: []sql.Row{{"t"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_opclass_is_visible(oid) FROM pg_opclass WHERE opcname='array_ops' AND opcmethod=(SELECT oid FROM pg_am WHERE amname='btree')", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT pg_opclass_is_visible(397);`, // an operator family, not an operator class
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_opclass_is_visible(0);", Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT pg_opclass_is_visible(22);`, // invalid
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -3686,10 +3751,14 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query:    `SELECT pg_opfamily_is_visible(15000);`, // an operator class, not an operator family
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_opfamily_is_visible(0);", Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT pg_opfamily_is_visible(22);`, // invalid
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -3701,6 +3770,8 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					// TODO: built-in operators are not yet cataloged, so no OID refers to a visible operator
 					Query:    `SELECT pg_operator_is_visible(22);`,
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -3712,6 +3783,8 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					// TODO: encoding conversions are not yet cataloged, so no OID refers to a visible conversion
 					Query:    `SELECT pg_conversion_is_visible(22);`,
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -3726,6 +3799,8 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query:    `SELECT pg_ts_config_is_visible(22);`, // invalid
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -3740,6 +3815,8 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query:    `SELECT pg_ts_dict_is_visible(22);`, // invalid
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -3754,6 +3831,8 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 				{
 					Query:    `SELECT pg_ts_template_is_visible(22);`, // invalid
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -3765,6 +3844,8 @@ func TestSchemaVisibilityInquiryFunctions(t *testing.T) {
 					// TODO: extended statistics objects are not yet supported, so no OID refers to a visible one
 					Query:    `SELECT pg_statistics_obj_is_visible(22);`,
 					Expected: []sql.Row{{"f"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -3839,6 +3920,8 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{""},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_function_arguments(22)", Expected: []sql.Row{{nil}}},
 				},
 				{
 					// caches the function and procedure OIDs so that they can be used below
@@ -3847,18 +3930,29 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 						{2891346960, "alt_func1"},
 						{1886569565, "ptest5"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid <> 0, proname FROM pg_catalog.pg_proc WHERE proname = 'alt_func1' OR proname = 'ptest5';", Expected: []sql.Row{
+						{"t", "alt_func1"},
+						{"t", "ptest5"},
+					}},
 				},
 				{
 					Query: `SELECT pg_get_function_arguments(2891346960)`,
 					Expected: []sql.Row{
 						{"integer"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_function_arguments('public.alt_func1(integer)'::regprocedure)", Expected: []sql.Row{
+						{"integer"},
+					}},
 				},
 				{
 					Query: `SELECT pg_get_function_arguments(1886569565)`,
 					Expected: []sql.Row{
 						{"a integer, b text, c integer DEFAULT 100"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_function_arguments('public.ptest5(integer,text,integer)'::regprocedure)", Expected: []sql.Row{{"IN a integer, IN b text, IN c integer DEFAULT 100"}}},
 				},
 			},
 		},
@@ -3881,6 +3975,8 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{""},
 					},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Skip:  true, // TODO: fails to convert oid to function id because it hasn't been cached.
@@ -3888,6 +3984,12 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{"CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1'"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_functiondef('public.alt_func1(integer)'::regprocedure)", Expected: []sql.Row{{`CREATE OR REPLACE FUNCTION public.alt_func1(integer)
+ RETURNS integer
+ LANGUAGE sql
+AS $function$SELECT $1 + 1$function$
+`}}},
 				},
 				{
 					Query: `SELECT oid, proname FROM pg_catalog.pg_proc WHERE proname = 'alt_func1' OR proname = 'ptest5';`,
@@ -3895,18 +3997,31 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 						{2891346960, "alt_func1"},
 						{1886569565, "ptest5"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid <> 0, proname FROM pg_catalog.pg_proc WHERE proname = 'alt_func1' OR proname = 'ptest5';", Expected: []sql.Row{
+						{"t", "alt_func1"},
+						{"t", "ptest5"},
+					}},
 				},
 				{
 					Query: `SELECT pg_get_functiondef(2891346960)`,
 					Expected: []sql.Row{
 						{"CREATE FUNCTION alt_func1(int) RETURNS int LANGUAGE sql AS 'SELECT $1 + 1'"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_functiondef('public.alt_func1(integer)'::regprocedure)", Expected: []sql.Row{{`CREATE OR REPLACE FUNCTION public.alt_func1(integer)
+ RETURNS integer
+ LANGUAGE sql
+AS $function$SELECT $1 + 1$function$
+`}}},
 				},
 				{
 					Query: `SELECT pg_get_functiondef(1886569565)`,
 					Expected: []sql.Row{
 						{"CREATE OR REPLACE PROCEDURE ptest5(a int, b text, c int default 100)\n\t\t\t\tLANGUAGE SQL\n\t\t\t\tAS $$\n\t\t\t\t\tINSERT INTO cp_test VALUES(a, b);\n\t\t\t\t\tINSERT INTO cp_test VALUES(c, b);\n\t\t\t\t$$"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_functiondef('public.ptest5(integer,text,integer)'::regprocedure) LIKE '%PROCEDURE public.ptest5(IN a integer, IN b text, IN c integer DEFAULT 100)%' AND pg_get_functiondef('public.ptest5(integer,text,integer)'::regprocedure) LIKE '%INSERT INTO cp_test VALUES(a, b)%' AND pg_get_functiondef('public.ptest5(integer,text,integer)'::regprocedure) LIKE '%INSERT INTO cp_test VALUES(c, b)%'", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -3923,23 +4038,41 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					Query:            `SELECT pg_get_indexdef(845743985);`,
 					ExpectedColNames: []string{"pg_get_indexdef"},
 					Expected:         []sql.Row{{""}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_indexdef(845743985);", Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT pg_get_indexdef('idx_test_pkey'::regclass::oid);`,
 					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_test_pkey ON public.idx_test USING btree (pk)"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_test_pkey ON public.idx_test USING btree (pk)"}}},
+
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_test_pkey ON public.idx_test USING dolt_prolly_index (pk)"}}},
 				},
 				{
 					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid);`,
 					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}}},
+
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING dolt_prolly_index (a, b)"}}},
 				},
 				{
 					// A column number of 0 returns the whole definition, same as the one-argument form
 					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 0, true);`,
 					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON idx_test USING btree (a, b)"}}},
+
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON idx_test USING dolt_prolly_index (a, b)"}}},
 				},
 				{
 					Query:    `SELECT pg_get_indexdef('idx_ab'::regclass::oid, 0, false);`,
 					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)"}}},
+
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_ab ON public.idx_test USING dolt_prolly_index (a, b)"}}},
 				},
 				{
 					// A non-zero column number returns just that column's definition
@@ -3967,10 +4100,14 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					// OID does not exist
 					Query:    `SELECT pg_get_indexdef(845743985, 0, true);`,
 					Expected: []sql.Row{{""}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_indexdef(845743985, 0, true);", Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT pg_get_indexdef(845743985, 1, true);`,
 					Expected: []sql.Row{{""}},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_indexdef(845743985, 1, true);", Expected: []sql.Row{{nil}}},
 				},
 				{
 					// NULL arguments produce a NULL result
@@ -3994,6 +4131,18 @@ ORDER BY i.indisprimary DESC, c2.relname;`,
 						{"idx_ab", "f", "t", "f", "t", "CREATE UNIQUE INDEX idx_ab ON public.idx_test USING btree (a, b)", "UNIQUE (a, b)", "u", "f", "f", "f", 0},
 						{"idx_c", "f", "f", "f", "t", "CREATE INDEX idx_c ON public.idx_test USING btree (c)", nil, nil, nil, nil, "f", 0},
 					},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{
+						{"idx_test_pkey", "t", "t", "f", "t", "CREATE UNIQUE INDEX idx_test_pkey ON idx_test USING btree (pk)", "PRIMARY KEY (pk)", "p", "f", "f", "f", 0},
+						{"idx_ab", "f", "t", "f", "t", "CREATE UNIQUE INDEX idx_ab ON idx_test USING btree (a, b)", nil, nil, nil, nil, "f", 0},
+						{"idx_c", "f", "f", "f", "t", "CREATE INDEX idx_c ON idx_test USING btree (c)", nil, nil, nil, nil, "f", 0},
+					}},
+
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{
+						{"idx_test_pkey", "t", "t", "f", "t", "CREATE UNIQUE INDEX idx_test_pkey ON idx_test USING dolt_prolly_index (pk)", "PRIMARY KEY (pk)", "p", "f", "f", "f", 0},
+						{"idx_ab", "f", "t", "f", "t", "CREATE UNIQUE INDEX idx_ab ON idx_test USING dolt_prolly_index (a, b)", nil, nil, nil, nil, "f", 0},
+						{"idx_c", "f", "f", "f", "t", "CREATE INDEX idx_c ON idx_test USING dolt_prolly_index (c)", nil, nil, nil, nil, "f", 0},
+					}},
 				},
 			},
 		},
@@ -4007,6 +4156,8 @@ ORDER BY i.indisprimary DESC, c2.relname;`,
 					Expected: []sql.Row{
 						{""},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_function_result(22)", Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -4024,12 +4175,18 @@ ORDER BY i.indisprimary DESC, c2.relname;`,
 					Expected: []sql.Row{
 						{""},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_triggerdef(22)", Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query: `SELECT pg_get_triggerdef(t.oid) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';`,
 					Expected: []sql.Row{
 						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_triggerdef(t.oid) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';", Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON public.trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
+					}},
 				},
 				{
 					// The pretty flag only affects expression formatting, so both variants return the same text
@@ -4037,12 +4194,20 @@ ORDER BY i.indisprimary DESC, c2.relname;`,
 					Expected: []sql.Row{
 						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
 					},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
+					}},
 				},
 				{
 					Query: `SELECT pg_get_triggerdef(t.oid, false) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';`,
 					Expected: []sql.Row{
 						{"CREATE TRIGGER trig_before BEFORE INSERT ON trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_triggerdef(t.oid, false) FROM pg_catalog.pg_trigger t WHERE t.tgname = 'trig_before';", Expected: []sql.Row{
+						{"CREATE TRIGGER trig_before BEFORE INSERT ON public.trig_test FOR EACH ROW EXECUTE FUNCTION trig_fn()"},
+					}},
 				},
 			},
 		},
@@ -4056,6 +4221,10 @@ ORDER BY i.indisprimary DESC, c2.relname;`,
 					Expected: []sql.Row{
 						{"postgres"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT pg_get_userbyid(oid) FROM pg_roles WHERE rolname = current_user", Expected: []sql.Row{
+						{"postgres"},
+					}},
 				},
 			},
 		},
@@ -4073,10 +4242,17 @@ ORDER BY i.indisprimary DESC, c2.relname;`,
 						{2707638987, "test_view", "public"},
 						{1397286223, "test", "public"},
 					},
+
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.oid <> 0, c.relname AS table_name, n.nspname AS table_schema FROM pg_catalog.pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE (n.nspname='myschema' OR n.nspname='public') and left(relname, 5) <> 'dolt_';", Expected: []sql.Row{
+						{"t", "test_view", "public"},
+						{"t", "test", "public"},
+					}},
 				},
 				{
 					Query:    `select pg_get_viewdef(2707638987);`,
 					Expected: []sql.Row{{"SELECT name FROM test"}},
+
+					Postgres: &ScriptTestAssertion{Query: "select pg_get_viewdef('public.test_view'::regclass);", Expected: []sql.Row{{" SELECT name\n   FROM test;"}}},
 				},
 			},
 		},
