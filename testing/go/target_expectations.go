@@ -1,3 +1,17 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package _go
 
 import (
@@ -128,6 +142,41 @@ func checkPlanRelations(plan string, relations []string) error {
 	for _, relation := range relations {
 		if !found[relation] {
 			return fmt.Errorf("plan does not reference expected relation %s", relation)
+		}
+	}
+	return nil
+}
+
+func checkCatalogScanAliases(plan string, aliases []string) error {
+	if len(aliases) == 0 {
+		return nil
+	}
+	var roots []struct{ Plan map[string]any }
+	if err := json.Unmarshal([]byte(plan), &roots); err != nil {
+		return err
+	}
+	found := map[string]bool{}
+	var walk func(map[string]any)
+	walk = func(node map[string]any) {
+		if node["Node Type"] == "Custom Scan" && node["Custom Plan Provider"] == "DoltCatalogScan" {
+			if alias, ok := node["Alias"].(string); ok {
+				found[alias] = true
+			}
+		}
+		if plans, ok := node["Plans"].([]any); ok {
+			for _, p := range plans {
+				if child, ok := p.(map[string]any); ok {
+					walk(child)
+				}
+			}
+		}
+	}
+	for _, root := range roots {
+		walk(root.Plan)
+	}
+	for _, alias := range aliases {
+		if !found[alias] {
+			return fmt.Errorf("missing DoltCatalogScan for alias %s", alias)
 		}
 	}
 	return nil
