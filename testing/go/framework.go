@@ -25,6 +25,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
@@ -297,6 +298,16 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 	// Run the assertions
 	for _, assertion := range expandTargetAssertions(t, assertions) {
 		t.Run(assertionName(assertion), func(t *testing.T) {
+			// Full-suite audit mode reports a normalizer panic as a failed assertion
+			// and keeps later assertions visible. It never turns a panic into a pass.
+			if os.Getenv("DOLTGRES_TEST_RECOVER_PANICS") == "1" {
+				defer func() {
+					if value := recover(); value != nil {
+						t.Errorf("audit harness panic: %v\n%s", value, debug.Stack())
+					}
+				}()
+			}
+
 			if assertion.variant != "" && !assertion.variantEnabled {
 				t.Skip("counterpart selected by DOLTGRES_TEST_TARGET")
 			}
