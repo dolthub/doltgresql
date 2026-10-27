@@ -186,7 +186,7 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 				continue
 			}
 			t.Log("Running setup query: ", s)
-			_, rowIter, _, err := queryEngine.Query(ctx, sanitized)
+			_, rowIter, _, err := queryEngine.setupQuery(ctx, sanitized)
 			if err != nil {
 				return nil, err
 			}
@@ -675,7 +675,11 @@ func (d *DoltgresHarness) EvaluateExpectedErrorKind(t *testing.T, expected *gmse
 }
 
 func (d *DoltgresHarness) allDatabaseNames(ctx *sql.Context, queryEngine *DoltgresQueryEngine) []string {
-	_, rowIter, _, err := queryEngine.Query(ctx, "SELECT datname FROM pg_database")
+	query := "SELECT datname FROM pg_database"
+	if nativePostgresEngine() {
+		query += " WHERE NOT datistemplate AND datallowconn"
+	}
+	_, rowIter, _, err := queryEngine.Query(ctx, query)
 	if err != nil {
 		d.t.Fatalf("error getting database names: %v", err)
 	}
@@ -698,9 +702,10 @@ func (d *DoltgresHarness) allDatabaseNames(ctx *sql.Context, queryEngine *Doltgr
 }
 
 type DoltgresQueryEngine struct {
-	harness    *DoltgresHarness
-	controller *svcs.Controller
-	conn       *pgx.Conn
+	harness     *DoltgresHarness
+	controller  *svcs.Controller
+	conn        *pgx.Conn
+	connections map[string]*pgx.Conn
 }
 
 var _ enginetest.QueryEngine = &DoltgresQueryEngine{}
@@ -739,7 +744,68 @@ func (d *DoltgresQueryEngine) AnalyzeQuery(s *sql.Context, s2 string) (sql.Node,
 // TODO: random port
 var doltgresNoDbDsn = fmt.Sprintf("postgresql://postgres:password@127.0.0.1:%d/?sslmode=disable", port)
 
+func nativePostgresEngine() bool {
+	return os.Getenv("DOLTGRES_TEST_SERVER_KIND") == "postgres"
+}
+
+// GMS fixtures use MySQL's idempotent database creation. Adapt setup only;
+// actual CREATE DATABASE assertions still exercise the supplied SQL unchanged.
+func (d *DoltgresQueryEngine) setupQuery(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+	if nativePostgresEngine() {
+		stmt, err := sql.NewMysqlParser().ParseSimple(query)
+		if ddl, ok := stmt.(*vitess.DBDDL); err == nil && ok && ddl.Action == vitess.CreateStr && ddl.IfNotExists && len(ddl.CharsetCollate) == 0 {
+			db, err := d.getConnection()
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			_, err = db.Exec(context.Background(), "CREATE DATABASE "+pgx.Identifier{ddl.DBName}.Sanitize())
+			var pgerr *pgconn.PgError
+			if errors.As(err, &pgerr) && pgerr.Code == "42P04" {
+				err = nil
+			}
+			return nil, sql.RowsToRowIter(), nil, err
+		}
+	}
+	return d.Query(ctx, query)
+}
+
+// USE is a client connection operation for PostgreSQL targets. Retain each
+// database connection, and never silently abandon an active transaction.
+func (d *DoltgresQueryEngine) selectDatabase(name string) error {
+	if d.conn != nil && d.conn.PgConn().TxStatus() != 'I' {
+		return fmt.Errorf("cannot switch databases inside an active transaction")
+	}
+	if conn := d.connections[name]; conn != nil && !conn.IsClosed() {
+		d.conn = conn
+		return nil
+	}
+	config, err := pgx.ParseConfig(doltgresNoDbDsn)
+	if err != nil {
+		return err
+	}
+	config.Database = name
+	config.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+	conn, err := pgx.ConnectConfig(context.Background(), config)
+	if err != nil {
+		return err
+	}
+	if d.connections == nil {
+		d.connections = make(map[string]*pgx.Conn)
+	}
+	d.connections[name] = conn
+	d.conn = conn
+	return nil
+}
+
 func (d *DoltgresQueryEngine) Query(ctx *sql.Context, query string) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
+	if nativePostgresEngine() && strings.HasPrefix(strings.ToLower(strings.TrimSpace(query)), "use ") {
+		stmt, err := sql.NewMysqlParser().ParseSimple(query)
+		if use, ok := stmt.(*vitess.Use); err == nil && ok {
+			err = d.selectDatabase(use.DBName.String())
+			return nil, sql.RowsToRowIter(), nil, err
+		}
+	}
+
 	db, err := d.getConnection()
 	if err != nil {
 		return nil, nil, nil, err
@@ -850,6 +916,11 @@ func getDmlResult(rows pgx.Rows, query string) (sql.Row, bool) {
 }
 
 func (d *DoltgresQueryEngine) getConnection() (*pgx.Conn, error) {
+	if d.conn == nil && nativePostgresEngine() {
+		if err := d.selectDatabase("postgres"); err != nil {
+			return nil, err
+		}
+	}
 	if d.conn != nil {
 		return d.conn, nil
 	}
@@ -963,6 +1034,10 @@ func (d *DoltgresQueryEngine) CloseSession(connID uint32) {
 }
 
 func (d *DoltgresQueryEngine) Close() error {
+	for _, conn := range d.connections {
+		_ = conn.Close(context.Background())
+	}
+	d.connections = nil
 	d.conn = nil
 	d.controller.Stop()
 	return d.controller.WaitForStop()
@@ -1020,4 +1095,46 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 	}
 
 	return schema, columnVals, nil
+}
+
+// PostgreSQL's setup adapter must create real databases and keep switching
+// out of the SQL-under-test path without losing transactions or session state.
+func TestNativeEngineDatabaseFixtures(t *testing.T) {
+	if !nativePostgresEngine() {
+		t.Skip("PostgreSQL external-server fixture")
+	}
+	h := &DoltgresHarness{t: t}
+	e := NewDoltgresQueryEngine(t, h)
+	t.Cleanup(func() { require.NoError(t, e.Close()) })
+	ctx := sql.NewEmptyContext()
+	for i := 0; i < 2; i++ {
+		_, rows, _, err := e.setupQuery(ctx, "CREATE DATABASE IF NOT EXISTS fixture_db")
+		require.NoError(t, err)
+		require.NoError(t, rows.Close(ctx))
+	}
+	_, rows, _, err := e.Query(ctx, "USE fixture_db")
+	require.NoError(t, err)
+	require.NoError(t, rows.Close(ctx))
+	_, err = e.conn.Exec(context.Background(), "CREATE TABLE fixture(id int); INSERT INTO fixture VALUES (7)")
+	require.NoError(t, err)
+	_, err = e.conn.Exec(context.Background(), "SET application_name='fixture-session'")
+	require.NoError(t, err)
+	require.NoError(t, e.selectDatabase("postgres"))
+	require.NoError(t, e.selectDatabase("fixture_db"))
+	var id int
+	var setting string
+	require.NoError(t, e.conn.QueryRow(context.Background(), "SELECT id FROM fixture").Scan(&id))
+	require.Equal(t, 7, id)
+	require.NoError(t, e.conn.QueryRow(context.Background(), "SHOW application_name").Scan(&setting))
+	require.Equal(t, "fixture-session", setting)
+	_, err = e.conn.Exec(context.Background(), "BEGIN")
+	require.NoError(t, err)
+	require.ErrorContains(t, e.selectDatabase("postgres"), "active transaction")
+	require.Equal(t, byte('T'), e.conn.PgConn().TxStatus())
+	_, err = e.conn.Exec(context.Background(), "ROLLBACK")
+	require.NoError(t, err)
+	// Only setup is translated. An assertion using this SQL still gets the
+	// real server's syntax error, rather than a manufactured successful result.
+	_, _, _, err = e.Query(ctx, "CREATE DATABASE IF NOT EXISTS fixture_db")
+	require.Error(t, err)
 }
