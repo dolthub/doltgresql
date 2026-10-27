@@ -1,16 +1,17 @@
 package enginetest
 
 import (
-	"math/rand"
+	"os"
 	"testing"
-	"time"
 
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/stretchr/testify/require"
 
 	"github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/servercfg"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
+	dtest "github.com/dolthub/doltgresql/testing/go"
 )
 
 // Ptr is a helper function that returns a pointer to the value passed in. This is necessary to e.g. get a pointer to
@@ -21,8 +22,8 @@ func Ptr[T any](v T) *T {
 
 // startServer will start sql-server with given host, unix socket file path and whether to use specific port, which is defined randomly.
 func startServer(t *testing.T, host string, unixSocketPath string) (*svcs.Controller, *servercfg.DoltgresConfig) {
-	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	port := 15403 + rng.Intn(25)
+	port, err := sql.GetEmptyPort()
+	require.NoError(t, err)
 
 	doltgresConfig := servercfg.DoltgresConfig{
 		DoltgresConfig: cfgdetails.DoltgresConfig{
@@ -33,6 +34,11 @@ func startServer(t *testing.T, host string, unixSocketPath string) (*svcs.Contro
 				//Socket:     Ptr(unixSocketPath),
 			},
 		},
+	}
+	if os.Getenv("DOLTGRES_TEST_SERVER_BINARY") != "" {
+		ctx, initial, ctrl := dtest.CreateServerWithPort(t, "postgres", port)
+		initial.Close(ctx)
+		return ctrl, &doltgresConfig
 	}
 	ctrl, err := server.RunInMemory(&doltgresConfig, server.NewListener)
 	require.NoError(t, err)

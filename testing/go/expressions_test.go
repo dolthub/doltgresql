@@ -16,6 +16,7 @@ package _go
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -262,6 +263,14 @@ WHERE "t"."relkind" IN ('r', 'p') AND (("ns"."nspname" = 'public' AND "t"."relna
 			Expected:    test.Expected,
 			ExpectedErr: test.ExpectedErr,
 		}
+		if strings.Contains(test.Query, `"pg_constraint"`) {
+			// PostgreSQL 18 also catalogs NOT NULL constraints; this query tests the listed key kinds.
+			formattedTests[i].Postgres = &ScriptTestAssertion{
+				Query:    strings.TrimSuffix(formattedTests[i].Query, ";") + " AND cnst.contype <> 'n';",
+				Expected: test.Expected,
+			}
+		}
+
 	}
 
 	return ScriptTest{

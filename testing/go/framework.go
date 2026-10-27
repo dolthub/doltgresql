@@ -25,6 +25,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +71,8 @@ var serverHost = "127.0.0.1"
 type ScriptTest struct {
 	// Name of the script.
 	Name string
+	// Postgres supplies a separately reported PostgreSQL counterpart. The original runs only on Doltgres.
+	Postgres *ScriptTest
 	// ServerConfig is an optional configuration to use when starting the Doltgres server.
 	ServerConfig *servercfg.DoltgresConfig
 	// The database to create and use. If not provided, then it defaults to "postgres".
@@ -99,13 +102,23 @@ type ExpectedNotice struct {
 
 // ScriptTestAssertion are the assertions upon which the script executes its main "testing" logic.
 type ScriptTestAssertion struct {
-	Query           string
+	Query string
+	// Postgres and PostgresFork are explicit, mutually selected counterparts.
+	// Only Query is inherited when empty; all expectations must be specified.
+	Postgres        *ScriptTestAssertion
+	PostgresFork    *ScriptTestAssertion
+	variant         string
+	variantEnabled  bool
 	Expected        []sql.Row  // Expected or ExpectedRaw should be used, but not both at the same time
 	ExpectedRaw     [][][]byte // ExpectedRaw or Expected should be used, but not both at the same time
 	ExpectedErr     string
 	ExpectedErrCode string
 	ExpectedNotices []ExpectedNotice
-	Focus           bool
+	// ExpectedPlanRelations checks native JSON plans without depending on costs or scan choice.
+	ExpectedPlanRelations []string
+	// ExpectedCatalogScanAliases checks fork-native branch-aware catalog plan nodes.
+	ExpectedCatalogScanAliases []string
+	Focus                      bool
 
 	// ExpectedBlocking starts the query asynchronously and asserts that it has
 	// not completed after 200ms. Transaction tests keep the query running so a
@@ -177,6 +190,31 @@ var receivedNotices []*pgconn.Notice
 
 // RunScript runs the given script.
 func RunScript(t *testing.T, script ScriptTest, normalizeRows bool) {
+	if script.Postgres != nil {
+		original := script
+		original.Postgres = nil
+		postgres := *script.Postgres
+		postgres.Postgres = nil
+		postgres.Skip = postgres.Skip || script.Skip
+		t.Run(script.Name, func(t *testing.T) {
+			for _, variant := range []struct {
+				name    string
+				script  ScriptTest
+				enabled bool
+			}{
+				{"doltgres", original, testTarget(t) == targetDoltgres},
+				{"postgres", postgres, testTarget(t) != targetDoltgres},
+			} {
+				if !variant.enabled {
+					t.Run(variant.name, func(t *testing.T) { t.Skip("counterpart selected by DOLTGRES_TEST_TARGET") })
+					continue
+				}
+				variant.script.Name = variant.name
+				RunScript(t, variant.script, normalizeRows)
+			}
+		})
+		return
+	}
 	t.Run(script.Name, func(t *testing.T) {
 		if reason := prollyScriptSkip(t.Name()); reason != "" {
 			t.Skip(reason)
@@ -258,8 +296,21 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 	}
 
 	// Run the assertions
-	for _, assertion := range assertions {
-		t.Run(assertion.Query, func(t *testing.T) {
+	for _, assertion := range expandTargetAssertions(t, assertions) {
+		t.Run(assertionName(assertion), func(t *testing.T) {
+			// Full-suite audit mode reports a normalizer panic as a failed assertion
+			// and keeps later assertions visible. It never turns a panic into a pass.
+			if os.Getenv("DOLTGRES_TEST_RECOVER_PANICS") == "1" {
+				defer func() {
+					if value := recover(); value != nil {
+						t.Errorf("audit harness panic: %v\n%s", value, debug.Stack())
+					}
+				}()
+			}
+
+			if assertion.variant != "" && !assertion.variantEnabled {
+				t.Skip("counterpart selected by DOLTGRES_TEST_TARGET")
+			}
 			if reason := prollyAssertionSkip(t.Name(), assertion.Query); reason != "" {
 				t.Skip(reason)
 			}
@@ -290,7 +341,12 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 				return
 			}
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
-			if assertion.CopyFromStdInFile != "" {
+			if len(assertion.ExpectedPlanRelations) > 0 || len(assertion.ExpectedCatalogScanAliases) > 0 {
+				var plan string
+				require.NoError(t, conn.Current.QueryRow(ctx, assertion.Query).Scan(&plan))
+				require.NoError(t, checkPlanRelations(plan, assertion.ExpectedPlanRelations))
+				require.NoError(t, checkCatalogScanAliases(plan, assertion.ExpectedCatalogScanAliases))
+			} else if assertion.CopyFromStdInFile != "" {
 				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile, assertion.ExpectedErr)
 			} else if assertion.CopyRoundTripStdInQuery != "" {
 				copyRoundTrip(t, conn.Current, assertion.Query, assertion.CopyRoundTripStdInQuery)
@@ -465,6 +521,31 @@ func RunTransactionTests(t *testing.T, scripts []ScriptTest) {
 // client. A query marked ExpectedBlocking remains in flight until another
 // assertion unblocks it.
 func RunTransactionTest(t *testing.T, script ScriptTest) {
+	if script.Postgres != nil {
+		original := script
+		original.Postgres = nil
+		postgres := *script.Postgres
+		postgres.Postgres = nil
+		postgres.Skip = postgres.Skip || script.Skip
+		t.Run(script.Name, func(t *testing.T) {
+			for _, variant := range []struct {
+				name    string
+				script  ScriptTest
+				enabled bool
+			}{
+				{"doltgres", original, testTarget(t) == targetDoltgres},
+				{"postgres", postgres, testTarget(t) != targetDoltgres},
+			} {
+				if !variant.enabled {
+					t.Run(variant.name, func(t *testing.T) { t.Skip("counterpart selected by DOLTGRES_TEST_TARGET") })
+					continue
+				}
+				variant.script.Name = variant.name
+				RunTransactionTest(t, variant.script)
+			}
+		})
+		return
+	}
 	if script.Skip {
 		t.Run(script.Name, func(t *testing.T) {
 			t.Skip("Skip has been set in the script")
@@ -520,8 +601,12 @@ func RunTransactionTest(t *testing.T, script ScriptTest) {
 			}
 		}
 
-		for _, assertion := range script.Assertions {
+		for _, assertion := range expandTargetAssertions(t, script.Assertions) {
 			assertion := assertion
+			if assertion.variant != "" && !assertion.variantEnabled {
+				t.Run(assertionName(assertion), func(t *testing.T) { t.Skip("counterpart selected by DOLTGRES_TEST_TARGET") })
+				continue
+			}
 			clientName := transactionTestClient(assertion.Query)
 			client, ok := clients[clientName]
 			if !ok {
@@ -535,7 +620,10 @@ func RunTransactionTest(t *testing.T, script ScriptTest) {
 				clients[clientName] = client
 			}
 
-			t.Run(assertion.Query, func(t *testing.T) {
+			t.Run(assertionName(assertion), func(t *testing.T) {
+				if assertion.variant != "" && !assertion.variantEnabled {
+					t.Skip("counterpart selected by DOLTGRES_TEST_TARGET")
+				}
 				if assertion.Skip {
 					t.Skip("Skip has been set in the assertion")
 				}

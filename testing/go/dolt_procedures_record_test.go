@@ -52,6 +52,8 @@ func TestDoltProcedureRecordResults(t *testing.T) {
 				{
 					Query:    "SELECT count(*) FROM dolt_commit('-Am', 'new table') WHERE length(hash) = 32;",
 					Expected: []sql.Row{{int64(1)}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-Am', 'new table')) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},

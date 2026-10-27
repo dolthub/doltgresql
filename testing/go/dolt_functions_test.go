@@ -223,6 +223,8 @@ func TestDoltBranch(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT DOLT_BRANCH('original');",
@@ -239,6 +241,8 @@ func TestDoltBranch(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT DOLT_BRANCH('-c', 'main', 'copy');",
@@ -744,6 +748,8 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -790,6 +796,8 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -840,6 +848,8 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -864,6 +874,8 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-a', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-a', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -881,6 +893,8 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:       "SELECT DOLT_COMMIT('-m', 'should_error');",
@@ -893,6 +907,8 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('--allow-empty', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('--allow-empty', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -914,6 +930,41 @@ var simpleConflictResolveSetupScript = []string{
 
 // TestDoltConflictsResolve includes a multitude of items to ensure that we properly handle conflict resolution for all
 // of them.
+// Lowercase -a updates tracked tables; uppercase -A includes new tables.
+func TestDoltCommitTrackedTables(t *testing.T) {
+	for _, flag := range []string{"-a", "--all", "-am"} {
+		commit := "SELECT dolt_commit('" + flag + "','-m','tracked changes');"
+		if flag == "-am" {
+			commit = "SELECT dolt_commit('-am','tracked changes');"
+		}
+		RunScripts(t, []ScriptTest{{
+			Name: flag + " preserves untracked tables and staged additions",
+			SetUpScript: []string{
+				"CREATE TABLE tracked(id int PRIMARY KEY);",
+				"CREATE TABLE removed(id int PRIMARY KEY);",
+				"INSERT INTO tracked VALUES (1);",
+				"SELECT dolt_commit('-Am','base');",
+				"INSERT INTO tracked VALUES (2);",
+				"DROP TABLE removed;",
+				"CREATE TABLE untracked(id int PRIMARY KEY);",
+				"CREATE TABLE staged_new(id int PRIMARY KEY);",
+				"SELECT dolt_add('staged_new');",
+				"INSERT INTO staged_new VALUES (3);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: commit, SkipResultsCheck: true},
+				{Query: "SELECT id FROM tracked AS OF 'HEAD' ORDER BY id;", Expected: []sql.Row{{1}, {2}}},
+				{Query: "SELECT id FROM staged_new AS OF 'HEAD';", Expected: []sql.Row{{3}}},
+				{Query: "SELECT count(*) FROM dolt_status;", Expected: []sql.Row{{1}}},
+				{Query: "SELECT count(*) FROM dolt_status WHERE table_name IN ('untracked','public.untracked') AND NOT staged;", Expected: []sql.Row{{1}}},
+				{Query: "SELECT dolt_commit('-a','-m','no tracked changes');", ExpectedErr: "nothing to commit"},
+				{Query: "SELECT dolt_commit('--ALL','-m','include new');", SkipResultsCheck: true},
+				{Query: "SELECT count(*) FROM dolt_status;", Expected: []sql.Row{{0}}},
+			},
+		}})
+	}
+}
+
 func TestDoltConflictsResolve(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{

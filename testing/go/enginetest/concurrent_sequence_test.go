@@ -19,7 +19,6 @@ import (
 	gosql "database/sql"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 	"testing"
 
@@ -45,23 +44,21 @@ func TestConcurrentSequences(t *testing.T) {
 		require.NoError(t, sc.WaitForStop())
 	}()
 
-	// openDB opens a connection pool to the named database. multiStatements is enabled so the
-	// batched setup below can be executed verbatim.
+	// The PostgreSQL wire protocol has no MySQL multiStatements startup option.
+	// Connect to the requested database, rather than silently using the default.
 	openDB := func(database string) *pgx.Conn {
-		dsn := fmt.Sprintf("postgres://%s:%s@localhost:%d", doltgresConfig.User(), doltgresConfig.Password(), doltgresConfig.Port())
-		if strings.Contains(dsn, "?") {
-			dsn += "&multiStatements=true"
-		} else {
-			dsn += "?multiStatements=true"
-		}
-		db, err := pgx.Connect(ctx, dsn)
+		dsn := fmt.Sprintf("postgres://%s:%s@127.0.0.1:%d/?sslmode=disable", doltgresConfig.User(), doltgresConfig.Password(), doltgresConfig.Port())
+		config, err := pgx.ParseConfig(dsn)
+		require.NoError(t, err)
+		config.Database = database
+		db, err := pgx.ConnectConfig(ctx, config)
 		require.NoError(t, err)
 		return db
 	}
 
 	{
-		conn := openDB("dolt")
-		_, err := conn.Exec(ctx, fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS "%s"`, dbName))
+		conn := openDB("postgres")
+		_, err := conn.Exec(ctx, fmt.Sprintf(`CREATE DATABASE "%s"`, dbName))
 		require.NoError(t, err)
 		require.NoError(t, conn.Close(ctx))
 	}
@@ -76,6 +73,7 @@ func TestConcurrentSequences(t *testing.T) {
 		_, err = conn.Exec(ctx, fmt.Sprintf(
 			`CREATE TABLE "%s" (id INT NOT NULL PRIMARY KEY)`, tableName))
 		require.NoError(t, err)
+		require.NoError(t, conn.Close(ctx))
 	}
 
 	var (

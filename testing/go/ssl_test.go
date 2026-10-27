@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dolthub/dolt/go/libraries/utils/svcs"
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/vitess/go/mysql"
@@ -63,15 +64,24 @@ func NewSslListener(_ server.Config, listenerCfg mysql.ListenerConfig, sel serve
 func TestSSL(t *testing.T) {
 	port, err := sql.GetEmptyPort()
 	require.NoError(t, err)
-	controller, err := dserver.RunInMemory(&servercfg.DoltgresConfig{
-		DoltgresConfig: cfgdetails.DoltgresConfig{
-			LogLevelStr: &testServerLogLevel,
-			ListenerConfig: &cfgdetails.DoltgresListenerConfig{
-				PortNumber: &port,
-				HostStr:    ptr("127.0.0.1"),
+	var controller *svcs.Controller
+	if _, external := externalServerBinary(); external {
+		t.Setenv("DOLTGRES_TEST_POSTGRES_SSL", "1")
+		ctx, initial, ctrl := CreateServerWithPort(t, "postgres", port)
+		t.Cleanup(func() { initial.Close(ctx) })
+		controller = ctrl
+	} else {
+		controller, err = dserver.RunInMemory(&servercfg.DoltgresConfig{
+			DoltgresConfig: cfgdetails.DoltgresConfig{
+				LogLevelStr: &testServerLogLevel,
+				ListenerConfig: &cfgdetails.DoltgresListenerConfig{
+					PortNumber: &port,
+					HostStr:    ptr("127.0.0.1"),
+				},
 			},
-		},
-	}, NewSslListener)
+		}, NewSslListener)
+	}
+
 	require.NoError(t, err)
 
 	defer func() {

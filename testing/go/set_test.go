@@ -182,6 +182,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW allow_in_place_tablespaces",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET allow_in_place_tablespaces TO 'on'",
@@ -190,6 +193,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW allow_in_place_tablespaces",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET allow_in_place_tablespaces TO DEFAULT",
@@ -198,6 +204,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW allow_in_place_tablespaces",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('allow_in_place_tablespaces')",
@@ -212,6 +221,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW allow_system_table_mods",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET allow_system_table_mods TO 'on'",
@@ -220,6 +232,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW allow_system_table_mods",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET allow_system_table_mods TO DEFAULT",
@@ -228,6 +243,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW allow_system_table_mods",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('allow_system_table_mods')",
@@ -362,6 +380,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW array_nulls",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET array_nulls TO 'off'",
@@ -370,6 +391,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW array_nulls",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET array_nulls TO DEFAULT",
@@ -378,6 +402,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW array_nulls",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('array_nulls')",
@@ -410,6 +437,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET autovacuum TO 'on'",
@@ -842,6 +872,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW bonjour",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET bonjour TO 'off'",
@@ -908,6 +941,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW check_function_bodies",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET check_function_bodies TO 'off'",
@@ -916,6 +952,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW check_function_bodies",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET check_function_bodies TO DEFAULT",
@@ -924,6 +963,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW check_function_bodies",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('check_function_bodies')",
@@ -1406,6 +1448,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW data_checksums",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET data_checksums TO 'off'",
@@ -1460,6 +1505,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW data_sync_retry",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET data_sync_retry TO 'off'",
@@ -1508,6 +1556,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW db_user_namespace",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET db_user_namespace TO 'off'",
@@ -1556,6 +1607,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_assertions",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET debug_assertions TO 'off'",
@@ -1674,6 +1728,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_pretty_print",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET debug_pretty_print TO 'off'",
@@ -1682,6 +1739,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_pretty_print",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET debug_pretty_print TO DEFAULT",
@@ -1690,6 +1750,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_pretty_print",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('debug_pretty_print')",
@@ -1704,6 +1767,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_print_parse",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET debug_print_parse TO 'on'",
@@ -1712,6 +1778,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_print_parse",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET debug_print_parse TO DEFAULT",
@@ -1720,6 +1789,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_print_parse",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('debug_print_parse')",
@@ -1734,6 +1806,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_print_plan",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET debug_print_plan TO 'on'",
@@ -1742,6 +1817,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_print_plan",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET debug_print_plan TO DEFAULT",
@@ -1750,6 +1828,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_print_plan",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('debug_print_plan')",
@@ -1764,6 +1845,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_print_rewritten",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET debug_print_rewritten TO 'on'",
@@ -1772,6 +1856,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_print_rewritten",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET debug_print_rewritten TO DEFAULT",
@@ -1780,6 +1867,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_print_rewritten",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('debug_print_rewritten')",
@@ -1936,6 +2026,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_transaction_deferrable",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET default_transaction_deferrable TO 'on'",
@@ -1944,6 +2037,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_transaction_deferrable",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET default_transaction_deferrable TO DEFAULT",
@@ -1952,6 +2048,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_transaction_deferrable",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('default_transaction_deferrable')",
@@ -1996,6 +2095,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_transaction_read_only",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET default_transaction_read_only TO 'on'",
@@ -2004,6 +2106,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_transaction_read_only",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET default_transaction_read_only TO DEFAULT",
@@ -2012,6 +2117,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_transaction_read_only",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('default_transaction_read_only')",
@@ -2134,6 +2242,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_async_append",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_async_append TO 'off'",
@@ -2142,6 +2253,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_async_append",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_async_append TO DEFAULT",
@@ -2150,6 +2264,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_async_append",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_async_append')",
@@ -2164,6 +2281,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_bitmapscan",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_bitmapscan TO 'off'",
@@ -2172,6 +2292,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_bitmapscan",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_bitmapscan TO DEFAULT",
@@ -2180,6 +2303,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_bitmapscan",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_bitmapscan')",
@@ -2194,6 +2320,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_gathermerge",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_gathermerge TO 'off'",
@@ -2202,6 +2331,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_gathermerge",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_gathermerge TO DEFAULT",
@@ -2210,6 +2342,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_gathermerge",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_gathermerge')",
@@ -2224,6 +2359,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_hashagg",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_hashagg TO 'off'",
@@ -2232,6 +2370,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_hashagg",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_hashagg TO DEFAULT",
@@ -2240,6 +2381,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_hashagg",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_hashagg')",
@@ -2254,6 +2398,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_hashjoin",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_hashjoin TO 'off'",
@@ -2262,6 +2409,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_hashjoin",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_hashjoin TO DEFAULT",
@@ -2270,6 +2420,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_hashjoin",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_hashjoin')",
@@ -2284,6 +2437,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_incremental_sort",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_incremental_sort TO 'off'",
@@ -2292,6 +2448,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_incremental_sort",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_incremental_sort TO DEFAULT",
@@ -2300,6 +2459,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_incremental_sort",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_incremental_sort')",
@@ -2314,6 +2476,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_indexonlyscan",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_indexonlyscan TO 'off'",
@@ -2322,6 +2487,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_indexonlyscan",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_indexonlyscan TO DEFAULT",
@@ -2330,6 +2498,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_indexonlyscan",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_indexonlyscan')",
@@ -2344,6 +2515,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_indexscan",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_indexscan TO 'off'",
@@ -2352,6 +2526,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_indexscan",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_indexscan TO DEFAULT",
@@ -2360,6 +2537,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_indexscan",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_indexscan')",
@@ -2374,6 +2554,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_material",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_material TO 'off'",
@@ -2382,6 +2565,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_material",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_material TO DEFAULT",
@@ -2390,6 +2576,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_material",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_material')",
@@ -2404,6 +2593,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_memoize",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_memoize TO 'off'",
@@ -2412,6 +2604,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_memoize",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_memoize TO DEFAULT",
@@ -2420,6 +2615,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_memoize",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_memoize')",
@@ -2434,6 +2632,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_mergejoin",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_mergejoin TO 'off'",
@@ -2442,6 +2643,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_mergejoin",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_mergejoin TO DEFAULT",
@@ -2450,6 +2654,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_mergejoin",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_mergejoin')",
@@ -2464,6 +2671,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_nestloop",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_nestloop TO 'off'",
@@ -2472,6 +2682,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_nestloop",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_nestloop TO DEFAULT",
@@ -2480,6 +2693,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_nestloop",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_nestloop')",
@@ -2494,6 +2710,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_parallel_append",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_parallel_append TO 'off'",
@@ -2502,6 +2721,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_parallel_append",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_parallel_append TO DEFAULT",
@@ -2510,6 +2732,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_parallel_append",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_parallel_append')",
@@ -2524,6 +2749,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_parallel_hash",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_parallel_hash TO 'off'",
@@ -2532,6 +2760,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_parallel_hash",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_parallel_hash TO DEFAULT",
@@ -2540,6 +2771,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_parallel_hash",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_parallel_hash')",
@@ -2554,6 +2788,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_partition_pruning",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_partition_pruning TO 'off'",
@@ -2562,6 +2799,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_partition_pruning",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_partition_pruning TO DEFAULT",
@@ -2570,6 +2810,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_partition_pruning",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_partition_pruning')",
@@ -2584,6 +2827,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_partitionwise_aggregate",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_partitionwise_aggregate TO 'on'",
@@ -2592,6 +2838,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_partitionwise_aggregate",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_partitionwise_aggregate TO DEFAULT",
@@ -2600,6 +2849,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_partitionwise_aggregate",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_partitionwise_aggregate')",
@@ -2614,6 +2866,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_partitionwise_join",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_partitionwise_join TO 'on'",
@@ -2622,6 +2877,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_partitionwise_join",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_partitionwise_join TO DEFAULT",
@@ -2630,6 +2888,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_partitionwise_join",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_partitionwise_join')",
@@ -2644,6 +2905,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_presorted_aggregate",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_presorted_aggregate TO 'off'",
@@ -2652,6 +2916,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_presorted_aggregate",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_presorted_aggregate TO DEFAULT",
@@ -2660,6 +2927,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_presorted_aggregate",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_presorted_aggregate')",
@@ -2674,6 +2944,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_seqscan",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_seqscan TO 'off'",
@@ -2682,6 +2955,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_seqscan",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_seqscan TO DEFAULT",
@@ -2690,6 +2966,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_seqscan",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_seqscan')",
@@ -2704,6 +2983,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_sort",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_sort TO 'off'",
@@ -2712,6 +2994,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_sort",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_sort TO DEFAULT",
@@ -2720,6 +3005,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_sort",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_sort')",
@@ -2734,6 +3022,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_tidscan",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET enable_tidscan TO 'off'",
@@ -2742,6 +3033,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_tidscan",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET enable_tidscan TO DEFAULT",
@@ -2750,6 +3044,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW enable_tidscan",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('enable_tidscan')",
@@ -2764,6 +3061,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW escape_string_warning",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET escape_string_warning TO 'off'",
@@ -2772,6 +3072,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW escape_string_warning",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET escape_string_warning TO DEFAULT",
@@ -2780,6 +3083,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW escape_string_warning",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('escape_string_warning')",
@@ -2812,6 +3118,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW exit_on_error",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET exit_on_error TO 'on'",
@@ -2820,6 +3129,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW exit_on_error",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET exit_on_error TO DEFAULT",
@@ -2828,6 +3140,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW exit_on_error",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('exit_on_error')",
@@ -2920,6 +3235,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW fsync",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET fsync TO 'on'",
@@ -2938,6 +3256,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW full_page_writes",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET full_page_writes TO 'on'",
@@ -2956,6 +3277,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET geqo TO 'off'",
@@ -2964,6 +3288,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET geqo TO DEFAULT",
@@ -2972,6 +3299,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo')",
@@ -3230,6 +3560,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW gss_accept_delegation",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET gss_accept_delegation TO 'on'",
@@ -3296,6 +3629,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW hot_standby",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET hot_standby TO 'on'",
@@ -3314,6 +3650,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW hot_standby_feedback",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET hot_standby_feedback TO 'off'",
@@ -3476,6 +3815,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW ignore_checksum_failure",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET ignore_checksum_failure TO 'on'",
@@ -3484,6 +3826,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW ignore_checksum_failure",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET ignore_checksum_failure TO DEFAULT",
@@ -3492,6 +3837,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW ignore_checksum_failure",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('ignore_checksum_failure')",
@@ -3506,6 +3854,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW ignore_invalid_pages",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET ignore_invalid_pages TO 'off'",
@@ -3524,6 +3875,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW ignore_system_indexes",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET ignore_system_indexes TO 'off'",
@@ -3542,6 +3896,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW in_hot_standby",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET in_hot_standby TO 'on'",
@@ -3560,6 +3917,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW integer_datetimes",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET integer_datetimes TO 'off'",
@@ -3608,6 +3968,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET jit TO 'off'",
@@ -3616,6 +3979,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET jit TO DEFAULT",
@@ -3624,6 +3990,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('jit')",
@@ -3668,6 +4037,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_debugging_support",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET jit_debugging_support TO 'off'",
@@ -3686,6 +4058,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_dump_bitcode",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET jit_dump_bitcode TO 'on'",
@@ -3694,6 +4069,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_dump_bitcode",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET jit_dump_bitcode TO DEFAULT",
@@ -3702,6 +4080,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_dump_bitcode",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('jit_dump_bitcode')",
@@ -3716,6 +4097,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_expressions",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET jit_expressions TO 'off'",
@@ -3724,6 +4108,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_expressions",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET jit_expressions TO DEFAULT",
@@ -3732,6 +4119,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_expressions",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('jit_expressions')",
@@ -3806,6 +4196,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_profiling_support",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET jit_profiling_support TO 'off'",
@@ -3842,6 +4235,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_tuple_deforming",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET jit_tuple_deforming TO 'off'",
@@ -3850,6 +4246,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_tuple_deforming",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET jit_tuple_deforming TO DEFAULT",
@@ -3858,6 +4257,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_tuple_deforming",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('jit_tuple_deforming')",
@@ -3902,6 +4304,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW krb_caseins_users",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET krb_caseins_users TO 'on'",
@@ -4076,6 +4481,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW lo_compat_privileges",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET lo_compat_privileges TO 'on'",
@@ -4084,6 +4492,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW lo_compat_privileges",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET lo_compat_privileges TO DEFAULT",
@@ -4092,6 +4503,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW lo_compat_privileges",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('lo_compat_privileges')",
@@ -4185,6 +4599,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_checkpoints",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET log_checkpoints TO 'on'",
@@ -4203,6 +4620,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_connections",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET log_connections TO 'off'",
@@ -4257,6 +4677,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_disconnections",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET log_disconnections TO 'off'",
@@ -4275,6 +4698,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_duration",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET log_duration TO 'on'",
@@ -4283,6 +4709,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_duration",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET log_duration TO DEFAULT",
@@ -4291,6 +4720,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_duration",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('log_duration')",
@@ -4335,6 +4767,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_executor_stats",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET log_executor_stats TO 'on'",
@@ -4343,6 +4778,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_executor_stats",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET log_executor_stats TO DEFAULT",
@@ -4351,6 +4789,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_executor_stats",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('log_executor_stats')",
@@ -4401,6 +4842,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_hostname",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET log_hostname TO 'off'",
@@ -4437,6 +4881,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_lock_waits",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET log_lock_waits TO 'on'",
@@ -4445,6 +4892,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_lock_waits",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET log_lock_waits TO DEFAULT",
@@ -4453,6 +4903,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_lock_waits",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('log_lock_waits')",
@@ -4651,6 +5104,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_parser_stats",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET log_parser_stats TO 'on'",
@@ -4659,6 +5115,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_parser_stats",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET log_parser_stats TO DEFAULT",
@@ -4667,6 +5126,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_parser_stats",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('log_parser_stats')",
@@ -4681,6 +5143,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_planner_stats",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET log_planner_stats TO 'on'",
@@ -4689,6 +5154,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_planner_stats",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET log_planner_stats TO DEFAULT",
@@ -4697,6 +5165,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_planner_stats",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('log_planner_stats')",
@@ -4711,6 +5182,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_recovery_conflict_waits",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET log_recovery_conflict_waits TO 'on'",
@@ -4729,6 +5203,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_replication_commands",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET log_replication_commands TO 'on'",
@@ -4737,6 +5214,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_replication_commands",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET log_replication_commands TO DEFAULT",
@@ -4745,6 +5225,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_replication_commands",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('log_replication_commands')",
@@ -4873,6 +5356,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_statement_stats",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET log_statement_stats TO 'on'",
@@ -4881,6 +5367,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_statement_stats",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET log_statement_stats TO DEFAULT",
@@ -4889,6 +5378,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_statement_stats",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('log_statement_stats')",
@@ -4981,6 +5473,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_truncate_on_rotation",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET log_truncate_on_rotation TO 'off'",
@@ -4999,6 +5494,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW logging_collector",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET logging_collector TO 'off'",
@@ -5701,6 +6199,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_leader_participation",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET parallel_leader_participation TO 'off'",
@@ -5709,6 +6210,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_leader_participation",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET parallel_leader_participation TO DEFAULT",
@@ -5717,6 +6221,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_leader_participation",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('parallel_leader_participation')",
@@ -5923,6 +6430,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW quote_all_identifiers",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET quote_all_identifiers TO 'on'",
@@ -5931,6 +6441,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW quote_all_identifiers",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET quote_all_identifiers TO DEFAULT",
@@ -5939,6 +6452,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW quote_all_identifiers",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('quote_all_identifiers')",
@@ -6091,6 +6607,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW recovery_target_inclusive",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET recovery_target_inclusive TO 'on'",
@@ -6229,6 +6748,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW remove_temp_files_after_crash",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET remove_temp_files_after_crash TO 'on'",
@@ -6265,6 +6787,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW restart_after_crash",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET restart_after_crash TO 'on'",
@@ -6301,6 +6826,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW row_security",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET row_security TO 'off'",
@@ -6309,6 +6837,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW row_security",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET row_security TO DEFAULT",
@@ -6317,6 +6848,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW row_security",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('row_security')",
@@ -6691,6 +7225,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW send_abort_for_crash",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET send_abort_for_crash TO 'off'",
@@ -6709,6 +7246,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW send_abort_for_kill",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET send_abort_for_kill TO 'off'",
@@ -6950,6 +7490,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW ssl",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET ssl TO 'off'",
@@ -7184,6 +7727,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW ssl_passphrase_command_supports_reload",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET ssl_passphrase_command_supports_reload TO 'off'",
@@ -7202,6 +7748,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW ssl_prefer_server_ciphers",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET ssl_prefer_server_ciphers TO 'on'",
@@ -7220,6 +7769,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW standard_conforming_strings",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET standard_conforming_strings TO 'off'",
@@ -7228,6 +7780,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW standard_conforming_strings",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET standard_conforming_strings TO DEFAULT",
@@ -7236,6 +7791,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW standard_conforming_strings",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('standard_conforming_strings')",
@@ -7384,6 +7942,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW synchronize_seqscans",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET synchronize_seqscans TO 'off'",
@@ -7392,6 +7953,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW synchronize_seqscans",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET synchronize_seqscans TO DEFAULT",
@@ -7400,6 +7964,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW synchronize_seqscans",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('synchronize_seqscans')",
@@ -7498,6 +8065,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW syslog_sequence_numbers",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET syslog_sequence_numbers TO 'on'",
@@ -7516,6 +8086,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW syslog_split_messages",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET syslog_split_messages TO 'on'",
@@ -7804,6 +8377,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW trace_notify",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET trace_notify TO 'on'",
@@ -7812,6 +8388,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW trace_notify",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET trace_notify TO DEFAULT",
@@ -7820,6 +8399,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW trace_notify",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('trace_notify')",
@@ -7852,6 +8434,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW trace_sort",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET trace_sort TO 'on'",
@@ -7860,6 +8445,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW trace_sort",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET trace_sort TO DEFAULT",
@@ -7868,6 +8456,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW trace_sort",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('trace_sort')",
@@ -7882,6 +8473,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_activities",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET track_activities TO 'off'",
@@ -7890,6 +8484,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_activities",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET track_activities TO 'on'",
@@ -7898,6 +8495,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_activities",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('track_activities')",
@@ -7930,6 +8530,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_commit_timestamp",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET track_commit_timestamp TO 'off'",
@@ -7948,6 +8551,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_counts",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET track_counts TO 'off'",
@@ -7956,6 +8562,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_counts",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET track_counts TO DEFAULT",
@@ -7964,6 +8573,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_counts",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('track_counts')",
@@ -8008,6 +8620,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_io_timing",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET track_io_timing TO 'on'",
@@ -8016,6 +8631,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_io_timing",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET track_io_timing TO DEFAULT",
@@ -8024,6 +8642,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_io_timing",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('track_io_timing')",
@@ -8038,6 +8659,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_wal_io_timing",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET track_wal_io_timing TO 'on'",
@@ -8046,6 +8670,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_wal_io_timing",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET track_wal_io_timing TO DEFAULT",
@@ -8054,6 +8681,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW track_wal_io_timing",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('track_wal_io_timing')",
@@ -8068,6 +8698,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW transaction_deferrable",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET transaction_deferrable TO 'on'",
@@ -8076,6 +8709,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW transaction_deferrable",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET transaction_deferrable TO DEFAULT",
@@ -8084,6 +8720,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW transaction_deferrable",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('transaction_deferrable')",
@@ -8128,6 +8767,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW transaction_read_only",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET transaction_read_only TO 'on'",
@@ -8136,6 +8778,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW transaction_read_only",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET transaction_read_only TO DEFAULT",
@@ -8144,6 +8789,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW transaction_read_only",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('transaction_read_only')",
@@ -8158,6 +8806,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW transform_null_equals",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET transform_null_equals TO 'on'",
@@ -8166,6 +8817,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW transform_null_equals",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET transform_null_equals TO DEFAULT",
@@ -8174,6 +8828,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW transform_null_equals",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('transform_null_equals')",
@@ -8242,6 +8899,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW update_process_title",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET update_process_title TO 'off'",
@@ -8250,6 +8910,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW update_process_title",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET update_process_title TO DEFAULT",
@@ -8258,6 +8921,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW update_process_title",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('update_process_title')",
@@ -8746,6 +9412,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW wal_init_zero",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET wal_init_zero TO 'off'",
@@ -8754,6 +9423,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW wal_init_zero",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET wal_init_zero TO DEFAULT",
@@ -8762,6 +9434,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW wal_init_zero",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('wal_init_zero')",
@@ -8812,6 +9487,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW wal_log_hints",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET wal_log_hints TO 'off'",
@@ -8830,6 +9508,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW wal_receiver_create_temp_slot",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:       "SET wal_receiver_create_temp_slot TO 'off'",
@@ -8884,6 +9565,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW wal_recycle",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET wal_recycle TO 'off'",
@@ -8892,6 +9576,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW wal_recycle",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET wal_recycle TO DEFAULT",
@@ -8900,6 +9587,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW wal_recycle",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SELECT current_setting('wal_recycle')",
@@ -9253,6 +9943,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW zero_damaged_pages",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET zero_damaged_pages TO 'on'",
@@ -9261,6 +9954,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW zero_damaged_pages",
 				Expected: []sql.Row{{int8(1)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:    "SET zero_damaged_pages TO DEFAULT",
@@ -9269,6 +9965,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW zero_damaged_pages",
 				Expected: []sql.Row{{int8(0)}},
+
+				// Native SHOW serializes boolean settings as on/off text.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SELECT current_setting('zero_damaged_pages')",

@@ -36,12 +36,16 @@ func TestApplicationSettingsFormatting(t *testing.T) {
 			{Query: "SELECT current_setting('row_security')", Expected: []sql.Row{{"on"}}},
 			{Query: "SET row_security = off"},
 			{Query: "SELECT current_setting('row_security')", Expected: []sql.Row{{"off"}}},
-			{Query: "SET archive_mode = on", ExpectedErr: "cannot be changed now"},
+			{Query: "SET archive_mode = on", ExpectedErr: "cannot be changed now", Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"}},
 		},
 	}})
 }
 
 func TestApplicationSettingsWire(t *testing.T) {
+	runTargetPair(t, testApplicationSettingsWire)
+}
+
+func testApplicationSettingsWire(t *testing.T, postgres bool) {
 	ctx, conn, controller := CreateServer(t, "postgres")
 	defer func() {
 		conn.Close(ctx)
@@ -150,7 +154,12 @@ func TestApplicationSettingsWire(t *testing.T) {
 	_, err = c.Exec(ctx, "DISCARD ALL")
 	require.NoError(t, err)
 	require.NoError(t, c.QueryRow(ctx, "SELECT current_setting('app.tenant', true)").Scan(&missing))
-	require.Nil(t, missing)
+	if postgres {
+		require.NotNil(t, missing)
+		require.Equal(t, "", *missing)
+	} else {
+		require.Nil(t, missing)
+	}
 	require.Equal(t, `"$user", public`, read("search_path"))
 }
 

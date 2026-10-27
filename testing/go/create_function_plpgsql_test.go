@@ -615,6 +615,26 @@ $$ LANGUAGE plpgsql;`},
 					Expected: []sql.Row{{8}},
 				},
 			},
+
+			// Native PL/pgSQL defaults variables to NULL; initialize the loop counter explicitly.
+			Postgres: &ScriptTest{SetUpScript: []string{`CREATE FUNCTION interpreted_exit() RETURNS INT4 AS $$
+DECLARE
+	var1 INT4 := 0;
+BEGIN
+	LOOP
+		var1 := var1 + 1;
+		IF var1 >= 8 THEN
+			EXIT;
+		END IF;
+	END LOOP;
+	RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`}, Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_exit();",
+					Expected: []sql.Row{{8}},
+				},
+			}},
 		},
 		{
 			Name: "EXIT WHEN",
@@ -635,6 +655,24 @@ $$ LANGUAGE plpgsql;`},
 					Expected: []sql.Row{{9}},
 				},
 			},
+
+			// Native PL/pgSQL defaults variables to NULL; initialize the loop counter explicitly.
+			Postgres: &ScriptTest{SetUpScript: []string{`CREATE FUNCTION interpreted_exit_when() RETURNS INT4 AS $$
+DECLARE
+	var1 INT4 := 0;
+BEGIN
+	LOOP
+		var1 := var1 + 1;
+		EXIT WHEN var1 >= 9;
+	END LOOP;
+	RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`}, Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_exit_when();",
+					Expected: []sql.Row{{9}},
+				},
+			}},
 		},
 		{
 			Name: "LOOP",
@@ -656,6 +694,25 @@ $$ LANGUAGE plpgsql;`},
 					Expected: []sql.Row{{10}},
 				},
 			},
+
+			// Native PL/pgSQL defaults variables to NULL; initialize the loop counter explicitly.
+			Postgres: &ScriptTest{SetUpScript: []string{`CREATE FUNCTION interpreted_loop() RETURNS INT4 AS $$
+DECLARE
+	var1 INT4 := 0;
+BEGIN
+	LOOP
+		var1 := var1 + 1;
+		IF var1 >= 10 THEN
+			RETURN var1;
+		END IF;
+	END LOOP;
+END;
+$$ LANGUAGE plpgsql;`}, Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_loop();",
+					Expected: []sql.Row{{10}},
+				},
+			}},
 		},
 		{
 			Name: "LOOP Label",
@@ -679,6 +736,27 @@ $$ LANGUAGE plpgsql;`},
 					Expected: []sql.Row{{12}},
 				},
 			},
+
+			// Native PL/pgSQL defaults variables to NULL; initialize the loop counter explicitly.
+			Postgres: &ScriptTest{SetUpScript: []string{`CREATE FUNCTION interpreted_loop_label() RETURNS INT4 AS $$
+DECLARE
+	var1 INT4 := 0;
+BEGIN
+	<<loop_label>>
+	LOOP
+		var1 := var1 + 1;
+		IF var1 >= 12 THEN
+			EXIT loop_label;
+		END IF;
+	END LOOP;
+	RETURN var1;
+END;
+$$ LANGUAGE plpgsql;`}, Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_loop_label();",
+					Expected: []sql.Row{{12}},
+				},
+			}},
 		},
 		{
 			Name: "PERFORM",
@@ -1224,6 +1302,29 @@ $$ LANGUAGE plpgsql;`},
 					Expected: []sql.Row{{52}},
 				},
 			},
+
+			// Native PL/pgSQL defaults variables to NULL; initialize the loop counter explicitly.
+			Postgres: &ScriptTest{SetUpScript: []string{
+				`CREATE FUNCTION interpreted_while_label(input INT4) RETURNS INT AS $$
+DECLARE
+	counter INT4 := 0;
+BEGIN
+	<<while_label>>
+	WHILE input < 1000 LOOP
+		input := input + 1;
+		counter := counter + 1;
+		IF counter >= 10 THEN
+			EXIT while_label;
+		END IF;
+	END LOOP;
+	RETURN input;
+END;
+$$ LANGUAGE plpgsql;`}, Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT interpreted_while_label(42);",
+					Expected: []sql.Row{{52}},
+				},
+			}},
 		},
 		{
 			Name: "NULL",
@@ -1464,6 +1565,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -1484,6 +1587,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'another func')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT interpreted_merging(55);",
@@ -1504,6 +1609,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'updated table')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT interpreted_merging('abcde');",

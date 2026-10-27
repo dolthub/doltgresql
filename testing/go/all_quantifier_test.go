@@ -328,18 +328,26 @@ func TestAnyAllSerialization(t *testing.T) {
 				{
 					Query:    `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conname = 'ck_all';`,
 					Expected: []sql.Row{{`ck_all CHECK "v" <> ALL (ARRAY['no', 'nope']) ENFORCED`}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"CHECK ((v <> ALL (ARRAY['no'::text, 'nope'::text])))"}}},
 				},
 				{
 					Query:    `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conname = 'ck_any';`,
 					Expected: []sql.Row{{`ck_any CHECK "v" <> ANY (ARRAY['no', 'nope']) ENFORCED`}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"CHECK ((v <> ANY (ARRAY['no'::text, 'nope'::text])))"}}},
 				},
 				{
 					Query:    `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conname = 'ck_some';`,
 					Expected: []sql.Row{{`ck_some CHECK "v" > SOME (ARRAY[1, 2]) ENFORCED`}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"CHECK ((v > ANY (ARRAY[1, 2])))"}}},
 				},
 				{
 					Query:    `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conname = 'ck_eq';`,
 					Expected: []sql.Row{{`ck_eq CHECK "v" = ANY (ARRAY['yes', 'yep']) ENFORCED`}},
+
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"CHECK ((v = ANY (ARRAY['yes'::text, 'yep'::text])))"}}},
 				},
 				{
 					// The stored constraint is re-parsed on every write, so a row the constraint permits must insert.
@@ -349,6 +357,8 @@ func TestAnyAllSerialization(t *testing.T) {
 				{
 					Query:       `INSERT INTO t_all VALUES (2, 'no');`,
 					ExpectedErr: "Check constraint",
+
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:    `INSERT INTO t_any VALUES (1, 'no');`,
@@ -361,6 +371,8 @@ func TestAnyAllSerialization(t *testing.T) {
 				{
 					Query:       `INSERT INTO t_some VALUES (2, 1);`,
 					ExpectedErr: "Check constraint",
+
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:    `INSERT INTO t_eq VALUES (1, 'yes');`,
@@ -369,6 +381,8 @@ func TestAnyAllSerialization(t *testing.T) {
 				{
 					Query:       `INSERT INTO t_eq VALUES (2, 'nope');`,
 					ExpectedErr: "Check constraint",
+
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 			},
 		},
