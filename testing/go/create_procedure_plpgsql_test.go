@@ -80,6 +80,35 @@ $$ LANGUAGE plpgsql;`,
 					Expected: []sql.Row{{52}},
 				},
 			},
+
+			// Native PL/pgSQL defaults variables to NULL; initialize the loop counter explicitly.
+			Postgres: &ScriptTest{SetUpScript: []string{
+				`CREATE TABLE test (v1 INT8);`,
+				`CREATE PROCEDURE interpreted_while_label(input INT4) AS $$
+DECLARE
+	counter INT4 := 0;
+BEGIN
+	<<while_label>>
+	WHILE input < 1000 LOOP
+		input := input + 1;
+		counter := counter + 1;
+		IF counter >= 10 THEN
+			EXIT while_label;
+		END IF;
+	END LOOP;
+	INSERT INTO test VALUES (input);
+END;
+$$ LANGUAGE plpgsql;`,
+			}, Assertions: []ScriptTestAssertion{
+				{
+					Query:    "CALL interpreted_while_label(42);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM test;",
+					Expected: []sql.Row{{52}},
+				},
+			}},
 		},
 		{
 			Name: "Overloading",
@@ -171,6 +200,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -192,6 +223,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'updated func')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "CALL interpreted_branch(56);",
@@ -254,6 +287,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -275,6 +310,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'another func')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT dolt_checkout('main')",
@@ -300,6 +337,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'updated table')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT length(dolt_merge('other')::text) = 57;",
@@ -333,6 +372,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -349,6 +390,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -371,6 +414,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
