@@ -61,8 +61,11 @@ func TestRegressionTests(t *testing.T) {
 	failQueries, err := extraSkipQueries()
 	require.NoError(t, err)
 
-	trackers := make([]*ReplayTracker, 0, len(AllTestResultFilesNames))
-	for _, fileName := range AllTestResultFilesNames {
+	fileNames, err := selectedFileNames()
+	require.NoError(t, err)
+
+	trackers := make([]*ReplayTracker, 0, len(fileNames))
+	for _, fileName := range fileNames {
 		messages, err := regressionFolder.ReadMessages(fileName)
 		require.NoError(t, err)
 		tracker, err := Replay(ReplayOptions{
@@ -143,6 +146,48 @@ func TestExtraSkipQueries(t *testing.T) {
 	require.Equal(t, len(queriesToSkip)+2, len(queries))
 	require.Equal(t, queriesToSkip, queries[:len(queriesToSkip)])
 	require.Equal(t, []string{"create type nestedcomposite as (x int8_tbl);", "select 1;"}, queries[len(queriesToSkip):])
+}
+
+// selectedFileNames returns the result files to replay, in schedule order. REGRESSION_FILES may name a comma-separated
+// subset of tests (such as "test_setup,collate.icu.utf8"), which lets a long external replay resume after a statement
+// that left the server unusable. Returns all files when the variable is not set.
+func selectedFileNames() ([]string, error) {
+	value, ok := os.LookupEnv("REGRESSION_FILES")
+	if !ok {
+		return AllTestResultFilesNames, nil
+	}
+
+	wanted := make(map[string]bool)
+	for _, name := range strings.Split(value, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			wanted["results/"+name+".results"] = true
+		}
+	}
+
+	var fileNames []string
+	for _, fileName := range AllTestResultFilesNames {
+		if wanted[fileName] {
+			fileNames = append(fileNames, fileName)
+			delete(wanted, fileName)
+		}
+	}
+
+	if len(wanted) > 0 {
+		return nil, fmt.Errorf("unknown REGRESSION_FILES entries: %v", wanted)
+	}
+
+	return fileNames, nil
+}
+
+func TestSelectedFileNames(t *testing.T) {
+	t.Setenv("REGRESSION_FILES", "boolean, test_setup")
+	fileNames, err := selectedFileNames()
+	require.NoError(t, err)
+	require.Equal(t, []string{"results/test_setup.results", "results/boolean.results"}, fileNames)
+
+	t.Setenv("REGRESSION_FILES", "test_setup,no_such_test")
+	_, err = selectedFileNames()
+	require.Error(t, err)
 }
 
 // extraSkipQueries returns queriesToSkip plus any queries listed in the file named by REGRESSION_SKIP_QUERIES_FILE, one
