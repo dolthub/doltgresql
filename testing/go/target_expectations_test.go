@@ -72,4 +72,15 @@ func TestTargetExpectationExecutesOnce(t *testing.T) {
 		{Query: "/* client A */ COMMIT"},
 		{Query: "/* client B */ SELECT id FROM target_once", Expected: []sql.Row{{1}}},
 	}}})
+	RunScriptN(t, ScriptTest{
+		Name:        "repeated statement counterparts execute once",
+		SetUpScript: []string{"CREATE TABLE target_repeated (id int PRIMARY KEY)"},
+		Assertions: []ScriptTestAssertion{
+			{Query: "INSERT INTO target_repeated VALUES (1)", Postgres: &ScriptTestAssertion{Query: "INSERT INTO target_repeated VALUES (1)"}},
+			{Query: "SELECT id FROM target_repeated", Expected: []sql.Row{{1}}},
+			{Query: "SELECT * FROM target_missing", ExpectedErr: "table not found", Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"}},
+			{Query: "DELETE FROM target_repeated"},
+		},
+	}, 3)
+
 }

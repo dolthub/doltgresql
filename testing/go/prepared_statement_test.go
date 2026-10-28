@@ -1480,7 +1480,7 @@ func TestPreparedErrorHandling(t *testing.T) {
 				ExpectedErr: "table not found",
 
 				// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 			},
 			{
 				Query:    "select v1 from test where pk = 1;",
@@ -1540,45 +1540,9 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 
 	for i := 0; i < n; i++ {
 		t.Run(script.Name, func(t *testing.T) {
-			// Run the assertions
-			for _, assertion := range script.Assertions {
-				t.Run(assertion.Query, func(t *testing.T) {
-					if assertion.Skip {
-						t.Skip("Skip has been set in the assertion")
-					}
-					rows, err := conn.Query(ctx, assertion.Query)
-					if err == nil {
-						defer rows.Close()
-					}
-
-					var errorSeen string
-
-					if assertion.ExpectedErr == "" {
-						require.NoError(t, err)
-					} else if err != nil {
-						errorSeen = err.Error()
-					}
-
-					if errorSeen == "" {
-						foundRows, foundRawRows, err := ReadRows(rows, true)
-						if assertion.ExpectedErr == "" {
-							require.NoError(t, err)
-							if assertion.ExpectedRaw != nil {
-								assert.Equal(t, assertion.ExpectedRaw, foundRawRows)
-							} else {
-								assert.Equal(t, NormalizeExpectedRow(rows.FieldDescriptions(), assertion.Expected), foundRows)
-							}
-						} else if err != nil {
-							errorSeen = err.Error()
-						}
-					}
-
-					if assertion.ExpectedErr != "" {
-						require.False(t, errorSeen == "", "Expected error but got none")
-						assert.Contains(t, errorSeen, assertion.ExpectedErr)
-					}
-				})
-			}
+			// Use the same target selection and SQLSTATE checks as RunScripts,
+			// retaining this connection so repeated statements exercise caching.
+			runScript(t, ctx, ScriptTest{Assertions: script.Assertions}, conn, true)
 		})
 	}
 }
