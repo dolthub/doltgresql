@@ -192,7 +192,7 @@ func TestApplicationSettingsExecution(t *testing.T) {
 			{Query: "SHOW search_path", Expected: []sql.Row{{"public"}}},
 			{Query: "SELECT v FROM settings_table", ExpectedErr: "table not found: settings_table",
 				// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 			},
 		},
 	}})

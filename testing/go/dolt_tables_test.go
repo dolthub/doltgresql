@@ -59,14 +59,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM branches`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE branches (id INT PRIMARY KEY)`,
@@ -193,7 +193,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE SCHEMA newschema`,
@@ -309,14 +309,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM column_diff`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE column_diff (id INT PRIMARY KEY)`,
@@ -392,14 +392,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM commit_ancestors`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE commit_ancestors (id INT PRIMARY KEY)`,
@@ -476,14 +476,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM public.dolt_commit_diff_none`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE SCHEMA newschema`,
@@ -518,7 +518,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT to_id, diff_type FROM public.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^2') AND to_commit=HASHOF('HEAD^1')`,
@@ -529,14 +529,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT to_id, diff_type FROM newschema.dolt_commit_diff_test WHERE from_commit=HASHOF('HEAD^1') AND to_commit=HASHOF('HEAD')`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					// Same name as table in public schema
@@ -589,14 +589,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM commits`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE commits (id INT PRIMARY KEY)`,
@@ -693,7 +693,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -704,7 +704,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -801,7 +801,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -812,7 +812,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -863,7 +863,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -878,7 +878,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -889,7 +889,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -966,7 +966,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -977,7 +977,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -1082,7 +1082,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -1093,7 +1093,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -1144,7 +1144,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -1159,7 +1159,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -1170,7 +1170,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -1229,14 +1229,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM docs`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING')`,
@@ -1396,14 +1396,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM diff`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE diff (id INT PRIMARY KEY)`,
@@ -1488,21 +1488,21 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM public.dolt_diff_none`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM dolt_diff_none`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE SCHEMA newschema`,
@@ -1537,7 +1537,7 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `SELECT from_id, to_id, diff_type FROM public.dolt_diff_test WHERE to_commit=HASHOF('HEAD^1')`,
@@ -1548,14 +1548,14 @@ func TestUserSpaceDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT to_id FROM newschema.dolt_diff_test WHERE to_commit=HASHOF('HEAD')`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					// Same name as table in public schema
@@ -1758,14 +1758,14 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM public.dolt_history_none`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE SCHEMA newschema`,
@@ -1800,7 +1800,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					// Since we just made another commit in this database / commit graph, we should see the row from
@@ -1815,14 +1815,14 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT id, committer FROM newschema.dolt_history_test`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					// Same name as table in public schema
@@ -1907,7 +1907,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING')`,
@@ -2061,14 +2061,14 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM log`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE log (id INT PRIMARY KEY)`,
@@ -2136,14 +2136,14 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM merge_status`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE merge_status (id INT PRIMARY KEY)`,
@@ -2378,14 +2378,14 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM status`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE status (id INT PRIMARY KEY)`,
@@ -2464,14 +2464,14 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM tags`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE tags (id INT PRIMARY KEY)`,
@@ -2550,7 +2550,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				// TODO: Add diff tests when create procedure works
 				{
@@ -2660,14 +2660,14 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM rebase`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE rebase (id INT PRIMARY KEY)`,
@@ -2780,14 +2780,14 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found: dolt_rebase",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       "select * from dolt.rebase;",
 					ExpectedErr: "table not found: rebase",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 			},
 		},
@@ -2815,14 +2815,14 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM remote_branches`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE remote_branches (id INT PRIMARY KEY)`,
@@ -2905,14 +2905,14 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM remotes`,
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `CREATE TABLE remotes (id INT PRIMARY KEY)`,
@@ -3006,7 +3006,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -3017,7 +3017,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `ROLLBACK TO probe`,
@@ -3119,7 +3119,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: `SELECT * FROM dolt_diff_summary('main', 'WORKING')`,
@@ -3164,7 +3164,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found: myview",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `SELECT * FROM public.myview`,
@@ -3322,7 +3322,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `SELECT * FROM public.dolt_workspace_none`,

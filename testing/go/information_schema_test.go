@@ -595,7 +595,7 @@ func TestInfoSchemaColumns(t *testing.T) {
 					Expected: []sql.Row{{"ALWAYS", `("a" + 1)`, nil}},
 
 					// Native information_schema includes system views and exposes real view columns/definitions.
-					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"ALWAYS", `("a" + 1)`, nil}}},
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"ALWAYS", `(a + 1)`, nil}}},
 				},
 				{
 					Query: "SELECT column_name, is_generated, generation_expression, column_default FROM information_schema.columns WHERE table_name = 't3328' ORDER BY ordinal_position;",
@@ -612,10 +612,10 @@ func TestInfoSchemaColumns(t *testing.T) {
 					Postgres: &ScriptTestAssertion{Expected: []sql.Row{
 						{"a", "NEVER", nil, nil},
 						{"s", "NEVER", nil, nil},
-						{"b", "ALWAYS", `("a" + 1)`, nil},
-						{"c", "ALWAYS", `(upper("s"))`, nil},
-						{"e", "ALWAYS", `("a")`, nil},
-						{"f", "ALWAYS", `("s" || ')')`, nil},
+						{"b", "ALWAYS", `(a + 1)`, nil},
+						{"c", "ALWAYS", `upper(s)`, nil},
+						{"e", "ALWAYS", `a`, nil},
+						{"f", "ALWAYS", `(s || ')'::text)`, nil},
 					}},
 				},
 			},
@@ -927,7 +927,7 @@ func TestInfoSchemaViews(t *testing.T) {
 					},
 
 					// Native information_schema includes system views and exposes real view columns/definitions.
-					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"postgres", "test_schema", "test_view2", " SELECT test_table2.id2\n   FROM test_table2;"}}},
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"postgres", "test_schema", "test_view2", " SELECT id\n   FROM test_table2;"}}},
 				},
 			},
 		},

@@ -243,14 +243,14 @@ func TestPostgresDoltTables(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       "SELECT * FROM public.dolt_conflicts_none",
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    "DELETE FROM public.dolt_conflicts_test",

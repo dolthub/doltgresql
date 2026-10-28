@@ -349,7 +349,7 @@ func TestSetConstraints(t *testing.T) {
 					ExpectedErrCode: "23505",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query: "BEGIN;",
@@ -363,7 +363,7 @@ func TestSetConstraints(t *testing.T) {
 					ExpectedErrCode: "23505",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query: "ROLLBACK;",

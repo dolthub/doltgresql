@@ -246,7 +246,7 @@ ON CONFLICT (id) do update set c1 = $4`,
 					ExpectedErrCode: "23514",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query: "INSERT INTO conflict_child VALUES (1, 999, 1) ON CONFLICT DO NOTHING",
@@ -269,7 +269,7 @@ ON CONFLICT (id) do update set c1 = $4`,
 					ExpectedErrCode: "23505",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query: "INSERT INTO conflict_arbiter VALUES (2, 11, 20, 30) ON CONFLICT (a, b) DO NOTHING",

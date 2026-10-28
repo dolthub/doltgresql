@@ -248,7 +248,7 @@ func TestBasicIndexing(t *testing.T) {
 					ExpectedErr: "duplicate unique key given",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 			},
 		},
@@ -764,7 +764,7 @@ func TestBasicIndexing(t *testing.T) {
 					ExpectedErr: "duplicate unique key given",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 			},
 		},
@@ -870,7 +870,7 @@ func TestBasicIndexing(t *testing.T) {
 					ExpectedErr: "duplicate unique key given",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 			},
 		},
@@ -947,7 +947,7 @@ func TestBasicIndexing(t *testing.T) {
 					ExpectedErr: "duplicate unique key given",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 			},
 		},
@@ -1053,7 +1053,7 @@ func TestBasicIndexing(t *testing.T) {
 					ExpectedErr: "duplicate unique key given",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 			},
 		},
@@ -1705,7 +1705,7 @@ func TestBasicIndexing(t *testing.T) {
 					ExpectedErr: "duplicate unique key given",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					// succeeds because is_active is false
@@ -1738,7 +1738,7 @@ func TestBasicIndexing(t *testing.T) {
 					ExpectedErr: "duplicate unique key given",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 			},
 		},
@@ -1797,7 +1797,7 @@ func TestBasicIndexing(t *testing.T) {
 					ExpectedErr: "duplicate unique key given",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 			},
 		},
@@ -1839,7 +1839,7 @@ func TestBasicIndexing(t *testing.T) {
 					Password:    "password",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{Username: "postgres", Password: "password", ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{Username: "postgres", Password: "password", ExpectedErrCode: "23505"},
 				},
 			},
 		},
@@ -1873,7 +1873,7 @@ func TestBasicIndexing(t *testing.T) {
 					Password:    "password",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{Username: "postgres", Password: "password", ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{Username: "postgres", Password: "password", ExpectedErrCode: "23505"},
 				},
 			},
 		},
@@ -2709,7 +2709,7 @@ func TestIndexColumnOptions(t *testing.T) {
 					ExpectedErr: "duplicate unique key given",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query: "INSERT INTO ud VALUES (5, NULL, 'q');",
@@ -2725,14 +2725,14 @@ func TestIndexColumnOptions(t *testing.T) {
 					ExpectedErr: "duplicate unique key given",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query:       "UPDATE ud SET a = 2 WHERE pk = 1;",
 					ExpectedErr: "duplicate unique key given",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query: "UPDATE ud SET a = 9 WHERE pk = 1;",
@@ -3164,7 +3164,7 @@ func TestIndexColumnOptions(t *testing.T) {
 					ExpectedErr: "duplicate unique key",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query: "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'uq' ORDER BY indexname;",

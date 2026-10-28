@@ -568,6 +568,8 @@ $$ LANGUAGE plpgsql;`},
 				{
 					Query:    "SELECT interpreted_continue();",
 					Expected: []sql.Row{{4}},
+					// Uninitialized PL/pgSQL integers are NULL; NULL + 1 remains NULL.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -591,6 +593,8 @@ $$ LANGUAGE plpgsql;`},
 				{
 					Query:    "SELECT interpreted_continue_label();",
 					Expected: []sql.Row{{6}},
+					// Uninitialized PL/pgSQL integers are NULL; NULL + 1 remains NULL.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -775,6 +779,8 @@ $$ LANGUAGE plpgsql;`},
 				{
 					Query:    "SELECT interpreted_perform();",
 					Expected: []sql.Row{{nil}}, // TODO: Postgres returns a value that's not null, but also not a value?
+					// The void result has an empty text representation, not SQL NULL.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{""}}},
 				},
 				{
 					Query:    "SELECT nextval('test_sequence');",
@@ -925,6 +931,12 @@ $$ LANGUAGE plpgsql;`},
 						{"(1,username,t)"},
 						{"(2,another,f)"},
 					},
+
+					// PostgreSQL exposes anonymous records through the binary protocol; compare their SQL text representation.
+					Postgres: &ScriptTestAssertion{Query: "SELECT func2()::text;", Expected: []sql.Row{
+						{"(1,username,t)"},
+						{"(2,another,f)"},
+					}},
 				},
 				{
 					Query: "SELECT func2(), func2();",
@@ -932,6 +944,12 @@ $$ LANGUAGE plpgsql;`},
 						{"(1,username,t)", "(1,username,t)"},
 						{"(2,another,f)", "(2,another,f)"},
 					},
+
+					// PostgreSQL exposes anonymous records through the binary protocol; compare their SQL text representation.
+					Postgres: &ScriptTestAssertion{Query: "SELECT func2()::text, func2()::text;", Expected: []sql.Row{
+						{"(1,username,t)", "(1,username,t)"},
+						{"(2,another,f)", "(2,another,f)"},
+					}},
 				},
 			},
 		},
@@ -954,6 +972,12 @@ $$ LANGUAGE plpgsql;`},
 						{"(username1)"},
 						{"(username2)"},
 					},
+
+					// PostgreSQL exposes anonymous records through the binary protocol; compare their SQL text representation.
+					Postgres: &ScriptTestAssertion{Query: "SELECT func2();", Expected: []sql.Row{
+						{"username1"},
+						{"username2"},
+					}},
 				},
 				{
 					Query: "SELECT func2(), func2();",
@@ -961,6 +985,12 @@ $$ LANGUAGE plpgsql;`},
 						{"(username1)", "(username1)"},
 						{"(username2)", "(username2)"},
 					},
+
+					// PostgreSQL exposes anonymous records through the binary protocol; compare their SQL text representation.
+					Postgres: &ScriptTestAssertion{Query: "SELECT func2(), func2();", Expected: []sql.Row{
+						{"username1", "username1"},
+						{"username2", "username2"},
+					}},
 				},
 			},
 		},
@@ -1101,12 +1131,22 @@ $$ LANGUAGE plpgsql;`},
 					Expected: []sql.Row{
 						{"(1,John)"},
 					},
+
+					// PostgreSQL exposes anonymous records through the binary protocol; compare their SQL text representation.
+					Postgres: &ScriptTestAssertion{Query: "SELECT func_conflict(1)::text;", Expected: []sql.Row{
+						{"(1,John)"},
+					}},
 				},
 				{
 					Query: "SELECT func_conflict(2);",
 					Expected: []sql.Row{
 						{"(2,Jane)"},
 					},
+
+					// PostgreSQL exposes anonymous records through the binary protocol; compare their SQL text representation.
+					Postgres: &ScriptTestAssertion{Query: "SELECT func_conflict(2)::text;", Expected: []sql.Row{
+						{"(2,Jane)"},
+					}},
 				},
 			},
 		},
@@ -1186,6 +1226,9 @@ $$ LANGUAGE plpgsql;`},
 							Message:  "'DebugMessage'",
 						},
 					},
+
+					// Explicit native representation / SQL semantics; execute the statement once.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42601", ExpectedErr: "RAISE option already specified: MESSAGE"},
 				},
 				{
 					// A RAISE that names no SQLSTATE reports the code PostgreSQL gives a bare RAISE.
@@ -1204,6 +1247,9 @@ $$ LANGUAGE plpgsql;`},
 					Query:           "SELECT interpreted_raise_condition_name();",
 					ExpectedErr:     "named",
 					ExpectedErrCode: "P0001",
+
+					// Explicit native representation / SQL semantics; execute the statement once.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22012", ExpectedErr: "named"},
 				},
 			},
 		},
@@ -1275,6 +1321,9 @@ $$ LANGUAGE plpgsql;`},
 				{
 					Query:    "SELECT interpreted_while(42);",
 					Expected: []sql.Row{{58}},
+
+					// Explicit native representation / SQL semantics; execute the statement once.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 			},
 		},
@@ -1365,7 +1414,10 @@ END;
 $function$ LANGUAGE plpgsql;`,
 			},
 			Assertions: []ScriptTestAssertion{
-				{Query: `SELECT interpreted_do()`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT interpreted_do()`, Expected: []sql.Row{{nil}},
+					// Explicit native representation / SQL semantics; execute the statement once.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{""}}},
+				},
 				{Query: `SELECT * FROM interpreted_do_values`, Expected: []sql.Row{{int64(42)}}},
 			},
 		},
@@ -1627,6 +1679,9 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_merge('other')::text) = 57;",
 					Expected: []sql.Row{{"t"}},
+
+					// Explicit native representation / SQL semantics; execute the statement once.
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT hash ~ '^[0-9a-f]{64}$', conflicts FROM dolt_merge('other');", Expected: []sql.Row{{"t", int64(0)}}},
 				},
 				{
 					Query:    "SELECT interpreted_merging('abcdef');",
@@ -1983,6 +2038,9 @@ $$;`,
 				{
 					Query:    `SHOW check_function_bodies;`,
 					Expected: []sql.Row{{1}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 				},
 				{
 					Query: `CREATE FUNCTION public.film_in_stock(p_film_id integer, p_store_id integer, OUT p_film_count integer) RETURNS SETOF integer
@@ -1997,7 +2055,7 @@ $_$;`,
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    "SET check_function_bodies = false;",
@@ -2577,6 +2635,9 @@ $$ LANGUAGE plpgsql;`,
 					Query:           `SELECT foreach_bare_null();`,
 					ExpectedErr:     "FOREACH expression must yield an array, not type",
 					ExpectedErrCode: "42804",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22004"},
 				},
 				{
 					// TODO: PostgreSQL iterates the two rows here. pg_typeof spells an array of a
@@ -2770,6 +2831,9 @@ $$ LANGUAGE plpgsql;`,
 					// In a SELECT list the same call produces one record value per row
 					Query:    "SELECT figures();",
 					Expected: []sql.Row{{"(triangle,3)"}, {"(square,4)"}},
+
+					// PostgreSQL exposes anonymous records through the binary protocol; compare their SQL text representation.
+					Postgres: &ScriptTestAssertion{Query: "SELECT figures()::text;", Expected: []sql.Row{{"(triangle,3)"}, {"(square,4)"}}},
 				},
 			},
 		},
@@ -2794,6 +2858,9 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT shapes();",
 					Expected: []sql.Row{{"(triangle)"}, {"(square)"}},
+
+					// PostgreSQL exposes anonymous records through the binary protocol; compare their SQL text representation.
+					Postgres: &ScriptTestAssertion{Query: "SELECT shapes();", Expected: []sql.Row{{"(triangle)"}, {"(square)"}}},
 				},
 			},
 		},

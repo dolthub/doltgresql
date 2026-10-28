@@ -352,10 +352,16 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				{
 					Query:       `SELECT * FROM test1`,
 					ExpectedErr: `not found`,
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM test2`,
 					ExpectedErr: `not found`,
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 			},
 		},

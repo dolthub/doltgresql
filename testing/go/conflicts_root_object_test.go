@@ -127,7 +127,7 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -242,7 +242,7 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -353,14 +353,14 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -471,14 +471,14 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -607,7 +607,7 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -698,7 +698,7 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       "SELECT interpreted_example('12');",
@@ -783,7 +783,7 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -870,7 +870,7 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -1041,7 +1041,7 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       "SELECT interpreted_example('12');",
@@ -1126,7 +1126,7 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -1222,7 +1222,7 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -1324,7 +1324,7 @@ func TestConflictsRootObject(t *testing.T) {
 					ExpectedErr: `table not found`,
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",

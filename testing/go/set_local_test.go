@@ -34,6 +34,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_hashjoin",
 					Expected: []sql.Row{{0}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 				},
 				{
 					Query: "COMMIT",
@@ -41,6 +44,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_hashjoin",
 					Expected: []sql.Row{{1}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 				},
 			},
 		},
@@ -56,6 +62,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_hashjoin",
 					Expected: []sql.Row{{0}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 				},
 				{
 					Query: "ROLLBACK",
@@ -63,6 +72,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_hashjoin",
 					Expected: []sql.Row{{1}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 				},
 			},
 		},
@@ -81,6 +93,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_hashjoin",
 					Expected: []sql.Row{{1}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 				},
 				{
 					Query: "COMMIT",
@@ -88,6 +103,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_hashjoin",
 					Expected: []sql.Row{{0}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 				},
 				{
 					Query: "SET enable_hashjoin = on",
@@ -109,6 +127,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:       "SELECT no_such_column FROM test",
 					ExpectedErr: "could not be found",
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42703"},
 				},
 				{
 					Query:       "SHOW enable_hashjoin",
@@ -120,6 +141,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_hashjoin",
 					Expected: []sql.Row{{1}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 				},
 			},
 		},
@@ -137,6 +161,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_hashjoin",
 					Expected: []sql.Row{{1}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 				},
 			},
 		},
@@ -176,6 +203,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_hashjoin",
 					Expected: []sql.Row{{1}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 				},
 			},
 		},
@@ -197,6 +227,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_hashjoin",
 					Expected: []sql.Row{{0}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 				},
 				{
 					Query: "SET enable_hashjoin = on",
@@ -225,6 +258,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_seqscan",
 					Expected: []sql.Row{{0}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 				},
 				{
 					Query: "COMMIT",
@@ -232,6 +268,9 @@ func TestSetLocal(t *testing.T) {
 				{
 					Query:    "SHOW enable_seqscan",
 					Expected: []sql.Row{{1}},
+
+					// Native SHOW represents Boolean GUCs as on/off, rather than 1/0.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 				},
 			},
 		},
@@ -251,18 +290,22 @@ func TestSetLocalSimpleQueryWarning(t *testing.T) {
 						Message: "SET LOCAL can only be used in transaction blocks",
 					}},
 				},
-				SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"1"}}}}},
+				TargetFlowStep{Doltgres: SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"1"}}}}}, Postgres: SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"on"}}}}}},
 			},
 		},
 		{
 			Name: "SET LOCAL in a multi-statement implicit block does not warn",
 			Steps: []FlowStep{
-				SimpleQuery{
+				TargetFlowStep{Doltgres: SimpleQuery{
 					Query:           "SET LOCAL enable_hashjoin = off; SHOW enable_hashjoin",
 					Expected:        []StatementResult{{Tag: "SET"}, {Tag: "SHOW", Rows: [][]string{{"0"}}}},
 					ExpectedNotices: []ExpectedNotice{},
-				},
-				SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"1"}}}}},
+				}, Postgres: SimpleQuery{
+					Query:           "SET LOCAL enable_hashjoin = off; SHOW enable_hashjoin",
+					Expected:        []StatementResult{{Tag: "SET"}, {Tag: "SHOW", Rows: [][]string{{"off"}}}},
+					ExpectedNotices: []ExpectedNotice{},
+				}},
+				TargetFlowStep{Doltgres: SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"1"}}}}}, Postgres: SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"on"}}}}}},
 			},
 		},
 		{
@@ -275,7 +318,7 @@ func TestSetLocalSimpleQueryWarning(t *testing.T) {
 					ExpectedReadyStatus: 'T',
 					ExpectedNotices:     []ExpectedNotice{},
 				},
-				SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"0"}}}}, ExpectedReadyStatus: 'T'},
+				TargetFlowStep{Doltgres: SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"0"}}}}, ExpectedReadyStatus: 'T'}, Postgres: SimpleQuery{Query: "SHOW enable_hashjoin", Expected: []StatementResult{{Tag: "SHOW", Rows: [][]string{{"off"}}}}, ExpectedReadyStatus: 'T'}},
 				SimpleQuery{Query: "ROLLBACK", Expected: []StatementResult{{Tag: "ROLLBACK"}}},
 			},
 		},

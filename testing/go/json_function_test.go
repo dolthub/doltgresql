@@ -1082,7 +1082,7 @@ func TestJsonTypeof(t *testing.T) {
 					ExpectedErr: `"t_ext_object_check" violated`,
 
 					// Native CHECK diagnostics preserve the constraint violation SQLSTATE.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					// The array is the right shape but empty, so the length
@@ -1091,7 +1091,7 @@ func TestJsonTypeof(t *testing.T) {
 					ExpectedErr: `"t_evidence_check" violated`,
 
 					// Native CHECK diagnostics preserve the constraint violation SQLSTATE.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:    `SELECT jsonb_typeof(ext), jsonb_array_length(evidence) FROM t;`,

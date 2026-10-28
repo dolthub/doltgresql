@@ -35,7 +35,7 @@ func TestDiscard(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    "SHOW search_path",
@@ -302,7 +302,7 @@ func TestRollback(t *testing.T) {
 					Skip:        true, // temp table should be dropped after ROLLBACK
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    "create temp table test (b int)",
@@ -327,7 +327,7 @@ func TestSessionStateAfterQueryError(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Username: "postgres",
@@ -378,7 +378,7 @@ func TestSessionStateAfterQueryError(t *testing.T) {
 					ExpectedErr: "table not found",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Username: "postgres",

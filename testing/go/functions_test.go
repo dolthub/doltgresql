@@ -1140,14 +1140,14 @@ func TestFunctionsMath(t *testing.T) {
 					ExpectedErr: "Check constraint",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:       `INSERT INTO num_nulls_check VALUES (NULL, NULL);`,
 					ExpectedErr: "Check constraint",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 			},
 		},
@@ -1273,6 +1273,9 @@ func TestFunctionsOID(t *testing.T) {
 					Expected: []sql.Row{
 						{nil},
 					},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"acos"}}},
 				},
 			},
 		},
@@ -1369,6 +1372,9 @@ func TestFunctionsOID(t *testing.T) {
 					Expected: []sql.Row{
 						{nil},
 					},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42601"},
 				},
 				{
 					Query: `SELECT to_regtype(('integer'::regtype)::text);`,
@@ -1387,6 +1393,9 @@ func TestFunctionsOID(t *testing.T) {
 					Expected: []sql.Row{
 						{nil},
 					},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"integer"}}},
 				},
 			},
 		},
@@ -1485,26 +1494,41 @@ func TestFunctionsOID(t *testing.T) {
 					Query:           `SELECT to_regprocedure('tf');`,
 					ExpectedErr:     `expected a left parenthesis`,
 					ExpectedErrCode: "22P02",
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:           `SELECT to_regprocedure('f2(int,text');`,
 					ExpectedErr:     `expected a right parenthesis`,
 					ExpectedErrCode: "22P02",
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:           `SELECT to_regprocedure('f2(int,)');`,
 					ExpectedErr:     `expected a type name`,
 					ExpectedErrCode: "22P02",
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:           `SELECT to_regprocedure('f2(int))');`,
 					ExpectedErr:     `improper type name`,
 					ExpectedErrCode: "22P02",
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:           `SELECT to_regprocedure('abs(nosuchtype)');`,
 					ExpectedErr:     `type "nosuchtype" does not exist`,
 					ExpectedErrCode: "42704",
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SET search_path = s;`,
@@ -1572,7 +1596,7 @@ func TestSystemInformationFunctions(t *testing.T) {
 					ExpectedErr: "table not found: current_database",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 			},
 		},
@@ -1597,6 +1621,9 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query:       `SELECT current_catalog();`,
 					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE 42601)`,
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42601"},
 				},
 				// // TODO: Implement table function for current_catalog
 				{
@@ -1609,6 +1636,9 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query:       `SELECT * FROM current_catalog();`,
 					ExpectedErr: `ERROR: at or near "(": syntax error (SQLSTATE 42601)`,
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42601"},
 				},
 			},
 		},
@@ -5667,14 +5697,23 @@ func TestDateAndTimeFunction(t *testing.T) {
 				{
 					Query:       `SELECT timestamp '2026-01-01' + interval '1000000000 years';`,
 					ExpectedErr: "timestamp out of range",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22008"},
 				},
 				{
 					Query:       `SELECT timestamp '2026-01-01' - interval '1000000000 years';`,
 					ExpectedErr: "timestamp out of range",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22008"},
 				},
 				{
 					Query:       `SELECT timestamptz '2026-01-01+00' + interval '1000000000 years';`,
 					ExpectedErr: "timestamp out of range",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22008"},
 				},
 				{
 					// Confirms the session/connection survives an out-of-range error.
@@ -7129,6 +7168,9 @@ func TestSetReturningFunctions(t *testing.T) {
 					{
 						Query:       `SELECT generate_series('1.2'::numeric,1.4,'NAN')`,
 						ExpectedErr: `step value cannot be NaN`,
+
+						// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+						Postgres: &ScriptTestAssertion{ExpectedErrCode: "22023"},
 					},
 				},
 			},

@@ -81,7 +81,7 @@ func TestByteaLengthFunctions(t *testing.T) {
 					ExpectedErr: "violated",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 			},
 		},

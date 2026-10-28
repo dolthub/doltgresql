@@ -160,6 +160,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_seed",
 				Expected: []sql.Row{{float64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET SEED 1;",
@@ -458,6 +461,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_analyze_scale_factor",
 				Expected: []sql.Row{{0.1}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.1"}}},
 			},
 			{
 				Query:       "SET autovacuum_analyze_scale_factor TO '0.1'",
@@ -476,6 +482,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_analyze_threshold",
 				Expected: []sql.Row{{int64(50)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"50"}}},
 			},
 			{
 				Query:       "SET autovacuum_analyze_threshold TO '50'",
@@ -512,6 +521,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_max_workers",
 				Expected: []sql.Row{{int64(3)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"3"}}},
 			},
 			{
 				Query:       "SET autovacuum_max_workers TO '3'",
@@ -530,6 +542,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_multixact_freeze_max_age",
 				Expected: []sql.Row{{int64(400000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"400000000"}}},
 			},
 			{
 				Query:       "SET autovacuum_multixact_freeze_max_age TO '400000000'",
@@ -584,6 +599,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_vacuum_cost_limit",
 				Expected: []sql.Row{{int64(-1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"-1"}}},
 			},
 			{
 				Query:       "SET autovacuum_vacuum_cost_limit TO '-1'",
@@ -602,6 +620,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_vacuum_insert_scale_factor",
 				Expected: []sql.Row{{float64(0.2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.2"}}},
 			},
 			{
 				Query:       "SET autovacuum_vacuum_insert_scale_factor TO '0.2'",
@@ -620,6 +641,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_vacuum_insert_threshold",
 				Expected: []sql.Row{{int64(1000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000"}}},
 			},
 			{
 				Query:       "SET autovacuum_vacuum_insert_threshold TO '1000'",
@@ -638,6 +662,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_vacuum_scale_factor",
 				Expected: []sql.Row{{float64(0.2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.2"}}},
 			},
 			{
 				Query:       "SET autovacuum_vacuum_scale_factor TO '0.2'",
@@ -656,6 +683,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_vacuum_threshold",
 				Expected: []sql.Row{{int64(50)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"50"}}},
 			},
 			{
 				Query:       "SET autovacuum_vacuum_threshold TO '50'",
@@ -818,6 +848,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW bgwriter_lru_maxpages",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:       "SET bgwriter_lru_maxpages TO '100'",
@@ -836,6 +869,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW bgwriter_lru_multiplier",
 				Expected: []sql.Row{{float64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:       "SET bgwriter_lru_multiplier TO '2'",
@@ -854,6 +890,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW block_size",
 				Expected: []sql.Row{{int64(8192)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8192"}}},
 			},
 			{
 				Query:       "SET block_size TO '8192'",
@@ -980,6 +1019,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW checkpoint_completion_target",
 				Expected: []sql.Row{{float64(0.9)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.9"}}},
 			},
 			{
 				Query:       "SET checkpoint_completion_target TO '0.9'",
@@ -1160,6 +1202,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_delay",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET commit_delay TO 100000",
@@ -1168,6 +1213,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_delay",
 				Expected: []sql.Row{{int64(100000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100000"}}},
 			},
 			{
 				Query:    "SET commit_delay TO DEFAULT",
@@ -1176,6 +1224,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_delay",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('commit_delay')",
@@ -1190,6 +1241,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_siblings",
 				Expected: []sql.Row{{int64(5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5"}}},
 			},
 			{
 				Query:    "SET commit_siblings TO '1000'",
@@ -1198,6 +1252,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_siblings",
 				Expected: []sql.Row{{int64(1000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000"}}},
 			},
 			{
 				Query:    "SET commit_siblings TO DEFAULT",
@@ -1206,6 +1263,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_siblings",
 				Expected: []sql.Row{{int64(5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5"}}},
 			},
 			{
 				Query:    "SELECT current_setting('commit_siblings')",
@@ -1298,6 +1358,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_index_tuple_cost",
 				Expected: []sql.Row{{float64(0.005)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.005"}}},
 			},
 			{
 				Query:    "SET cpu_index_tuple_cost TO '0.01'",
@@ -1306,6 +1369,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_index_tuple_cost",
 				Expected: []sql.Row{{float64(0.01)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.01"}}},
 			},
 			{
 				Query:    "SET cpu_index_tuple_cost TO DEFAULT",
@@ -1314,6 +1380,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_index_tuple_cost",
 				Expected: []sql.Row{{float64(0.005)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.005"}}},
 			},
 			{
 				Query:    "SELECT current_setting('cpu_index_tuple_cost')",
@@ -1328,6 +1397,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_operator_cost",
 				Expected: []sql.Row{{float64(0.0025)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.0025"}}},
 			},
 			{
 				Query:    "SET cpu_operator_cost TO '0.005'",
@@ -1336,6 +1408,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_operator_cost",
 				Expected: []sql.Row{{float64(0.005)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.005"}}},
 			},
 			{
 				Query:    "SET cpu_operator_cost TO DEFAULT",
@@ -1344,6 +1419,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_operator_cost",
 				Expected: []sql.Row{{float64(0.0025)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.0025"}}},
 			},
 			{
 				Query:    "SELECT current_setting('cpu_operator_cost')",
@@ -1358,6 +1436,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_tuple_cost",
 				Expected: []sql.Row{{float64(0.01)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.01"}}},
 			},
 			{
 				Query:    "SET cpu_tuple_cost TO '0.02'",
@@ -1366,6 +1447,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_tuple_cost",
 				Expected: []sql.Row{{float64(0.02)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.02"}}},
 			},
 			{
 				Query:    "SET cpu_tuple_cost TO DEFAULT",
@@ -1374,6 +1458,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_tuple_cost",
 				Expected: []sql.Row{{float64(0.01)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.01"}}},
 			},
 			{
 				Query:    "SELECT current_setting('cpu_tuple_cost')",
@@ -1418,6 +1505,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cursor_tuple_fraction",
 				Expected: []sql.Row{{float64(0.1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.1"}}},
 			},
 			{
 				Query:    "SET cursor_tuple_fraction TO '0.2'",
@@ -1426,6 +1516,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cursor_tuple_fraction",
 				Expected: []sql.Row{{float64(0.2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.2"}}},
 			},
 			{
 				Query:    "SET cursor_tuple_fraction TO DEFAULT",
@@ -1434,6 +1527,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cursor_tuple_fraction",
 				Expected: []sql.Row{{float64(0.1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.1"}}},
 			},
 			{
 				Query:    "SELECT current_setting('cursor_tuple_fraction')",
@@ -1628,6 +1724,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_discard_caches",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET debug_discard_caches TO '0'", // cannot set it to anything other than 0
@@ -1636,6 +1735,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_discard_caches",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('debug_discard_caches')",
@@ -1884,6 +1986,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_statistics_target",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET default_statistics_target TO '10000'",
@@ -1892,6 +1997,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_statistics_target",
 				Expected: []sql.Row{{int64(10000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10000"}}},
 			},
 			{
 				Query:    "SET default_statistics_target TO DEFAULT",
@@ -1900,6 +2008,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_statistics_target",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SELECT current_setting('default_statistics_target')",
@@ -2220,6 +2331,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW effective_io_concurrency",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET effective_io_concurrency TO DEFAULT",
@@ -3175,6 +3289,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW extra_float_digits",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET extra_float_digits TO -10",
@@ -3183,6 +3300,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW extra_float_digits",
 				Expected: []sql.Row{{int64(-10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"-10"}}},
 			},
 			{
 				Query:    "SET extra_float_digits TO DEFAULT",
@@ -3191,6 +3311,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW extra_float_digits",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SELECT current_setting('extra_float_digits')",
@@ -3205,6 +3328,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW from_collapse_limit",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SET from_collapse_limit TO 100",
@@ -3213,6 +3339,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW from_collapse_limit",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET from_collapse_limit TO DEFAULT",
@@ -3221,6 +3350,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW from_collapse_limit",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SELECT current_setting('from_collapse_limit')",
@@ -3316,6 +3448,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_effort",
 				Expected: []sql.Row{{int64(5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5"}}},
 			},
 			{
 				Query:    "SET geqo_effort TO 10",
@@ -3324,6 +3459,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_effort",
 				Expected: []sql.Row{{int64(10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10"}}},
 			},
 			{
 				Query:    "SET geqo_effort TO DEFAULT",
@@ -3332,6 +3470,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_effort",
 				Expected: []sql.Row{{int64(5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_effort')",
@@ -3346,6 +3487,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_generations",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET geqo_generations TO '100'",
@@ -3354,6 +3498,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_generations",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET geqo_generations TO DEFAULT",
@@ -3362,6 +3509,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_generations",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_generations')",
@@ -3380,6 +3530,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_pool_size",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET geqo_pool_size TO 1",
@@ -3388,6 +3541,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_pool_size",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET geqo_pool_size TO DEFAULT",
@@ -3396,6 +3552,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_pool_size",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_pool_size')",
@@ -3410,6 +3569,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_seed",
 				Expected: []sql.Row{{float64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET geqo_seed TO 0.2",
@@ -3418,6 +3580,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_seed",
 				Expected: []sql.Row{{float64(0.2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.2"}}},
 			},
 			{
 				Query:    "SET geqo_seed TO DEFAULT",
@@ -3426,6 +3591,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_seed",
 				Expected: []sql.Row{{float64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_seed')",
@@ -3440,6 +3608,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_selection_bias",
 				Expected: []sql.Row{{float64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET geqo_selection_bias TO 1.7",
@@ -3448,6 +3619,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_selection_bias",
 				Expected: []sql.Row{{float64(1.7)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1.7"}}},
 			},
 			{
 				Query:    "SET geqo_selection_bias TO DEFAULT",
@@ -3456,6 +3630,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_selection_bias",
 				Expected: []sql.Row{{float64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_selection_bias')",
@@ -3470,6 +3647,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_threshold",
 				Expected: []sql.Row{{int64(12)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"12"}}},
 			},
 			{
 				Query:    "SET geqo_threshold TO 22",
@@ -3478,6 +3658,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_threshold",
 				Expected: []sql.Row{{int64(22)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"22"}}},
 			},
 			{
 				Query:    "SET geqo_threshold TO DEFAULT",
@@ -3486,6 +3669,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_threshold",
 				Expected: []sql.Row{{int64(12)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"12"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_threshold')",
@@ -3500,6 +3686,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW gin_fuzzy_search_limit",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET gin_fuzzy_search_limit TO 2",
@@ -3508,6 +3697,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW gin_fuzzy_search_limit",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET gin_fuzzy_search_limit TO DEFAULT",
@@ -3516,6 +3708,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW gin_fuzzy_search_limit",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('gin_fuzzy_search_limit')",
@@ -3581,6 +3776,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW hash_mem_multiplier",
 				Expected: []sql.Row{{float64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET hash_mem_multiplier TO 20.1",
@@ -3589,6 +3787,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW hash_mem_multiplier",
 				Expected: []sql.Row{{float64(20.1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"20.1"}}},
 			},
 			{
 				Query:    "SET hash_mem_multiplier TO DEFAULT",
@@ -3597,6 +3798,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW hash_mem_multiplier",
 				Expected: []sql.Row{{float64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SELECT current_setting('hash_mem_multiplier')",
@@ -4007,6 +4211,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_above_cost",
 				Expected: []sql.Row{{float64(100000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100000"}}},
 			},
 			{
 				Query:    "SET jit_above_cost TO '100'",
@@ -4015,6 +4222,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_above_cost",
 				Expected: []sql.Row{{float64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET jit_above_cost TO DEFAULT",
@@ -4023,6 +4233,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_above_cost",
 				Expected: []sql.Row{{float64(100000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('jit_above_cost')",
@@ -4136,6 +4349,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_inline_above_cost",
 				Expected: []sql.Row{{float64(500000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"500000"}}},
 			},
 			{
 				Query:    "SET jit_inline_above_cost TO '5000'",
@@ -4144,6 +4360,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_inline_above_cost",
 				Expected: []sql.Row{{float64(5000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5000"}}},
 			},
 			{
 				Query:    "SET jit_inline_above_cost TO DEFAULT",
@@ -4152,6 +4371,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_inline_above_cost",
 				Expected: []sql.Row{{float64(500000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"500000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('jit_inline_above_cost')",
@@ -4166,6 +4388,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_optimize_above_cost",
 				Expected: []sql.Row{{float64(500000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"500000"}}},
 			},
 			{
 				Query:    "SET jit_optimize_above_cost TO '5000'",
@@ -4174,6 +4399,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_optimize_above_cost",
 				Expected: []sql.Row{{float64(5000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5000"}}},
 			},
 			{
 				Query:    "SET jit_optimize_above_cost TO DEFAULT",
@@ -4182,6 +4410,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_optimize_above_cost",
 				Expected: []sql.Row{{float64(500000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"500000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('jit_optimize_above_cost')",
@@ -4274,6 +4505,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW join_collapse_limit",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SET join_collapse_limit TO '100'",
@@ -4282,6 +4516,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW join_collapse_limit",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET join_collapse_limit TO DEFAULT",
@@ -4290,6 +4527,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW join_collapse_limit",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SELECT current_setting('join_collapse_limit')",
@@ -5326,6 +5566,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_statement_sample_rate",
 				Expected: []sql.Row{{float64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET log_statement_sample_rate TO 0.5",
@@ -5334,6 +5577,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_statement_sample_rate",
 				Expected: []sql.Row{{float64(0.5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.5"}}},
 			},
 			{
 				Query:    "SET log_statement_sample_rate TO DEFAULT",
@@ -5342,6 +5588,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_statement_sample_rate",
 				Expected: []sql.Row{{float64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SELECT current_setting('log_statement_sample_rate')",
@@ -5443,6 +5692,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_transaction_sample_rate",
 				Expected: []sql.Row{{float64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET log_transaction_sample_rate TO '0.5'",
@@ -5451,6 +5703,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_transaction_sample_rate",
 				Expected: []sql.Row{{float64(0.5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.5"}}},
 			},
 			{
 				Query:    "SET log_transaction_sample_rate TO DEFAULT",
@@ -5459,6 +5714,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_transaction_sample_rate",
 				Expected: []sql.Row{{float64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('log_transaction_sample_rate')",
@@ -5553,6 +5811,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW maintenance_io_concurrency",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET maintenance_io_concurrency TO DEFAULT",
@@ -5605,6 +5866,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_connections",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:       "SET max_connections TO '150'",
@@ -5623,6 +5887,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_files_per_process",
 				Expected: []sql.Row{{int64(1000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000"}}},
 			},
 			{
 				Query:       "SET max_files_per_process TO '1000'",
@@ -5641,6 +5908,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_function_args",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:       "SET max_function_args TO '100'",
@@ -5659,6 +5929,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_identifier_length",
 				Expected: []sql.Row{{int64(63)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"63"}}},
 			},
 			{
 				Query:       "SET max_identifier_length TO '63'",
@@ -5677,6 +5950,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_index_keys",
 				Expected: []sql.Row{{int64(32)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"32"}}},
 			},
 			{
 				Query:       "SET max_index_keys TO '32'",
@@ -5695,6 +5971,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_locks_per_transaction",
 				Expected: []sql.Row{{int64(64)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"64"}}},
 			},
 			{
 				Query:       "SET max_locks_per_transaction TO '64'",
@@ -5713,6 +5992,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_logical_replication_workers",
 				Expected: []sql.Row{{int64(4)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4"}}},
 			},
 			{
 				Query:       "SET max_logical_replication_workers TO '4'",
@@ -5731,6 +6013,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_apply_workers_per_subscription",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:       "SET max_parallel_apply_workers_per_subscription TO '2'",
@@ -5749,6 +6034,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_maintenance_workers",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET max_parallel_maintenance_workers TO '3'",
@@ -5757,6 +6045,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_maintenance_workers",
 				Expected: []sql.Row{{int64(3)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"3"}}},
 			},
 			{
 				Query:    "SET max_parallel_maintenance_workers TO DEFAULT",
@@ -5765,6 +6056,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_maintenance_workers",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SELECT current_setting('max_parallel_maintenance_workers')",
@@ -5779,6 +6073,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SET max_parallel_workers TO 11",
@@ -5787,6 +6084,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers",
 				Expected: []sql.Row{{int64(11)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"11"}}},
 			},
 			{
 				Query:    "SET max_parallel_workers TO DEFAULT",
@@ -5795,6 +6095,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SELECT current_setting('max_parallel_workers')",
@@ -5809,6 +6112,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers_per_gather",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET max_parallel_workers_per_gather TO 3",
@@ -5817,6 +6123,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers_per_gather",
 				Expected: []sql.Row{{int64(3)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"3"}}},
 			},
 			{
 				Query:    "SET max_parallel_workers_per_gather TO DEFAULT",
@@ -5825,6 +6134,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers_per_gather",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SELECT current_setting('max_parallel_workers_per_gather')",
@@ -5839,6 +6151,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_pred_locks_per_page",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:       "SET max_pred_locks_per_page TO '2'",
@@ -5857,6 +6172,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_pred_locks_per_relation",
 				Expected: []sql.Row{{int64(-2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"-2"}}},
 			},
 			{
 				Query:       "SET max_pred_locks_per_relation TO '-2'",
@@ -5875,6 +6193,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_pred_locks_per_transaction",
 				Expected: []sql.Row{{int64(64)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"64"}}},
 			},
 			{
 				Query:       "SET max_pred_locks_per_transaction TO '64'",
@@ -5911,6 +6232,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_replication_slots",
 				Expected: []sql.Row{{int64(10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10"}}},
 			},
 			{
 				Query:       "SET max_replication_slots TO '10'",
@@ -6013,6 +6337,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_sync_workers_per_subscription",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:       "SET max_sync_workers_per_subscription TO '2'",
@@ -6031,6 +6358,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_wal_senders",
 				Expected: []sql.Row{{int64(10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10"}}},
 			},
 			{
 				Query:       "SET max_wal_senders TO '10'",
@@ -6067,6 +6397,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_worker_processes",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:       "SET max_worker_processes TO '8'",
@@ -6085,6 +6418,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW min_dynamic_shared_memory",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:       "SET min_dynamic_shared_memory TO '0'",
@@ -6238,6 +6574,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_setup_cost",
 				Expected: []sql.Row{{float64(1000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000"}}},
 			},
 			{
 				Query:    "SET parallel_setup_cost TO '10000'",
@@ -6246,6 +6585,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_setup_cost",
 				Expected: []sql.Row{{float64(10000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10000"}}},
 			},
 			{
 				Query:    "SET parallel_setup_cost TO DEFAULT",
@@ -6254,6 +6596,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_setup_cost",
 				Expected: []sql.Row{{float64(1000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('parallel_setup_cost')",
@@ -6268,6 +6613,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_tuple_cost",
 				Expected: []sql.Row{{float64(0.1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.1"}}},
 			},
 			{
 				Query:    "SET parallel_tuple_cost TO '0.2'",
@@ -6276,6 +6624,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_tuple_cost",
 				Expected: []sql.Row{{float64(0.2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.2"}}},
 			},
 			{
 				Query:    "SET parallel_tuple_cost TO DEFAULT",
@@ -6284,6 +6635,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_tuple_cost",
 				Expected: []sql.Row{{float64(0.1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.1"}}},
 			},
 			{
 				Query:    "SELECT current_setting('parallel_tuple_cost')",
@@ -6469,6 +6823,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW random_page_cost",
 				Expected: []sql.Row{{float64(4)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4"}}},
 			},
 			{
 				Query:    "SET random_page_cost TO 2.5",
@@ -6477,6 +6834,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW random_page_cost",
 				Expected: []sql.Row{{float64(2.5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2.5"}}},
 			},
 			{
 				Query:    "SET random_page_cost TO DEFAULT",
@@ -6485,6 +6845,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW random_page_cost",
 				Expected: []sql.Row{{float64(4)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4"}}},
 			},
 			{
 				Query:    "SELECT current_setting('random_page_cost')",
@@ -6718,6 +7081,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW recursive_worktable_factor",
 				Expected: []sql.Row{{float64(10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10"}}},
 			},
 			{
 				Query:    "SET recursive_worktable_factor TO '1'",
@@ -6726,6 +7092,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW recursive_worktable_factor",
 				Expected: []sql.Row{{float64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET recursive_worktable_factor TO DEFAULT",
@@ -6734,6 +7103,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW recursive_worktable_factor",
 				Expected: []sql.Row{{float64(10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10"}}},
 			},
 			{
 				Query:    "SELECT current_setting('recursive_worktable_factor')",
@@ -6769,6 +7141,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW reserved_connections",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:       "SET reserved_connections TO '0'",
@@ -6865,6 +7240,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW scram_iterations",
 				Expected: []sql.Row{{int64(4096)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4096"}}},
 			},
 			{
 				Query:    "SET scram_iterations TO '4000'",
@@ -6873,6 +7251,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW scram_iterations",
 				Expected: []sql.Row{{int64(4000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4000"}}},
 			},
 			{
 				Query:    "SET scram_iterations TO DEFAULT",
@@ -6881,6 +7262,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW scram_iterations",
 				Expected: []sql.Row{{int64(4096)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4096"}}},
 			},
 			{
 				Query:    "SELECT current_setting('scram_iterations')",
@@ -7267,6 +7651,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW seq_page_cost",
 				Expected: []sql.Row{{float64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:       "SET seq_page_cost TO '1'",
@@ -7924,6 +8311,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW superuser_reserved_connections",
 				Expected: []sql.Row{{int64(3)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"3"}}},
 			},
 			{
 				Query:       "SET superuser_reserved_connections TO '3'",
@@ -8115,6 +8505,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW tcp_keepalives_count",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET tcp_keepalives_count TO DEFAULT",
@@ -8998,6 +9391,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_limit",
 				Expected: []sql.Row{{int64(200)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"200"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_limit TO '400'",
@@ -9006,6 +9402,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_limit",
 				Expected: []sql.Row{{int64(400)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"400"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_limit TO DEFAULT",
@@ -9014,6 +9413,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_limit",
 				Expected: []sql.Row{{int64(200)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"200"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_cost_limit')",
@@ -9028,6 +9430,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_dirty",
 				Expected: []sql.Row{{int64(20)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"20"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_dirty TO '200'",
@@ -9036,6 +9441,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_dirty",
 				Expected: []sql.Row{{int64(200)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"200"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_dirty TO DEFAULT",
@@ -9044,6 +9452,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_dirty",
 				Expected: []sql.Row{{int64(20)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"20"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_cost_page_dirty')",
@@ -9058,6 +9469,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_hit",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_hit TO '100'",
@@ -9066,6 +9480,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_hit",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_hit TO DEFAULT",
@@ -9074,6 +9491,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_hit",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_cost_page_hit')",
@@ -9088,6 +9508,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_miss",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_miss TO '20'",
@@ -9096,6 +9519,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_miss",
 				Expected: []sql.Row{{int64(20)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"20"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_miss TO DEFAULT",
@@ -9104,6 +9530,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_miss",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_cost_page_miss')",
@@ -9118,6 +9547,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_failsafe_age",
 				Expected: []sql.Row{{int64(1600000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1600000000"}}},
 			},
 			{
 				Query:    "SET vacuum_failsafe_age TO '2100000000'",
@@ -9126,6 +9558,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_failsafe_age",
 				Expected: []sql.Row{{int64(2100000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2100000000"}}},
 			},
 			{
 				Query:    "SET vacuum_failsafe_age TO DEFAULT",
@@ -9134,6 +9569,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_failsafe_age",
 				Expected: []sql.Row{{int64(1600000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1600000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_failsafe_age')",
@@ -9148,6 +9586,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_min_age",
 				Expected: []sql.Row{{int64(50000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"50000000"}}},
 			},
 			{
 				Query:    "SET vacuum_freeze_min_age TO '20000000'",
@@ -9156,6 +9597,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_min_age",
 				Expected: []sql.Row{{int64(20000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"20000000"}}},
 			},
 			{
 				Query:    "SET vacuum_freeze_min_age TO DEFAULT",
@@ -9164,6 +9608,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_min_age",
 				Expected: []sql.Row{{int64(50000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"50000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_freeze_min_age')",
@@ -9178,6 +9625,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_table_age",
 				Expected: []sql.Row{{int64(150000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"150000000"}}},
 			},
 			{
 				Query:    "SET vacuum_freeze_table_age TO '100000000'",
@@ -9186,6 +9636,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_table_age",
 				Expected: []sql.Row{{int64(100000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100000000"}}},
 			},
 			{
 				Query:    "SET vacuum_freeze_table_age TO DEFAULT",
@@ -9194,6 +9647,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_table_age",
 				Expected: []sql.Row{{int64(150000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"150000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_freeze_table_age')",
@@ -9208,6 +9664,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_failsafe_age",
 				Expected: []sql.Row{{int64(1600000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1600000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_failsafe_age TO '1000000000'",
@@ -9216,6 +9675,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_failsafe_age",
 				Expected: []sql.Row{{int64(1000000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_failsafe_age TO DEFAULT",
@@ -9224,6 +9686,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_failsafe_age",
 				Expected: []sql.Row{{int64(1600000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1600000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_multixact_failsafe_age')",
@@ -9238,6 +9703,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_min_age",
 				Expected: []sql.Row{{int64(5000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_freeze_min_age TO '2000000'",
@@ -9246,6 +9714,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_min_age",
 				Expected: []sql.Row{{int64(2000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_freeze_min_age TO DEFAULT",
@@ -9254,6 +9725,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_min_age",
 				Expected: []sql.Row{{int64(5000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_multixact_freeze_min_age')",
@@ -9268,6 +9742,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_table_age",
 				Expected: []sql.Row{{int64(150000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"150000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_freeze_table_age TO '120000000'",
@@ -9276,6 +9753,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_table_age",
 				Expected: []sql.Row{{int64(120000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"120000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_freeze_table_age TO DEFAULT",
@@ -9284,6 +9764,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_table_age",
 				Expected: []sql.Row{{int64(150000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"150000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_multixact_freeze_table_age')",
@@ -9298,6 +9781,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW wal_block_size",
 				Expected: []sql.Row{{int64(8192)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8192"}}},
 			},
 			{
 				Query:       "SET wal_block_size TO '8192'",

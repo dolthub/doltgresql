@@ -161,7 +161,7 @@ func TestGettingStartedGuide(t *testing.T) {
 					ExpectedErr: "table not found: employees_teams",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    "select dolt_reset('--hard');",

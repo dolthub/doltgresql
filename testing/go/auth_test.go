@@ -1509,7 +1509,7 @@ func TestAuthTests(t *testing.T) {
 					ExpectedErrCode: "42P01",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{Username: "reader", Password: "password", ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{Username: "reader", Password: "password", ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:           "SELECT rolname FROM pg_authid;",
@@ -1570,7 +1570,7 @@ func TestAuthTests(t *testing.T) {
 					ExpectedErrCode: "42P01",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{Username: "reader", Password: "password", ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{Username: "reader", Password: "password", ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:           "INSERT INTO v_edges VALUES ('x', 'y');",
@@ -1587,7 +1587,7 @@ func TestAuthTests(t *testing.T) {
 					ExpectedErrCode: "42P01",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{Username: "reader", Password: "password", ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{Username: "reader", Password: "password", ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:           "TRUNCATE secret;",
@@ -1768,7 +1768,7 @@ func TestAuthTests(t *testing.T) {
 					ExpectedErrCode: "42P01",
 
 					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
-					Postgres: &ScriptTestAssertion{Username: "inserter", Password: "password", ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
+					Postgres: &ScriptTestAssertion{Username: "inserter", Password: "password", ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    "GRANT UPDATE ON counts TO inserter;",

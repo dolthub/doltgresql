@@ -28,6 +28,9 @@ func TestDropFunction(t *testing.T) {
 				{
 					Query:       "DROP FUNCTION doesnotexist;",
 					ExpectedErr: "does not exist",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883"},
 				},
 				{
 					Query:    "DROP FUNCTION IF EXISTS doesnotexist;",

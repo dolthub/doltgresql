@@ -79,6 +79,9 @@ func TestMultidimensionalArrays(t *testing.T) {
 					Query:           "SELECT '{{}}'::int[];",
 					ExpectedErr:     `malformed array literal: "{{}}"`,
 					ExpectedErrCode: "22P02",
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Query: "SELECT '{{}}'::int[] = '{}'::int[], cardinality('{{}}'::int[])", Expected: []sql.Row{{"t", 0}}},
 				},
 				{
 					Query:           "SELECT '{a,}'::text[];",
