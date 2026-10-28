@@ -605,10 +605,13 @@ func TestImplicitTransactionsSimpleProtocol(t *testing.T) {
 					Expected: [][]string{{"1"}},
 				},
 				// An analysis error in a single-statement message
-				SimpleQuery{
+				TargetFlowStep{Doltgres: SimpleQuery{
 					Query:       "SELECT * FROM doesnotexist;",
 					ExpectedErr: "table not found",
-				},
+				}, Postgres: SimpleQuery{
+					Query:       "SELECT * FROM doesnotexist;",
+					ExpectedErr: "does not exist",
+				}},
 				SimpleQuery{
 					Query:    "INSERT INTO mytable VALUES (2);",
 					Expected: []StatementResult{{Tag: "INSERT 0 1"}},
@@ -622,10 +625,10 @@ func TestImplicitTransactionsSimpleProtocol(t *testing.T) {
 					Query:       "SELECT 1/0;",
 					ExpectedErr: "division by zero",
 				},
-				SimpleQuery{
+				TargetFlowStep{Doltgres: SimpleQuery{
 					Query:       "INSERT INTO mytable VALUES (1);",
 					ExpectedErr: "duplicate primary key",
-				},
+				}, Postgres: SimpleQuery{Query: "INSERT INTO mytable VALUES (1);", ExpectedErr: "duplicate key value violates unique constraint", ExpectedErrCode: "23505"}},
 				SimpleQuery{
 					Query:       "SELCT 1;",
 					ExpectedErr: "syntax error",
@@ -662,11 +665,15 @@ func TestImplicitTransactionsSimpleProtocol(t *testing.T) {
 					Expected:            []StatementResult{{Tag: "BEGIN"}},
 					ExpectedReadyStatus: 'T',
 				},
-				SimpleQuery{
+				TargetFlowStep{Doltgres: SimpleQuery{
 					Query:               "SELECT * FROM doesnotexist;",
 					ExpectedErr:         "table not found",
 					ExpectedReadyStatus: 'E',
-				},
+				}, Postgres: SimpleQuery{
+					Query:               "SELECT * FROM doesnotexist;",
+					ExpectedErr:         "does not exist",
+					ExpectedReadyStatus: 'E',
+				}},
 				SimpleQuery{
 					Query:               "SELECT 1;",
 					ExpectedErr:         "current transaction is aborted",

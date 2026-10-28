@@ -14,6 +14,9 @@ func TestPgAggregate(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_aggregate";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_aggregate WHERE aggfnoid='pg_catalog.count()'::regprocedure AND aggkind='n'", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_aggregate";`,
@@ -26,6 +29,9 @@ func TestPgAggregate(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT aggfnoid FROM PG_catalog.pg_AGGREGATE ORDER BY aggfnoid;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM PG_catalog.PG_AGGREGATE WHERE aggfnoid='pg_catalog.count()'::regprocedure AND aggkind='n'", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -48,6 +54,18 @@ func TestPgAm(t *testing.T) {
 						{4000, "spgist", "spghandler", "i"},
 						{3580, "brin", "brinhandler", "i"},
 					},
+
+					// Native statistics are live counters, not Doltgres placeholder rows.
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT amname, amtype::text, amhandler::text FROM pg_catalog.pg_am ORDER BY amname", Expected: []sql.Row{{"brin", "i", "brinhandler"}, {"btree", "i", "bthandler"}, {"dolt_prolly_index", "i", "dolt_prolly_index_handler"}, {"dolt_prolly_table", "t", "dolt_prolly_table_handler"}, {"gin", "i", "ginhandler"}, {"gist", "i", "gisthandler"}, {"hash", "i", "hashhandler"}, {"heap", "t", "heap_tableam_handler"}, {"spgist", "i", "spghandler"}}},
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{
+						{2, "heap", "heap_tableam_handler", "t"},
+						{403, "btree", "bthandler", "i"},
+						{405, "hash", "hashhandler", "i"},
+						{783, "gist", "gisthandler", "i"},
+						{2742, "gin", "ginhandler", "i"},
+						{4000, "spgist", "spghandler", "i"},
+						{3580, "brin", "brinhandler", "i"},
+					}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_am";`,
@@ -60,6 +78,10 @@ func TestPgAm(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT amname FROM PG_catalog.pg_AM ORDER BY amname;",
 					Expected: []sql.Row{{"brin"}, {"btree"}, {"gin"}, {"gist"}, {"hash"}, {"heap"}, {"spgist"}},
+
+					// Native statistics are live counters, not Doltgres placeholder rows.
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT amname FROM PG_catalog.pg_AM ORDER BY amname;", Expected: []sql.Row{{"brin"}, {"btree"}, {"dolt_prolly_index"}, {"dolt_prolly_table"}, {"gin"}, {"gist"}, {"hash"}, {"heap"}, {"spgist"}}},
+					Postgres:     &ScriptTestAssertion{Expected: []sql.Row{{"brin"}, {"btree"}, {"gin"}, {"gist"}, {"hash"}, {"heap"}, {"spgist"}}},
 				},
 			},
 		},
@@ -74,6 +96,9 @@ func TestPgAmop(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_amop";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_amop a JOIN pg_opfamily f ON f.oid=a.amopfamily JOIN pg_am m ON m.oid=f.opfmethod WHERE m.amname='btree' AND f.opfname='integer_ops' AND a.amopstrategy=3 AND a.amoplefttype='int4'::regtype AND a.amoprighttype='int4'::regtype AND a.amopopr='=(integer,integer)'::regoperator", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_amop";`,
@@ -86,6 +111,9 @@ func TestPgAmop(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT oid FROM PG_catalog.pg_AMOP ORDER BY oid;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM PG_catalog.PG_AMOP a JOIN pg_opfamily f ON f.oid=a.amopfamily JOIN pg_am m ON m.oid=f.opfmethod WHERE m.amname='btree' AND f.opfname='integer_ops' AND a.amopstrategy=3 AND a.amoplefttype='int4'::regtype AND a.amoprighttype='int4'::regtype AND a.amopopr='=(integer,integer)'::regoperator", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -100,6 +128,9 @@ func TestPgAmproc(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_amproc";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_amproc a JOIN pg_opfamily f ON f.oid=a.amprocfamily JOIN pg_am m ON m.oid=f.opfmethod WHERE m.amname='btree' AND f.opfname='integer_ops' AND a.amprocnum=1 AND a.amproclefttype='int4'::regtype AND a.amprocrighttype='int4'::regtype AND a.amproc='btint4cmp(integer,integer)'::regprocedure", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_amproc";`,
@@ -112,6 +143,9 @@ func TestPgAmproc(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT oid FROM PG_catalog.pg_AMPROC ORDER BY oid;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM PG_catalog.PG_AMPROC a JOIN pg_opfamily f ON f.oid=a.amprocfamily JOIN pg_am m ON m.oid=f.opfmethod WHERE m.amname='btree' AND f.opfname='integer_ops' AND a.amprocnum=1 AND a.amproclefttype='int4'::regtype AND a.amprocrighttype='int4'::regtype AND a.amproc='btint4cmp(integer,integer)'::regprocedure", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -136,10 +170,16 @@ func TestPgAttribute(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='pk' AND attrelid='testschema.test'::regclass;`,
 					Expected: []sql.Row{{2502341994, "pk", 23, 0, 1, -1, -1, 0, "f", "i", "p", "", "t", "f", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT attrelid='testschema.test'::regclass, attname, atttypid::regtype::text, attlen, attnum, attnotnull, atthasdef, attisdropped FROM \"pg_catalog\".\"pg_attribute\" WHERE attname='pk' AND attrelid='testschema.test'::regclass;", Expected: []sql.Row{{"t", "pk", "integer", 4, 1, "t", "f", "f"}}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_attribute" WHERE attname='v1' AND attrelid='testschema.test'::regclass;`,
 					Expected: []sql.Row{{2502341994, "v1", 25, 0, 2, -1, -1, 0, "f", "i", "p", "", "f", "t", "f", "", "", "f", "t", 0, -1, 0, nil, nil, nil, nil}},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT attrelid='testschema.test'::regclass, attname, atttypid::regtype::text, attlen, attnum, attnotnull, atthasdef, attisdropped FROM \"pg_catalog\".\"pg_attribute\" WHERE attname='v1' AND attrelid='testschema.test'::regclass;", Expected: []sql.Row{{"t", "v1", "text", -1, 2, "f", "t", "f"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attribute";`,
@@ -156,6 +196,9 @@ func TestPgAttribute(t *testing.T) {
 						{"ACTION_ORDER"},
 						{"ACTION_ORIENTATION"},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT attname FROM PG_catalog.pg_ATTRIBUTE WHERE attrelid='testschema.test'::regclass AND attnum>0 ORDER BY attname LIMIT 3", Expected: []sql.Row{{"pk"}, {"v1"}}},
 				},
 				{
 					Query: `SELECT attname FROM "pg_catalog"."pg_attribute" a
@@ -165,6 +208,9 @@ func TestPgAttribute(t *testing.T) {
 						{"pk"},
 						{"v1"},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT attname FROM \"pg_catalog\".\"pg_attribute\" a\n    JOIN \"pg_catalog\".\"pg_class\" c ON a.attrelid = c.oid\n               WHERE c.relname = 'test' AND a.attnum>0", Expected: []sql.Row{{"pk"}, {"v1"}}},
 				},
 				{
 					Query: `SELECT count(*) FROM pg_attribute as a1
@@ -172,6 +218,9 @@ func TestPgAttribute(t *testing.T) {
 				a1.attcacheoff != -1 OR a1.attinhcount < 0 OR
     		(a1.attinhcount = 0 AND NOT a1.attislocal);`,
 					Expected: []sql.Row{{0}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*) FROM pg_attribute as a1\n\t\t\t\tWHERE a1.attrelid = 0 OR (a1.atttypid = 0 AND NOT a1.attisdropped) OR a1.attnum = 0 OR\n\t\t\t\ta1.attinhcount < 0 OR\n    \t\t(a1.attinhcount = 0 AND NOT a1.attislocal);", Expected: []sql.Row{{0}}},
 				},
 				{
 					Query: `SELECT "con"."conname" AS "constraint_name", 
@@ -295,6 +344,9 @@ func TestPgAttributeViewColumns(t *testing.T) {
 						{"t", "k"},
 						{"v", "k"},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname, a.attname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid=c.oid WHERE c.relname IN ('t','v') ORDER BY c.relname, a.attnum;", Expected: []sql.Row{{"t", "tableoid"}, {"t", "cmax"}, {"t", "xmax"}, {"t", "cmin"}, {"t", "xmin"}, {"t", "ctid"}, {"t", "k"}, {"v", "k"}}},
 				},
 				{
 					// The view column's atttypid should match the underlying table column's type (int4 = 23).
@@ -346,6 +398,9 @@ func TestPgAttrdef(t *testing.T) {
 					Expected: []sql.Row{
 						{597021512, 2502341994, 2, nil},
 					},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres: &ScriptTestAssertion{Query: "SELECT adrelid='testschema.test'::regclass, adnum, pg_get_expr(adbin,adrelid) FROM pg_catalog.pg_attrdef WHERE adrelid='testschema.test'::regclass", Expected: []sql.Row{{"t", 2, "'hey'::text"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_attrdef";`,
@@ -360,6 +415,9 @@ func TestPgAttrdef(t *testing.T) {
 					Expected: []sql.Row{
 						{597021512},
 					},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres: &ScriptTestAssertion{Query: "SELECT adrelid='testschema.test'::regclass, adnum, pg_get_expr(adbin,adrelid) FROM pg_catalog.pg_attrdef WHERE adrelid='testschema.test'::regclass", Expected: []sql.Row{{"t", 2, "'hey'::text"}}},
 				},
 			},
 		},
@@ -388,10 +446,19 @@ func TestPgAuthMembers(t *testing.T) {
 						{"members_group", "members_admin", "t"},
 						{"members_group", "members_user", "f"},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT g.rolname AS group_name, m.rolname AS member_name, am.admin_option\n\t\t\t\t\t\t\tFROM pg_catalog.pg_auth_members am\n\t\t\t\t\t\t\tJOIN pg_catalog.pg_authid g ON am.roleid = g.oid\n\t\t\t\t\t\t\tJOIN pg_catalog.pg_authid m ON am.member = m.oid\n\t\t\t\t\t\t\tWHERE g.rolname='members_group' ORDER BY member_name;", Expected: []sql.Row{
+						{"members_group", "members_admin", "t"},
+						{"members_group", "members_user", "f"},
+					}},
 				},
 				{ // The grantor recorded for each membership refers to an existing role
 					Query:    `SELECT count(*) FROM pg_catalog.pg_auth_members am JOIN pg_catalog.pg_authid gr ON am.grantor = gr.oid;`,
 					Expected: []sql.Row{{2}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*) FROM pg_catalog.pg_auth_members am JOIN pg_catalog.pg_authid gr ON am.grantor = gr.oid WHERE am.roleid='members_group'::regrole;", Expected: []sql.Row{{2}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_auth_members";`,
@@ -404,6 +471,9 @@ func TestPgAuthMembers(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT admin_option FROM PG_catalog.pg_AUTH_MEMBERS ORDER BY admin_option;",
 					Expected: []sql.Row{{"f"}, {"t"}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT admin_option FROM PG_catalog.pg_AUTH_MEMBERS WHERE roleid='members_group'::regrole ORDER BY admin_option;", Expected: []sql.Row{{"f"}, {"t"}}},
 				},
 			},
 		},
@@ -427,14 +497,23 @@ func TestPgAuthid(t *testing.T) {
 						{"postgres", "t", "t", "t", "t", "t", "f", "f", -1, nil},
 						{"public", "f", "t", "f", "f", "f", "f", "f", -1, nil},
 					},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres: &ScriptTestAssertion{Query: "SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolconnlimit FROM pg_catalog.pg_roles WHERE rolname IN ('authid_role','authid_user') ORDER BY rolname", Expected: []sql.Row{{"authid_role", "f", "t", "t", "f", "f", 10}, {"authid_user", "f", "t", "f", "t", "t", -1}}},
 				},
 				{ // Roles with a password store the SCRAM-SHA-256 verifier string
 					Query:    `SELECT rolname FROM pg_catalog.pg_authid WHERE rolpassword LIKE 'SCRAM-SHA-256$4096:%' ORDER BY rolname;`,
 					Expected: []sql.Row{{"authid_user"}, {"postgres"}},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres: &ScriptTestAssertion{Query: "SELECT rolname FROM pg_catalog.pg_authid WHERE rolpassword LIKE 'SCRAM-SHA-256$4096:%' AND rolname IN ('authid_role','authid_user') ORDER BY rolname;", Expected: []sql.Row{{"authid_user"}}},
 				},
 				{ // Roles without a password store NULL
 					Query:    `SELECT rolname FROM pg_catalog.pg_authid WHERE rolpassword IS NULL ORDER BY rolname;`,
 					Expected: []sql.Row{{"authid_role"}, {"public"}},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres: &ScriptTestAssertion{Query: "SELECT rolname FROM pg_catalog.pg_authid WHERE rolpassword IS NULL AND rolname IN ('authid_role','authid_user') ORDER BY rolname;", Expected: []sql.Row{{"authid_role"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_authid";`,
@@ -447,6 +526,9 @@ func TestPgAuthid(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT rolname FROM PG_catalog.pg_AUTHID ORDER BY rolname;",
 					Expected: []sql.Row{{"authid_role"}, {"authid_user"}, {"postgres"}, {"public"}},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres: &ScriptTestAssertion{Query: "SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolconnlimit FROM pg_catalog.pg_roles WHERE rolname IN ('authid_role','authid_user') ORDER BY rolname", Expected: []sql.Row{{"authid_role", "f", "t", "t", "f", "f", 10}, {"authid_user", "f", "t", "f", "t", "t", -1}}},
 				},
 			},
 		},
@@ -471,10 +553,16 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 						{"uuid-ossp", "1.1", "f", "t", "t", "t", nil, nil, "generate universally unique identifiers (UUIDs)"},
 						{"vector", "0.8.6", "f", "t", "f", "t", nil, nil, "vector data type and ivfflat and hnsw access methods"},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT name, version, installed FROM pg_available_extension_versions WHERE name='plpgsql'", Expected: []sql.Row{{"plpgsql", "1.0", "t"}}},
 				},
 				{ // No extensions are installed by default
 					Query:    `SELECT name, version FROM "pg_catalog"."pg_available_extension_versions" WHERE installed = true;`,
 					Expected: []sql.Row{},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT name, version FROM \"pg_catalog\".\"pg_available_extension_versions\" WHERE installed = true AND name <> 'plpgsql';", Expected: []sql.Row{}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_available_extension_versions";`,
@@ -499,6 +587,9 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 				{
 					Query:    `SELECT name, version FROM "pg_catalog"."pg_available_extension_versions" WHERE installed = true;`,
 					Expected: []sql.Row{{"uuid-ossp", "1.1"}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT name, version FROM \"pg_catalog\".\"pg_available_extension_versions\" WHERE installed = true AND name <> 'plpgsql';", Expected: []sql.Row{{"uuid-ossp", "1.1"}}},
 				},
 			},
 		},
@@ -523,10 +614,16 @@ func TestPgAvailableExtensions(t *testing.T) {
 						{"uuid-ossp", "1.1", nil, "generate universally unique identifiers (UUIDs)"},
 						{"vector", "0.8.6", nil, "vector data type and ivfflat and hnsw access methods"},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT name, default_version, installed_version FROM pg_available_extensions WHERE name='plpgsql'", Expected: []sql.Row{{"plpgsql", "1.0", "1.0"}}},
 				},
 				{ // No extensions are installed by default
 					Query:    `SELECT name, installed_version FROM "pg_catalog"."pg_available_extensions" WHERE installed_version IS NOT NULL;`,
 					Expected: []sql.Row{},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT name, installed_version FROM \"pg_catalog\".\"pg_available_extensions\" WHERE installed_version IS NOT NULL AND name <> 'plpgsql';", Expected: []sql.Row{}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_available_extensions";`,
@@ -551,6 +648,9 @@ func TestPgAvailableExtensions(t *testing.T) {
 				{
 					Query:    `SELECT name, installed_version FROM "pg_catalog"."pg_available_extensions" WHERE installed_version IS NOT NULL;`,
 					Expected: []sql.Row{{"uuid-ossp", "1.1"}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT name, installed_version FROM \"pg_catalog\".\"pg_available_extensions\" WHERE installed_version IS NOT NULL AND name <> 'plpgsql';", Expected: []sql.Row{{"uuid-ossp", "1.1"}}},
 				},
 			},
 		},
@@ -565,6 +665,9 @@ func TestPgBackendMemoryContexts(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_backend_memory_contexts";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(total_bytes>=used_bytes AND used_bytes>=0) FROM pg_catalog.pg_backend_memory_contexts WHERE name='TopMemoryContext'", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_backend_memory_contexts";`,
@@ -577,6 +680,9 @@ func TestPgBackendMemoryContexts(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT name FROM PG_catalog.pg_BACKEND_MEMORY_CONTEXTS ORDER BY name;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(total_bytes>=used_bytes AND used_bytes>=0) FROM PG_catalog.PG_BACKEND_MEMORY_CONTEXTS WHERE name='TopMemoryContext'", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -637,6 +743,9 @@ func TestPgClass(t *testing.T) {
 					Expected: []sql.Row{
 						{3120782595, "testing", 2638679668, 1465967728, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid='testschema.testing'::regclass, relname, relnamespace='testschema'::regnamespace, relkind::text, relpersistence::text, relnatts FROM \"pg_catalog\".\"pg_class\" WHERE relname='testing' order by 1;", Expected: []sql.Row{{"t", "testing", "t", "r", "p", 2}}},
 				},
 				// Index
 				{
@@ -644,6 +753,9 @@ func TestPgClass(t *testing.T) {
 					Expected: []sql.Row{
 						{1067629180, "testing_pkey", 2638679668, 0, 0, 0, 403, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid='testschema.testing_pkey'::regclass, relname, relnamespace='testschema'::regnamespace, relkind::text, relpersistence::text, relnatts FROM \"pg_catalog\".\"pg_class\" WHERE relname='testing_pkey';", Expected: []sql.Row{{"t", "testing_pkey", "t", "i", "p", 1}}},
 				},
 				// View
 				{
@@ -651,6 +763,9 @@ func TestPgClass(t *testing.T) {
 					Expected: []sql.Row{
 						{887295443, "testview", 2638679668, 1465967728, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid='testschema.testview'::regclass, relname, relnamespace='testschema'::regnamespace, relkind::text, relpersistence::text, relnatts FROM \"pg_catalog\".\"pg_class\" WHERE relname='testview';", Expected: []sql.Row{{"t", "testview", "t", "v", "p", 2}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_class";`,
@@ -755,18 +870,27 @@ func TestPgClass(t *testing.T) {
 					Expected: []sql.Row{
 						{3120782595, "testing", 2638679668, 1465967728, 0, 0, 2, 0, 0, 0, float32(0), 0, 0, "t", "f", "p", "r", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid='testschema.testing'::regclass, relname, relnamespace='testschema'::regnamespace, relkind::text, relpersistence::text, relnatts FROM \"pg_catalog\".\"pg_class\" WHERE oid='testschema.testing'::regclass;", Expected: []sql.Row{{"t", "testing", "t", "r", "p", 2}}},
 				},
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testing_pkey'::regclass;`,
 					Expected: []sql.Row{
 						{1067629180, "testing_pkey", 2638679668, 0, 0, 0, 403, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "i", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid='testschema.testing_pkey'::regclass, relname, relnamespace='testschema'::regnamespace, relkind::text, relpersistence::text, relnatts FROM \"pg_catalog\".\"pg_class\" WHERE oid='testschema.testing_pkey'::regclass;", Expected: []sql.Row{{"t", "testing_pkey", "t", "i", "p", 1}}},
 				},
 				{
 					Query: `SELECT * FROM "pg_catalog"."pg_class" WHERE oid='testschema.testview'::regclass;`,
 					Expected: []sql.Row{
 						{887295443, "testview", 2638679668, 1465967728, 0, 0, 0, 0, 0, 0, float32(0), 0, 0, "f", "f", "p", "v", 0, 0, "f", "f", "f", "f", "f", "t", "d", "f", 0, 0, 0, nil, nil, nil},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid='testschema.testview'::regclass, relname, relnamespace='testschema'::regnamespace, relkind::text, relpersistence::text, relnatts FROM \"pg_catalog\".\"pg_class\" WHERE oid='testschema.testview'::regclass;", Expected: []sql.Row{{"t", "testview", "t", "v", "p", 2}}},
 				},
 			},
 		},
@@ -803,6 +927,13 @@ func TestPgCollation(t *testing.T) {
 						{950, "C", "c", "t", -1, "C", "C"},
 						{951, "POSIX", "c", "t", -1, "POSIX", "POSIX"},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid, collname, collprovider, collisdeterministic, collencoding, collcollate, collctype FROM \"pg_catalog\".\"pg_collation\" WHERE collname IN ('default', 'C', 'POSIX') ORDER BY oid;", Expected: []sql.Row{
+						{100, "default", "d", "t", -1, nil, nil},
+						{950, "C", "c", "t", -1, "C", "C"},
+						{951, "POSIX", "c", "t", -1, "POSIX", "POSIX"},
+					}},
 				},
 				{ // All built-in collations are present (libc defaults plus the ICU set)
 					Query:    `SELECT count(*) > 700 FROM "pg_catalog"."pg_collation";`,
@@ -837,10 +968,16 @@ func TestPgConfig(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_config" WHERE name='VERSION';`,
 					Expected: []sql.Row{{"VERSION", "PostgreSQL 15.17 (Homebrew)"}},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT name, setting LIKE 'PostgreSQL 18.%' FROM pg_catalog.pg_config WHERE name='VERSION'", Expected: []sql.Row{{"VERSION", "t"}}},
 				},
 				{
 					Query:    `SELECT count(*) FROM "pg_catalog"."pg_config";`,
 					Expected: []sql.Row{{23}},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=count(DISTINCT name) AND count(*)>=20 AND bool_and(setting IS NOT NULL) FROM pg_catalog.pg_config", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_config";`,
@@ -878,6 +1015,9 @@ func TestPgConstraint(t *testing.T) {
 						{3259318326, "v1_check", 2200, "c", "f", "f", "t", 2694106299, 0, 0, 0, 0, "", "", "", "t", 0, "t", nil, nil, nil, nil, nil, nil, nil, nil},
 						{3757635986, "testing_pkey", 2200, "p", "f", "f", "t", 2147906242, 0, 3757635986, 0, 0, "", "", "", "t", 0, "t", "{1}", nil, nil, nil, nil, nil, nil, nil},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname,contype::text,conrelid::regclass::text,conkey::text,condeferrable,condeferred,convalidated FROM pg_constraint WHERE conrelid IN ('testing'::regclass,'testing2'::regclass) AND contype<>'n' ORDER BY conname", Expected: []sql.Row{{"testing2_pkey", "p", "testing2", "{1}", "f", "f", "t"}, {"testing2_pktesting_fkey", "f", "testing2", "{2}", "f", "f", "t"}, {"testing_pkey", "p", "testing", "{1}", "f", "f", "t"}, {"testing_v1_key", "u", "testing", "{2}", "f", "f", "t"}, {"v1_check", "c", "testing2", "{3}", "f", "f", "t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_constraint";`,
@@ -896,6 +1036,15 @@ func TestPgConstraint(t *testing.T) {
 						{"testing_v1_key"},
 						{"v1_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM PG_catalog.pg_CONSTRAINT WHERE connamespace='public'::regnamespace AND contype<>'n' ORDER BY conname;", Expected: []sql.Row{
+						{"testing2_pkey"},
+						{"testing2_pktesting_fkey"},
+						{"testing_pkey"},
+						{"testing_v1_key"},
+						{"v1_check"},
+					}},
 				},
 				{
 					Query: "SELECT co.oid, co.conname, co.conrelid, cl.relname FROM pg_catalog.pg_constraint co JOIN pg_catalog.pg_class cl ON co.conrelid = cl.oid WHERE cl.relname = 'testing2';",
@@ -904,6 +1053,9 @@ func TestPgConstraint(t *testing.T) {
 						{1719906648, "testing2_pktesting_fkey", 2694106299, "testing2"},
 						{3259318326, "v1_check", 2694106299, "testing2"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT co.oid<>0, co.conname, co.conrelid='testing2'::regclass, cl.relname FROM pg_catalog.pg_constraint co JOIN pg_catalog.pg_class cl ON co.conrelid = cl.oid WHERE co.contype<>'n' AND cl.relname = 'testing2' ORDER BY co.conname", Expected: []sql.Row{{"t", "testing2_pkey", "t", "testing2"}, {"t", "testing2_pktesting_fkey", "t", "testing2"}, {"t", "v1_check", "t", "testing2"}}},
 				},
 			},
 		},
@@ -926,6 +1078,11 @@ func TestPgConstraintIndexes(t *testing.T) {
 					Expected: []sql.Row{
 						{2068729390, "testing2_pkey"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid<>0, conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND oid = (SELECT oid FROM pg_constraint WHERE conrelid='testing2'::regclass AND conname='testing2_pkey');", Expected: []sql.Row{
+						{"t", "testing2_pkey"},
+					}},
 				},
 				{
 					Query: "explain SELECT oid, conname FROM pg_catalog.pg_constraint WHERE oid = 2068729390 order by 1",
@@ -939,6 +1096,11 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"             ├─ index: [pg_constraint.oid]"},
 						{"             └─ filters: [{[{Index:[\"public\",\"testing2\",\"PRIMARY\"]}, {Index:[\"public\",\"testing2\",\"PRIMARY\"]}]}]"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT oid, conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND oid = (SELECT oid FROM pg_constraint WHERE conrelid='testing2'::regclass AND conname='testing2_pkey') order by 1", ExpectedPlanRelations: []string{"pg_constraint"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT oid, conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND oid = (SELECT oid FROM pg_constraint WHERE conrelid='testing2'::regclass AND conname='testing2_pkey') order by 1", ExpectedCatalogScanAliases: []string{"pg_constraint"}},
 				},
 				{
 					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE conrelid = 2694106299 ORDER BY conname;",
@@ -947,12 +1109,24 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{1719906648, "testing2_pktesting_fkey"},
 						{3259318326, "v1_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid<>0, conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = 'testing2'::regclass ORDER BY conname;", Expected: []sql.Row{
+						{"t", "testing2_pkey"},
+						{"t", "testing2_pktesting_fkey"},
+						{"t", "v1_check"},
+					}},
 				},
 				{
 					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE conname = 'testing_pkey' AND connamespace = 2200;",
 					Expected: []sql.Row{
 						{3757635986, "testing_pkey"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid<>0, conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname = 'testing_pkey' AND connamespace = 'public'::regnamespace;", Expected: []sql.Row{
+						{"t", "testing_pkey"},
+					}},
 				},
 				{
 					Query: "SELECT oid, conname FROM pg_catalog.pg_constraint WHERE conname >= 'testing' AND conname < 'testingz' ORDER BY conname;",
@@ -962,6 +1136,14 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{3757635986, "testing_pkey"},
 						{2652383090, "testing_v1_key"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid<>0, conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname >= 'testing' AND conname < 'testingz' ORDER BY conname;", Expected: []sql.Row{
+						{"t", "testing2_pkey"},
+						{"t", "testing2_pktesting_fkey"},
+						{"t", "testing_pkey"},
+						{"t", "testing_v1_key"},
+					}},
 				},
 			},
 		},
@@ -983,6 +1165,11 @@ func TestPgConstraintIndexes(t *testing.T) {
 					Expected: []sql.Row{
 						{"test_table1_pkey"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND oid = (SELECT oid FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname = 'test_table1_pkey' LIMIT 1);", Expected: []sql.Row{
+						{"test_table1_pkey"},
+					}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE oid IN (SELECT oid FROM pg_catalog.pg_constraint WHERE conname LIKE '%_pkey' ORDER BY conname LIMIT 3);",
@@ -991,6 +1178,13 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"test_table2_pkey"},
 						{"test_table3_pkey"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND oid IN (SELECT oid FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname LIKE '%_pkey' ORDER BY conname LIMIT 3);", Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"test_table2_pkey"},
+						{"test_table3_pkey"},
+					}},
 				},
 				// conname + connamespace index tests (pg_constraint_conname_nsp_index)
 				{
@@ -998,6 +1192,11 @@ func TestPgConstraintIndexes(t *testing.T) {
 					Expected: []sql.Row{
 						{"test_table1_pkey", uint32(2200)},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname, connamespace='public'::regnamespace FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname = 'test_table1_pkey' AND connamespace = 'public'::regnamespace;", Expected: []sql.Row{
+						{"test_table1_pkey", "t"},
+					}},
 				},
 				{
 					Query: "explain SELECT conname, connamespace FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' AND connamespace = 2200 order by 1",
@@ -1011,6 +1210,11 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"             ├─ index: [pg_constraint.conname,pg_constraint.connamespace]"},
 						{"             └─ filters: [{[test_table1_pkey, test_table1_pkey], [{Namespace:[\"public\"]}, {Namespace:[\"public\"]}]}]"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname, connamespace FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname = 'test_table1_pkey' AND connamespace = 'public'::regnamespace order by 1", ExpectedPlanRelations: []string{"pg_constraint"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname, connamespace FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname = 'test_table1_pkey' AND connamespace = 'public'::regnamespace order by 1", ExpectedCatalogScanAliases: []string{"pg_constraint"}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conname IN ('test_table1_pkey', 'test_table2_pkey', 'name_check') AND connamespace = 2200 ORDER BY conname;",
@@ -1019,12 +1223,24 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"test_table1_pkey"},
 						{"test_table2_pkey"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname IN ('test_table1_pkey', 'test_table2_pkey', 'name_check') AND connamespace = 'public'::regnamespace ORDER BY conname;", Expected: []sql.Row{
+						{"name_check"},
+						{"test_table1_pkey"},
+						{"test_table2_pkey"},
+					}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conname >= 'name_' AND conname < 'name_z' AND connamespace = 2200 ORDER BY conname;",
 					Expected: []sql.Row{
 						{"name_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname >= 'name_' AND conname < 'name_z' AND connamespace = 'public'::regnamespace ORDER BY conname;", Expected: []sql.Row{
+						{"name_check"},
+					}},
 				},
 				// conrelid + contypid + conname index tests (pg_constraint_conrelid_contypid_conname_index)
 				{
@@ -1034,6 +1250,13 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"test_table1_val1_key"},
 						{"val2_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = 'test_table1'::regclass AND contypid = 0 ORDER BY conname;", Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"test_table1_val1_key"},
+						{"val2_check"},
+					}},
 				},
 				{
 					Query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 AND contypid = 0 ORDER BY conname;",
@@ -1047,6 +1270,11 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"             ├─ index: [pg_constraint.conrelid,pg_constraint.contypid,pg_constraint.conname]"},
 						{"             └─ filters: [{[{Table:[\"public\",\"test_table1\"]}, {Table:[\"public\",\"test_table1\"]}], [{OID:[\"0\"]}, {OID:[\"0\"]}], [NULL, ∞)}]"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = 'test_table1'::regclass AND contypid = 0 ORDER BY conname;", ExpectedPlanRelations: []string{"pg_constraint"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = 'test_table1'::regclass AND contypid = 0 ORDER BY conname;", ExpectedCatalogScanAliases: []string{"pg_constraint"}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'test_table1') AND contypid = 0 ORDER BY conname;",
@@ -1055,6 +1283,13 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"test_table1_val1_key"},
 						{"val2_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'test_table1') AND contypid = 0 ORDER BY conname;", Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"test_table1_val1_key"},
+						{"val2_check"},
+					}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid IN (SELECT oid FROM pg_catalog.pg_class WHERE relname IN ('test_table1', 'test_table2')) AND contypid = 0 ORDER BY conname;",
@@ -1067,12 +1302,28 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"test_table2_pkey"},
 						{"val2_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid IN (SELECT oid FROM pg_catalog.pg_class WHERE relname IN ('test_table1', 'test_table2')) AND contypid = 0 ORDER BY conname;", Expected: []sql.Row{
+						{"name_check"},
+						{"test_table1_pkey"},
+						{"test_table1_val1_key"},
+						{"test_table2_fk_col_fkey"},
+						{"test_table2_name_key"},
+						{"test_table2_pkey"},
+						{"val2_check"},
+					}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'test_table2') AND contypid = 0 AND conname = 'name_check';",
 					Expected: []sql.Row{
 						{"name_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'test_table2') AND contypid = 0 AND conname = 'name_check';", Expected: []sql.Row{
+						{"name_check"},
+					}},
 				},
 
 				// contypid index tests (pg_constraint_contypid_index)
@@ -1081,12 +1332,22 @@ func TestPgConstraintIndexes(t *testing.T) {
 					Expected: []sql.Row{
 						{"test_domain_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND contypid = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'test_domain') ORDER BY conname;", Expected: []sql.Row{
+						{"test_domain_check"},
+					}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE contypid = 1309307140 ORDER BY conname;",
 					Expected: []sql.Row{
 						{"test_domain_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND contypid = 'test_domain'::regtype ORDER BY conname;", Expected: []sql.Row{
+						{"test_domain_check"},
+					}},
 				},
 				{
 					Query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE contypid = 1309307140 ORDER BY conname;",
@@ -1100,6 +1361,11 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"             ├─ index: [pg_constraint.contypid]"},
 						{"             └─ filters: [{[{Type:[\"public\",\"test_domain\"]}, {Type:[\"public\",\"test_domain\"]}]}]"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND contypid = 'test_domain'::regtype ORDER BY conname;", ExpectedPlanRelations: []string{"pg_constraint"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND contypid = 'test_domain'::regtype ORDER BY conname;", ExpectedCatalogScanAliases: []string{"pg_constraint"}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE contypid IN (SELECT oid FROM pg_catalog.pg_type WHERE typname LIKE 'test_domain%') ORDER BY conname;",
@@ -1107,6 +1373,12 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"test_domain2_check"},
 						{"test_domain_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND contypid IN (SELECT oid FROM pg_catalog.pg_type WHERE typname LIKE 'test_domain%') ORDER BY conname;", Expected: []sql.Row{
+						{"test_domain2_check"},
+						{"test_domain_check"},
+					}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE contypid > 0 ORDER BY conname;",
@@ -1114,6 +1386,12 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"test_domain2_check"},
 						{"test_domain_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND contypid > 0 ORDER BY conname;", Expected: []sql.Row{
+						{"test_domain2_check"},
+						{"test_domain_check"},
+					}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid >= (SELECT MIN(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND conrelid <= (SELECT MAX(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND contypid = 0 ORDER BY conname;",
@@ -1127,6 +1405,18 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"test_table3_pkey"},
 						{"val2_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid >= (SELECT MIN(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND conrelid <= (SELECT MAX(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND contypid = 0 ORDER BY conname;", Expected: []sql.Row{
+						{"name_check"},
+						{"test_table1_pkey"},
+						{"test_table1_val1_key"},
+						{"test_table2_fk_col_fkey"},
+						{"test_table2_name_key"},
+						{"test_table2_pkey"},
+						{"test_table3_pkey"},
+						{"val2_check"},
+					}},
 				},
 				{
 					Query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid >= (SELECT MIN(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND conrelid <= (SELECT MAX(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND contypid = 0 ORDER BY conname;",
@@ -1162,6 +1452,11 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"             ├─ index: [pg_constraint.contypid]"},
 						{"             └─ filters: [{[{OID:[\"0\"]}, {OID:[\"0\"]}]}]"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid >= (SELECT MIN(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND conrelid <= (SELECT MAX(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND contypid = 0 ORDER BY conname;", ExpectedPlanRelations: []string{"pg_constraint"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid >= (SELECT MIN(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND conrelid <= (SELECT MAX(oid) FROM pg_catalog.pg_class WHERE relname LIKE 'test_%') AND contypid = 0 ORDER BY conname;", ExpectedCatalogScanAliases: []string{"pg_constraint"}},
 				},
 				// Prefix match on 3-column index
 				{
@@ -1171,6 +1466,13 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"test_table1_val1_key"},
 						{"val2_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = (SELECT oid FROM pg_catalog.pg_class WHERE relname = 'test_table1') ORDER BY conname;", Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"test_table1_val1_key"},
+						{"val2_check"},
+					}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 ORDER BY conname;",
@@ -1179,6 +1481,13 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"test_table1_val1_key"},
 						{"val2_check"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = 'test_table1'::regclass ORDER BY conname;", Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"test_table1_val1_key"},
+						{"val2_check"},
+					}},
 				},
 				{
 					Query: "explain SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 ORDER BY conname;",
@@ -1192,6 +1501,11 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"             ├─ index: [pg_constraint.conrelid,pg_constraint.contypid,pg_constraint.conname]"},
 						{"             └─ filters: [{[{Table:[\"public\",\"test_table1\"]}, {Table:[\"public\",\"test_table1\"]}], [NULL, ∞), [NULL, ∞)}]"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = 'test_table1'::regclass ORDER BY conname;", ExpectedPlanRelations: []string{"pg_constraint"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = 'test_table1'::regclass ORDER BY conname;", ExpectedCatalogScanAliases: []string{"pg_constraint"}},
 				},
 				{
 					Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE (conname LIKE '%_pkey' OR conname LIKE '%_key') AND connamespace = 2200 ORDER BY conname;",
@@ -1203,6 +1517,16 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"test_table2_pkey"},
 						{"test_table3_pkey"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND (conname LIKE '%_pkey' OR conname LIKE '%_key') AND connamespace = 'public'::regnamespace ORDER BY conname;", Expected: []sql.Row{
+						{"test_table1_pkey"},
+						{"test_table1_val1_key"},
+						{"test_table2_fk_col_fkey"},
+						{"test_table2_name_key"},
+						{"test_table2_pkey"},
+						{"test_table3_pkey"},
+					}},
 				},
 				{
 					Query: "EXPLAIN SELECT conname FROM pg_catalog.pg_constraint WHERE conname = 'test_table1_pkey' AND connamespace = 2200;",
@@ -1215,6 +1539,11 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"         ├─ index: [pg_constraint.conname,pg_constraint.connamespace]"},
 						{"         └─ filters: [{[test_table1_pkey, test_table1_pkey], [{Namespace:[\"public\"]}, {Namespace:[\"public\"]}]}]"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname = 'test_table1_pkey' AND connamespace = 'public'::regnamespace;", ExpectedPlanRelations: []string{"pg_constraint"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname = 'test_table1_pkey' AND connamespace = 'public'::regnamespace;", ExpectedCatalogScanAliases: []string{"pg_constraint"}},
 				},
 				{
 					Query: "EXPLAIN SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 3645786842 AND contypid > 0 order by 1;",
@@ -1228,6 +1557,11 @@ func TestPgConstraintIndexes(t *testing.T) {
 						{"             ├─ index: [pg_constraint.conrelid,pg_constraint.contypid,pg_constraint.conname]"},
 						{"             └─ filters: [{[{Table:[\"public\",\"test_table1\"]}, {Table:[\"public\",\"test_table1\"]}], ({OID:[\"0\"]}, ∞), [NULL, ∞)}]"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = 'test_table1'::regclass AND contypid > 0 order by 1;", ExpectedPlanRelations: []string{"pg_constraint"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conrelid = 'test_table1'::regclass AND contypid > 0 order by 1;", ExpectedCatalogScanAliases: []string{"pg_constraint"}},
 				},
 			},
 		},
@@ -1263,6 +1597,9 @@ func TestPgConversion(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_conversion";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(condefault) FROM pg_catalog.pg_conversion WHERE conname='utf8_to_iso_8859_1' AND connamespace='pg_catalog'::regnamespace", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_conversion";`,
@@ -1275,6 +1612,9 @@ func TestPgConversion(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT conname FROM PG_catalog.pg_CONVERSION ORDER BY conname;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(condefault) FROM PG_catalog.PG_CONVERSION WHERE conname='utf8_to_iso_8859_1' AND connamespace='pg_catalog'::regnamespace", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -1289,6 +1629,9 @@ func TestPgCursors(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_cursors";`,
 					Expected: []sql.Row{},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT * FROM \"pg_catalog\".\"pg_cursors\" WHERE name<>''", Expected: []sql.Row{}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_cursors";`,
@@ -1301,6 +1644,9 @@ func TestPgCursors(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT name FROM PG_catalog.pg_CURSORS ORDER BY name;",
 					Expected: []sql.Row{},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT name FROM PG_catalog.pg_CURSORS WHERE name<>'' ORDER BY name", Expected: []sql.Row{}},
 				},
 			},
 		},
@@ -1322,6 +1668,9 @@ func TestPgDatabase(t *testing.T) {
 						{"postgres"},
 						{"test"},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT datname, datistemplate FROM pg_catalog.pg_database ORDER BY datname", Expected: []sql.Row{{"postgres", "f"}, {"template0", "t"}, {"template1", "t"}, {"test", "f"}}},
 				},
 				{
 					Query: `SELECT oid, datname FROM "pg_catalog"."pg_database" ORDER BY datname DESC;`,
@@ -1329,6 +1678,9 @@ func TestPgDatabase(t *testing.T) {
 						{258611842, "test"},
 						{5, "postgres"},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT datname, datistemplate FROM pg_catalog.pg_database ORDER BY datname", Expected: []sql.Row{{"postgres", "f"}, {"template0", "t"}, {"template1", "t"}, {"test", "f"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_database";`,
@@ -1344,12 +1696,18 @@ func TestPgDatabase(t *testing.T) {
 						{5, "postgres"},
 						{258611842, "test"},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT datname, datistemplate FROM pg_catalog.pg_database ORDER BY datname", Expected: []sql.Row{{"postgres", "f"}, {"template0", "t"}, {"template1", "t"}, {"test", "f"}}},
 				},
 				{
 					Query: "SELECT * FROM pg_catalog.pg_database WHERE datname='test';",
 					Expected: []sql.Row{
 						{258611842, "test", 0, 6, "i", "f", "t", -1, 0, 0, 0, "C", "C", nil, "", nil, nil},
 					},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT datname, datdba=(SELECT oid FROM pg_roles WHERE rolname=current_user), encoding=pg_char_to_encoding('UTF8'), datistemplate, datallowconn, datconnlimit FROM pg_catalog.pg_database WHERE datname='test'", Expected: []sql.Row{{"test", "t", "t", "f", "t", -1}}},
 				},
 			},
 		},
@@ -1425,6 +1783,11 @@ func TestPgDepend(t *testing.T) {
 					Expected: []sql.Row{
 						{"dep_test_id_seq", "dep_test", 1, "a"},
 					},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT s.relname AS seqname, c.relname AS tablename, d.refobjsubid, d.deptype\n\t\t\t\t\t\t\tFROM pg_catalog.pg_depend d\n\t\t\t\t\t\t\tJOIN pg_catalog.pg_class s ON d.objid = s.oid\n\t\t\t\t\t\t\tJOIN pg_catalog.pg_class c ON d.refobjid = c.oid\n\t\t\t\t\t\t\tWHERE d.classid = 1259 AND d.refclassid = 1259 AND s.oid='dep_test_id_seq'::regclass", Expected: []sql.Row{
+						{"dep_test_id_seq", "dep_test", 1, "a"},
+					}},
 				},
 				{ // Each column default (pg_attrdef entry) has an automatic dependency on its column
 					Query: `SELECT c.relname, d.objsubid, d.refobjsubid, d.deptype
@@ -1437,6 +1800,12 @@ func TestPgDepend(t *testing.T) {
 						{"dep_test", 0, 1, "a"},
 						{"dep_test", 0, 2, "a"},
 					},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname, d.objsubid, d.refobjsubid, d.deptype\n\t\t\t\t\t\t\tFROM pg_catalog.pg_depend d\n\t\t\t\t\t\t\tJOIN pg_catalog.pg_attrdef ad ON d.objid = ad.oid\n\t\t\t\t\t\t\tJOIN pg_catalog.pg_class c ON d.refobjid = c.oid\n\t\t\t\t\t\t\tWHERE d.classid = 2604\n\t\t\t\t\t\t\tAND c.oid='dep_test'::regclass AND d.refclassid='pg_class'::regclass AND d.deptype='a' ORDER BY d.refobjsubid;", Expected: []sql.Row{
+						{"dep_test", 0, 1, "a"},
+						{"dep_test", 0, 2, "a"},
+					}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_depend";`,
@@ -1453,6 +1822,13 @@ func TestPgDepend(t *testing.T) {
 						{2604},
 						{2604},
 					},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT classid FROM pg_depend WHERE refclassid='pg_class'::regclass AND refobjid='dep_test'::regclass AND deptype='a' AND classid IN ('pg_class'::regclass,'pg_attrdef'::regclass) ORDER BY classid", Expected: []sql.Row{
+						{1259},
+						{2604},
+						{2604},
+					}},
 				},
 			},
 		},
@@ -1467,6 +1843,9 @@ func TestPgDescription(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_description";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(length(description)>0) FROM pg_catalog.pg_description WHERE classoid='pg_proc'::regclass AND objoid='abs(integer)'::regprocedure AND objsubid=0", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_description";`,
@@ -1479,6 +1858,9 @@ func TestPgDescription(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT objoid FROM PG_catalog.pg_DESCRIPTION ORDER BY objoid;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(length(description)>0) FROM PG_catalog.PG_DESCRIPTION WHERE classoid='pg_proc'::regclass AND objoid='abs(integer)'::regprocedure AND objsubid=0", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -1571,6 +1953,9 @@ func TestPgExtension(t *testing.T) {
 					Query:            `SELECT * FROM "pg_catalog"."pg_extension";`,
 					Expected:         []sql.Row{},
 					ExpectedColNames: []string{"oid", "extname", "extowner", "extnamespace", "extrelocatable", "extversion", "extconfig", "extcondition"},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT extname, extnamespace='pg_catalog'::regnamespace, extversion, extrelocatable FROM pg_catalog.pg_extension ORDER BY extname", Expected: []sql.Row{{"plpgsql", "t", "1.0", "f"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_extension";`,
@@ -1583,6 +1968,9 @@ func TestPgExtension(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT extname FROM PG_catalog.pg_EXTENSION ORDER BY extname;",
 					Expected: []sql.Row{},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT extname FROM PG_catalog.pg_EXTENSION ORDER BY extname;", Expected: []sql.Row{{"plpgsql"}}},
 				},
 			},
 		},
@@ -1595,10 +1983,16 @@ func TestPgExtension(t *testing.T) {
 				{
 					Query:    `SELECT extname, extrelocatable, extversion, extconfig, extcondition FROM "pg_catalog"."pg_extension";`,
 					Expected: []sql.Row{{"uuid-ossp", "t", "1.1", nil, nil}},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT extname, extrelocatable, extversion, extconfig, extcondition FROM \"pg_catalog\".\"pg_extension\" WHERE extname='uuid-ossp'", Expected: []sql.Row{{"uuid-ossp", "t", "1.1", nil, nil}}},
 				},
 				{
 					Query:    `SELECT e.extname, n.nspname FROM "pg_catalog"."pg_extension" e, "pg_catalog"."pg_namespace" n WHERE n.oid = e.extnamespace;`,
 					Expected: []sql.Row{{"uuid-ossp", "public"}},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT e.extname, n.nspname FROM \"pg_catalog\".\"pg_extension\" e, \"pg_catalog\".\"pg_namespace\" n WHERE n.oid = e.extnamespace AND e.extname='uuid-ossp'", Expected: []sql.Row{{"uuid-ossp", "public"}}},
 				},
 			},
 		},
@@ -1613,6 +2007,9 @@ func TestPgFileSettings(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_file_settings";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0 AND bool_and(error IS NULL) FROM pg_catalog.pg_file_settings", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_file_settings";`,
@@ -1625,6 +2022,9 @@ func TestPgFileSettings(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT name FROM PG_catalog.pg_FILE_SETTINGS ORDER BY name;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0 AND bool_and(error IS NULL) FROM PG_catalog.PG_FILE_SETTINGS", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -1722,6 +2122,9 @@ func TestPgGroup(t *testing.T) {
 				{ // Roles that cannot log in are considered groups
 					Query:    `SELECT groname FROM "pg_catalog"."pg_group" ORDER BY groname;`,
 					Expected: []sql.Row{{"group_role"}, {"public"}},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT groname FROM \"pg_catalog\".\"pg_group\" WHERE groname='group_role' ORDER BY groname;", Expected: []sql.Row{{"group_role"}}},
 				},
 				{ // grolist contains the OIDs of the group's members
 					Query:    `SELECT usename FROM pg_catalog.pg_user u JOIN pg_catalog.pg_group g ON g.groname = 'group_role' AND u.usesysid = ANY(g.grolist);`,
@@ -1730,6 +2133,9 @@ func TestPgGroup(t *testing.T) {
 				{ // grosysid matches the role's oid in pg_authid
 					Query:    `SELECT a.rolname FROM pg_catalog.pg_group g JOIN pg_catalog.pg_authid a ON g.grosysid = a.oid ORDER BY a.rolname;`,
 					Expected: []sql.Row{{"group_role"}, {"public"}},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT a.rolname FROM pg_catalog.pg_group g JOIN pg_catalog.pg_authid a ON g.grosysid = a.oid WHERE a.rolname='group_role' ORDER BY a.rolname;", Expected: []sql.Row{{"group_role"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_group";`,
@@ -1742,6 +2148,9 @@ func TestPgGroup(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT groname FROM PG_catalog.pg_GROUP ORDER BY groname;",
 					Expected: []sql.Row{{"group_role"}, {"public"}},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT groname FROM PG_catalog.pg_GROUP WHERE groname='group_role' ORDER BY groname;", Expected: []sql.Row{{"group_role"}}},
 				},
 			},
 		},
@@ -1756,6 +2165,9 @@ func TestPgHbaFileRules(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_hba_file_rules";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0 AND bool_and(error IS NULL) FROM pg_catalog.pg_hba_file_rules", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_hba_file_rules";`,
@@ -1768,6 +2180,9 @@ func TestPgHbaFileRules(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT line_number FROM PG_catalog.pg_HBA_FILE_RULES ORDER BY line_number;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0 AND bool_and(error IS NULL) FROM PG_catalog.PG_HBA_FILE_RULES", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -1822,6 +2237,9 @@ func TestPgIndex(t *testing.T) {
 						{2070175302, 3120782595, 1, 1, "t", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "15009", "0", nil, nil},
 						{3185790121, 1784425749, 2, 2, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1 2", "0 0", "15009 15009", "0 0", nil, nil},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname,t.relname,i.indnatts,i.indnkeyatts,i.indisunique,i.indisprimary,i.indisvalid,i.indisready,i.indkey::text FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_class t ON t.oid=i.indrelid WHERE t.relnamespace='testschema'::regnamespace ORDER BY c.relname", Expected: []sql.Row{{"testing2_pkey", "testing2", 2, 2, "t", "t", "t", "t", "1 2"}, {"testing_pkey", "testing", 1, 1, "t", "t", "t", "t", "1"}, {"testing_v1_key", "testing", 1, 1, "t", "f", "t", "t", "2"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_index";`,
@@ -1838,6 +2256,9 @@ func TestPgIndex(t *testing.T) {
 						"WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' " +
 						"ORDER BY 1;",
 					Expected: []sql.Row{{1067629180}, {2070175302}, {3185790121}},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname from pg_class c JOIN PG_catalog.pg_INDEX i ON c.oid = i.indexrelid JOIN pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_' ORDER BY 1;", Expected: []sql.Row{{"testing2_pkey"}, {"testing_pkey"}, {"testing_v1_key"}}},
 				},
 				{
 					Query: "SELECT i.indexrelid, i.indrelid, c.relname, t.relname  FROM pg_catalog.pg_index i " +
@@ -1850,10 +2271,20 @@ func TestPgIndex(t *testing.T) {
 						{2070175302, 3120782595, "testing_v1_key", "testing"},
 						{3185790121, 1784425749, "testing2_pkey", "testing2"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT i.indexrelid=c.oid, i.indrelid=t.oid, c.relname, t.relname  FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid JOIN pg_catalog.pg_class t ON i.indrelid = t.oid JOIN pg_namespace n ON t.relnamespace = n.oid WHERE n.nspname = 'testschema' and left(c.relname, 5) <> 'dolt_'", Expected: []sql.Row{
+						{"t", "t", "testing_pkey", "testing"},
+						{"t", "t", "testing_v1_key", "testing"},
+						{"t", "t", "testing2_pkey", "testing2"},
+					}},
 				},
 				{
 					Query:    "SELECT unnest(indoption) FROM pg_index LIMIT 1;",
 					Expected: []sql.Row{{2}},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT unnest(indoption) FROM pg_index WHERE indexrelid='testschema.testing_pkey'::regclass", Expected: []sql.Row{{0}}},
 				},
 			},
 		},
@@ -1907,6 +2338,20 @@ func TestPgIndexes(t *testing.T) {
 						{"testschema", "testing2", "testing2_pkey", "", "CREATE UNIQUE INDEX testing2_pkey ON testschema.testing2 USING btree (pk, v1)"},
 						{"testschema", "testing2", "my_index", "", "CREATE INDEX my_index ON testschema.testing2 USING btree (v1)"},
 					},
+
+					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
+					Postgres: &ScriptTestAssertion{Query: "SELECT * FROM \"pg_catalog\".\"pg_indexes\" where schemaname = 'testschema';", Expected: []sql.Row{
+						{"testschema", "testing", "testing_pkey", nil, "CREATE UNIQUE INDEX testing_pkey ON testschema.testing USING btree (pk)"},
+						{"testschema", "testing", "testing_v1_key", nil, "CREATE UNIQUE INDEX testing_v1_key ON testschema.testing USING btree (v1)"},
+						{"testschema", "testing2", "testing2_pkey", nil, "CREATE UNIQUE INDEX testing2_pkey ON testschema.testing2 USING btree (pk, v1)"},
+						{"testschema", "testing2", "my_index", nil, "CREATE INDEX my_index ON testschema.testing2 USING btree (v1)"},
+					}},
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT * FROM \"pg_catalog\".\"pg_indexes\" where schemaname = 'testschema';", Expected: []sql.Row{
+						{"testschema", "testing", "testing_pkey", nil, "CREATE UNIQUE INDEX testing_pkey ON testschema.testing USING dolt_prolly_index (pk)"},
+						{"testschema", "testing", "testing_v1_key", nil, "CREATE UNIQUE INDEX testing_v1_key ON testschema.testing USING dolt_prolly_index (v1)"},
+						{"testschema", "testing2", "testing2_pkey", nil, "CREATE UNIQUE INDEX testing2_pkey ON testschema.testing2 USING dolt_prolly_index (pk, v1)"},
+						{"testschema", "testing2", "my_index", nil, "CREATE INDEX my_index ON testschema.testing2 USING dolt_prolly_index (v1)"},
+					}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_indexes";`,
@@ -1959,6 +2404,9 @@ func TestPgInitPrivs(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_init_privs";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0 AND bool_and(privtype IN ('i','e')) FROM pg_catalog.pg_init_privs", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_init_privs";`,
@@ -1971,6 +2419,9 @@ func TestPgInitPrivs(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT objoid FROM PG_catalog.pg_INIT_PRIVS ORDER BY objoid;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0 AND bool_and(privtype IN ('i','e')) FROM PG_catalog.PG_INIT_PRIVS", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -1990,6 +2441,9 @@ func TestPgLanguage(t *testing.T) {
 						{14, "sql", 0, "f", "t", 0, 0, 0, nil},
 						{14024, "plpgsql", 0, "t", "t", 0, 0, 0, nil},
 					},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT lanname, lanispl, lanpltrusted FROM pg_catalog.pg_language ORDER BY lanname", Expected: []sql.Row{{"c", "f", "f"}, {"internal", "f", "f"}, {"plpgsql", "t", "t"}, {"sql", "f", "t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_language";`,
@@ -2002,6 +2456,9 @@ func TestPgLanguage(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT lanname FROM PG_catalog.pg_LANGUAGE ORDER BY lanname;",
 					Expected: []sql.Row{{"c"}, {"internal"}, {"plpgsql"}, {"sql"}},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT lanname, lanispl, lanpltrusted FROM pg_catalog.pg_language ORDER BY lanname", Expected: []sql.Row{{"c", "f", "f"}, {"internal", "f", "f"}, {"plpgsql", "t", "t"}, {"sql", "f", "t"}}},
 				},
 			},
 		},
@@ -2068,6 +2525,9 @@ func TestPgLocks(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_locks";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_locks WHERE pid=pg_backend_pid() AND locktype='relation' AND relation='pg_locks'::regclass AND mode='AccessShareLock' AND granted", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_locks";`,
@@ -2080,6 +2540,9 @@ func TestPgLocks(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT objid FROM PG_catalog.pg_LOCKS ORDER BY objid;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM PG_catalog.PG_LOCKS WHERE pid=pg_backend_pid() AND locktype='relation' AND relation='pg_locks'::regclass AND mode='AccessShareLock' AND granted", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -2125,6 +2588,10 @@ func TestPgNamespace(t *testing.T) {
 						{11, "pg_catalog", 0, nil},
 						{2200, "public", 0, nil},
 					},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres:     &ScriptTestAssertion{Query: "SELECT nspname, oid=nspname::regnamespace, nspowner<>0 FROM pg_catalog.pg_namespace ORDER BY nspname", Expected: []sql.Row{{"information_schema", "t", "t"}, {"pg_catalog", "t", "t"}, {"pg_toast", "t", "t"}, {"public", "t", "t"}}},
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT nspname, oid=nspname::regnamespace, nspowner<>0 FROM pg_catalog.pg_namespace ORDER BY nspname", Expected: []sql.Row{{"dolt", "t", "t"}, {"information_schema", "t", "t"}, {"pg_catalog", "t", "t"}, {"pg_toast", "t", "t"}, {"public", "t", "t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_namespace";`,
@@ -2142,6 +2609,10 @@ func TestPgNamespace(t *testing.T) {
 						{"pg_catalog"},
 						{"public"},
 					},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres:     &ScriptTestAssertion{Query: "SELECT nspname, oid=nspname::regnamespace, nspowner<>0 FROM pg_catalog.pg_namespace ORDER BY nspname", Expected: []sql.Row{{"information_schema", "t", "t"}, {"pg_catalog", "t", "t"}, {"pg_toast", "t", "t"}, {"public", "t", "t"}}},
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT nspname, oid=nspname::regnamespace, nspowner<>0 FROM pg_catalog.pg_namespace ORDER BY nspname", Expected: []sql.Row{{"dolt", "t", "t"}, {"information_schema", "t", "t"}, {"pg_catalog", "t", "t"}, {"pg_toast", "t", "t"}, {"public", "t", "t"}}},
 				},
 				{
 					Query:    "CREATE SCHEMA testschema;",
@@ -2156,6 +2627,10 @@ func TestPgNamespace(t *testing.T) {
 						{2200, "public", 0, nil},
 						{2638679668, "testschema", 0, nil},
 					},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres:     &ScriptTestAssertion{Query: "SELECT nspname, oid=nspname::regnamespace, nspowner<>0 FROM pg_catalog.pg_namespace ORDER BY nspname", Expected: []sql.Row{{"information_schema", "t", "t"}, {"pg_catalog", "t", "t"}, {"pg_toast", "t", "t"}, {"public", "t", "t"}, {"testschema", "t", "t"}}},
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT nspname, oid=nspname::regnamespace, nspowner<>0 FROM pg_catalog.pg_namespace ORDER BY nspname", Expected: []sql.Row{{"dolt", "t", "t"}, {"information_schema", "t", "t"}, {"pg_catalog", "t", "t"}, {"pg_toast", "t", "t"}, {"public", "t", "t"}, {"testschema", "t", "t"}}},
 				},
 				// Test index lookups - first let's see what the actual OID values are
 				{
@@ -2167,6 +2642,10 @@ func TestPgNamespace(t *testing.T) {
 						{2200, "public"},
 						{2638679668, "testschema"},
 					},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres:     &ScriptTestAssertion{Query: "SELECT nspname, oid=nspname::regnamespace, nspowner<>0 FROM pg_catalog.pg_namespace ORDER BY nspname", Expected: []sql.Row{{"information_schema", "t", "t"}, {"pg_catalog", "t", "t"}, {"pg_toast", "t", "t"}, {"public", "t", "t"}, {"testschema", "t", "t"}}},
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT nspname, oid=nspname::regnamespace, nspowner<>0 FROM pg_catalog.pg_namespace ORDER BY nspname", Expected: []sql.Row{{"dolt", "t", "t"}, {"information_schema", "t", "t"}, {"pg_catalog", "t", "t"}, {"pg_toast", "t", "t"}, {"public", "t", "t"}, {"testschema", "t", "t"}}},
 				},
 				// Test simple index lookups
 				{
@@ -2667,6 +3146,9 @@ func TestPgOperator(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_operator";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_operator WHERE oid='+(integer,integer)'::regoperator AND oprleft='int4'::regtype AND oprright='int4'::regtype AND oprresult='int4'::regtype", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_operator";`,
@@ -2679,6 +3161,9 @@ func TestPgOperator(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT oprname FROM PG_catalog.pg_OPERATOR ORDER BY oprname;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM PG_catalog.PG_OPERATOR WHERE oid='+(integer,integer)'::regoperator AND oprleft='int4'::regtype AND oprright='int4'::regtype AND oprresult='int4'::regtype", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -2709,6 +3194,13 @@ func TestPgOpfamily(t *testing.T) {
 						{1994, "text_ops"},
 						{1995, "text_ops"},
 					},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT oid, opfname FROM \"pg_catalog\".\"pg_opfamily\" WHERE opfname IN ('text_ops', 'datetime_ops') AND opfmethod IN (SELECT oid FROM pg_am WHERE amname IN ('btree','hash')) ORDER BY oid;", Expected: []sql.Row{
+						{434, "datetime_ops"},
+						{1994, "text_ops"},
+						{1995, "text_ops"},
+					}},
 				},
 				{
 					Query:    `SELECT count(*) > 30 FROM "pg_catalog"."pg_opfamily";`,
@@ -2725,6 +3217,9 @@ func TestPgOpfamily(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT opfname FROM PG_catalog.pg_OPFAMILY WHERE opfname = 'uuid_ops' ORDER BY opfname;",
 					Expected: []sql.Row{{"uuid_ops"}, {"uuid_ops"}},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT opfname FROM PG_catalog.pg_OPFAMILY WHERE opfname = 'uuid_ops' AND opfmethod IN (SELECT oid FROM pg_am WHERE amname IN ('btree','hash')) ORDER BY opfname;", Expected: []sql.Row{{"uuid_ops"}, {"uuid_ops"}}},
 				},
 			},
 		},
@@ -3047,6 +3542,9 @@ func TestPgRange(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_range";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_range WHERE rngtypid='int4range'::regtype AND rngsubtype='int4'::regtype AND rngmultitypid='int4multirange'::regtype", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_range";`,
@@ -3059,6 +3557,9 @@ func TestPgRange(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT rngtypid FROM PG_catalog.pg_RANGE ORDER BY rngtypid;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM PG_catalog.PG_RANGE WHERE rngtypid='int4range'::regtype AND rngsubtype='int4'::regtype AND rngmultitypid='int4multirange'::regtype", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -3157,12 +3658,22 @@ func TestPgRewrite(t *testing.T) {
 					Expected: []sql.Row{
 						{"_RETURN", "1", "O", "t"},
 					},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT rulename, ev_type, ev_enabled, is_instead FROM \"pg_catalog\".\"pg_rewrite\" WHERE ev_class='test_view'::regclass", Expected: []sql.Row{
+						{"_RETURN", "1", "O", "t"},
+					}},
 				},
 				{ // Every view has an implicit "_RETURN" rewrite rule
 					Query: `SELECT c.relname, r.rulename FROM pg_catalog.pg_rewrite r JOIN pg_catalog.pg_class c ON r.ev_class = c.oid;`,
 					Expected: []sql.Row{
 						{"test_view", "_RETURN"},
 					},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname, r.rulename FROM pg_catalog.pg_rewrite r JOIN pg_catalog.pg_class c ON r.ev_class = c.oid WHERE r.ev_class='test_view'::regclass", Expected: []sql.Row{
+						{"test_view", "_RETURN"},
+					}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_rewrite";`,
@@ -3177,6 +3688,11 @@ func TestPgRewrite(t *testing.T) {
 					Expected: []sql.Row{
 						{"_RETURN"},
 					},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT rulename FROM PG_catalog.pg_REWRITE WHERE ev_class='test_view'::regclass ORDER BY rulename;", Expected: []sql.Row{
+						{"_RETURN"},
+					}},
 				},
 			},
 		},
@@ -3200,6 +3716,9 @@ func TestPgRoles(t *testing.T) {
 						{"roles_role", "f", "t", "f", "f", "f", "f", -1, "********", nil, "f", nil},
 						{"roles_user", "f", "t", "f", "f", "t", "f", -1, "********", nil, "f", nil},
 					},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres: &ScriptTestAssertion{Query: "SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolconnlimit FROM pg_catalog.pg_roles WHERE rolname IN ('roles_role','roles_user') ORDER BY rolname", Expected: []sql.Row{{"roles_role", "f", "t", "f", "f", "f", -1}, {"roles_user", "f", "t", "f", "f", "t", -1}}},
 				},
 				{ // The oid in pg_roles matches the oid in pg_authid
 					Query:    `SELECT r.rolname FROM pg_catalog.pg_roles r JOIN pg_catalog.pg_authid a ON r.oid = a.oid WHERE a.rolname = 'roles_user';`,
@@ -3216,6 +3735,9 @@ func TestPgRoles(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT rolname FROM PG_catalog.pg_ROLES ORDER BY rolname;",
 					Expected: []sql.Row{{"postgres"}, {"public"}, {"roles_role"}, {"roles_user"}},
+
+					// Native catalogs include system objects; validate the fixture and its identity links explicitly.
+					Postgres: &ScriptTestAssertion{Query: "SELECT rolname, rolsuper, rolinherit, rolcreaterole, rolcreatedb, rolcanlogin, rolconnlimit FROM pg_catalog.pg_roles WHERE rolname IN ('roles_role','roles_user') ORDER BY rolname", Expected: []sql.Row{{"roles_role", "f", "t", "f", "f", "f", -1}, {"roles_user", "f", "t", "f", "f", "t", -1}}},
 				},
 			},
 		},
@@ -3234,6 +3756,9 @@ func TestPgRules(t *testing.T) {
 				{ // pg_rules excludes the implicit "_RETURN" view rules, and CREATE RULE is unsupported, so it is always empty
 					Query:    `SELECT * FROM "pg_catalog"."pg_rules";`,
 					Expected: []sql.Row{},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT * FROM \"pg_catalog\".\"pg_rules\" WHERE schemaname='public'", Expected: []sql.Row{}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_rules";`,
@@ -3246,6 +3771,9 @@ func TestPgRules(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT rulename FROM PG_catalog.pg_RULES ORDER BY rulename;",
 					Expected: []sql.Row{},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT rulename FROM PG_catalog.pg_RULES WHERE schemaname='public' ORDER BY rulename;", Expected: []sql.Row{}},
 				},
 			},
 		},
@@ -3339,6 +3867,11 @@ func TestPgSequences(t *testing.T) {
 					Expected: []sql.Row{
 						{"public", "test", nil, "bigint", int64(1), int64(1), int64(9223372036854775807), int64(1), "f", int64(1), nil},
 					},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT schemaname, sequencename, sequenceowner, data_type, start_value, min_value, \n\t\t\t\t\t\t\tmax_value, increment_by, cycle, cache_size, last_value FROM pg_sequences", Expected: []sql.Row{
+						{"public", "test", "postgres", "bigint", int64(1), int64(1), int64(9223372036854775807), int64(1), "f", int64(1), nil},
+					}},
 				},
 			},
 		},
@@ -3355,12 +3888,22 @@ func TestPgSequences(t *testing.T) {
 					Expected: []sql.Row{
 						{"public", "test", nil, "integer", int64(10), int64(5), int64(11), int64(2), "t", int64(1), nil},
 					},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT * FROM pg_sequences where sequencename = 'test'", Expected: []sql.Row{
+						{"public", "test", "postgres", "integer", int64(10), int64(5), int64(11), int64(2), "t", int64(1), nil},
+					}},
 				},
 				{
 					Query: "SELECT * FROM pg_sequences where sequencename = 'secondseq'",
 					Expected: []sql.Row{
 						{"test_schema", "secondseq", nil, "bigint", int64(1), int64(1), int64(9223372036854775807), int64(1), "f", int64(1), nil},
 					},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT * FROM pg_sequences where sequencename = 'secondseq'", Expected: []sql.Row{
+						{"test_schema", "secondseq", "postgres", "bigint", int64(1), int64(1), int64(9223372036854775807), int64(1), "f", int64(1), nil},
+					}},
 				},
 			},
 		},
@@ -3447,6 +3990,9 @@ func TestPgSettings(t *testing.T) {
 				{
 					Query:    `SELECT name, setting, vartype, context FROM "pg_catalog"."pg_settings" WHERE name='server_version_num';`,
 					Expected: []sql.Row{{"server_version_num", "150017", "integer", "internal"}},
+
+					// Scope the native catalog to the fixture rather than bootstrap or client-owned objects.
+					Postgres: &ScriptTestAssertion{Query: "SELECT name, setting::int BETWEEN 180000 AND 189999,vartype,context FROM pg_settings WHERE name='server_version_num'", Expected: []sql.Row{{"server_version_num", "t", "integer", "internal"}}},
 				},
 				{
 					Query:    `SELECT name, setting, vartype, context, boot_val FROM "pg_catalog"."pg_settings" WHERE name='autovacuum';`,
@@ -3494,14 +4040,27 @@ func TestPgShadow(t *testing.T) {
 						{"shadow_nopass", "f", "f", "f", "f", nil, nil},
 						{"shadow_user", "f", "f", "f", "f", nil, nil},
 					},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT usename, usecreatedb, usesuper, userepl, usebypassrls, valuntil, useconfig FROM \"pg_catalog\".\"pg_shadow\" ORDER BY usename;", Expected: []sql.Row{
+						{"postgres", "t", "t", "t", "t", nil, nil},
+						{"shadow_nopass", "f", "f", "f", "f", nil, nil},
+						{"shadow_user", "f", "f", "f", "f", nil, nil},
+					}},
 				},
 				{ // Unlike pg_user, pg_shadow exposes the SCRAM-SHA-256 verifier string
 					Query:    `SELECT usename FROM pg_catalog.pg_shadow WHERE passwd LIKE 'SCRAM-SHA-256$4096:%' ORDER BY usename;`,
 					Expected: []sql.Row{{"postgres"}, {"shadow_user"}},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT usename FROM pg_catalog.pg_shadow WHERE passwd LIKE 'SCRAM-SHA-256$4096:%' ORDER BY usename;", Expected: []sql.Row{{"shadow_user"}}},
 				},
 				{ // Roles without a password store NULL
 					Query:    `SELECT usename FROM pg_catalog.pg_shadow WHERE passwd IS NULL;`,
 					Expected: []sql.Row{{"shadow_nopass"}},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT usename FROM pg_catalog.pg_shadow WHERE passwd IS NULL;", Expected: []sql.Row{{"postgres"}, {"shadow_nopass"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_shadow";`,
@@ -3554,6 +4113,9 @@ func TestPgShdescription(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_shdescription";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(length(description)>0) FROM pg_catalog.pg_shdescription d JOIN pg_database b ON b.oid=d.objoid WHERE d.classoid='pg_database'::regclass AND b.datname='template1'", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_shdescription";`,
@@ -3566,6 +4128,9 @@ func TestPgShdescription(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT objoid FROM PG_catalog.pg_SHDESCRIPTION ORDER BY objoid;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(length(description)>0) FROM PG_catalog.PG_SHDESCRIPTION d JOIN pg_database b ON b.oid=d.objoid WHERE d.classoid='pg_database'::regclass AND b.datname='template1'", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -3580,6 +4145,9 @@ func TestPgShmemAllocations(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_shmem_allocations";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(size>0 AND allocated_size>=size) FROM pg_catalog.pg_shmem_allocations WHERE name='Buffer Blocks'", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_shmem_allocations";`,
@@ -3592,6 +4160,9 @@ func TestPgShmemAllocations(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT name FROM PG_catalog.pg_SHMEM_ALLOCATIONS ORDER BY name;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(size>0 AND allocated_size>=size) FROM PG_catalog.PG_SHMEM_ALLOCATIONS WHERE name='Buffer Blocks'", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -3746,6 +4317,9 @@ func TestPgStatArchiver(t *testing.T) {
 					Expected: []sql.Row{
 						{0, nil, nil, 0, nil, nil, nil},
 					},
+
+					// Native statistics are live counters, not Doltgres placeholder rows.
+					Postgres: &ScriptTestAssertion{Query: "SELECT archived_count>=0 AND failed_count>=0 AND stats_reset IS NOT NULL FROM pg_catalog.pg_stat_archiver", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_archiver";`,
@@ -3780,6 +4354,9 @@ func TestPgStatBgwriter(t *testing.T) {
 					Expected: []sql.Row{
 						{0, 0, 0.0, 0.0, 0, 0, 0, 0, 0, 0, nil},
 					},
+
+					// Native statistics are live counters, not Doltgres placeholder rows.
+					Postgres: &ScriptTestAssertion{Query: "SELECT buffers_clean>=0 AND maxwritten_clean>=0 AND buffers_alloc>=0 AND stats_reset IS NOT NULL FROM pg_catalog.pg_stat_bgwriter", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_bgwriter";`,
@@ -3798,6 +4375,9 @@ func TestPgStatBgwriter(t *testing.T) {
 					Expected: []sql.Row{
 						{0},
 					},
+
+					// Native statistics are live counters, not Doltgres placeholder rows.
+					Postgres: &ScriptTestAssertion{Query: "SELECT buffers_clean>=0 AND maxwritten_clean>=0 AND buffers_alloc>=0 AND stats_reset IS NOT NULL FROM pg_catalog.pg_stat_bgwriter", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -3812,18 +4392,27 @@ func TestPgStatDatabase(t *testing.T) {
 				{ // One row per database, plus one row for shared objects
 					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_database";`,
 					Expected: []sql.Row{{2}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=(SELECT count(*)+1 FROM pg_database) FROM pg_stat_database", Expected: []sql.Row{{"t"}}},
 				},
 				{ // The current database appears with zero counters and NULL stats_reset
 					Query: `SELECT datname, numbackends, xact_commit, xact_rollback, blks_read, deadlocks, stats_reset FROM "pg_catalog"."pg_stat_database" WHERE datname = current_database();`,
 					Expected: []sql.Row{
 						{"postgres", 0, 0, 0, 0, 0, nil},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT datname=current_database(),numbackends>=1,xact_commit>=0,xact_rollback>=0,blks_read>=0,deadlocks=0 FROM pg_stat_database WHERE datname=current_database()", Expected: []sql.Row{{"t", "t", "t", "t", "t", "t"}}},
 				},
 				{ // The shared objects row has a zero OID and a NULL database name
 					Query: `SELECT datid, datname, xact_commit FROM "pg_catalog"."pg_stat_database" WHERE datname IS NULL;`,
 					Expected: []sql.Row{
 						{0, nil, 0},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT datid,datname,xact_commit>=0 FROM pg_stat_database WHERE datname IS NULL", Expected: []sql.Row{{0, nil, "t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_database";`,
@@ -3838,6 +4427,9 @@ func TestPgStatDatabase(t *testing.T) {
 					Expected: []sql.Row{
 						{"postgres"},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT datname FROM PG_catalog.pg_STAT_DATABASE WHERE datname IS NOT NULL ORDER BY datname;", Expected: []sql.Row{{"postgres"}, {"template0"}, {"template1"}}},
 				},
 			},
 		},
@@ -3854,6 +4446,11 @@ func TestPgStatDatabaseConflicts(t *testing.T) {
 					Expected: []sql.Row{
 						{"postgres", 0, 0, 0, 0, 0, 0},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT datname, confl_tablespace, confl_lock, confl_snapshot, confl_bufferpin, confl_deadlock, confl_active_logicalslot FROM \"pg_catalog\".\"pg_stat_database_conflicts\" WHERE datname=current_database();", Expected: []sql.Row{
+						{"postgres", 0, 0, 0, 0, 0, 0},
+					}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_database_conflicts";`,
@@ -3868,6 +4465,9 @@ func TestPgStatDatabaseConflicts(t *testing.T) {
 					Expected: []sql.Row{
 						{"postgres"},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT datname FROM PG_catalog.pg_STAT_DATABASE_CONFLICTS ORDER BY datname;", Expected: []sql.Row{{"postgres"}, {"template0"}, {"template1"}}},
 				},
 			},
 		},
@@ -3882,6 +4482,9 @@ func TestPgStatGssapi(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_stat_gssapi";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(NOT gss_authenticated AND NOT encrypted) FROM pg_catalog.pg_stat_gssapi WHERE pid=pg_backend_pid()", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_gssapi";`,
@@ -3894,6 +4497,9 @@ func TestPgStatGssapi(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT pid FROM PG_catalog.pg_STAT_GSSAPI ORDER BY pid;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(NOT gss_authenticated AND NOT encrypted) FROM PG_catalog.PG_STAT_GSSAPI WHERE pid=pg_backend_pid()", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -4066,6 +4672,9 @@ func TestPgStatRecoveryPrefetch(t *testing.T) {
 					Expected: []sql.Row{
 						{nil, 0, 0, 0, 0, 0, 0, nil, nil, nil},
 					},
+
+					// Native statistics are live counters, not Doltgres placeholder rows.
+					Postgres: &ScriptTestAssertion{Query: "SELECT prefetch>=0 AND hit>=0 AND skip_init>=0 AND skip_new>=0 AND skip_fpw>=0 AND skip_rep>=0 FROM pg_catalog.pg_stat_recovery_prefetch", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_recovery_prefetch";`,
@@ -4159,6 +4768,9 @@ func TestPgStatSlru(t *testing.T) {
 						{"Xact", 0, 0, 0, 0, 0, 0, 0, nil},
 						{"other", 0, 0, 0, 0, 0, 0, 0, nil},
 					},
+
+					// Native statistics are live counters, not Doltgres placeholder rows.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=8 AND bool_and(blks_zeroed>=0 AND blks_hit>=0 AND blks_read>=0 AND blks_written>=0 AND stats_reset IS NOT NULL) FROM pg_catalog.pg_stat_slru", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_slru";`,
@@ -4184,6 +4796,9 @@ func TestPgStatSlru(t *testing.T) {
 						{"Xact"},
 						{"other"},
 					},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT name FROM PG_catalog.pg_STAT_SLRU ORDER BY name;", Expected: []sql.Row{{"commit_timestamp"}, {"multixact_member"}, {"multixact_offset"}, {"notify"}, {"other"}, {"serializable"}, {"subtransaction"}, {"transaction"}}},
 				},
 			},
 		},
@@ -4198,6 +4813,9 @@ func TestPgStatSsl(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_stat_ssl";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(NOT ssl) FROM pg_catalog.pg_stat_ssl WHERE pid=pg_backend_pid()", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_ssl";`,
@@ -4210,6 +4828,9 @@ func TestPgStatSsl(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT pid FROM PG_catalog.pg_STAT_SSL ORDER BY pid;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 AND bool_and(NOT ssl) FROM PG_catalog.PG_STAT_SSL WHERE pid=pg_backend_pid()", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -4284,6 +4905,9 @@ func TestPgStatSysIndexes(t *testing.T) {
 				{ // Only system schemas appear
 					Query:    `SELECT DISTINCT schemaname FROM "pg_catalog"."pg_stat_sys_indexes" WHERE schemaname NOT IN ('pg_catalog', 'information_schema');`,
 					Expected: []sql.Row{},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT DISTINCT schemaname FROM \"pg_catalog\".\"pg_stat_sys_indexes\" WHERE schemaname NOT IN ('pg_catalog', 'information_schema','pg_toast');", Expected: []sql.Row{}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_sys_indexes";`,
@@ -4441,6 +5065,9 @@ func TestPgStatWal(t *testing.T) {
 					Expected: []sql.Row{
 						{0, 0, Numeric("0"), 0, 0, 0, 0.0, 0.0, nil},
 					},
+
+					// Native statistics are live counters, not Doltgres placeholder rows.
+					Postgres: &ScriptTestAssertion{Query: "SELECT wal_records>=0 AND wal_fpi>=0 AND wal_bytes>=0 AND stats_reset IS NOT NULL FROM pg_catalog.pg_stat_wal", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT count(*) FROM "pg_catalog"."pg_stat_wal";`,
@@ -4459,6 +5086,9 @@ func TestPgStatWal(t *testing.T) {
 					Expected: []sql.Row{
 						{0},
 					},
+
+					// Native statistics are live counters, not Doltgres placeholder rows.
+					Postgres: &ScriptTestAssertion{Query: "SELECT wal_records>=0 AND wal_fpi>=0 AND wal_bytes>=0 AND stats_reset IS NOT NULL FROM pg_catalog.pg_stat_wal", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -4510,6 +5140,9 @@ func TestPgStatXactAllTables(t *testing.T) {
 				{ // System tables appear as well
 					Query:    `SELECT schemaname, relname, n_tup_ins FROM "pg_catalog"."pg_stat_xact_all_tables" WHERE relname = 'pg_class';`,
 					Expected: []sql.Row{{"pg_catalog", "pg_class", int64(0)}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT schemaname, relname, n_tup_ins>=0 FROM \"pg_catalog\".\"pg_stat_xact_all_tables\" WHERE relname = 'pg_class';", Expected: []sql.Row{{"pg_catalog", "pg_class", "t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stat_xact_all_tables";`,
@@ -4539,6 +5172,9 @@ func TestPgStatXactSysTables(t *testing.T) {
 				{ // System tables appear with zero counters
 					Query:    `SELECT schemaname, relname, n_tup_ins FROM "pg_catalog"."pg_stat_xact_sys_tables" WHERE relname = 'pg_class';`,
 					Expected: []sql.Row{{"pg_catalog", "pg_class", int64(0)}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT schemaname, relname, n_tup_ins>=0 FROM \"pg_catalog\".\"pg_stat_xact_sys_tables\" WHERE relname = 'pg_class';", Expected: []sql.Row{{"pg_catalog", "pg_class", "t"}}},
 				},
 				{ // User tables do not appear
 					Query:    `SELECT relname FROM "pg_catalog"."pg_stat_xact_sys_tables" WHERE relname = 'stat_test';`,
@@ -4697,6 +5333,9 @@ func TestPgStatioAllTables(t *testing.T) {
 				{ // System tables appear as well
 					Query:    `SELECT schemaname, relname, heap_blks_read FROM "pg_catalog"."pg_statio_all_tables" WHERE relname = 'pg_class';`,
 					Expected: []sql.Row{{"pg_catalog", "pg_class", int64(0)}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT schemaname, relname, heap_blks_read>=0 FROM \"pg_catalog\".\"pg_statio_all_tables\" WHERE relname = 'pg_class';", Expected: []sql.Row{{"pg_catalog", "pg_class", "t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_statio_all_tables";`,
@@ -4731,6 +5370,9 @@ func TestPgStatioSysIndexes(t *testing.T) {
 				{ // Only system schemas appear
 					Query:    `SELECT DISTINCT schemaname FROM "pg_catalog"."pg_statio_sys_indexes" WHERE schemaname NOT IN ('pg_catalog', 'information_schema');`,
 					Expected: []sql.Row{},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT DISTINCT schemaname FROM \"pg_catalog\".\"pg_statio_sys_indexes\" WHERE schemaname NOT IN ('pg_catalog', 'information_schema','pg_toast');", Expected: []sql.Row{}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_statio_sys_indexes";`,
@@ -4789,6 +5431,9 @@ func TestPgStatioSysTables(t *testing.T) {
 				{ // System tables appear with zero counters
 					Query:    `SELECT schemaname, relname, heap_blks_read, heap_blks_hit FROM "pg_catalog"."pg_statio_sys_tables" WHERE relname = 'pg_class';`,
 					Expected: []sql.Row{{"pg_catalog", "pg_class", int64(0), int64(0)}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT schemaname, relname, heap_blks_read>=0, heap_blks_hit>=0 FROM \"pg_catalog\".\"pg_statio_sys_tables\" WHERE relname = 'pg_class';", Expected: []sql.Row{{"pg_catalog", "pg_class", "t", "t"}}},
 				},
 				{ // User tables do not appear
 					Query:    `SELECT * FROM "pg_catalog"."pg_statio_sys_tables" WHERE relname = 'statio_test';`,
@@ -4918,6 +5563,9 @@ func TestPgStatistic(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_statistic";`,
 					Expected: []sql.Row{},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0, bool_and(stanullfrac BETWEEN 0 AND 1 AND stawidth>=0) FROM pg_statistic s JOIN pg_class c ON c.oid=s.starelid WHERE c.relnamespace='pg_catalog'::regnamespace", Expected: []sql.Row{{"t", "t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_statistic";`,
@@ -4930,6 +5578,9 @@ func TestPgStatistic(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT starelid FROM PG_catalog.pg_STATISTIC ORDER BY starelid;",
 					Expected: []sql.Row{},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0, bool_and(stanullfrac BETWEEN 0 AND 1 AND stawidth>=0) FROM pg_statistic s JOIN pg_class c ON c.oid=s.starelid WHERE c.relnamespace='pg_catalog'::regnamespace", Expected: []sql.Row{{"t", "t"}}},
 				},
 			},
 		},
@@ -4996,6 +5647,9 @@ func TestPgStats(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_stats";`,
 					Expected: []sql.Row{},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0, bool_and(null_frac BETWEEN 0 AND 1 AND avg_width>=0) FROM pg_stats WHERE schemaname='pg_catalog'", Expected: []sql.Row{{"t", "t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_stats";`,
@@ -5008,6 +5662,9 @@ func TestPgStats(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT attname FROM PG_catalog.pg_STATS ORDER BY attname;",
 					Expected: []sql.Row{},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0, bool_and(null_frac BETWEEN 0 AND 1 AND avg_width>=0) FROM pg_stats WHERE schemaname='pg_catalog'", Expected: []sql.Row{{"t", "t"}}},
 				},
 			},
 		},
@@ -5141,6 +5798,9 @@ func TestPgTables(t *testing.T) {
 				{
 					Query:    `SELECT count(*) FROM "pg_catalog"."pg_tables" WHERE schemaname='pg_catalog';`,
 					Expected: []sql.Row{{139}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*) FROM pg_tables WHERE schemaname='pg_catalog' AND tablename IN ('pg_class','pg_attribute','pg_type')", Expected: []sql.Row{{3}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_tables";`,
@@ -5157,6 +5817,9 @@ func TestPgTables(t *testing.T) {
 						{"pg_catalog", "pg_views"},
 						{"pg_catalog", "pg_user_mappings"},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT schemaname,tablename FROM pg_tables WHERE schemaname='testschema' ORDER BY tablename", Expected: []sql.Row{{"testschema", "testing"}}},
 				},
 				{
 					Query: "SELECT schemaname, tablename FROM PG_catalog.pg_TABLES WHERE schemaname  ='public' ORDER BY tablename;",
@@ -5181,6 +5844,9 @@ func TestPgTablespace(t *testing.T) {
 						{1663, "pg_default", 0, nil, nil},
 						{1664, "pg_global", 0, nil, nil},
 					},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT spcname, spcowner=(SELECT oid FROM pg_roles WHERE rolname=current_user), spcacl, spcoptions FROM pg_catalog.pg_tablespace ORDER BY spcname", Expected: []sql.Row{{"pg_default", "t", nil, nil}, {"pg_global", "t", nil, nil}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_tablespace";`,
@@ -5356,6 +6022,9 @@ func TestPgTsConfig(t *testing.T) {
 					Expected: []sql.Row{
 						{3748, "simple", 11, 0, 3722},
 					},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_ts_config WHERE cfgname='simple' AND cfgnamespace='pg_catalog'::regnamespace AND cfgparser=(SELECT oid FROM pg_ts_parser WHERE prsname='default')", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_config";`,
@@ -5368,6 +6037,9 @@ func TestPgTsConfig(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT cfgname FROM PG_catalog.pg_TS_CONFIG ORDER BY cfgname;",
 					Expected: []sql.Row{{"simple"}},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_ts_config WHERE cfgname='simple' AND cfgnamespace='pg_catalog'::regnamespace AND cfgparser=(SELECT oid FROM pg_ts_parser WHERE prsname='default')", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -5382,6 +6054,9 @@ func TestPgTsConfigMap(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_ts_config_map";`,
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0 AND bool_and(mapseqno>0) FROM pg_catalog.pg_ts_config_map WHERE mapcfg='simple'::regconfig AND mapdict='simple'::regdictionary", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_config_map";`,
@@ -5394,6 +6069,9 @@ func TestPgTsConfigMap(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT mapcfg FROM PG_catalog.pg_TS_CONFIG_MAP ORDER BY mapcfg;",
 					Expected: []sql.Row{},
+
+					// Native PostgreSQL exposes populated catalogs; verify a stable semantic contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)>0 AND bool_and(mapseqno>0) FROM PG_catalog.PG_TS_CONFIG_MAP WHERE mapcfg='simple'::regconfig AND mapdict='simple'::regdictionary", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -5410,6 +6088,9 @@ func TestPgTsDict(t *testing.T) {
 					Expected: []sql.Row{
 						{3765, "simple", 11, 0, 3727, nil},
 					},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_ts_dict d JOIN pg_ts_template t ON t.oid=d.dicttemplate WHERE d.dictname='simple' AND t.tmplname='simple'", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_dict";`,
@@ -5422,6 +6103,9 @@ func TestPgTsDict(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT dictname FROM PG_catalog.pg_TS_DICT ORDER BY dictname;",
 					Expected: []sql.Row{{"simple"}},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_ts_dict d JOIN pg_ts_template t ON t.oid=d.dicttemplate WHERE d.dictname='simple' AND t.tmplname='simple'", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -5466,6 +6150,9 @@ func TestPgTsTemplate(t *testing.T) {
 					Expected: []sql.Row{
 						{3727, "simple", 11, "dsimple_init", "dsimple_lexize"},
 					},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_ts_template WHERE tmplname='simple' AND tmpllexize='dsimple_lexize(internal,internal,internal,internal)'::regprocedure", Expected: []sql.Row{{"t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_ts_template";`,
@@ -5478,6 +6165,9 @@ func TestPgTsTemplate(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT tmplname FROM PG_catalog.pg_TS_TEMPLATE ORDER BY tmplname;",
 					Expected: []sql.Row{{"simple"}},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*)=1 FROM pg_catalog.pg_ts_template WHERE tmplname='simple' AND tmpllexize='dsimple_lexize(internal,internal,internal,internal)'::regprocedure", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -5492,6 +6182,9 @@ func TestPgType(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'float8' order by 1;`,
 					Expected: []sql.Row{{701, "float8", 11, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 1022, "float8in", "float8out", "float8recv", "float8send", "-", "-", "-", "d", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typlen, typbyval, typnamespace='pg_catalog'::regnamespace, typowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) FROM \"pg_catalog\".\"pg_type\" WHERE typname = 'float8' order by 1;", Expected: []sql.Row{{"float8", "b", "N", 8, "t", "t", "t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_type";`,
@@ -5533,6 +6226,9 @@ func TestPgType(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='float8'::regtype;`,
 					Expected: []sql.Row{{701, "float8", 11, 0, 8, "t", "b", "N", "t", "t", ",", 0, "-", 0, 1022, "float8in", "float8out", "float8recv", "float8send", "-", "-", "-", "d", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typlen, typbyval, typnamespace='pg_catalog'::regnamespace, typowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) FROM \"pg_catalog\".\"pg_type\" WHERE oid='float8'::regtype;", Expected: []sql.Row{{"float8", "b", "N", 8, "t", "t", "t"}}},
 				},
 				{
 					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid='double precision'::regtype;`,
@@ -5581,26 +6277,44 @@ func TestPgType(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='integer[]'::regtype;`,
 					Expected: []sql.Row{{1007, "_int4", 11, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 23, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typlen, typbyval, typnamespace='pg_catalog'::regnamespace, typowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) FROM \"pg_catalog\".\"pg_type\" WHERE oid='integer[]'::regtype;", Expected: []sql.Row{{"_int4", "b", "A", -1, "f", "t", "t"}}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='anyarray'::regtype;`,
 					Expected: []sql.Row{{2277, "anyarray", 11, 0, -1, "f", "p", "P", "f", "t", ",", 0, "-", 0, 0, "anyarray_in", "anyarray_out", "anyarray_recv", "anyarray_send", "-", "-", "-", "d", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typlen, typbyval, typnamespace='pg_catalog'::regnamespace, typowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) FROM \"pg_catalog\".\"pg_type\" WHERE oid='anyarray'::regtype;", Expected: []sql.Row{{"anyarray", "p", "P", -1, "f", "t", "t"}}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='anyelement'::regtype;`,
 					Expected: []sql.Row{{2283, "anyelement", 11, 0, 4, "t", "p", "P", "f", "t", ",", 0, "-", 0, 0, "anyelement_in", "anyelement_out", "-", "-", "-", "-", "-", "i", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typlen, typbyval, typnamespace='pg_catalog'::regnamespace, typowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) FROM \"pg_catalog\".\"pg_type\" WHERE oid='anyelement'::regtype;", Expected: []sql.Row{{"anyelement", "p", "P", 4, "t", "t", "t"}}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='json'::regtype;`,
 					Expected: []sql.Row{{114, "json", 11, 0, -1, "f", "b", "U", "f", "t", ",", 0, "-", 0, 199, "json_in", "json_out", "json_recv", "json_send", "-", "-", "-", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typlen, typbyval, typnamespace='pg_catalog'::regnamespace, typowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) FROM \"pg_catalog\".\"pg_type\" WHERE oid='json'::regtype;", Expected: []sql.Row{{"json", "b", "U", -1, "f", "t", "t"}}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='char'::regtype;`,
 					Expected: []sql.Row{{1042, "bpchar", 11, 0, -1, "f", "b", "S", "f", "t", ",", 0, "-", 0, 1014, "bpcharin", "bpcharout", "bpcharrecv", "bpcharsend", "bpchartypmodin", "bpchartypmodout", "-", "i", "x", "f", 0, -1, 0, 100, "", "", "{}"}},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typlen, typbyval, typnamespace='pg_catalog'::regnamespace, typowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) FROM \"pg_catalog\".\"pg_type\" WHERE oid='char'::regtype;", Expected: []sql.Row{{"bpchar", "b", "S", -1, "f", "t", "t"}}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE oid='"char"'::regtype;`,
 					Expected: []sql.Row{{18, "char", 11, 0, 1, "t", "b", "Z", "f", "t", ",", 0, "-", 0, 1002, "charin", "charout", "charrecv", "charsend", "-", "-", "-", "c", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
+
+					// Bind identities by name and test schema properties, not installation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typlen, typbyval, typnamespace='pg_catalog'::regnamespace, typowner=(SELECT oid FROM pg_roles WHERE rolname=current_user) FROM \"pg_catalog\".\"pg_type\" WHERE oid='\"char\"'::regtype;", Expected: []sql.Row{{"char", "b", "Z", 1, "t", "t", "t"}}},
 				},
 			},
 		},
@@ -5614,18 +6328,30 @@ func TestPgType(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'domain_type' order by 1;`,
 					Expected: []sql.Row{{2382076519, "domain_type", 2200, 0, 4, "t", "d", "N", "f", "t", ",", 0, "-", 0, 1297970968, "domain_in", "int4out", "domain_recv", "int4send", "-", "-", "-", "i", "p", "t", 23, -1, 0, 0, "", "", "{}"}},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typbasetype::regtype::text, typelem::regtype::text, typnotnull, typnamespace='public'::regnamespace FROM \"pg_catalog\".\"pg_type\" WHERE typname = 'domain_type' order by 1;", Expected: []sql.Row{{"domain_type", "d", "N", "integer", "-", "t", "t"}}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = '_domain_type' order by 1;`,
 					Expected: []sql.Row{{1297970968, "_domain_type", 2200, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 2382076519, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typbasetype::regtype::text, typelem::regtype::text, typnotnull, typnamespace='public'::regnamespace FROM \"pg_catalog\".\"pg_type\" WHERE typname = '_domain_type' order by 1;", Expected: []sql.Row{{"_domain_type", "b", "A", "-", "domain_type", "f", "t"}}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = 'enum_type' order by 1;`,
 					Expected: []sql.Row{{2310414518, "enum_type", 2200, 0, 4, "t", "e", "E", "f", "t", ",", 0, "-", 0, 4245115549, "enum_in", "enum_out", "enum_recv", "enum_send", "-", "-", "-", "i", "p", "f", 0, -1, 0, 0, "", "", "{}"}},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typbasetype::regtype::text, typelem::regtype::text, typnotnull, typnamespace='public'::regnamespace FROM \"pg_catalog\".\"pg_type\" WHERE typname = 'enum_type' order by 1;", Expected: []sql.Row{{"enum_type", "e", "E", "-", "-", "f", "t"}}},
 				},
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_type" WHERE typname = '_enum_type' order by 1;`,
 					Expected: []sql.Row{{4245115549, "_enum_type", 2200, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 2310414518, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"}},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typbasetype::regtype::text, typelem::regtype::text, typnotnull, typnamespace='public'::regnamespace FROM \"pg_catalog\".\"pg_type\" WHERE typname = '_enum_type' order by 1;", Expected: []sql.Row{{"_enum_type", "b", "A", "-", "enum_type", "f", "t"}}},
 				},
 			},
 		},
@@ -5638,6 +6364,9 @@ func TestPgType(t *testing.T) {
 						{142, "xml", 11, 0, -1, "f", "b", "U", "f", "t", ",", 0, "-", 0, 143, "xml_in", "xml_out", "xml_recv", "xml_send", "-", "-", "-", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"},
 						{143, "_xml", 11, 0, -1, "f", "b", "A", "f", "t", ",", 0, "array_subscript_handler", 142, 0, "array_in", "array_out", "array_recv", "array_send", "-", "-", "array_typanalyze", "i", "x", "f", 0, -1, 0, 0, "", "", "{}"},
 					},
+
+					// PostgreSQL has native catalog content and names; retain semantic checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT typname, typtype::text, typcategory::text, typlen, typbyval, typnamespace='pg_catalog'::regnamespace FROM \"pg_catalog\".\"pg_type\" WHERE typname IN ('xml', '_xml') ORDER BY oid;", Expected: []sql.Row{{"xml", "b", "U", -1, "f", "t"}, {"_xml", "b", "A", -1, "f", "t"}}},
 				},
 				{
 					Query:    `SELECT oid, typname FROM "pg_catalog"."pg_type" WHERE oid = 'pg_catalog.xml'::regtype;`,
@@ -5663,6 +6392,12 @@ func TestPgUser(t *testing.T) {
 						{"postgres", "t", "t", "f", "f", "********", nil, nil},
 						{"user_login", "t", "f", "f", "f", "********", nil, nil},
 					},
+
+					// Native installation content and bootstrap role properties differ.
+					Postgres: &ScriptTestAssertion{Query: "SELECT usename, usecreatedb, usesuper, userepl, usebypassrls, passwd, valuntil, useconfig FROM \"pg_catalog\".\"pg_user\" ORDER BY usename;", Expected: []sql.Row{
+						{"postgres", "t", "t", "t", "t", "********", nil, nil},
+						{"user_login", "t", "f", "f", "f", "********", nil, nil},
+					}},
 				},
 				{ // usesysid matches the role's oid in pg_authid
 					Query:    `SELECT a.rolname FROM pg_catalog.pg_user u JOIN pg_catalog.pg_authid a ON u.usesysid = a.oid WHERE u.usename = 'user_login';`,
@@ -5752,6 +6487,9 @@ func TestPgViews(t *testing.T) {
 				{
 					Query:    `SELECT * FROM "pg_catalog"."pg_views" WHERE viewname='testview';`,
 					Expected: []sql.Row{{"testschema", "testview", "", "SELECT * FROM testing LIMIT 1"}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT schemaname,viewname,viewowner,definition LIKE '%testing%' AND definition LIKE '%LIMIT 1%' FROM pg_views WHERE schemaname='testschema' AND viewname='testview'", Expected: []sql.Row{{"testschema", "testview", "postgres", "t"}}},
 				},
 				{ // Different cases and quoted, so it fails
 					Query:       `SELECT * FROM "PG_catalog"."pg_views";`,
@@ -5764,6 +6502,9 @@ func TestPgViews(t *testing.T) {
 				{ // Different cases but non-quoted, so it works
 					Query:    "SELECT viewname FROM PG_catalog.pg_VIEWS ORDER BY viewname;",
 					Expected: []sql.Row{{"testview"}, {"testview2"}},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT viewname FROM PG_catalog.pg_VIEWS WHERE schemaname='testschema' ORDER BY viewname;", Expected: []sql.Row{{"testview"}, {"testview2"}}},
 				},
 			},
 		},
@@ -6240,6 +6981,9 @@ WHERE i.indrelid = 1496157034 order by 1`,
 						{3992679530, 1496157034, 1, 1, "t", "f", "t", "f", "f", "f", "t", "f", "t", "t", "f", "1", "0", "15009", "0", nil, nil},
 						{4052612617, 1496157034, 1, 1, "f", "f", "f", "f", "f", "f", "t", "f", "t", "t", "f", "2", "0", "15009", "0", nil, nil},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT c.relname, i.indrelid='public.t2'::regclass, i.indnatts, i.indnkeyatts, i.indisunique, i.indisprimary, i.indisvalid, i.indisready, i.indkey::text, i.indexprs IS NULL, i.indpred IS NULL FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid WHERE i.indrelid='public.t2'::regclass ORDER BY c.relname", Expected: []sql.Row{{"t2_d_idx", "t", 1, 1, "f", "f", "t", "t", "2", "t", "t"}, {"t2_pkey", "t", 1, 1, "t", "t", "t", "t", "1", "t", "t"}}},
 				},
 				{
 					Query: `SELECT c.relname, c2.relname FROM pg_catalog.pg_index i
@@ -6258,6 +7002,9 @@ ORDER BY 1;`,
 					Expected: []sql.Row{
 						{1496157034},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT i.indrelid='public.t2'::regclass FROM pg_catalog.pg_index i \nWHERE i.indexrelid = (SELECT c.oid FROM pg_catalog.pg_class c WHERE c.relname = 't2_pkey')\nORDER BY 1;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT count(*) FROM pg_catalog.pg_index i 
@@ -6265,6 +7012,11 @@ WHERE i.indrelid = 1496157034`,
 					Expected: []sql.Row{
 						{2},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT count(*) FROM pg_catalog.pg_index i \nWHERE i.indrelid = 'public.t2'::regclass", Expected: []sql.Row{
+						{2},
+					}},
 				},
 				{
 					Query: `SELECT i.indisprimary FROM pg_catalog.pg_index i 
@@ -6273,6 +7025,11 @@ ORDER BY 1;`,
 					Expected: []sql.Row{
 						{"t"},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT i.indisprimary FROM pg_catalog.pg_index i \nWHERE i.indrelid = 'public.t2'::regclass AND i.indisprimary = true\nORDER BY 1;", Expected: []sql.Row{
+						{"t"},
+					}},
 				},
 				{
 					Query: `SELECT COUNT(*) FROM pg_catalog.pg_index i 
@@ -6280,6 +7037,11 @@ WHERE i.indrelid IN (1496157033, 1496157034)`,
 					Expected: []sql.Row{
 						{2},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "SELECT COUNT(*) FROM pg_catalog.pg_index i \nWHERE i.indrelid IN (0, 'public.t2'::regclass)", Expected: []sql.Row{
+						{2},
+					}},
 				},
 				{
 					Query: `EXPLAIN SELECT i.indrelid FROM pg_catalog.pg_index i 
@@ -6304,6 +7066,11 @@ ORDER BY 1;`,
 						{"             └─ Table"},
 						{"                 └─ name: pg_index"},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT i.indrelid FROM pg_catalog.pg_index i \nWHERE i.indexrelid = (SELECT c.oid FROM pg_catalog.pg_class c WHERE c.relname = 't1_pkey')\nORDER BY 1;", ExpectedPlanRelations: []string{"pg_index"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT i.indrelid FROM pg_catalog.pg_index i \nWHERE i.indexrelid = (SELECT c.oid FROM pg_catalog.pg_class c WHERE c.relname = 't1_pkey')\nORDER BY 1;", ExpectedCatalogScanAliases: []string{"i"}},
 				},
 				{
 					Query: `EXPLAIN SELECT COUNT(*) FROM pg_catalog.pg_index i 
@@ -6322,6 +7089,11 @@ WHERE i.indrelid = 1496157034 ORDER BY 1`,
 						{"                     ├─ index: [pg_index.indrelid]"},
 						{"                     └─ filters: [{[{Table:[\"public\",\"t2\"]}, {Table:[\"public\",\"t2\"]}]}]"},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT COUNT(*) FROM pg_catalog.pg_index i \nWHERE i.indrelid = 'public.t2'::regclass ORDER BY 1", ExpectedPlanRelations: []string{"pg_index"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT COUNT(*) FROM pg_catalog.pg_index i \nWHERE i.indrelid = 'public.t2'::regclass ORDER BY 1", ExpectedCatalogScanAliases: []string{"i"}},
 				},
 				{
 					Query: `EXPLAIN SELECT COUNT(*) FROM pg_catalog.pg_index i 
@@ -6340,6 +7112,11 @@ WHERE i.indrelid IN (1496157033, 1496157034) ORDER BY 1`,
 						{"                     ├─ index: [pg_index.indrelid]"},
 						{"                     └─ filters: [{[{OID:[\"1496157033\"]}, {OID:[\"1496157033\"]}]}, {[{Table:[\"public\",\"t2\"]}, {Table:[\"public\",\"t2\"]}]}]"},
 					},
+
+					// Native catalogs contain built-ins, live statistics and allocation-specific identifiers.
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT COUNT(*) FROM pg_catalog.pg_index i \nWHERE i.indrelid IN (0, 'public.t2'::regclass) ORDER BY 1", ExpectedPlanRelations: []string{"pg_index"}},
+
+					PostgresFork: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT COUNT(*) FROM pg_catalog.pg_index i \nWHERE i.indrelid IN (0, 'public.t2'::regclass) ORDER BY 1", ExpectedCatalogScanAliases: []string{"i"}},
 				},
 			},
 		},

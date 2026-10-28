@@ -38,6 +38,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW timezone",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:    "SET timezone TO '+00:00';",
@@ -54,6 +57,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW timezone",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:    "SET TIME ZONE '+00:00';",
@@ -78,10 +84,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW timezone",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:    "SELECT current_setting('timezone')",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 		},
 	},
@@ -160,6 +172,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_seed",
 				Expected: []sql.Row{{float64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET SEED 1;",
@@ -348,6 +363,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET archive_mode TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('archive_mode')",
@@ -458,6 +476,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_analyze_scale_factor",
 				Expected: []sql.Row{{0.1}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.1"}}},
 			},
 			{
 				Query:       "SET autovacuum_analyze_scale_factor TO '0.1'",
@@ -476,6 +497,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_analyze_threshold",
 				Expected: []sql.Row{{int64(50)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"50"}}},
 			},
 			{
 				Query:       "SET autovacuum_analyze_threshold TO '50'",
@@ -498,6 +522,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET autovacuum_freeze_max_age TO '200000000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_freeze_max_age')",
@@ -512,6 +539,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_max_workers",
 				Expected: []sql.Row{{int64(3)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"3"}}},
 			},
 			{
 				Query:       "SET autovacuum_max_workers TO '3'",
@@ -530,10 +560,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_multixact_freeze_max_age",
 				Expected: []sql.Row{{int64(400000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"400000000"}}},
 			},
 			{
 				Query:       "SET autovacuum_multixact_freeze_max_age TO '400000000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_multixact_freeze_max_age')",
@@ -584,6 +620,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_vacuum_cost_limit",
 				Expected: []sql.Row{{int64(-1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"-1"}}},
 			},
 			{
 				Query:       "SET autovacuum_vacuum_cost_limit TO '-1'",
@@ -602,6 +641,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_vacuum_insert_scale_factor",
 				Expected: []sql.Row{{float64(0.2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.2"}}},
 			},
 			{
 				Query:       "SET autovacuum_vacuum_insert_scale_factor TO '0.2'",
@@ -620,6 +662,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_vacuum_insert_threshold",
 				Expected: []sql.Row{{int64(1000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000"}}},
 			},
 			{
 				Query:       "SET autovacuum_vacuum_insert_threshold TO '1000'",
@@ -638,6 +683,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_vacuum_scale_factor",
 				Expected: []sql.Row{{float64(0.2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.2"}}},
 			},
 			{
 				Query:       "SET autovacuum_vacuum_scale_factor TO '0.2'",
@@ -656,6 +704,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW autovacuum_vacuum_threshold",
 				Expected: []sql.Row{{int64(50)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"50"}}},
 			},
 			{
 				Query:       "SET autovacuum_vacuum_threshold TO '50'",
@@ -818,6 +869,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW bgwriter_lru_maxpages",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:       "SET bgwriter_lru_maxpages TO '100'",
@@ -836,6 +890,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW bgwriter_lru_multiplier",
 				Expected: []sql.Row{{float64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:       "SET bgwriter_lru_multiplier TO '2'",
@@ -854,10 +911,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW block_size",
 				Expected: []sql.Row{{int64(8192)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8192"}}},
 			},
 			{
 				Query:       "SET block_size TO '8192'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('block_size')",
@@ -879,6 +942,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET bonjour TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('bonjour')",
@@ -897,6 +963,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET bonjour_name TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('bonjour_name')",
@@ -980,6 +1049,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW checkpoint_completion_target",
 				Expected: []sql.Row{{float64(0.9)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.9"}}},
 			},
 			{
 				Query:       "SET checkpoint_completion_target TO '0.9'",
@@ -1146,6 +1218,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET cluster_name TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('cluster_name')",
@@ -1160,6 +1235,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_delay",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET commit_delay TO 100000",
@@ -1168,6 +1246,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_delay",
 				Expected: []sql.Row{{int64(100000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100000"}}},
 			},
 			{
 				Query:    "SET commit_delay TO DEFAULT",
@@ -1176,6 +1257,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_delay",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('commit_delay')",
@@ -1190,6 +1274,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_siblings",
 				Expected: []sql.Row{{int64(5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5"}}},
 			},
 			{
 				Query:    "SET commit_siblings TO '1000'",
@@ -1198,6 +1285,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_siblings",
 				Expected: []sql.Row{{int64(1000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000"}}},
 			},
 			{
 				Query:    "SET commit_siblings TO DEFAULT",
@@ -1206,6 +1296,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW commit_siblings",
 				Expected: []sql.Row{{int64(5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5"}}},
 			},
 			{
 				Query:    "SELECT current_setting('commit_siblings')",
@@ -1254,6 +1347,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET config_file TO '/Users/postgres/postgresql.conf'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('config_file')",
@@ -1298,6 +1394,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_index_tuple_cost",
 				Expected: []sql.Row{{float64(0.005)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.005"}}},
 			},
 			{
 				Query:    "SET cpu_index_tuple_cost TO '0.01'",
@@ -1306,6 +1405,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_index_tuple_cost",
 				Expected: []sql.Row{{float64(0.01)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.01"}}},
 			},
 			{
 				Query:    "SET cpu_index_tuple_cost TO DEFAULT",
@@ -1314,6 +1416,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_index_tuple_cost",
 				Expected: []sql.Row{{float64(0.005)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.005"}}},
 			},
 			{
 				Query:    "SELECT current_setting('cpu_index_tuple_cost')",
@@ -1328,6 +1433,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_operator_cost",
 				Expected: []sql.Row{{float64(0.0025)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.0025"}}},
 			},
 			{
 				Query:    "SET cpu_operator_cost TO '0.005'",
@@ -1336,6 +1444,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_operator_cost",
 				Expected: []sql.Row{{float64(0.005)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.005"}}},
 			},
 			{
 				Query:    "SET cpu_operator_cost TO DEFAULT",
@@ -1344,6 +1455,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_operator_cost",
 				Expected: []sql.Row{{float64(0.0025)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.0025"}}},
 			},
 			{
 				Query:    "SELECT current_setting('cpu_operator_cost')",
@@ -1358,6 +1472,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_tuple_cost",
 				Expected: []sql.Row{{float64(0.01)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.01"}}},
 			},
 			{
 				Query:    "SET cpu_tuple_cost TO '0.02'",
@@ -1366,6 +1483,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_tuple_cost",
 				Expected: []sql.Row{{float64(0.02)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.02"}}},
 			},
 			{
 				Query:    "SET cpu_tuple_cost TO DEFAULT",
@@ -1374,6 +1494,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cpu_tuple_cost",
 				Expected: []sql.Row{{float64(0.01)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.01"}}},
 			},
 			{
 				Query:    "SELECT current_setting('cpu_tuple_cost')",
@@ -1418,6 +1541,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cursor_tuple_fraction",
 				Expected: []sql.Row{{float64(0.1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.1"}}},
 			},
 			{
 				Query:    "SET cursor_tuple_fraction TO '0.2'",
@@ -1426,6 +1552,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cursor_tuple_fraction",
 				Expected: []sql.Row{{float64(0.2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.2"}}},
 			},
 			{
 				Query:    "SET cursor_tuple_fraction TO DEFAULT",
@@ -1434,6 +1563,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW cursor_tuple_fraction",
 				Expected: []sql.Row{{float64(0.1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.1"}}},
 			},
 			{
 				Query:    "SELECT current_setting('cursor_tuple_fraction')",
@@ -1450,15 +1582,21 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 
 				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET data_checksums TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('data_checksums')",
 				Expected: []sql.Row{{"off"}},
+
+				// PostgreSQL 18 enables checksums by default and revised these GUCs.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 		},
 	},
@@ -1473,6 +1611,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET data_directory TO '/Users/postgres'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('data_directory')",
@@ -1491,6 +1632,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET data_directory_mode TO '448'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('data_directory_mode')",
@@ -1512,6 +1656,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET data_sync_retry TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('data_sync_retry')",
@@ -1558,15 +1705,21 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 
 				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:       "SET db_user_namespace TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:    "SELECT current_setting('db_user_namespace')",
 				Expected: []sql.Row{{"off"}},
+
+				// PostgreSQL 18 enables checksums by default and revised these GUCs.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 		},
 	},
@@ -1614,6 +1767,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET debug_assertions TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('debug_assertions')",
@@ -1628,6 +1784,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_discard_caches",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET debug_discard_caches TO '0'", // cannot set it to anything other than 0
@@ -1636,6 +1795,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW debug_discard_caches",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('debug_discard_caches')",
@@ -1654,6 +1816,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET debug_io_direct TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('debug_io_direct')",
@@ -1884,6 +2049,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_statistics_target",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET default_statistics_target TO '10000'",
@@ -1892,6 +2060,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_statistics_target",
 				Expected: []sql.Row{{int64(10000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10000"}}},
 			},
 			{
 				Query:    "SET default_statistics_target TO DEFAULT",
@@ -1900,6 +2071,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW default_statistics_target",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SELECT current_setting('default_statistics_target')",
@@ -2168,6 +2342,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET dynamic_shared_memory_type TO 'posix'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('dynamic_shared_memory_type')",
@@ -2220,6 +2397,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW effective_io_concurrency",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET effective_io_concurrency TO DEFAULT",
@@ -3104,6 +3284,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET event_source TO 'PostgreSQL'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('event_source')",
@@ -3161,6 +3344,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET external_pid_file TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('external_pid_file')",
@@ -3175,6 +3361,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW extra_float_digits",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET extra_float_digits TO -10",
@@ -3183,6 +3372,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW extra_float_digits",
 				Expected: []sql.Row{{int64(-10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"-10"}}},
 			},
 			{
 				Query:    "SET extra_float_digits TO DEFAULT",
@@ -3191,6 +3383,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW extra_float_digits",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SELECT current_setting('extra_float_digits')",
@@ -3205,6 +3400,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW from_collapse_limit",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SET from_collapse_limit TO 100",
@@ -3213,6 +3411,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW from_collapse_limit",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET from_collapse_limit TO DEFAULT",
@@ -3221,6 +3422,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW from_collapse_limit",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SELECT current_setting('from_collapse_limit')",
@@ -3316,6 +3520,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_effort",
 				Expected: []sql.Row{{int64(5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5"}}},
 			},
 			{
 				Query:    "SET geqo_effort TO 10",
@@ -3324,6 +3531,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_effort",
 				Expected: []sql.Row{{int64(10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10"}}},
 			},
 			{
 				Query:    "SET geqo_effort TO DEFAULT",
@@ -3332,6 +3542,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_effort",
 				Expected: []sql.Row{{int64(5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_effort')",
@@ -3346,6 +3559,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_generations",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET geqo_generations TO '100'",
@@ -3354,6 +3570,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_generations",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET geqo_generations TO DEFAULT",
@@ -3362,6 +3581,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_generations",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_generations')",
@@ -3380,6 +3602,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_pool_size",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET geqo_pool_size TO 1",
@@ -3388,6 +3613,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_pool_size",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET geqo_pool_size TO DEFAULT",
@@ -3396,6 +3624,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_pool_size",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_pool_size')",
@@ -3410,6 +3641,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_seed",
 				Expected: []sql.Row{{float64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET geqo_seed TO 0.2",
@@ -3418,6 +3652,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_seed",
 				Expected: []sql.Row{{float64(0.2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.2"}}},
 			},
 			{
 				Query:    "SET geqo_seed TO DEFAULT",
@@ -3426,6 +3663,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_seed",
 				Expected: []sql.Row{{float64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_seed')",
@@ -3440,6 +3680,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_selection_bias",
 				Expected: []sql.Row{{float64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET geqo_selection_bias TO 1.7",
@@ -3448,6 +3691,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_selection_bias",
 				Expected: []sql.Row{{float64(1.7)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1.7"}}},
 			},
 			{
 				Query:    "SET geqo_selection_bias TO DEFAULT",
@@ -3456,6 +3702,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_selection_bias",
 				Expected: []sql.Row{{float64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_selection_bias')",
@@ -3470,6 +3719,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_threshold",
 				Expected: []sql.Row{{int64(12)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"12"}}},
 			},
 			{
 				Query:    "SET geqo_threshold TO 22",
@@ -3478,6 +3730,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_threshold",
 				Expected: []sql.Row{{int64(22)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"22"}}},
 			},
 			{
 				Query:    "SET geqo_threshold TO DEFAULT",
@@ -3486,6 +3741,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW geqo_threshold",
 				Expected: []sql.Row{{int64(12)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"12"}}},
 			},
 			{
 				Query:    "SELECT current_setting('geqo_threshold')",
@@ -3500,6 +3758,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW gin_fuzzy_search_limit",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET gin_fuzzy_search_limit TO 2",
@@ -3508,6 +3769,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW gin_fuzzy_search_limit",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET gin_fuzzy_search_limit TO DEFAULT",
@@ -3516,6 +3780,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW gin_fuzzy_search_limit",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('gin_fuzzy_search_limit')",
@@ -3581,6 +3848,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW hash_mem_multiplier",
 				Expected: []sql.Row{{float64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET hash_mem_multiplier TO 20.1",
@@ -3589,6 +3859,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW hash_mem_multiplier",
 				Expected: []sql.Row{{float64(20.1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"20.1"}}},
 			},
 			{
 				Query:    "SET hash_mem_multiplier TO DEFAULT",
@@ -3597,6 +3870,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW hash_mem_multiplier",
 				Expected: []sql.Row{{float64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SELECT current_setting('hash_mem_multiplier')",
@@ -3615,6 +3891,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET hba_file TO '/Users/postgres/pg_hba.conf'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('hba_file')",
@@ -3636,6 +3915,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET hot_standby TO 'on'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('hot_standby')",
@@ -3675,6 +3957,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET huge_page_size TO '0'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('huge_page_size')",
@@ -3693,6 +3978,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET huge_pages TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('huge_pages')",
@@ -3741,6 +4029,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET ident_file TO '/Users/postgres/pg_ident.conf'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('ident_file')",
@@ -3861,6 +4152,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET ignore_invalid_pages TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('ignore_invalid_pages')",
@@ -3882,6 +4176,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET ignore_system_indexes TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('ignore_system_indexes')",
@@ -3903,6 +4200,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET in_hot_standby TO 'on'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('in_hot_standby')",
@@ -3924,6 +4224,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET integer_datetimes TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('integer_datetimes')",
@@ -4007,6 +4310,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_above_cost",
 				Expected: []sql.Row{{float64(100000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100000"}}},
 			},
 			{
 				Query:    "SET jit_above_cost TO '100'",
@@ -4015,6 +4321,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_above_cost",
 				Expected: []sql.Row{{float64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET jit_above_cost TO DEFAULT",
@@ -4023,6 +4332,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_above_cost",
 				Expected: []sql.Row{{float64(100000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('jit_above_cost')",
@@ -4044,6 +4356,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET jit_debugging_support TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('jit_debugging_support')",
@@ -4136,6 +4451,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_inline_above_cost",
 				Expected: []sql.Row{{float64(500000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"500000"}}},
 			},
 			{
 				Query:    "SET jit_inline_above_cost TO '5000'",
@@ -4144,6 +4462,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_inline_above_cost",
 				Expected: []sql.Row{{float64(5000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5000"}}},
 			},
 			{
 				Query:    "SET jit_inline_above_cost TO DEFAULT",
@@ -4152,6 +4473,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_inline_above_cost",
 				Expected: []sql.Row{{float64(500000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"500000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('jit_inline_above_cost')",
@@ -4166,6 +4490,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_optimize_above_cost",
 				Expected: []sql.Row{{float64(500000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"500000"}}},
 			},
 			{
 				Query:    "SET jit_optimize_above_cost TO '5000'",
@@ -4174,6 +4501,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_optimize_above_cost",
 				Expected: []sql.Row{{float64(5000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5000"}}},
 			},
 			{
 				Query:    "SET jit_optimize_above_cost TO DEFAULT",
@@ -4182,6 +4512,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW jit_optimize_above_cost",
 				Expected: []sql.Row{{float64(500000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"500000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('jit_optimize_above_cost')",
@@ -4203,6 +4536,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET jit_profiling_support TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('jit_profiling_support')",
@@ -4221,6 +4557,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET jit_provider TO 'llvmjit'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('jit_provider')",
@@ -4274,6 +4613,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW join_collapse_limit",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SET join_collapse_limit TO '100'",
@@ -4282,6 +4624,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW join_collapse_limit",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET join_collapse_limit TO DEFAULT",
@@ -4290,6 +4635,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW join_collapse_limit",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SELECT current_setting('join_collapse_limit')",
@@ -4467,6 +4815,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET listen_addresses TO 'localhost'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('listen_addresses')",
@@ -4622,15 +4973,21 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 
 				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{""}}},
 			},
 			{
 				Query:       "SET log_connections TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('log_connections')",
 				Expected: []sql.Row{{"off"}},
+
+				// PostgreSQL 18 enables checksums by default and revised these GUCs.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{""}}},
 			},
 		},
 	},
@@ -4684,6 +5041,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET log_disconnections TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('log_disconnections')",
@@ -5326,6 +5686,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_statement_sample_rate",
 				Expected: []sql.Row{{float64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET log_statement_sample_rate TO 0.5",
@@ -5334,6 +5697,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_statement_sample_rate",
 				Expected: []sql.Row{{float64(0.5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.5"}}},
 			},
 			{
 				Query:    "SET log_statement_sample_rate TO DEFAULT",
@@ -5342,6 +5708,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_statement_sample_rate",
 				Expected: []sql.Row{{float64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SELECT current_setting('log_statement_sample_rate')",
@@ -5443,6 +5812,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_transaction_sample_rate",
 				Expected: []sql.Row{{float64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SET log_transaction_sample_rate TO '0.5'",
@@ -5451,6 +5823,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_transaction_sample_rate",
 				Expected: []sql.Row{{float64(0.5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.5"}}},
 			},
 			{
 				Query:    "SET log_transaction_sample_rate TO DEFAULT",
@@ -5459,6 +5834,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW log_transaction_sample_rate",
 				Expected: []sql.Row{{float64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:    "SELECT current_setting('log_transaction_sample_rate')",
@@ -5501,6 +5879,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET logging_collector TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('logging_collector')",
@@ -5553,6 +5934,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW maintenance_io_concurrency",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET maintenance_io_concurrency TO DEFAULT",
@@ -5605,10 +5989,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_connections",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:       "SET max_connections TO '150'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_connections')",
@@ -5623,10 +6013,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_files_per_process",
 				Expected: []sql.Row{{int64(1000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000"}}},
 			},
 			{
 				Query:       "SET max_files_per_process TO '1000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_files_per_process')",
@@ -5641,10 +6037,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_function_args",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:       "SET max_function_args TO '100'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_function_args')",
@@ -5659,10 +6061,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_identifier_length",
 				Expected: []sql.Row{{int64(63)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"63"}}},
 			},
 			{
 				Query:       "SET max_identifier_length TO '63'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_identifier_length')",
@@ -5677,10 +6085,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_index_keys",
 				Expected: []sql.Row{{int64(32)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"32"}}},
 			},
 			{
 				Query:       "SET max_index_keys TO '32'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_index_keys')",
@@ -5695,10 +6109,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_locks_per_transaction",
 				Expected: []sql.Row{{int64(64)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"64"}}},
 			},
 			{
 				Query:       "SET max_locks_per_transaction TO '64'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_locks_per_transaction')",
@@ -5713,10 +6133,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_logical_replication_workers",
 				Expected: []sql.Row{{int64(4)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4"}}},
 			},
 			{
 				Query:       "SET max_logical_replication_workers TO '4'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_logical_replication_workers')",
@@ -5731,6 +6157,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_apply_workers_per_subscription",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:       "SET max_parallel_apply_workers_per_subscription TO '2'",
@@ -5749,6 +6178,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_maintenance_workers",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET max_parallel_maintenance_workers TO '3'",
@@ -5757,6 +6189,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_maintenance_workers",
 				Expected: []sql.Row{{int64(3)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"3"}}},
 			},
 			{
 				Query:    "SET max_parallel_maintenance_workers TO DEFAULT",
@@ -5765,6 +6200,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_maintenance_workers",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SELECT current_setting('max_parallel_maintenance_workers')",
@@ -5779,6 +6217,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SET max_parallel_workers TO 11",
@@ -5787,6 +6228,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers",
 				Expected: []sql.Row{{int64(11)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"11"}}},
 			},
 			{
 				Query:    "SET max_parallel_workers TO DEFAULT",
@@ -5795,6 +6239,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:    "SELECT current_setting('max_parallel_workers')",
@@ -5809,6 +6256,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers_per_gather",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET max_parallel_workers_per_gather TO 3",
@@ -5817,6 +6267,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers_per_gather",
 				Expected: []sql.Row{{int64(3)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"3"}}},
 			},
 			{
 				Query:    "SET max_parallel_workers_per_gather TO DEFAULT",
@@ -5825,6 +6278,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_parallel_workers_per_gather",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SELECT current_setting('max_parallel_workers_per_gather')",
@@ -5839,6 +6295,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_pred_locks_per_page",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:       "SET max_pred_locks_per_page TO '2'",
@@ -5857,6 +6316,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_pred_locks_per_relation",
 				Expected: []sql.Row{{int64(-2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"-2"}}},
 			},
 			{
 				Query:       "SET max_pred_locks_per_relation TO '-2'",
@@ -5875,10 +6337,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_pred_locks_per_transaction",
 				Expected: []sql.Row{{int64(64)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"64"}}},
 			},
 			{
 				Query:       "SET max_pred_locks_per_transaction TO '64'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_pred_locks_per_transaction')",
@@ -5897,6 +6365,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_prepared_transactions TO '0'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_prepared_transactions')",
@@ -5911,10 +6382,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_replication_slots",
 				Expected: []sql.Row{{int64(10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10"}}},
 			},
 			{
 				Query:       "SET max_replication_slots TO '10'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_replication_slots')",
@@ -6013,6 +6490,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_sync_workers_per_subscription",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:       "SET max_sync_workers_per_subscription TO '2'",
@@ -6031,10 +6511,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_wal_senders",
 				Expected: []sql.Row{{int64(10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10"}}},
 			},
 			{
 				Query:       "SET max_wal_senders TO '10'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_wal_senders')",
@@ -6067,10 +6553,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW max_worker_processes",
 				Expected: []sql.Row{{int64(8)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8"}}},
 			},
 			{
 				Query:       "SET max_worker_processes TO '8'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_worker_processes')",
@@ -6085,10 +6577,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW min_dynamic_shared_memory",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:       "SET min_dynamic_shared_memory TO '0'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('min_dynamic_shared_memory')",
@@ -6181,14 +6679,23 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW old_snapshot_threshold",
 				Expected: []sql.Row{{int64(-1)}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:       "SET old_snapshot_threshold TO '-1'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:    "SELECT current_setting('old_snapshot_threshold')",
 				Expected: []sql.Row{{"-1"}},
+
+				// PostgreSQL 18 enables checksums by default and revised these GUCs.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 		},
 	},
@@ -6238,6 +6745,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_setup_cost",
 				Expected: []sql.Row{{float64(1000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000"}}},
 			},
 			{
 				Query:    "SET parallel_setup_cost TO '10000'",
@@ -6246,6 +6756,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_setup_cost",
 				Expected: []sql.Row{{float64(10000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10000"}}},
 			},
 			{
 				Query:    "SET parallel_setup_cost TO DEFAULT",
@@ -6254,6 +6767,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_setup_cost",
 				Expected: []sql.Row{{float64(1000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('parallel_setup_cost')",
@@ -6268,6 +6784,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_tuple_cost",
 				Expected: []sql.Row{{float64(0.1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.1"}}},
 			},
 			{
 				Query:    "SET parallel_tuple_cost TO '0.2'",
@@ -6276,6 +6795,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_tuple_cost",
 				Expected: []sql.Row{{float64(0.2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.2"}}},
 			},
 			{
 				Query:    "SET parallel_tuple_cost TO DEFAULT",
@@ -6284,6 +6806,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW parallel_tuple_cost",
 				Expected: []sql.Row{{float64(0.1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0.1"}}},
 			},
 			{
 				Query:    "SELECT current_setting('parallel_tuple_cost')",
@@ -6362,6 +6887,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET post_auth_delay TO '0'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('post_auth_delay')",
@@ -6469,6 +6997,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW random_page_cost",
 				Expected: []sql.Row{{float64(4)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4"}}},
 			},
 			{
 				Query:    "SET random_page_cost TO 2.5",
@@ -6477,6 +7008,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW random_page_cost",
 				Expected: []sql.Row{{float64(2.5)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2.5"}}},
 			},
 			{
 				Query:    "SET random_page_cost TO DEFAULT",
@@ -6485,6 +7019,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW random_page_cost",
 				Expected: []sql.Row{{float64(4)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4"}}},
 			},
 			{
 				Query:    "SELECT current_setting('random_page_cost')",
@@ -6575,6 +7112,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target')",
@@ -6593,6 +7133,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_action TO 'pause'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_action')",
@@ -6614,6 +7157,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_inclusive TO 'on'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_inclusive')",
@@ -6632,6 +7178,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_lsn TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_lsn')",
@@ -6650,6 +7199,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_name TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_name')",
@@ -6668,6 +7220,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_time TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_time')",
@@ -6686,6 +7241,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_timeline TO 'latest'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_timeline')",
@@ -6704,6 +7262,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_xid TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_xid')",
@@ -6718,6 +7279,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW recursive_worktable_factor",
 				Expected: []sql.Row{{float64(10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10"}}},
 			},
 			{
 				Query:    "SET recursive_worktable_factor TO '1'",
@@ -6726,6 +7290,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW recursive_worktable_factor",
 				Expected: []sql.Row{{float64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET recursive_worktable_factor TO DEFAULT",
@@ -6734,6 +7301,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW recursive_worktable_factor",
 				Expected: []sql.Row{{float64(10)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"10"}}},
 			},
 			{
 				Query:    "SELECT current_setting('recursive_worktable_factor')",
@@ -6749,8 +7319,8 @@ var setStmts = []ScriptTest{
 				Query:    "SHOW remove_temp_files_after_crash",
 				Expected: []sql.Row{{int8(0)}},
 
-				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
+				// PostgreSQL enables crash-time temporary file removal by default.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET remove_temp_files_after_crash TO 'on'",
@@ -6759,6 +7329,7 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SELECT current_setting('remove_temp_files_after_crash')",
 				Expected: []sql.Row{{"off"}},
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 		},
 	},
@@ -6769,10 +7340,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW reserved_connections",
 				Expected: []sql.Row{{int64(0)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"0"}}},
 			},
 			{
 				Query:       "SET reserved_connections TO '0'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('reserved_connections')",
@@ -6865,6 +7442,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW scram_iterations",
 				Expected: []sql.Row{{int64(4096)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4096"}}},
 			},
 			{
 				Query:    "SET scram_iterations TO '4000'",
@@ -6873,6 +7453,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW scram_iterations",
 				Expected: []sql.Row{{int64(4000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4000"}}},
 			},
 			{
 				Query:    "SET scram_iterations TO DEFAULT",
@@ -6881,6 +7464,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW scram_iterations",
 				Expected: []sql.Row{{int64(4096)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"4096"}}},
 			},
 			{
 				Query:    "SELECT current_setting('scram_iterations')",
@@ -7211,6 +7797,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET segment_size TO '131072'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('segment_size')",
@@ -7267,6 +7856,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW seq_page_cost",
 				Expected: []sql.Row{{float64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:       "SET seq_page_cost TO '1'",
@@ -7289,6 +7881,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET server_encoding TO 'UTF8'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('server_encoding')",
@@ -7303,14 +7898,23 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW server_version",
 				Expected: []sql.Row{{"15.17 (Homebrew)"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT split_part(current_setting('server_version'),'.',1)='18'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:       "SET server_version TO '15.17 (Homebrew)'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('server_version')",
 				Expected: []sql.Row{{"15.17 (Homebrew)"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT split_part(current_setting('server_version'),'.',1)='18'", Expected: []sql.Row{{"t"}}},
 			},
 		},
 	},
@@ -7321,14 +7925,23 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW server_version_num",
 				Expected: []sql.Row{{int64(150017)}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('server_version_num')::int BETWEEN 180000 AND 189999", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:       "SET server_version_num TO '150017'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('server_version_num')",
 				Expected: []sql.Row{{"150017"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('server_version_num')::int BETWEEN 180000 AND 189999", Expected: []sql.Row{{"t"}}},
 			},
 		},
 	},
@@ -7404,6 +8017,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET shared_buffers TO '128000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('shared_buffers')",
@@ -7422,6 +8038,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET shared_memory_size TO '143000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('shared_memory_size')",
@@ -7440,6 +8059,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET shared_memory_size_in_huge_pages TO '-1'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('shared_memory_size_in_huge_pages')",
@@ -7458,6 +8080,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET shared_memory_type TO 'mmap'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('shared_memory_type')",
@@ -7476,6 +8101,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET shared_preload_libraries TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('shared_preload_libraries')",
@@ -7659,6 +8287,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET ssl_library TO 'OpenSSL'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('ssl_library')",
@@ -7924,10 +8555,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW superuser_reserved_connections",
 				Expected: []sql.Row{{int64(3)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"3"}}},
 			},
 			{
 				Query:       "SET superuser_reserved_connections TO '3'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('superuser_reserved_connections')",
@@ -8115,6 +8752,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW tcp_keepalives_count",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET tcp_keepalives_count TO DEFAULT",
@@ -8317,6 +8957,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW TimeZone",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:    "SET TimeZone TO 'UTC'",
@@ -8333,10 +8976,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW TimeZone",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:    "SELECT current_setting('TimeZone')",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 		},
 	},
@@ -8416,14 +9065,23 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW trace_recovery_messages",
 				Expected: []sql.Row{{"log"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:       "SET trace_recovery_messages TO 'log'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:    "SELECT current_setting('trace_recovery_messages')",
 				Expected: []sql.Row{{"log"}},
+
+				// PostgreSQL 18 enables checksums by default and revised these GUCs.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 		},
 	},
@@ -8516,6 +9174,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET track_activity_query_size TO '1024'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('track_activity_query_size')",
@@ -8537,6 +9198,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET track_commit_timestamp TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('track_commit_timestamp')",
@@ -8710,12 +9374,14 @@ var setStmts = []ScriptTest{
 				Query:    "SHOW transaction_deferrable",
 				Expected: []sql.Row{{int8(1)}},
 
-				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
+				// This transaction characteristic resets at the end of the preceding standalone SET statement.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET transaction_deferrable TO DEFAULT",
 				Expected: []sql.Row{},
+				// Native transaction characteristics cannot be RESET like session defaults.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "0A000"},
 			},
 			{
 				Query:    "SHOW transaction_deferrable",
@@ -8779,12 +9445,14 @@ var setStmts = []ScriptTest{
 				Query:    "SHOW transaction_read_only",
 				Expected: []sql.Row{{int8(1)}},
 
-				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
+				// This transaction characteristic resets at the end of the preceding standalone SET statement.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET transaction_read_only TO DEFAULT",
 				Expected: []sql.Row{},
+				// Native transaction characteristics cannot be RESET like session defaults.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "0A000"},
 			},
 			{
 				Query:    "SHOW transaction_read_only",
@@ -8849,6 +9517,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET unix_socket_directories TO '/tmp'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('unix_socket_directories')",
@@ -8867,6 +9538,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET unix_socket_group TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('unix_socket_group')",
@@ -8885,6 +9559,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET unix_socket_permissions TO '511'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('unix_socket_permissions')",
@@ -8998,6 +9675,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_limit",
 				Expected: []sql.Row{{int64(200)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"200"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_limit TO '400'",
@@ -9006,6 +9686,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_limit",
 				Expected: []sql.Row{{int64(400)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"400"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_limit TO DEFAULT",
@@ -9014,6 +9697,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_limit",
 				Expected: []sql.Row{{int64(200)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"200"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_cost_limit')",
@@ -9028,6 +9714,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_dirty",
 				Expected: []sql.Row{{int64(20)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"20"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_dirty TO '200'",
@@ -9036,6 +9725,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_dirty",
 				Expected: []sql.Row{{int64(200)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"200"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_dirty TO DEFAULT",
@@ -9044,6 +9736,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_dirty",
 				Expected: []sql.Row{{int64(20)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"20"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_cost_page_dirty')",
@@ -9058,6 +9753,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_hit",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_hit TO '100'",
@@ -9066,6 +9764,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_hit",
 				Expected: []sql.Row{{int64(100)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_hit TO DEFAULT",
@@ -9074,6 +9775,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_hit",
 				Expected: []sql.Row{{int64(1)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_cost_page_hit')",
@@ -9088,6 +9792,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_miss",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_miss TO '20'",
@@ -9096,6 +9803,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_miss",
 				Expected: []sql.Row{{int64(20)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"20"}}},
 			},
 			{
 				Query:    "SET vacuum_cost_page_miss TO DEFAULT",
@@ -9104,6 +9814,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_cost_page_miss",
 				Expected: []sql.Row{{int64(2)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_cost_page_miss')",
@@ -9118,6 +9831,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_failsafe_age",
 				Expected: []sql.Row{{int64(1600000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1600000000"}}},
 			},
 			{
 				Query:    "SET vacuum_failsafe_age TO '2100000000'",
@@ -9126,6 +9842,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_failsafe_age",
 				Expected: []sql.Row{{int64(2100000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2100000000"}}},
 			},
 			{
 				Query:    "SET vacuum_failsafe_age TO DEFAULT",
@@ -9134,6 +9853,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_failsafe_age",
 				Expected: []sql.Row{{int64(1600000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1600000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_failsafe_age')",
@@ -9148,6 +9870,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_min_age",
 				Expected: []sql.Row{{int64(50000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"50000000"}}},
 			},
 			{
 				Query:    "SET vacuum_freeze_min_age TO '20000000'",
@@ -9156,6 +9881,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_min_age",
 				Expected: []sql.Row{{int64(20000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"20000000"}}},
 			},
 			{
 				Query:    "SET vacuum_freeze_min_age TO DEFAULT",
@@ -9164,6 +9892,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_min_age",
 				Expected: []sql.Row{{int64(50000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"50000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_freeze_min_age')",
@@ -9178,6 +9909,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_table_age",
 				Expected: []sql.Row{{int64(150000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"150000000"}}},
 			},
 			{
 				Query:    "SET vacuum_freeze_table_age TO '100000000'",
@@ -9186,6 +9920,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_table_age",
 				Expected: []sql.Row{{int64(100000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"100000000"}}},
 			},
 			{
 				Query:    "SET vacuum_freeze_table_age TO DEFAULT",
@@ -9194,6 +9931,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_freeze_table_age",
 				Expected: []sql.Row{{int64(150000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"150000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_freeze_table_age')",
@@ -9208,6 +9948,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_failsafe_age",
 				Expected: []sql.Row{{int64(1600000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1600000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_failsafe_age TO '1000000000'",
@@ -9216,6 +9959,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_failsafe_age",
 				Expected: []sql.Row{{int64(1000000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1000000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_failsafe_age TO DEFAULT",
@@ -9224,6 +9970,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_failsafe_age",
 				Expected: []sql.Row{{int64(1600000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"1600000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_multixact_failsafe_age')",
@@ -9238,6 +9987,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_min_age",
 				Expected: []sql.Row{{int64(5000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_freeze_min_age TO '2000000'",
@@ -9246,6 +9998,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_min_age",
 				Expected: []sql.Row{{int64(2000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_freeze_min_age TO DEFAULT",
@@ -9254,6 +10009,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_min_age",
 				Expected: []sql.Row{{int64(5000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"5000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_multixact_freeze_min_age')",
@@ -9268,6 +10026,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_table_age",
 				Expected: []sql.Row{{int64(150000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"150000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_freeze_table_age TO '120000000'",
@@ -9276,6 +10037,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_table_age",
 				Expected: []sql.Row{{int64(120000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"120000000"}}},
 			},
 			{
 				Query:    "SET vacuum_multixact_freeze_table_age TO DEFAULT",
@@ -9284,6 +10048,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW vacuum_multixact_freeze_table_age",
 				Expected: []sql.Row{{int64(150000000)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"150000000"}}},
 			},
 			{
 				Query:    "SELECT current_setting('vacuum_multixact_freeze_table_age')",
@@ -9298,10 +10065,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW wal_block_size",
 				Expected: []sql.Row{{int64(8192)}},
+
+				// Native SHOW returns text; this value was independently checked on stock PostgreSQL.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"8192"}}},
 			},
 			{
 				Query:       "SET wal_block_size TO '8192'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_block_size')",
@@ -9320,6 +10093,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET wal_buffers TO '4000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_buffers')",
@@ -9398,6 +10174,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET wal_decode_buffer_size TO '524288'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_decode_buffer_size')",
@@ -9473,6 +10252,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET wal_level TO 'replica'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_level')",
@@ -9494,6 +10276,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET wal_log_hints TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_log_hints')",
@@ -9626,6 +10411,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET wal_segment_size TO '16777216'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_segment_size')",

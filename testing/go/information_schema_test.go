@@ -274,11 +274,17 @@ func TestInfoSchemaPgTrueTypID(t *testing.T) {
 				{
 					Query:       `SELECT information_schema._pg_truetypid(23::oid, 23::oid);`,
 					ExpectedErr: `function _pg_truetypid(oid, oid) does not exist`,
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: `SELECT information_schema._pg_truetypid(t.*, a.*)
 						FROM pg_catalog.pg_attribute a CROSS JOIN pg_catalog.pg_type t;`,
 					ExpectedErr: `function _pg_truetypid(pg_type, pg_attribute) does not exist`,
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    `SELECT information_schema._pg_truetypid(NULL::pg_catalog.pg_attribute, NULL::pg_catalog.pg_type);`,
@@ -434,6 +440,9 @@ func TestInfoSchemaColumns(t *testing.T) {
 						{"postgres", "public", "test_table", "col1"},
 						{"postgres", "public", "test_view", ""},
 					},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Query: "SELECT table_catalog, table_schema, table_name, column_name FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name, ordinal_position;", Expected: []sql.Row{{"postgres", "public", "test_table", "id"}, {"postgres", "public", "test_table", "col1"}, {"postgres", "public", "test_view", "id"}, {"postgres", "public", "test_view", "col1"}}},
 				},
 				{
 					Query: `SELECT 
@@ -483,6 +492,9 @@ func TestInfoSchemaColumns(t *testing.T) {
 						{"postgres", "public", "test_table", "id", 1, nil, "NO", "integer", nil, nil, 32, 2, 0, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "postgres", "pg_catalog", "int4", nil, nil, nil, nil, nil, "NO", "NO", nil, nil, nil, nil, nil, "NO", "NEVER", nil, "YES"},
 						{"postgres", "public", "test_table", "col1", 2, nil, "YES", "character varying", 255, 1020, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "postgres", "pg_catalog", "varchar", nil, nil, nil, nil, nil, "NO", "NO", nil, nil, nil, nil, nil, "NO", "NEVER", nil, "YES"},
 					},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Query: "SELECT column_name, ordinal_position, data_type, is_nullable, character_maximum_length, column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='test_table' ORDER BY ordinal_position", Expected: []sql.Row{{"id", 1, "integer", "NO", nil, nil}, {"col1", 2, "character varying", "YES", 255, nil}}},
 				},
 				{
 					Skip:  true, // TODO: Don't have complete view information to fill out these rows
@@ -491,6 +503,9 @@ func TestInfoSchemaColumns(t *testing.T) {
 						{"postgres", "public", "test_view", "id", 1, nil, "YES", "integer", nil, nil, 32, 2, 0, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "postgres", "pg_catalog", "int4", nil, nil, nil, nil, 1, "NO", "NO", nil, nil, nil, nil, nil, "NO", "NEVER", nil, "YES"},
 						{"postgres", "public", "test_view", "col1", 2, nil, "YES", "character varying", 255, 1020, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "postgres", "pg_catalog", "varchar", nil, nil, nil, nil, 2, "NO", "NO", nil, nil, nil, nil, nil, "NO", "NEVER", nil, "YES"},
 					},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Query: "SELECT column_name, ordinal_position, data_type, is_nullable, character_maximum_length, column_default FROM information_schema.columns WHERE table_schema='public' AND table_name='test_table' ORDER BY ordinal_position", Expected: []sql.Row{{"id", 1, "integer", "NO", nil, nil}, {"col1", 2, "character varying", "YES", 255, nil}}},
 				},
 				{
 					Query: `SELECT columns.table_name, columns.column_name from "information_schema"."columns" WHERE table_name='test_table';`,
@@ -553,6 +568,9 @@ func TestInfoSchemaColumns(t *testing.T) {
 				{
 					Query:    `SELECT p.oid AS oid, p.relname AS table_name, n.nspname as table_schema FROM pg_class AS p JOIN pg_namespace AS n ON p.relnamespace=n.oid WHERE (n.nspname='public' AND p.relkind='r') AND left(relname, 5) <> 'dolt_';`,
 					Expected: []sql.Row{{2957635223, "test_table", "public"}},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Query: "SELECT p.oid='public.test_table'::regclass AS identity_matches, p.relname AS table_name, n.nspname as table_schema FROM pg_class AS p JOIN pg_namespace AS n ON p.relnamespace=n.oid WHERE (n.nspname='public' AND p.relkind='r') AND left(relname, 5) <> 'dolt_';", Expected: []sql.Row{{"t", "test_table", "public"}}},
 				},
 				{
 					Query:    `select col_description(2957635223, ordinal_position) as comment from information_schema.columns limit 1;`,
@@ -575,6 +593,9 @@ func TestInfoSchemaColumns(t *testing.T) {
 				{
 					Query:    "SELECT is_generated, generation_expression, column_default FROM information_schema.columns WHERE table_name = 't3328_issue' AND column_name = 'b';",
 					Expected: []sql.Row{{"ALWAYS", `("a" + 1)`, nil}},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"ALWAYS", `(a + 1)`, nil}}},
 				},
 				{
 					Query: "SELECT column_name, is_generated, generation_expression, column_default FROM information_schema.columns WHERE table_name = 't3328' ORDER BY ordinal_position;",
@@ -586,6 +607,16 @@ func TestInfoSchemaColumns(t *testing.T) {
 						{"e", "ALWAYS", `("a")`, nil},
 						{"f", "ALWAYS", `("s" || ')')`, nil},
 					},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{
+						{"a", "NEVER", nil, nil},
+						{"s", "NEVER", nil, nil},
+						{"b", "ALWAYS", `(a + 1)`, nil},
+						{"c", "ALWAYS", `upper(s)`, nil},
+						{"e", "ALWAYS", `a`, nil},
+						{"f", "ALWAYS", `(s || ')'::text)`, nil},
+					}},
 				},
 			},
 		},
@@ -819,18 +850,27 @@ func TestInfoSchemaViews(t *testing.T) {
 					Expected: []sql.Row{
 						{"postgres", "public", "test_view", "SELECT * FROM test_table", "NONE", nil, nil, nil, nil, nil},
 					},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Query: "SELECT table_catalog, table_schema, table_name, check_option, is_updatable, is_insertable_into FROM information_schema.views WHERE table_schema='public' ORDER BY table_name", Expected: []sql.Row{{"postgres", "public", "test_view", "NONE", "YES", "YES"}}},
 				},
 				{
 					Query: `SELECT DISTINCT table_schema FROM information_schema.views order by table_schema;`,
 					Expected: []sql.Row{
 						{"public"},
 					},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"information_schema"}, {"pg_catalog"}, {"public"}}},
 				},
 				{
 					Query: `SELECT table_catalog, table_schema FROM information_schema.views group by table_catalog, table_schema order by table_schema;`,
 					Expected: []sql.Row{
 						{"postgres", "public"},
 					},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"postgres", "information_schema"}, {"postgres", "pg_catalog"}, {"postgres", "public"}}},
 				},
 				{
 					Query: `SELECT table_catalog, table_schema, table_name FROM information_schema.views WHERE table_schema='public';`,
@@ -860,6 +900,9 @@ func TestInfoSchemaViews(t *testing.T) {
 						{"public"},
 						{"test_schema"},
 					},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"information_schema"}, {"pg_catalog"}, {"public"}, {"test_schema"}}},
 				},
 				{
 					Query: `SELECT table_catalog, table_schema FROM information_schema.views group by table_catalog, table_schema order by table_schema;`,
@@ -867,6 +910,9 @@ func TestInfoSchemaViews(t *testing.T) {
 						{"postgres", "public"},
 						{"postgres", "test_schema"},
 					},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"postgres", "information_schema"}, {"postgres", "pg_catalog"}, {"postgres", "public"}, {"postgres", "test_schema"}}},
 				},
 				{
 					Query: `SELECT table_catalog, table_schema, table_name FROM information_schema.views WHERE table_schema='test_schema';`,
@@ -879,6 +925,9 @@ func TestInfoSchemaViews(t *testing.T) {
 					Expected: []sql.Row{
 						{"postgres", "test_schema", "test_view2", "SELECT * FROM test_table2"},
 					},
+
+					// Native information_schema includes system views and exposes real view columns/definitions.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"postgres", "test_schema", "test_view2", " SELECT id\n   FROM test_table2;"}}},
 				},
 			},
 		},

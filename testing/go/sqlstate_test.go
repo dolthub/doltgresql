@@ -42,6 +42,9 @@ func TestSQLStateCodes(t *testing.T) {
 					Query:           "SELECT 'abc'::int4",
 					ExpectedErr:     "invalid input syntax for type int4",
 					ExpectedErrCode: "22P02",
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P02"},
 				},
 				{
 					Query:           "SELECT (2000000000)::int4 + (2000000000)::int4",
@@ -83,26 +86,41 @@ func TestSQLStateCodes(t *testing.T) {
 					Query:           "INSERT INTO constraints_t VALUES (1, 2, 2, 2)",
 					ExpectedErr:     "duplicate primary key given",
 					ExpectedErrCode: "23505",
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query:           "INSERT INTO constraints_t VALUES (2, 1, 2, 2)",
 					ExpectedErr:     "duplicate unique key given",
 					ExpectedErrCode: "23505",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query:           "INSERT INTO constraints_t VALUES (2, 2, NULL, 2)",
 					ExpectedErr:     "non-nullable",
 					ExpectedErrCode: "23502",
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23502"},
 				},
 				{
 					Query:           "INSERT INTO constraints_t VALUES (2, 2, 2, -1)",
 					ExpectedErr:     "Check constraint",
 					ExpectedErrCode: "23514",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:           "INSERT INTO fk_child VALUES (1, 99)",
 					ExpectedErr:     "Foreign key violation",
 					ExpectedErrCode: "23503",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 			},
 		},
@@ -121,16 +139,25 @@ func TestSQLStateCodes(t *testing.T) {
 					Query:           "SELECT * FROM no_such_table",
 					ExpectedErr:     "table not found",
 					ExpectedErrCode: "42P01",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:           "SELECT no_such_col FROM existing_t",
 					ExpectedErr:     "could not be found",
 					ExpectedErrCode: "42703",
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42703"},
 				},
 				{
 					Query:           "SELECT no_such_function(1)",
 					ExpectedErr:     "not found",
 					ExpectedErrCode: "42883",
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883"},
 				},
 				{
 					Query:           "CREATE TABLE existing_t (id INT PRIMARY KEY)",
@@ -141,6 +168,9 @@ func TestSQLStateCodes(t *testing.T) {
 					Query:           "SELECT 1::no_such_type",
 					ExpectedErr:     "unable to resolve type",
 					ExpectedErrCode: "42704",
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704"},
 				},
 			},
 		},
@@ -165,6 +195,9 @@ func TestSQLStateCodes(t *testing.T) {
 					Query:           "SELECT (SELECT id FROM two_rows)",
 					ExpectedErr:     "more than 1 row",
 					ExpectedErrCode: "21000",
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "21000"},
 				},
 			},
 		},

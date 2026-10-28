@@ -789,6 +789,9 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query:       "SELECT * FROM public.pg_attribute;",
 					ExpectedErr: "table not found: pg_attribute",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 			},
 		},

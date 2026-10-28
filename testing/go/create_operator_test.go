@@ -250,10 +250,16 @@ func TestCreateOperator(t *testing.T) {
 				{
 					Query:       `CREATE OPERATOR <=> (LEFTARG = int4, RIGHTARG = int4, FUNCTION = op_missing_fn);`,
 					ExpectedErr: "function op_missing_fn(integer, integer) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `CREATE OPERATOR <=> (LEFTARG = int4, RIGHTARG = int4, FUNCTION = op_one_arg);`,
 					ExpectedErr: "function op_one_arg(integer, integer) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `CREATE OPERATOR <-> (LEFTARG = int4, RIGHTARG = int4, FUNCTION = op_valid_dist);`,

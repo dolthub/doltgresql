@@ -190,7 +190,10 @@ func TestApplicationSettingsExecution(t *testing.T) {
 			{Query: "SELECT v FROM settings_table", Expected: []sql.Row{{42}}},
 			{Query: "ROLLBACK"},
 			{Query: "SHOW search_path", Expected: []sql.Row{{"public"}}},
-			{Query: "SELECT v FROM settings_table", ExpectedErr: "table not found: settings_table"},
+			{Query: "SELECT v FROM settings_table", ExpectedErr: "table not found: settings_table",
+				// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
+			},
 		},
 	}})
 }

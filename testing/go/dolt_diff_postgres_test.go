@@ -80,6 +80,9 @@ func TestPostgresDoltDiffFunctions(t *testing.T) {
 				{
 					Query:       "SELECT * FROM DOLT_DIFF('main', 'original', 'missing');",
 					ExpectedErr: "table not found: public.missing",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 			},
 		},

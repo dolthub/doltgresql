@@ -68,6 +68,9 @@ func TestWindowFunctions(t *testing.T) {
 					Query:           "SELECT count(DISTINCT *) OVER () FROM (VALUES (1)) AS t(v)",
 					ExpectedErr:     `at or near "*": syntax error`,
 					ExpectedErrCode: "42601",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42601"},
 				},
 				{
 					Query:           "SELECT count(DISTINCT v) OVER (ORDER BY id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM (VALUES (1, 1), (2, 1), (3, 2)) AS t(id, v)",

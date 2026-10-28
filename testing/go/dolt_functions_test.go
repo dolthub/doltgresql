@@ -3528,6 +3528,9 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 				{
 					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', 'nonexistent_table')",
 					ExpectedErr: "table not found: public.nonexistent_table",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       "SELECT * FROM DOLT_PREVIEW_MERGE_CONFLICTS('main', 'branch1', '')",

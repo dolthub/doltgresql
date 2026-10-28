@@ -40,20 +40,32 @@ func TestAlterTable(t *testing.T) {
 					// Test that the FK constraint is working
 					Query:       "INSERT INTO parent VALUES (10, 10, 10);",
 					ExpectedErr: "Foreign key violation",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query:       "ALTER TABLE parent ADD FOREIGN KEY (c2) REFERENCES child (pk);",
 					ExpectedErr: "Foreign key violation",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					// Test an FK reference over multiple columns
 					Query:       "ALTER TABLE parent ADD FOREIGN KEY (c1, c2) REFERENCES child (pk, c1);",
 					ExpectedErr: "Foreign key violation",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42830"},
 				},
 				{
 					// Unsupported syntax: MATCH PARTIAL
 					Query:       "ALTER TABLE parent ADD FOREIGN KEY (c1, c2) REFERENCES child (pk, c1) MATCH PARTIAL;",
 					ExpectedErr: "MATCH PARTIAL is not yet supported",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "0A000"},
 				},
 			},
 		},
@@ -99,6 +111,9 @@ func TestAlterTable(t *testing.T) {
 					// Add a check constraint that is already violated by the existing data
 					Query:       "ALTER TABLE t1 ADD CONSTRAINT constraint1 CHECK (c1 > 100);",
 					ExpectedErr: "violated",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					// Add a check constraint
@@ -112,6 +127,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO t1 VALUES (3, 101);",
 					ExpectedErr: "violated",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 			},
 		},
@@ -126,6 +144,9 @@ func TestAlterTable(t *testing.T) {
 					// Add a check constraint that is already violated by the existing data
 					Query:       "ALTER TABLE t1 ADD CONSTRAINT constraint1 CHECK (c1 in (100));",
 					ExpectedErr: "violated",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					// Add a check constraint
@@ -139,6 +160,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO t1 VALUES (3, 101);",
 					ExpectedErr: "violated",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 			},
 		},
@@ -157,10 +181,16 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO t1 VALUES (2, 2);",
 					ExpectedErr: "violated",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:       "INSERT INTO t1 VALUES (1, NULL);",
 					ExpectedErr: "non-nullable",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23502"},
 				},
 			},
 		},
@@ -207,6 +237,9 @@ func TestAlterTable(t *testing.T) {
 					// Test the pk by inserting a duplicate value
 					Query:       "INSERT into test1 values (1, 2), (1, 3);",
 					ExpectedErr: "duplicate primary key",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query:    "ALTER TABLE test2 ADD PRIMARY KEY (a, b);",
@@ -216,14 +249,23 @@ func TestAlterTable(t *testing.T) {
 					// Test the pk by inserting a duplicate value
 					Query:       "INSERT into test2 values (1, 2, 3), (1, 2, 4);",
 					ExpectedErr: "duplicate primary key",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query:       "ALTER TABLE pkTable1 ADD PRIMARY KEY (a);",
 					ExpectedErr: "Multiple primary keys defined",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P16"},
 				},
 				{
 					Query:       "ALTER TABLE duplicateRows ADD PRIMARY KEY (a);",
 					ExpectedErr: "duplicate primary key",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					// TODO: This statement fails in analysis, because it can't find a table named
@@ -250,6 +292,9 @@ func TestAlterTable(t *testing.T) {
 					// Test the pk by inserting a duplicate value
 					Query:       "INSERT into test1 values ('a', 3);",
 					ExpectedErr: "duplicate primary key",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query: "select * from test1;",
@@ -324,6 +369,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO test1 VALUES (2, 2, -2);",
 					ExpectedErr: `Check constraint "chk1" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 			},
 		},
@@ -341,10 +389,16 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO test1 VALUES (2, 2, -2);",
 					ExpectedErr: `Check constraint "chk1" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:       "ALTER TABLE test1 ADD COLUMN c2 INT CONSTRAINT chk2 CHECK (c2 IS NOT NULL);",
 					ExpectedErr: `Check constraint "chk2" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 			},
 		},
@@ -489,6 +543,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO test1 VALUES (1, NULL);",
 					ExpectedErr: "column name 'b' is non-nullable",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23502"},
 				},
 				{
 					Query:    "ALTER TABLE test1 ALTER COLUMN b DROP NOT NULL;",
@@ -505,6 +562,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "ALTER TABLE test1 ALTER COLUMN b SET NOT NULL;",
 					ExpectedErr: "'b' is non-nullable but attempted to set a value of null",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23502"},
 				},
 			},
 		},
@@ -535,6 +595,9 @@ func TestAlterTable(t *testing.T) {
 					// column results in an error instead of changing the type.
 					Query:       "ALTER TABLE test1 ALTER COLUMN b TYPE smallint;",
 					ExpectedErr: "out of range for smallint",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003"},
 				},
 			},
 		},
@@ -677,6 +740,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "ALTER TABLE doesnotexist ALTER COLUMN c TYPE integer USING c::integer;",
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					// IF EXISTS on a missing table is a no-op
@@ -886,6 +952,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO t VALUES ('abc', 123);",
 					ExpectedErr: "Foreign key violation on fk: `t_c1_fkey`",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 			},
 		},
@@ -905,6 +974,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "ALTER TABLE doesnotexist RENAME TO t3;",
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query: "ALTER TABLE t1 RENAME TO t3;",
@@ -924,6 +996,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "SELECT * FROM t1;",
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       "ALTER TABLE t3 RENAME TO t2;",
@@ -965,6 +1040,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO bug8_child2 VALUES (2, 2);",
 					ExpectedErr: "Foreign key violation on fk: `bug8_fk`, table: `bug8_child2`, referenced table: `bug8_parent`, key: `[2]`",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query: "ALTER TABLE bug8_parent RENAME TO bug8_parent2;",
@@ -972,6 +1050,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO bug8_child2 VALUES (3, 3);",
 					ExpectedErr: "Foreign key violation on fk: `bug8_fk`, table: `bug8_child2`, referenced table: `bug8_parent2`, key: `[3]`",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 			},
 		},
@@ -1339,6 +1420,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       `INSERT INTO t1a VALUES (NULL, 'hi');`,
 					ExpectedErr: "non-nullable",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23502"},
 				},
 				{ // The original table's NOT NULL doesn't affect columns that use the table's type
 					Query:    `INSERT INTO t2 VALUES (4, ROW(NULL, 'ghi'), ROW(NULL, 6));`,
@@ -1462,6 +1546,9 @@ func TestAlterTable(t *testing.T) {
 					// null value in column "category_id" of relation "products" violates not-null constraint
 					Query:       `DELETE FROM categories WHERE category_id = 1;`,
 					ExpectedErr: `null value in column "category_id" violates not-null constraint`,
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23502"},
 				},
 			},
 		},
@@ -1563,6 +1650,9 @@ func TestAlterTable(t *testing.T) {
 					// TODO: error message should be `Key (a)=(5) is not present in table "attmp2"`
 					Query:       `ALTER TABLE attmp3 add constraint attmpconstr foreign key (a) references attmp2(a);`,
 					ExpectedErr: "Foreign key violation on fk: `attmpconstr`, table: `attmp3`, referenced table: `attmp2`, key: `[5]`",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Skip:     true, // TODO: if no column defined, load all to compare (for attmp2)
@@ -1578,6 +1668,9 @@ func TestAlterTable(t *testing.T) {
 					// TODO: error message should be `Key (a)=(5) is not present in table "attmp2"`
 					Query:       `ALTER TABLE attmp3 validate constraint attmpconstr;`,
 					ExpectedErr: `Foreign key violation`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query:    `DELETE FROM attmp3 where a=5;`,
@@ -1594,6 +1687,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       `INSERT INTO attmp3 VALUES (6, 5);`,
 					ExpectedErr: `Foreign key violation`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query:    `INSERT INTO attmp2 VALUES (6);`,
@@ -1606,6 +1702,9 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:       `UPDATE attmp3 SET a=7 where b=22;`,
 					ExpectedErr: `Foreign key violation`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query:    `UPDATE attmp3 SET a=2 where b=22;`,
@@ -1637,6 +1736,9 @@ WHERE con.contype = 'f';`,
 					// TODO: error message should be `check constraint "b_greater_than_ten" of relation "attmp3" is violated by some row`
 					Query:       `ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10);`,
 					ExpectedErr: `Check constraint "b_greater_than_ten" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:    `ALTER TABLE attmp3 ADD CONSTRAINT b_greater_than_ten CHECK (b > 10) NOT VALID;`,
@@ -1646,6 +1748,9 @@ WHERE con.contype = 'f';`,
 					// TODO: error message should be `check constraint "b_greater_than_ten" of relation "attmp3" is violated by some row`
 					Query:       `ALTER TABLE attmp3 VALIDATE CONSTRAINT b_greater_than_ten;`,
 					ExpectedErr: `Check constraint "b_greater_than_ten" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:    `DELETE FROM attmp3 WHERE NOT b > 10;`,
@@ -1662,6 +1767,9 @@ WHERE con.contype = 'f';`,
 				{
 					Query:       `INSERT INTO attmp3 VALUES (5, 9);`,
 					ExpectedErr: `Check constraint "b_greater_than_ten" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:    `INSERT INTO attmp3 VALUES (6, 11);`,
@@ -1670,6 +1778,9 @@ WHERE con.contype = 'f';`,
 				{
 					Query:       `UPDATE attmp3 SET b=7 where a=3;`,
 					ExpectedErr: `Check constraint "b_greater_than_ten" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:    `UPDATE attmp3 SET b=77 where a=3;`,
@@ -1703,6 +1814,9 @@ ORDER BY schema_name, table_name;`,
 				{
 					Query:       `ALTER TABLE public.vc VALIDATE CONSTRAINT b_gt_ten;`,
 					ExpectedErr: `Check constraint "b_gt_ten" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 			},
 		},
@@ -1722,6 +1836,9 @@ ORDER BY schema_name, table_name;`,
 				{
 					Query:       `ALTER TABLE public.vc VALIDATE CONSTRAINT b_gt_ten;`,
 					ExpectedErr: `Check constraint "b_gt_ten" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 			},
 		},
@@ -1738,11 +1855,17 @@ ORDER BY schema_name, table_name;`,
 				{
 					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (1, 'duplicate');",
 					ExpectedErr: "duplicate primary key",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					// Verify the secondary UNIQUE index uses the remapped row shape too.
 					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (2, 'v1');",
 					ExpectedErr: "duplicate unique key",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query:    "INSERT INTO expression_index_alter (id, name) VALUES (1, 'v2') ON CONFLICT (id) DO UPDATE SET name = 'v2';",
@@ -1751,6 +1874,9 @@ ORDER BY schema_name, table_name;`,
 				{
 					Query:       "INSERT INTO expression_index_alter (id, name) VALUES (2, 'v2');",
 					ExpectedErr: "duplicate unique key",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 				},
 				{
 					Query:    "INSERT INTO expression_index_alter (id, name) VALUES (1, 'ignored') ON CONFLICT DO NOTHING;",
@@ -1792,6 +1918,9 @@ ORDER BY schema_name, table_name;`,
 					// TODO: DETAILS has more specific error message of why it failed `Key (parent_id, sub_id)=(2, 30) is not present in table "parent_table"`
 					Query:       `INSERT INTO child_table (child_id, parent_id, sub_id, description) VALUES (105, 2, 30, NULL);`,
 					ExpectedErr: `Foreign key violation`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					// non-foreign key column NULL is accepted
@@ -1803,12 +1932,18 @@ ORDER BY schema_name, table_name;`,
 					// TODO: DETAILS has more specific error message of why it failed `MATCH FULL does not allow mixing of null and nonnull key values.`
 					Query:       `INSERT INTO child_table (child_id, parent_id, sub_id, description) VALUES (103, 1, NULL, 'Partial null mix');`,
 					ExpectedErr: `Foreign key violation`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					// TODO: error message should be `insert or update on table "child_table" violates foreign key constraint "constr"`
 					// TODO: DETAILS has more specific error message of why it failed `MATCH FULL does not allow mixing of null and nonnull key values.`
 					Query:       `UPDATE child_table SET sub_id = NULL where parent_id = 2;`,
 					ExpectedErr: `Foreign key violation`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query:    `UPDATE child_table SET sub_id = 40 where parent_id = 2;`,

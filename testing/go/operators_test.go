@@ -927,6 +927,9 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT 1::numeric % 'Inf'::numeric;`,
 					Expected: []sql.Row{{Numeric("0")}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{Numeric("1")}}},
 				},
 				{
 					Query:    `SELECT '-inf'::numeric % 'Inf'::numeric;`,
@@ -939,10 +942,16 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT '-Inf'::numeric % '2'::numeric;`,
 					Expected: []sql.Row{{Numeric("-Infinity")}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{Numeric("NaN")}}},
 				},
 				{
 					Query:    `SELECT '2'::numeric % '-inf'::numeric;`,
 					Expected: []sql.Row{{Numeric("0")}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{Numeric("2")}}},
 				},
 				{
 					Query:    `SELECT '-Infinity'::numeric % 'NaN'::numeric;`,
@@ -967,10 +976,16 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT 'infinity'::numeric % '2'::numeric;`,
 					Expected: []sql.Row{{Numeric("Infinity")}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{Numeric("NaN")}}},
 				},
 				{
 					Query:    `SELECT '-infinity'::numeric % '2'::numeric;`,
 					Expected: []sql.Row{{Numeric("-Infinity")}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{Numeric("NaN")}}},
 				},
 			},
 		},
@@ -1231,10 +1246,16 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT '{"a":1}'::jsonb < '{"b":2}'::jsonb;`,
 					Expected: []sql.Row{{"f"}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb < '{"a":1}'::jsonb;`,
 					Expected: []sql.Row{{"t"}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"f"}}},
 				},
 				{
 					Query:    `SELECT 'and'::name < 'then'::name;`,
@@ -1579,10 +1600,16 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT '{"a":1}'::jsonb > '{"b":2}'::jsonb;`,
 					Expected: []sql.Row{{"t"}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"f"}}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb > '{"a":1}'::jsonb;`,
 					Expected: []sql.Row{{"f"}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT 'and'::name > 'then'::name;`,
@@ -2007,14 +2034,23 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT '{"a":1}'::jsonb <= '{"b":2}'::jsonb;`,
 					Expected: []sql.Row{{"f"}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb <= '{"a":1}'::jsonb;`,
 					Expected: []sql.Row{{"t"}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb <= '{"a":1}'::jsonb;`,
 					Expected: []sql.Row{{"t"}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"f"}}},
 				},
 				{
 					Query:    `SELECT 'and'::name <= 'then'::name;`,
@@ -2503,14 +2539,23 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `SELECT '{"a":1}'::jsonb >= '{"b":2}'::jsonb;`,
 					Expected: []sql.Row{{"t"}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"f"}}},
 				},
 				{
 					Query:    `SELECT '{"a":1}'::jsonb >= '{"a":1}'::jsonb;`,
 					Expected: []sql.Row{{"t"}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT '{"b":2}'::jsonb >= '{"a":1}'::jsonb;`,
 					Expected: []sql.Row{{"f"}},
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT 'and'::name >= 'then'::name;`,
@@ -4033,6 +4078,9 @@ func TestOperators(t *testing.T) {
 					// https://github.com/dolthub/doltgresql/issues/2160
 					Query:       `SELECT * FROM t WHERE v = true;`,
 					ExpectedErr: "operator does not exist: varchar = bool",
+
+					// Native PostgreSQL semantics, checked independently against the stock server.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883"},
 				},
 			},
 		},

@@ -361,10 +361,16 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:       "COPY tbl2 TO STDOUT;",
 					ExpectedErr: "table not found: tbl2",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       "COPY tbl1 (pk, c3) TO STDOUT;",
 					ExpectedErr: "column \"c3\" could not be found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42703"},
 				},
 				{
 					Query:       "COPY tbl1 TO STDOUT (FORMAT BINARY, HEADER);",

@@ -86,10 +86,15 @@ func TestServerConfigVariableStatement(t *testing.T) {
 				{
 					Query:    "SHOW port",
 					Expected: []sql.Row{{port}},
+					// SHOW reports GUC values as text on PostgreSQL.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{fmt.Sprint(port)}}},
 				},
 				{
 					Query:       "SET port TO '5432'",
 					ExpectedErr: `parameter "port" cannot be changed now`,
+
+					// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 				},
 				{
 					Query:    "SELECT current_setting('port')",

@@ -136,6 +136,9 @@ func TestDropTableCascade(t *testing.T) {
 				{
 					Query:       `SELECT * FROM parent;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					// The child table sticks around, only its foreign key constraint was dropped
@@ -166,6 +169,9 @@ func TestDropTableCascade(t *testing.T) {
 				{
 					Query:       `SELECT * FROM test;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 			},
 		},
@@ -183,6 +189,9 @@ func TestDropTableCascade(t *testing.T) {
 				{
 					Query:       `SELECT * FROM test;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 			},
 		},
@@ -199,6 +208,9 @@ func TestDropTableCascade(t *testing.T) {
 				{
 					Query:       `SELECT * FROM test;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 			},
 		},
@@ -219,10 +231,16 @@ func TestDropTableCascade(t *testing.T) {
 				{
 					Query:       `SELECT * FROM parent;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:       `SELECT * FROM middle;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `INSERT INTO child VALUES (1, 99);`,
@@ -245,6 +263,9 @@ func TestDropTableCascade(t *testing.T) {
 					Query: `DROP TABLE doesnotexist CASCADE;`,
 					// This matches the standard DROP TABLE path's error; Postgres says `table "doesnotexist" does not exist`
 					ExpectedErr: `table not found: doesnotexist`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `DROP TABLE IF EXISTS doesnotexist, parent CASCADE;`,
@@ -253,6 +274,9 @@ func TestDropTableCascade(t *testing.T) {
 				{
 					Query:       `SELECT * FROM parent;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `INSERT INTO child VALUES (1, 99);`,
@@ -280,6 +304,9 @@ func TestDropTableCascade(t *testing.T) {
 				{
 					Query:       `SELECT * FROM sch1.parent;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `INSERT INTO sch2.child VALUES (1, 99);`,
@@ -303,6 +330,9 @@ func TestDropTableCascade(t *testing.T) {
 				{
 					Query:       `SELECT * FROM sch1.parent;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					Query:    `INSERT INTO sch1.child VALUES (1, 99);`,
@@ -347,6 +377,9 @@ func TestDropTableCascade(t *testing.T) {
 				{
 					Query:       `SELECT * FROM test_view;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 			},
 		},
@@ -369,11 +402,17 @@ func TestDropTableCascade(t *testing.T) {
 				{
 					Query:       `SELECT * FROM test_view;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					// The view on the dependent view is dropped as well
 					Query:       `SELECT * FROM test_view_view;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 				{
 					// Views that don't depend on the dropped table are left alone
@@ -406,6 +445,9 @@ func TestDropTableCascade(t *testing.T) {
 					// The unqualified reference resolved to public.test, which was dropped
 					Query:       `SELECT * FROM unqualified_view;`,
 					ExpectedErr: "not found",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01"},
 				},
 			},
 		},

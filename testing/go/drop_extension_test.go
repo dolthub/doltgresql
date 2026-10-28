@@ -179,6 +179,9 @@ func TestDropExtension(t *testing.T) {
 					Query:           `DROP EXTENSION "uuid-ossp", vector;`,
 					ExpectedErr:     `cannot drop extension vector because other objects depend on it`,
 					ExpectedErrCode: "2BP01",
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "2BP01"},
 				},
 				{
 					Query:    `SELECT uuid_nil();`,

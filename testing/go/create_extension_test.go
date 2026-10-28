@@ -35,6 +35,9 @@ func TestCreateExtension(t *testing.T) {
 				{
 					Query:       "SELECT uuid_nil();",
 					ExpectedErr: `function: 'uuid_nil' not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    "SELECT public.uuid_nil();",
@@ -77,6 +80,9 @@ func TestCreateExtension(t *testing.T) {
 				{
 					Query:       "SELECT uuid_nil();",
 					ExpectedErr: `function: 'uuid_nil' not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    `CREATE EXTENSION "uuid-ossp";`,
@@ -158,6 +164,9 @@ func TestCreateExtension(t *testing.T) {
 				{
 					Query:       "SELECT uuid_nil();",
 					ExpectedErr: `function: 'uuid_nil' not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:            `SELECT dolt_merge('ext');`,
@@ -200,11 +209,17 @@ func TestCreateExtension(t *testing.T) {
 					Query:           `SELECT uuid_nil();`,
 					ExpectedErr:     `function: 'uuid_nil' not found`,
 					ExpectedErrCode: "42883",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:           `SELECT public.uuid_nil();`,
 					ExpectedErr:     `function: 'uuid_nil' not found`,
 					ExpectedErrCode: "42883",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    `SELECT e.extname, n.nspname FROM pg_catalog.pg_extension e JOIN pg_catalog.pg_namespace n ON e.extnamespace = n.oid;`,
@@ -253,6 +268,9 @@ func TestCreateExtension(t *testing.T) {
 					Query:           `SELECT extensions.uuid_nil();`,
 					ExpectedErr:     `function: 'uuid_nil' not found`,
 					ExpectedErrCode: "42883",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    `DROP SCHEMA extensions;`,

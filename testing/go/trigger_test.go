@@ -700,6 +700,20 @@ $$ LANGUAGE plpgsql;`,
 		},
 		{
 			Name: "WHEN with non-boolean expression",
+			// Native PostgreSQL validates WHEN at CREATE, before any row is written.
+			Postgres: &ScriptTest{
+				Name: "WHEN is validated at trigger creation",
+				SetUpScript: []string{
+					"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT)",
+					"CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$ BEGIN NEW.v1 := NEW.pk::text || '_' || NEW.v1; RETURN NEW; END $$ LANGUAGE plpgsql",
+				},
+				Assertions: []ScriptTestAssertion{
+					{Query: "CREATE TRIGGER test_trigger BEFORE INSERT ON test FOR EACH ROW WHEN (NEW.pk + 1) EXECUTE FUNCTION trigger_func()", ExpectedErrCode: "42804"},
+					{Query: "INSERT INTO test VALUES (1, 'hi'), (2, 'there')"},
+					{Query: "SELECT * FROM test ORDER BY pk", Expected: []sql.Row{{1, "hi"}, {2, "there"}}},
+					{Query: "SELECT count(*) FROM pg_trigger WHERE tgrelid='test'::regclass AND NOT tgisinternal", Expected: []sql.Row{{0}}},
+				},
+			},
 			SetUpScript: []string{
 				"CREATE TABLE test (pk INT PRIMARY KEY, v1 TEXT);",
 				`CREATE FUNCTION trigger_func() RETURNS TRIGGER AS $$
@@ -975,26 +989,44 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "CREATE TRIGGER tr3336_bad BEFORE UPDATE ON t3336 FOR EACH ROW WHEN (OLD.*) EXECUTE FUNCTION f3336();",
 					Expected: []sql.Row{},
+
+					// Native trigger definition validation happens before execution.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42804"},
 				},
 				{
 					Query:       "UPDATE t3336 SET b = 'q' WHERE a = 1;",
 					ExpectedErr: "argument of WHEN must be type boolean",
+
+					// Native trigger definition validation happens before execution.
+					Postgres: &ScriptTestAssertion{ExpectedTag: "UPDATE 1"},
 				},
 				{
 					Query:    "DROP TRIGGER tr3336_bad ON t3336;",
 					Expected: []sql.Row{},
+
+					// Native trigger definition validation happens before execution.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704"},
 				},
 				{
 					Query:    "CREATE TRIGGER tr3336_bad2 BEFORE UPDATE ON t3336 FOR EACH ROW WHEN (OLD.* = 1) EXECUTE FUNCTION f3336();",
 					Expected: []sql.Row{},
+
+					// Native trigger definition validation happens before execution.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883"},
 				},
 				{
 					Query:       "UPDATE t3336 SET b = 'q' WHERE a = 1;",
 					ExpectedErr: "operator does not exist",
+
+					// Native trigger definition validation happens before execution.
+					Postgres: &ScriptTestAssertion{ExpectedTag: "UPDATE 1"},
 				},
 				{
 					Query:    "DROP TRIGGER tr3336_bad2 ON t3336;",
 					Expected: []sql.Row{},
+
+					// Native trigger definition validation happens before execution.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704"},
 				},
 				{
 					Query:    "CREATE TRIGGER tr3336_assign BEFORE UPDATE ON t3336 FOR EACH ROW EXECUTE FUNCTION f3336_assign();",
@@ -1003,6 +1035,9 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:       "UPDATE t3336 SET b = 'q' WHERE a = 1;",
 					ExpectedErr: "assignment source returned 2 columns",
+
+					// Native trigger definition validation happens before execution.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42601"},
 				},
 				{
 					Query:    "DROP TRIGGER tr3336_assign ON t3336;",
@@ -1027,6 +1062,9 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:       "UPDATE t3336 SET b = 'q' WHERE a = 1;",
 					ExpectedErr: "operator does not exist",
+
+					// The function body resolves the missing record/integer operator at execution.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883"},
 				},
 				{
 					Query:    "DROP TRIGGER tr3336_eq ON t3336;",
@@ -1059,6 +1097,8 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT * FROM t3336;",
 					Expected: []sql.Row{{1, "x"}},
+					// Updates after the rejected trigger definitions succeeded.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{1, "q"}}},
 				},
 				{
 					Query:    "CREATE TRIGGER tr3336_assign1 BEFORE UPDATE ON t3336_one FOR EACH ROW EXECUTE FUNCTION f3336_assign();",
@@ -1224,10 +1264,14 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:       "ALTER TABLE test DROP COLUMN data;",
 					ExpectedErr: "cannot drop column data of table test because other objects depend on it",
+					// Native branch diagnostics may qualify the relation with its schema.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "2BP01"},
 				},
 				{
 					Query:       "ALTER TABLE test DROP COLUMN other;",
 					ExpectedErr: "cannot drop column other of table test because other objects depend on it",
+					// Native branch diagnostics may qualify the relation with its schema.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "2BP01"},
 				},
 				{
 					Query:    "ALTER TABLE test DROP COLUMN data CASCADE;",

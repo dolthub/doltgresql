@@ -28,6 +28,9 @@ func TestDropProcedure(t *testing.T) {
 				{
 					Query:       "DROP PROCEDURE doesnotexist;",
 					ExpectedErr: "does not exist",
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883"},
 				},
 				{
 					Query:    "DROP PROCEDURE IF EXISTS doesnotexist;",

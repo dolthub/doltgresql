@@ -29,7 +29,7 @@ func TestIdentityExpressions(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
 		Name: "login identity expressions",
 		Assertions: []ScriptTestAssertion{
-			{Query: "SELECT current_user, current_role, user, session_user, current_user()", Expected: []sql.Row{{"postgres", "postgres", "postgres", "postgres", "postgres"}}},
+			{Query: "SELECT current_user, current_role, user, session_user, current_user()", Expected: []sql.Row{{"postgres", "postgres", "postgres", "postgres", "postgres"}}, Postgres: &ScriptTestAssertion{Query: "SELECT current_user, current_role, user, session_user", Expected: []sql.Row{{"postgres", "postgres", "postgres", "postgres"}}}},
 			{Query: "CREATE ROLE identity_reader LOGIN PASSWORD 'identity_password'"},
 			{Query: "SELECT current_user, current_role, user, session_user", Username: "identity_reader", Password: "identity_password", Expected: []sql.Row{{"identity_reader", "identity_reader", "identity_reader", "identity_reader"}}},
 			{Query: "DROP ROLE identity_reader"},

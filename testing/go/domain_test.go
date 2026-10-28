@@ -62,6 +62,14 @@ func TestDomain(t *testing.T) {
 						{"year_check_max", "c", 0, 2938087575},
 						{"year_check_min", "c", 0, 2938087575},
 					},
+
+					// Resolve domain identity through pg_type instead of allocation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname, contype, conrelid, contypid::regtype::text from pg_constraint WHERE conname IN ('year_check', 'year_check_min', 'year_check_max') ORDER BY conname, contypid::regtype::text;", Expected: []sql.Row{
+						{"year_check", "c", 0, "year"},
+						{"year_check", "c", 0, "year_with_check"},
+						{"year_check_max", "c", 0, "year_with_two_checks"},
+						{"year_check_min", "c", 0, "year_with_two_checks"},
+					}},
 				},
 			},
 		},
@@ -78,6 +86,12 @@ func TestDomain(t *testing.T) {
 						{"check1", "c", 0, 2005192443},
 						{"check2", "c", 0, 2005192443},
 					},
+
+					// Resolve domain identity through pg_type instead of allocation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname, contype, conrelid, contypid::regtype::text from pg_constraint WHERE conname IN ('check1', 'check2') ORDER BY conname, contypid::regtype::text;", Expected: []sql.Row{
+						{"check1", "c", 0, "d1"},
+						{"check2", "c", 0, "d1"},
+					}},
 				},
 				{
 					Query: "create table t1 (pk int primary key, v d1);",
@@ -102,6 +116,12 @@ func TestDomain(t *testing.T) {
 						{"d2_check", "c", 0, 1691630863},
 						{"d2_check1", "c", 0, 1691630863},
 					},
+
+					// Resolve domain identity through pg_type instead of allocation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname, contype, conrelid, contypid::regtype::text from pg_constraint WHERE conname IN ('d2_check', 'd2_check1') ORDER BY conname, contypid::regtype::text;", Expected: []sql.Row{
+						{"d2_check", "c", 0, "d2"},
+						{"d2_check1", "c", 0, "d2"},
+					}},
 				},
 				{
 					Query: "CREATE DOMAIN d3 AS integer CONSTRAINT d3_check1 CHECK (VALUE > 300) CHECK (VALUE < 400);",
@@ -113,6 +133,12 @@ func TestDomain(t *testing.T) {
 						{"d3_check", "c", 0, 2529148428},
 						{"d3_check1", "c", 0, 2529148428},
 					},
+
+					// Resolve domain identity through pg_type instead of allocation-specific OIDs.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname, contype, conrelid, contypid::regtype::text from pg_constraint WHERE conname IN ('d3_check1', 'd3_check') ORDER BY conname, contypid::regtype::text;", Expected: []sql.Row{
+						{"d3_check", "c", 0, "d3"},
+						{"d3_check1", "c", 0, "d3"},
+					}},
 				},
 			},
 		},
@@ -170,11 +196,15 @@ func TestDomain(t *testing.T) {
 					// TODO: the correct error msg: `domain year does not allow null values`
 					Query:       `INSERT INTO tbl_not_null VALUES (2, null)`,
 					ExpectedErr: `column name 'y' is non-nullable but attempted to set a value of null`,
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23502"},
 				},
 				{
 					// TODO: the correct error msg: `domain year does not allow null values`
 					Query:       `INSERT INTO tbl_not_null(pk) VALUES (2)`,
 					ExpectedErr: `Field 'y' doesn't have a default value`,
+					Postgres:    &ScriptTestAssertion{ExpectedErrCode: "23502"},
 				},
 				{
 					Query:    `SELECT * FROM tbl_not_null`,
@@ -202,6 +232,9 @@ func TestDomain(t *testing.T) {
 					// TODO: the correct error msg: `domain year does not allow null values`
 					Query:       `UPDATE test_table SET y = null WHERE pk = 1;`,
 					ExpectedErr: `column name 'y' is non-nullable but attempted to set a value of null`,
+
+					// Native diagnostic verified against stock PostgreSQL; preserve the error category.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23502"},
 				},
 				{
 					Query:    `SELECT * FROM test_table`,
@@ -224,6 +257,9 @@ func TestDomain(t *testing.T) {
 				{
 					Query:       `UPDATE non_empty_string_t SET last_name = '' WHERE first_name = 'Jane'`,
 					ExpectedErr: `Check constraint "name_check" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514"},
 				},
 				{
 					Query:    `UPDATE non_empty_string_t SET last_name = NULL WHERE first_name = 'Jane'`,
@@ -265,6 +301,7 @@ func TestDomain(t *testing.T) {
 				{
 					Query:       `DROP DOMAIN IF EXISTS mydb.public.year;`,
 					ExpectedErr: `DROP DOMAIN is currently only supported for the current database`,
+					Postgres:    &ScriptTestAssertion{ExpectedErrCode: "0A000", ExpectedErr: "cross-database references"},
 				},
 				{
 					Query:       `DROP DOMAIN non_existing_domain;`,

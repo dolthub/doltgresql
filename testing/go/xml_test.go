@@ -826,6 +826,9 @@ func TestXmlFunctions(t *testing.T) {
 					Query:           "SELECT * FROM XMLTABLE('/r/row' PASSING ('<r><row><n>x</n></row></r>'::xml) COLUMNS n int PATH 'n');",
 					ExpectedErr:     `invalid input syntax for type int4: "x"`,
 					ExpectedErrCode: "22P02",
+
+					// Native integer diagnostics use the SQL type name.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P02", ExpectedErr: "invalid input syntax for type integer"},
 				},
 				{
 					Query:           "SELECT * FROM XMLTABLE('/r/row' PASSING ('<r><row><n>x</n></row></r>'::xml) COLUMNS n text PATH 'm' NOT NULL);",
@@ -836,6 +839,9 @@ func TestXmlFunctions(t *testing.T) {
 					Query:           "SELECT * FROM XMLTABLE('/r' PASSING '<r/>' COLUMNS v int PATH 'q' DEFAULT 'zz');",
 					ExpectedErr:     `invalid input syntax for type int4: "zz"`,
 					ExpectedErrCode: "22P02",
+
+					// Native integer diagnostics use the SQL type name.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P02", ExpectedErr: "invalid input syntax for type integer"},
 				},
 				{
 					Query:           "SELECT * FROM XMLTABLE('/r' PASSING '<r/>' COLUMNS v int PATH 'q' DEFAULT 'a'::text);",

@@ -205,6 +205,9 @@ func TestSequences(t *testing.T) {
 				{
 					Query:       "CREATE SEQUENCE test10 AS BIGINT MINVALUE -9223372036854775809;",
 					ExpectedErr: "out of int64 range",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003", ExpectedErr: "out of range"},
 				},
 				{
 					Query:    "CREATE SEQUENCE test11 AS BIGINT MAXVALUE 9223372036854775807;",
@@ -213,6 +216,9 @@ func TestSequences(t *testing.T) {
 				{
 					Query:       "CREATE SEQUENCE test12 AS BIGINT MINVALUE 9223372036854775808;",
 					ExpectedErr: "out of int64 range",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003", ExpectedErr: "out of range"},
 				},
 			},
 		},

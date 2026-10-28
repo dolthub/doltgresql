@@ -1,11 +1,14 @@
 package _go
 
 import (
+	"github.com/jackc/pgx/v5/pgproto3"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -43,4 +46,57 @@ func TestExternalPostgresIsolation(t *testing.T) {
 			require.NoError(t, controller.WaitForStop())
 		}
 	})
+}
+
+// A live listener can still reject startup while PostgreSQL is recovering.
+func TestExternalPostgresReadiness(t *testing.T) {
+	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+	require.NoError(t, listener.(*net.TCPListener).SetDeadline(time.Now().Add(5*time.Second)))
+	completed := make(chan error, 1)
+	go func() {
+		for attempt := 0; attempt < 2; attempt++ {
+			conn, err := listener.Accept()
+			if err != nil {
+				completed <- err
+				return
+			}
+			_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+			backend := pgproto3.NewBackend(conn, conn)
+			_, err = backend.ReceiveStartupMessage()
+			if err != nil {
+				conn.Close()
+				completed <- err
+				return
+			}
+			if attempt == 0 {
+				backend.Send(&pgproto3.ErrorResponse{Severity: "FATAL", Code: "57P03", Message: "the database system is starting up"})
+				err = backend.Flush()
+				conn.Close()
+				if err != nil {
+					completed <- err
+					return
+				}
+				continue
+			}
+			backend.Send(&pgproto3.AuthenticationOk{})
+			backend.Send(&pgproto3.ParameterStatus{Name: "server_version", Value: "18.6"})
+			backend.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
+			if err = backend.Flush(); err == nil {
+				_, err = backend.Receive() // pgx Ping's simple query
+			}
+			if err == nil {
+				backend.Send(&pgproto3.CommandComplete{CommandTag: []byte("SELECT 1")})
+				backend.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
+				err = backend.Flush()
+			}
+			conn.Close()
+			completed <- err
+		}
+	}()
+	server := &externalServer{port: listener.Addr().(*net.TCPAddr).Port, exited: make(chan struct{})}
+	require.NoError(t, server.waitForListener())
+	require.NoError(t, <-completed)
 }
