@@ -16,6 +16,7 @@ package _go
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -5915,10 +5916,53 @@ func TestWireTypesSending(t *testing.T) {
 						&pgproto3.CloseComplete{},
 						&pgproto3.ReadyForQuery{TxStatus: 'I'},
 					},
+					// PostgreSQL's xmlsend adds the client encoding declaration to
+					// each element; array_send wraps those binary XML payloads.
+					PostgresReceive: []pgproto3.BackendMessage{
+						&pgproto3.BindComplete{},
+						&pgproto3.DataRow{Values: [][]byte{nativeXMLArrayWire(), nativeXMLArrayWire([]byte("<a/>"), []byte("<b>x</b>"), []byte("<c/>"))}},
+						&pgproto3.DataRow{Values: [][]byte{nil, nativeXMLArrayWire([]byte("<d/>"), nil, []byte("<e/>"))}},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.CloseComplete{},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
 				},
 			},
 		},
 	})
+}
+
+// nativeXMLArrayWire constructs PostgreSQL's documented binary array layout
+// with xmlsend payloads for this harness's WIN1252 connection.
+func nativeXMLArrayWire(values ...[]byte) []byte {
+	var out []byte
+	var dimensions, hasNull uint32
+	if len(values) > 0 {
+		dimensions = 1
+	}
+	for _, value := range values {
+		if value == nil {
+			hasNull = 1
+		}
+	}
+	for _, field := range []uint32{dimensions, hasNull, 142} {
+		out = binary.BigEndian.AppendUint32(out, field)
+	}
+	if dimensions == 0 {
+		return out
+	}
+	out = binary.BigEndian.AppendUint32(out, uint32(len(values)))
+	out = binary.BigEndian.AppendUint32(out, 1)
+	for _, value := range values {
+		if value == nil {
+			out = binary.BigEndian.AppendUint32(out, ^uint32(0))
+			continue
+		}
+		payload := append([]byte(`<?xml version="1.0" encoding="WIN1252"?>`), value...)
+		out = binary.BigEndian.AppendUint32(out, uint32(len(payload)))
+		out = append(out, payload...)
+	}
+	return out
 }
 
 // TestWireTypesReceiving allows us to directly test what is received on the wire regarding types, ensuring that the
