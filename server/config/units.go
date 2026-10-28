@@ -61,13 +61,8 @@ var numericParameterValue = regexp.MustCompile(`^[\t\n\v\f\r ]*([+-]?(?:0[xX][0-
 // minNormalFloat64 is the smallest positive normal float64. Smaller nonzero values underflow in C's strtod.
 var minNormalFloat64 = math.Float64frombits(0x0010000000000000)
 
-// HasUnit returns whether the given parameter has a unit, meaning that its value is displayed with a unit.
-func HasUnit(name string) bool {
-	p, ok := postgresConfigParameters[strings.ToLower(name)].(*Parameter)
-	return ok && len(p.Unit) > 0
-}
-
-// HasUnitInRegistry returns whether the parameter, as defined in the given registry, has a unit.
+// HasUnitInRegistry returns whether the parameter, as defined in the given registry, has a unit, meaning that its
+// value is displayed with a unit.
 func HasUnitInRegistry(vars sql.SystemVariableRegistry, name string) bool {
 	definition, _, ok := vars.GetGlobal(strings.ToLower(name))
 	if !ok {
