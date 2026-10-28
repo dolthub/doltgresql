@@ -63,3 +63,23 @@ func TestVersionedRoutineWorkspace(t *testing.T) {
 		},
 	})
 }
+
+func TestVersionedRoutineDiffSummary(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "routine-only edits participate in summary and tracked commits",
+			SetUpScript: []string{
+				`CREATE FUNCTION f() RETURNS integer LANGUAGE sql AS $$SELECT 1$$`,
+				`SELECT dolt_commit('-Am','routine base')`,
+				`CREATE OR REPLACE FUNCTION f() RETURNS integer LANGUAGE sql AS $$SELECT 2$$`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT data_change, schema_change FROM dolt_diff_summary('HEAD','WORKING','f()')`, Expected: []sql.Row{{"t", "f"}}},
+				{Query: `SELECT count(*) FROM dolt_diff_summary('HEAD','WORKING')`, Expected: []sql.Row{{1}}},
+				{Query: `SELECT dolt_commit('-am','tracked routine')`, SkipResultsCheck: true},
+				{Query: `SELECT count(*) FROM dolt_status`, Expected: []sql.Row{{0}}},
+				{Query: `SELECT f()`, Expected: []sql.Row{{2}}},
+			},
+		},
+	})
+}
