@@ -38,6 +38,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW timezone",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:    "SET timezone TO '+00:00';",
@@ -54,6 +57,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW timezone",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:    "SET TIME ZONE '+00:00';",
@@ -78,10 +84,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW timezone",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:    "SELECT current_setting('timezone')",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 		},
 	},
@@ -351,6 +363,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET archive_mode TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('archive_mode')",
@@ -507,6 +522,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET autovacuum_freeze_max_age TO '200000000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_freeze_max_age')",
@@ -549,6 +567,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET autovacuum_multixact_freeze_max_age TO '400000000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('autovacuum_multixact_freeze_max_age')",
@@ -897,6 +918,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET block_size TO '8192'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('block_size')",
@@ -918,6 +942,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET bonjour TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('bonjour')",
@@ -936,6 +963,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET bonjour_name TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('bonjour_name')",
@@ -1188,6 +1218,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET cluster_name TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('cluster_name')",
@@ -1314,6 +1347,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET config_file TO '/Users/postgres/postgresql.conf'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('config_file')",
@@ -1546,15 +1582,21 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 
 				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET data_checksums TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('data_checksums')",
 				Expected: []sql.Row{{"off"}},
+
+				// PostgreSQL 18 enables checksums by default and revised these GUCs.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 		},
 	},
@@ -1569,6 +1611,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET data_directory TO '/Users/postgres'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('data_directory')",
@@ -1587,6 +1632,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET data_directory_mode TO '448'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('data_directory_mode')",
@@ -1608,6 +1656,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET data_sync_retry TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('data_sync_retry')",
@@ -1654,15 +1705,21 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 
 				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:       "SET db_user_namespace TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:    "SELECT current_setting('db_user_namespace')",
 				Expected: []sql.Row{{"off"}},
+
+				// PostgreSQL 18 enables checksums by default and revised these GUCs.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 		},
 	},
@@ -1710,6 +1767,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET debug_assertions TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('debug_assertions')",
@@ -1756,6 +1816,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET debug_io_direct TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('debug_io_direct')",
@@ -2279,6 +2342,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET dynamic_shared_memory_type TO 'posix'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('dynamic_shared_memory_type')",
@@ -3218,6 +3284,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET event_source TO 'PostgreSQL'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('event_source')",
@@ -3275,6 +3344,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET external_pid_file TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('external_pid_file')",
@@ -3819,6 +3891,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET hba_file TO '/Users/postgres/pg_hba.conf'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('hba_file')",
@@ -3840,6 +3915,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET hot_standby TO 'on'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('hot_standby')",
@@ -3879,6 +3957,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET huge_page_size TO '0'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('huge_page_size')",
@@ -3897,6 +3978,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET huge_pages TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('huge_pages')",
@@ -3945,6 +4029,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET ident_file TO '/Users/postgres/pg_ident.conf'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('ident_file')",
@@ -4065,6 +4152,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET ignore_invalid_pages TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('ignore_invalid_pages')",
@@ -4086,6 +4176,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET ignore_system_indexes TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('ignore_system_indexes')",
@@ -4107,6 +4200,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET in_hot_standby TO 'on'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('in_hot_standby')",
@@ -4128,6 +4224,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET integer_datetimes TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('integer_datetimes')",
@@ -4257,6 +4356,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET jit_debugging_support TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('jit_debugging_support')",
@@ -4434,6 +4536,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET jit_profiling_support TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('jit_profiling_support')",
@@ -4452,6 +4557,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET jit_provider TO 'llvmjit'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('jit_provider')",
@@ -4707,6 +4815,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET listen_addresses TO 'localhost'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('listen_addresses')",
@@ -4862,15 +4973,21 @@ var setStmts = []ScriptTest{
 				Expected: []sql.Row{{int8(0)}},
 
 				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{""}}},
 			},
 			{
 				Query:       "SET log_connections TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('log_connections')",
 				Expected: []sql.Row{{"off"}},
+
+				// PostgreSQL 18 enables checksums by default and revised these GUCs.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{""}}},
 			},
 		},
 	},
@@ -4924,6 +5041,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET log_disconnections TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('log_disconnections')",
@@ -5759,6 +5879,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET logging_collector TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('logging_collector')",
@@ -5873,6 +5996,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_connections TO '150'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_connections')",
@@ -5894,6 +6020,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_files_per_process TO '1000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_files_per_process')",
@@ -5915,6 +6044,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_function_args TO '100'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_function_args')",
@@ -5936,6 +6068,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_identifier_length TO '63'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_identifier_length')",
@@ -5957,6 +6092,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_index_keys TO '32'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_index_keys')",
@@ -5978,6 +6116,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_locks_per_transaction TO '64'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_locks_per_transaction')",
@@ -5999,6 +6140,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_logical_replication_workers TO '4'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_logical_replication_workers')",
@@ -6200,6 +6344,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_pred_locks_per_transaction TO '64'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_pred_locks_per_transaction')",
@@ -6218,6 +6365,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_prepared_transactions TO '0'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_prepared_transactions')",
@@ -6239,6 +6389,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_replication_slots TO '10'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_replication_slots')",
@@ -6365,6 +6518,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_wal_senders TO '10'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_wal_senders')",
@@ -6404,6 +6560,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET max_worker_processes TO '8'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('max_worker_processes')",
@@ -6425,6 +6584,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET min_dynamic_shared_memory TO '0'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('min_dynamic_shared_memory')",
@@ -6517,14 +6679,23 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW old_snapshot_threshold",
 				Expected: []sql.Row{{int64(-1)}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:       "SET old_snapshot_threshold TO '-1'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:    "SELECT current_setting('old_snapshot_threshold')",
 				Expected: []sql.Row{{"-1"}},
+
+				// PostgreSQL 18 enables checksums by default and revised these GUCs.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 		},
 	},
@@ -6716,6 +6887,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET post_auth_delay TO '0'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('post_auth_delay')",
@@ -6938,6 +7112,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target')",
@@ -6956,6 +7133,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_action TO 'pause'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_action')",
@@ -6977,6 +7157,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_inclusive TO 'on'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_inclusive')",
@@ -6995,6 +7178,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_lsn TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_lsn')",
@@ -7013,6 +7199,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_name TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_name')",
@@ -7031,6 +7220,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_time TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_time')",
@@ -7049,6 +7241,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_timeline TO 'latest'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_timeline')",
@@ -7067,6 +7262,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET recovery_target_xid TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('recovery_target_xid')",
@@ -7148,6 +7346,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET reserved_connections TO '0'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('reserved_connections')",
@@ -7595,6 +7796,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET segment_size TO '131072'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('segment_size')",
@@ -7676,6 +7880,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET server_encoding TO 'UTF8'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('server_encoding')",
@@ -7690,14 +7897,23 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW server_version",
 				Expected: []sql.Row{{"15.17 (Homebrew)"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT split_part(current_setting('server_version'),'.',1)='18'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:       "SET server_version TO '15.17 (Homebrew)'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('server_version')",
 				Expected: []sql.Row{{"15.17 (Homebrew)"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT split_part(current_setting('server_version'),'.',1)='18'", Expected: []sql.Row{{"t"}}},
 			},
 		},
 	},
@@ -7708,14 +7924,23 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW server_version_num",
 				Expected: []sql.Row{{int64(150017)}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('server_version_num')::int BETWEEN 180000 AND 189999", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:       "SET server_version_num TO '150017'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('server_version_num')",
 				Expected: []sql.Row{{"150017"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('server_version_num')::int BETWEEN 180000 AND 189999", Expected: []sql.Row{{"t"}}},
 			},
 		},
 	},
@@ -7791,6 +8016,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET shared_buffers TO '128000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('shared_buffers')",
@@ -7809,6 +8037,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET shared_memory_size TO '143000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('shared_memory_size')",
@@ -7827,6 +8058,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET shared_memory_size_in_huge_pages TO '-1'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('shared_memory_size_in_huge_pages')",
@@ -7845,6 +8079,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET shared_memory_type TO 'mmap'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('shared_memory_type')",
@@ -7863,6 +8100,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET shared_preload_libraries TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('shared_preload_libraries')",
@@ -8046,6 +8286,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET ssl_library TO 'OpenSSL'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('ssl_library')",
@@ -8318,6 +8561,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET superuser_reserved_connections TO '3'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('superuser_reserved_connections')",
@@ -8710,6 +8956,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW TimeZone",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:    "SET TimeZone TO 'UTC'",
@@ -8726,10 +8975,16 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW TimeZone",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 			{
 				Query:    "SELECT current_setting('TimeZone')",
 				Expected: []sql.Row{{"Local"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{Query: "SELECT current_setting('TimeZone')=reset_val FROM pg_settings WHERE name='TimeZone'", Expected: []sql.Row{{"t"}}},
 			},
 		},
 	},
@@ -8809,14 +9064,23 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW trace_recovery_messages",
 				Expected: []sql.Row{{"log"}},
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:       "SET trace_recovery_messages TO 'log'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 			{
 				Query:    "SELECT current_setting('trace_recovery_messages')",
 				Expected: []sql.Row{{"log"}},
+
+				// PostgreSQL 18 enables checksums by default and revised these GUCs.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704", ExpectedErr: "unrecognized configuration parameter"},
 			},
 		},
 	},
@@ -8909,6 +9173,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET track_activity_query_size TO '1024'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('track_activity_query_size')",
@@ -8930,6 +9197,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET track_commit_timestamp TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('track_commit_timestamp')",
@@ -9242,6 +9512,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET unix_socket_directories TO '/tmp'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('unix_socket_directories')",
@@ -9260,6 +9533,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET unix_socket_group TO ''",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('unix_socket_group')",
@@ -9278,6 +9554,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET unix_socket_permissions TO '511'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('unix_socket_permissions')",
@@ -9788,6 +10067,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET wal_block_size TO '8192'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_block_size')",
@@ -9806,6 +10088,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET wal_buffers TO '4000'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_buffers')",
@@ -9884,6 +10169,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET wal_decode_buffer_size TO '524288'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_decode_buffer_size')",
@@ -9959,6 +10247,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET wal_level TO 'replica'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_level')",
@@ -9980,6 +10271,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET wal_log_hints TO 'off'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_log_hints')",
@@ -10112,6 +10406,9 @@ var setStmts = []ScriptTest{
 			{
 				Query:       "SET wal_segment_size TO '16777216'",
 				ExpectedErr: "cannot be changed now",
+
+				// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 			},
 			{
 				Query:    "SELECT current_setting('wal_segment_size')",

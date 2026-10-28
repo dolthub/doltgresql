@@ -90,6 +90,9 @@ func TestServerConfigVariableStatement(t *testing.T) {
 				{
 					Query:       "SET port TO '5432'",
 					ExpectedErr: `parameter "port" cannot be changed now`,
+
+					// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
 				},
 				{
 					Query:    "SELECT current_setting('port')",

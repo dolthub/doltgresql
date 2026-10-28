@@ -2860,7 +2860,7 @@ $$ LANGUAGE plpgsql;`,
 					Expected: []sql.Row{{"(triangle)"}, {"(square)"}},
 
 					// PostgreSQL exposes anonymous records through the binary protocol; compare their SQL text representation.
-					Postgres: &ScriptTestAssertion{Query: "SELECT shapes();", Expected: []sql.Row{{"(triangle)"}, {"(square)"}}},
+					Postgres: &ScriptTestAssertion{Query: "SELECT shapes();", Expected: []sql.Row{{"triangle"}, {"square"}}},
 				},
 			},
 		},

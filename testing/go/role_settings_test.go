@@ -188,7 +188,10 @@ func TestRoleSettings(t *testing.T) {
 				{Query: "ALTER DATABASE missing_db SET work_mem = 8192", ExpectedErr: `database "missing_db" does not exist`},
 				{Query: "ALTER ROLE settings_err IN DATABASE missing_db SET work_mem = 8192", ExpectedErr: `database "missing_db" does not exist`},
 				{Query: "ALTER ROLE settings_err SET not_a_parameter = 1", ExpectedErr: `unrecognized configuration parameter "not_a_parameter"`},
-				{Query: "ALTER ROLE settings_err SET archive_mode = on", ExpectedErr: "cannot be changed now"},
+				{Query: "ALTER ROLE settings_err SET archive_mode = on", ExpectedErr: "cannot be changed now",
+					// PostgreSQL 18 has native GUC contexts, version metadata and removed legacy settings.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "55P02"},
+				},
 				{Query: "ALTER ROLE settings_err SET role = 'postgres'", ExpectedErr: "cannot be changed now"},
 				{Query: "ALTER ROLE settings_err SET app.unset FROM CURRENT", ExpectedErr: `unrecognized configuration parameter "app.unset"`},
 				{Query: "SELECT count(*) FROM pg_db_role_setting", Expected: []sql.Row{{0}}},
