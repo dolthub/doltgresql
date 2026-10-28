@@ -166,6 +166,9 @@ func TestSetConstraints(t *testing.T) {
 					Query:           "INSERT INTO child_example VALUES (1, 99);",
 					ExpectedErr:     "Foreign key violation on fk: `nd_fk`",
 					ExpectedErrCode: "23503",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query: "ROLLBACK;",
@@ -202,6 +205,9 @@ func TestSetConstraints(t *testing.T) {
 					Query:           "COMMIT;",
 					ExpectedErr:     "Foreign key violation on fk: `child_parent_fk`",
 					ExpectedErrCode: "23503",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query: "BEGIN;",
@@ -213,6 +219,9 @@ func TestSetConstraints(t *testing.T) {
 					Query:           "SET CONSTRAINTS child_parent_fk IMMEDIATE;",
 					ExpectedErr:     "Foreign key violation on fk: `child_parent_fk`",
 					ExpectedErrCode: "23503",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query: "ROLLBACK;",
@@ -227,6 +236,9 @@ func TestSetConstraints(t *testing.T) {
 					Query:           "INSERT INTO child_example VALUES (4, 40);",
 					ExpectedErr:     "Foreign key violation on fk: `child_parent_fk`",
 					ExpectedErrCode: "23503",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query: "ROLLBACK;",
@@ -268,6 +280,9 @@ func TestSetConstraints(t *testing.T) {
 					Query:           "INSERT INTO fk_imm VALUES (1, 10);",
 					ExpectedErr:     "Foreign key violation on fk: `fk_imm_fk`",
 					ExpectedErrCode: "23503",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query: "ROLLBACK;",
@@ -332,6 +347,9 @@ func TestSetConstraints(t *testing.T) {
 					Query:           "COMMIT;",
 					ExpectedErr:     "duplicate unique key",
 					ExpectedErrCode: "23505",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
 				},
 				{
 					Query: "BEGIN;",
@@ -343,6 +361,9 @@ func TestSetConstraints(t *testing.T) {
 					Query:           "SET CONSTRAINTS u_def_u IMMEDIATE;",
 					ExpectedErr:     "duplicate unique key",
 					ExpectedErrCode: "23505",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
 				},
 				{
 					Query: "ROLLBACK;",

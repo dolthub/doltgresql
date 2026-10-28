@@ -516,6 +516,9 @@ func TestRecords(t *testing.T) {
 				{
 					Query:       "INSERT INTO ck VALUES (5, 6);",
 					ExpectedErr: "Check constraint",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:    "SELECT * FROM ck;",
@@ -616,6 +619,9 @@ func TestRecords(t *testing.T) {
 					Query:           "INSERT INTO ck VALUES (1, 1);",
 					ExpectedErr:     "Check constraint",
 					ExpectedErrCode: "23514",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:    "SELECT * FROM ck;",

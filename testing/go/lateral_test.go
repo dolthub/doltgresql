@@ -132,6 +132,9 @@ func TestImplicitLateralJoin(t *testing.T) {
 					// Subqueries are NOT implicitly lateral: they require the explicit LATERAL keyword
 					Query:       "SELECT * FROM t1, (SELECT t1.id) s;",
 					ExpectedErr: "table not found: t1",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 			},
 		},

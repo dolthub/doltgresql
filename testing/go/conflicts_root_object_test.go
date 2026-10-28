@@ -125,6 +125,9 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:       `SELECT * FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -237,6 +240,9 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:       `SELECT * FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -345,10 +351,16 @@ func TestConflictsRootObject(t *testing.T) {
 				{ // Updating to "theirs" will delete the conflicts table since it was the only conflict
 					Query:       `DELETE FROM "dolt_conflicts_interpreted_example(text)" WHERE dolt_conflict_id = 'definition';`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `SELECT * FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -457,10 +469,16 @@ func TestConflictsRootObject(t *testing.T) {
 				{ // Updating to "ancestor" will delete the conflicts table since it was the only conflict
 					Query:       `DELETE FROM "dolt_conflicts_interpreted_example(text)" WHERE dolt_conflict_id = 'definition';`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `SELECT * FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -587,6 +605,9 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:       `SELECT * FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -675,6 +696,9 @@ func TestConflictsRootObject(t *testing.T) {
 				{ // Updating to "ours" will delete the conflicts table since we chose our deleted root object
 					Query:       `DELETE FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       "SELECT interpreted_example('12');",
@@ -757,6 +781,9 @@ func TestConflictsRootObject(t *testing.T) {
 				{ // Updating to "theirs" will delete the conflicts table since we chose the other root object to keep
 					Query:       `DELETE FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -841,6 +868,9 @@ func TestConflictsRootObject(t *testing.T) {
 				{ // Updating to "ancestor" will delete the conflicts table since we effectively rolled back the merge
 					Query:       `DELETE FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -1009,6 +1039,9 @@ func TestConflictsRootObject(t *testing.T) {
 				{ // Updating to "theirs" will delete the conflicts table since we're choosing the deleted root object
 					Query:       `DELETE FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       "SELECT interpreted_example('12');",
@@ -1091,6 +1124,9 @@ func TestConflictsRootObject(t *testing.T) {
 				{ // Updating to "ancestor" will delete the conflicts table since we effectively rolled back the merge
 					Query:       `DELETE FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -1184,6 +1220,9 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:       `SELECT * FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",
@@ -1283,6 +1322,9 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:       `SELECT * FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: "SELECT interpreted_example('12');",

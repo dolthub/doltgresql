@@ -773,6 +773,9 @@ func TestFunctionsMath(t *testing.T) {
 				{
 					Query:       `SELECT cbrt(v4) FROM test ORDER BY pk;`,
 					ExpectedErr: "function cbrt(varchar(255)) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:            `SELECT cbrt('64');`,
@@ -823,6 +826,9 @@ func TestFunctionsMath(t *testing.T) {
 				{
 					Query:       `SELECT gcd(v4, 10) FROM test ORDER BY pk;`,
 					ExpectedErr: "function gcd(varchar(255), integer) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:            `SELECT gcd(36, '48');`,
@@ -870,6 +876,9 @@ func TestFunctionsMath(t *testing.T) {
 				{
 					Query:       `SELECT lcm(v4, 10) FROM test ORDER BY pk;`,
 					ExpectedErr: "function lcm(varchar(255), integer) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: `SELECT lcm(36, '48');`,
@@ -1107,10 +1116,16 @@ func TestFunctionsMath(t *testing.T) {
 				{
 					Query:       `SELECT num_nonnulls();`,
 					ExpectedErr: "function num_nonnulls() does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `SELECT num_nulls();`,
 					ExpectedErr: "function num_nulls() does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    `CREATE TABLE num_nulls_check (a uuid, b uuid, CONSTRAINT t_direction_check CHECK ((num_nonnulls(a, b) = 1)));`,
@@ -1123,10 +1138,16 @@ func TestFunctionsMath(t *testing.T) {
 				{
 					Query:       `INSERT INTO num_nulls_check VALUES ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002');`,
 					ExpectedErr: "Check constraint",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:       `INSERT INTO num_nulls_check VALUES (NULL, NULL);`,
 					ExpectedErr: "Check constraint",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 			},
 		},
@@ -1150,6 +1171,9 @@ func TestFunctionsOID(t *testing.T) {
 					// conparentid is a null OID internally, and clients compare it against a raw 0
 					Query:    `SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 'testing'::regclass AND conparentid = 0;`,
 					Expected: []sql.Row{{"testing_pkey"}},
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE conrelid = 'testing'::regclass AND contype='p' AND conparentid = 0;", Expected: []sql.Row{{"testing_pkey"}}},
 				},
 				{
 					// A relation's cached OID and the same OID given as a numeric literal are equal
@@ -1183,6 +1207,9 @@ func TestFunctionsOID(t *testing.T) {
 					Expected: []sql.Row{
 						{"Testing2"},
 					},
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"\"Testing2\""}}},
 				},
 				{
 					Query: `SELECT to_regclass(('testing'::regclass)::text);`,
@@ -1195,6 +1222,9 @@ func TestFunctionsOID(t *testing.T) {
 					Expected: []sql.Row{
 						{nil},
 					},
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{Query: "SELECT to_regclass((('testing'::regclass)::oid)::text)='testing'::regclass", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					// When the relation is from a schema on the search path, it is not qualified with the schema name
@@ -1540,6 +1570,9 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query:       `SELECT * FROM current_database;`,
 					ExpectedErr: "table not found: current_database",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 			},
 		},
@@ -1919,6 +1952,9 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query:       `SELECT obj_description('does-not-exist'::regproc, 'pg_class');`,
 					ExpectedErr: `function "does-not-exist" does not exist`,
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Skip:             true, // TODO: Implement database object comments
@@ -1943,6 +1979,9 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					Query:       `SELECT shobj_description('does-not-exist'::regproc, 'pg_class');`,
 					ExpectedErr: `function "does-not-exist" does not exist`,
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Skip:     true, // TODO: Implement tablespaces
@@ -2635,6 +2674,9 @@ func TestArrayFunctions(t *testing.T) {
 				{
 					Query:       `SELECT * FROM unnest(ARRAY[1, 2], 5);`,
 					ExpectedErr: "function pg_catalog.unnest(integer) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    `SELECT t.* FROM unnest(ARRAY[1, 2], ARRAY['a', 'b']) t;`,
@@ -2643,6 +2685,9 @@ func TestArrayFunctions(t *testing.T) {
 				{
 					Query:       `SELECT unnest(ARRAY[1, 2], ARRAY[3, 4]);`,
 					ExpectedErr: "function unnest(integer[], integer[]) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:            `SELECT * FROM unnest(ARRAY[1, 2], ARRAY['a', 'b']) WITH ORDINALITY;`,
@@ -2753,6 +2798,9 @@ func TestArrayFunctions(t *testing.T) {
 				{
 					Query:    `SELECT array_to_string(indclass, ',') FROM pg_index WHERE indexrelid = 'vectest_ab'::regclass;`,
 					Expected: []sql.Row{{"15009,15009"}},
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{Query: "SELECT array_to_string(indclass, ',')=(SELECT string_agg(c.oid::text, ',' ORDER BY u.ord) FROM unnest(i.indclass) WITH ORDINALITY u(id,ord) JOIN pg_opclass c ON c.oid=u.id WHERE c.opcintype='int4'::regtype AND c.opcdefault) FROM pg_index i WHERE indexrelid='vectest_ab'::regclass", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -3020,6 +3068,9 @@ func TestArrayFill(t *testing.T) {
 				Query:           "SELECT array_fill(1,ARRAY[2],ARRAY[0]);",
 				ExpectedErr:     "array",
 				ExpectedErrCode: "0A000",
+
+				// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+				Postgres: &ScriptTestAssertion{Query: "SELECT array_dims(array_fill(1,ARRAY[2],ARRAY[0])), array_fill(1,ARRAY[2],ARRAY[0])::text", Expected: []sql.Row{{"[0:1]", "[0:1]={1,1}"}}},
 			},
 			{
 				Query:           "SELECT array_fill(1,ARRAY[[2,2]]);",
@@ -5771,22 +5822,37 @@ func TestStringFunction(t *testing.T) {
 				{
 					Query:       `SELECT starts_with();`,
 					ExpectedErr: "function starts_with() does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `SELECT starts_with('abc'::text);`,
 					ExpectedErr: "function starts_with(text) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `SELECT starts_with('abc'::text, 'a'::text, 'b'::text);`,
 					ExpectedErr: "function starts_with(text, text, text) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `SELECT starts_with(123, '1'::text);`,
 					ExpectedErr: "function starts_with(integer, text) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `SELECT starts_with('true'::text, true);`,
 					ExpectedErr: "function starts_with(text, boolean) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 			},
 		},
@@ -5990,10 +6056,16 @@ func TestStringFunction(t *testing.T) {
 				{
 					Query:       `SELECT STRING_AGG(v2, '*', v1) FROM test;`,
 					ExpectedErr: "string_agg requires two arguments",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `SELECT STRING_AGG(v2) FROM test;`,
 					ExpectedErr: "string_agg requires two arguments",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query: `SELECT STRING_AGG(concat(v1::text, v2), ' * '::text) FROM test;`,
@@ -6174,6 +6246,9 @@ func TestStringFunction(t *testing.T) {
 					Query:           `SELECT format(1234.5678, 2);`,
 					ExpectedErr:     "function format(numeric, integer) does not exist",
 					ExpectedErrCode: "42883",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:           `SELECT format('%I', NULL);`,
@@ -6245,11 +6320,17 @@ func TestStringFunction(t *testing.T) {
 					Query:           `SELECT format('%2147483647s', 'a');`,
 					ExpectedErr:     "out of memory",
 					ExpectedErrCode: "54000",
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "54000"},
 				},
 				{
 					Query:           `SELECT format('%*s', -2147483647, 'a');`,
 					ExpectedErr:     "out of memory",
 					ExpectedErrCode: "54000",
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "54000"},
 				},
 				{
 					Query:           `SELECT format('%*s', -2147483648, 'a');`,
@@ -6811,6 +6892,9 @@ func TestUnknownFunctions(t *testing.T) {
 				{
 					Query:       `SELECT unknown_func();`,
 					ExpectedErr: `function: 'unknown_func' not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 			},
 		},
@@ -6824,6 +6908,8 @@ func TestUnknownFunctions(t *testing.T) {
 				{
 					Query:       `SELECT group_concat(pk ORDER BY pk) FROM x;`,
 					ExpectedErr: "is not yet supported", // error message is kind of nonsensical, we just want to make sure there isn't a panic
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 			},
 		},

@@ -1995,6 +1995,9 @@ $$;`,
      AND inventory_in_stock(inventory_id);
 $_$;`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    "SET check_function_bodies = false;",

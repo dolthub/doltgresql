@@ -506,6 +506,9 @@ END; $$;`,
 					Query:           `SELECT f_for_scalar_invalid_loop();`,
 					ExpectedErr:     `invalid input syntax for type int4`,
 					ExpectedErrCode: `22P02`,
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P02"},
 				},
 				{
 					// The conversion error is a regular SQL error; this uses the same client connection.

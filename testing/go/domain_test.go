@@ -224,6 +224,9 @@ func TestDomain(t *testing.T) {
 				{
 					Query:       `UPDATE non_empty_string_t SET last_name = '' WHERE first_name = 'Jane'`,
 					ExpectedErr: `Check constraint "name_check" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:    `UPDATE non_empty_string_t SET last_name = NULL WHERE first_name = 'Jane'`,

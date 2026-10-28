@@ -379,6 +379,9 @@ func TestBinaryLogic(t *testing.T) {
 				{
 					Query:       `SELECT 2 IS DISTINCT FROM 'a';`,
 					ExpectedErr: `invalid input syntax for type int4: "a"`,
+
+					// Native integer diagnostics use the SQL type name.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P02", ExpectedErr: "invalid input syntax for type integer"},
 				},
 			},
 		},
@@ -416,6 +419,9 @@ func TestBinaryLogic(t *testing.T) {
 				{
 					Query:       `SELECT 2 IS NOT DISTINCT FROM 'a';`,
 					ExpectedErr: `invalid input syntax for type int4: "a"`,
+
+					// Native integer diagnostics use the SQL type name.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P02", ExpectedErr: "invalid input syntax for type integer"},
 				},
 			},
 		},
@@ -451,6 +457,9 @@ func TestSubscript(t *testing.T) {
 				{
 					Query:    `SELECT ARRAY[1, 2, 3][1];`,
 					Expected: []sql.Row{{1}},
+
+					// Native array-constructor subscripting requires parentheses; preserve the element/slice assertion.
+					Postgres: &ScriptTestAssertion{Query: "SELECT (ARRAY[1, 2, 3])[1];", Expected: []sql.Row{{1}}},
 				},
 				{
 					Query:    `SELECT (ARRAY[1, 2, 3])[3];`,
@@ -463,26 +472,44 @@ func TestSubscript(t *testing.T) {
 				{
 					Query:    `SELECT ARRAY[1, 2, 3][0];`,
 					Expected: []sql.Row{{nil}},
+
+					// Native array-constructor subscripting requires parentheses; preserve the element/slice assertion.
+					Postgres: &ScriptTestAssertion{Query: "SELECT (ARRAY[1, 2, 3])[0];", Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT ARRAY[1, 2, 3][4];`,
 					Expected: []sql.Row{{nil}},
+
+					// Native array-constructor subscripting requires parentheses; preserve the element/slice assertion.
+					Postgres: &ScriptTestAssertion{Query: "SELECT (ARRAY[1, 2, 3])[4];", Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT ARRAY[1, 2, 3][null];`,
 					Expected: []sql.Row{{nil}},
+
+					// Native array-constructor subscripting requires parentheses; preserve the element/slice assertion.
+					Postgres: &ScriptTestAssertion{Query: "SELECT (ARRAY[1, 2, 3])[null];", Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT ARRAY['a', 'b', 'c'][2];`,
 					Expected: []sql.Row{{"b"}},
+
+					// Native array-constructor subscripting requires parentheses; preserve the element/slice assertion.
+					Postgres: &ScriptTestAssertion{Query: "SELECT (ARRAY['a', 'b', 'c'])[2];", Expected: []sql.Row{{"b"}}},
 				},
 				{
 					Query:    `SELECT ARRAY[1, 2, 3][1:3];`,
 					Expected: []sql.Row{{"{1,2,3}"}},
+
+					// Native array-constructor subscripting requires parentheses; preserve the element/slice assertion.
+					Postgres: &ScriptTestAssertion{Query: "SELECT (ARRAY[1, 2, 3])[1:3];", Expected: []sql.Row{{"{1,2,3}"}}},
 				},
 				{
 					Query:       `SELECT ARRAY[1, 2, 3]['abc'];`,
 					ExpectedErr: "integer: unhandled type: string",
+
+					// Native array-constructor subscripting requires parentheses; preserve the element/slice assertion.
+					Postgres: &ScriptTestAssertion{Query: "SELECT (ARRAY[1, 2, 3])['abc'];", ExpectedErrCode: "22P02"},
 				},
 			},
 		},
@@ -642,6 +669,9 @@ func TestCase(t *testing.T) {
 				{
 					Query:    `SELECT MIN(CASE WHEN status='confirmed' THEN price ELSE 0 END) FROM t;`,
 					Expected: []sql.Row{{Numeric("0.00")}},
+
+					// The integer ELSE branch contributes zero; numeric display scale is not the CASE contract.
+					Postgres: &ScriptTestAssertion{Query: "SELECT 0 = MIN(CASE WHEN status='confirmed' THEN price ELSE 0 END) FROM t;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT SUM(CASE WHEN status='confirmed' THEN 1 ELSE 0 END) FROM t;`,

@@ -188,6 +188,9 @@ func TestCreateAggregate(t *testing.T) {
 				{
 					Query:       `SELECT agg_rows(v) FROM agg_nsp_vals;`,
 					ExpectedErr: "function: 'agg_rows' not found",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 			},
 		},
@@ -240,6 +243,9 @@ func TestCreateAggregate(t *testing.T) {
 				{
 					Query:       `SELECT agg_drop(v) FROM agg_drop_vals;`,
 					ExpectedErr: "function: 'agg_drop' not found",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    `SELECT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'agg_drop');`,
@@ -272,10 +278,16 @@ func TestCreateAggregate(t *testing.T) {
 				{
 					Query:       `CREATE AGGREGATE agg_bad1 (int4) (SFUNC = agg_missing_step, STYPE = int4);`,
 					ExpectedErr: "function agg_missing_step(integer, integer) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `CREATE AGGREGATE agg_bad2 (int4) (SFUNC = agg_one_arg, STYPE = int4);`,
 					ExpectedErr: "function agg_one_arg(integer, integer) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `CREATE AGGREGATE agg_bad3 (int4) (SFUNC = agg_wrong_ret, STYPE = int4);`,
@@ -284,6 +296,9 @@ func TestCreateAggregate(t *testing.T) {
 				{
 					Query:       `CREATE AGGREGATE agg_bad4 (int4) (SFUNC = agg_valid_step, STYPE = int4, FINALFUNC = agg_missing_final);`,
 					ExpectedErr: "function agg_missing_final(integer) does not exist",
+
+					// Native PostgreSQL counterpart: resolve runtime identities and preserve native SQL semantics.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:       `CREATE AGGREGATE agg_valid (int4) (SFUNC = agg_valid_step, STYPE = int4);`,

@@ -137,6 +137,9 @@ func TestMerge(t *testing.T) {
 					// make sure the check constraint is still there
 					Query:       "INSERT INTO t1 VALUES (5, '2019-12-31 00:00:00')",
 					ExpectedErr: "Check constraint",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 			},
 		},
@@ -182,6 +185,9 @@ func TestMerge(t *testing.T) {
 					// make sure the foreign key constraint is still there
 					Query:       "INSERT INTO t2 VALUES (100, 200)",
 					ExpectedErr: "Foreign key violation",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 			},
 		},

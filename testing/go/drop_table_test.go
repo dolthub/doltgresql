@@ -245,6 +245,9 @@ func TestDropTableCascade(t *testing.T) {
 					Query: `DROP TABLE doesnotexist CASCADE;`,
 					// This matches the standard DROP TABLE path's error; Postgres says `table "doesnotexist" does not exist`
 					ExpectedErr: `table not found: doesnotexist`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    `DROP TABLE IF EXISTS doesnotexist, parent CASCADE;`,

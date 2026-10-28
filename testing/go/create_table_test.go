@@ -128,6 +128,9 @@ func TestCreateTable(t *testing.T) {
 					// TODO: the correct error message: `new row for relation "products" violates check constraint "products_chk_rqcthh8j"`
 					Query:       "insert into products values ('peach', 1.20, 1.80);",
 					ExpectedErr: `Check constraint "products_chk_`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:    "select * from products;",
@@ -149,6 +152,9 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:       "insert into mytbl values (2, 200);",
 					ExpectedErr: `Check constraint "v1constraint" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:    "select * from mytbl;",
@@ -170,6 +176,9 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:       "insert into mytbl values ('de', 'abc');",
 					ExpectedErr: `Check constraint "mytbl_chk_`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:    "select * from mytbl;",
@@ -192,10 +201,16 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:       "insert into mytbl values (2, 200);",
 					ExpectedErr: `Check constraint "v1constraint" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:       "insert into mytbl values (3, 5);",
 					ExpectedErr: `Check constraint "mytbl_chk_`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:    "select * from mytbl;",
@@ -217,10 +232,16 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:       "insert into mytbl values (2, 200);",
 					ExpectedErr: `Check constraint "v1constraint" violated`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:       "insert into mytbl values (3, 5);",
 					ExpectedErr: `Check constraint "mytbl_chk_`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:    "select * from mytbl;",
@@ -492,6 +513,9 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO t3324 (a) VALUES (0);",
 					ExpectedErr: "violated",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 			},
 		},
@@ -509,6 +533,9 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO t3324b (a) VALUES (0);",
 					ExpectedErr: "violated",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:    "SELECT * FROM t3324b ORDER BY a;",
@@ -539,6 +566,9 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO t3324d (a) VALUES ('b');",
 					ExpectedErr: "violated",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:    "SELECT * FROM t3324d;",
@@ -627,10 +657,16 @@ func TestCreateTable(t *testing.T) {
 				{
 					Query:       "INSERT INTO t3332 (id, u, w) VALUES (3, 1, 3);",
 					ExpectedErr: "duplicate unique key",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
 				},
 				{
 					Query:       "INSERT INTO t3332 (id, u, w) VALUES (3, 3, 2);",
 					ExpectedErr: "duplicate unique key",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
 				},
 				{
 					Query:       "INSERT INTO t3332 (id, u, w) VALUES (NULL, 4, 4);",

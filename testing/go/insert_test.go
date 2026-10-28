@@ -236,11 +236,17 @@ ON CONFLICT (id) do update set c1 = $4`,
 					Query:           "INSERT INTO conflict_child VALUES (2, 999, 1) ON CONFLICT DO NOTHING",
 					ExpectedErr:     "Foreign key violation",
 					ExpectedErrCode: "23503",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query:           "INSERT INTO conflict_child VALUES (2, 1, -1) ON CONFLICT DO NOTHING",
 					ExpectedErr:     "Check constraint",
 					ExpectedErrCode: "23514",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query: "INSERT INTO conflict_child VALUES (1, 999, 1) ON CONFLICT DO NOTHING",
@@ -261,6 +267,9 @@ ON CONFLICT (id) do update set c1 = $4`,
 					Query:           "INSERT INTO conflict_arbiter VALUES (2, 10, 21, 31) ON CONFLICT (id) DO NOTHING",
 					ExpectedErr:     "duplicate unique key given",
 					ExpectedErrCode: "23505",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505", ExpectedErr: "duplicate key value violates unique constraint"},
 				},
 				{
 					Query: "INSERT INTO conflict_arbiter VALUES (2, 11, 20, 30) ON CONFLICT (a, b) DO NOTHING",
@@ -350,6 +359,9 @@ ON CONFLICT (id) do update set c1 = $4`,
 					Query:           "INSERT INTO conflict_child VALUES (2, 1, 1), (3, 999, 1) ON CONFLICT DO NOTHING",
 					ExpectedErr:     "Foreign key violation",
 					ExpectedErrCode: "23503",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23503", ExpectedErr: "violates foreign key constraint"},
 				},
 				{
 					Query: "SELECT * FROM conflict_child ORDER BY id",
@@ -493,6 +505,9 @@ ON CONFLICT (id) do update set c1 = $4`,
 					Query:           "INSERT INTO required_defaults VALUES (DEFAULT, DEFAULT), (5, DEFAULT)",
 					ExpectedErr:     "non-nullable",
 					ExpectedErrCode: "23502",
+
+					// Stock PostgreSQL reports the same SQLSTATE with different diagnostic wording.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23502"},
 				},
 				{
 					Query: "SELECT * FROM required_defaults",
@@ -579,6 +594,9 @@ ON CONFLICT (id) do update set c1 = $4`,
 				{
 					Query:       "INSERT INTO t (j) VALUES (5), (6), (7) RETURNING i, doesnotexist(j)",
 					ExpectedErr: "function: 'doesnotexist' not found",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    "INSERT INTO public.t (j) VALUES (8) RETURNING t.j",

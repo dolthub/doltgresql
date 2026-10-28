@@ -1507,6 +1507,9 @@ func TestAuthTests(t *testing.T) {
 					Password:        "password",
 					ExpectedErr:     "table not found: missing_table",
 					ExpectedErrCode: "42P01",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{Username: "reader", Password: "password", ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:           "SELECT rolname FROM pg_authid;",
@@ -1565,6 +1568,9 @@ func TestAuthTests(t *testing.T) {
 					Password:        "password",
 					ExpectedErr:     "table not found: missing_table",
 					ExpectedErrCode: "42P01",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{Username: "reader", Password: "password", ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:           "INSERT INTO v_edges VALUES ('x', 'y');",
@@ -1579,6 +1585,9 @@ func TestAuthTests(t *testing.T) {
 					Password:        "password",
 					ExpectedErr:     "table not found: missing_table",
 					ExpectedErrCode: "42P01",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{Username: "reader", Password: "password", ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:           "TRUNCATE secret;",
@@ -1757,6 +1766,9 @@ func TestAuthTests(t *testing.T) {
 					Password:        "password",
 					ExpectedErr:     "table not found: missing_table",
 					ExpectedErrCode: "42P01",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{Username: "inserter", Password: "password", ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    "GRANT UPDATE ON counts TO inserter;",
@@ -2383,7 +2395,10 @@ func TestPgHasRole(t *testing.T) {
 			{Query: `SELECT pg_has_role(0::oid, 'inquiry_target', 'MEMBER'), pg_has_role('inquiry_member', 0::oid, 'USAGE');`, Expected: []sql.Row{{"f", "f"}}},
 			{Query: `SELECT pg_has_role(NULL::name, 'USAGE'), pg_has_role(NULL::oid, 'USAGE'), pg_has_role('inquiry_member', NULL::text), pg_has_role(NULL::name, 'inquiry_target', 'USAGE'), pg_has_role('inquiry_member', NULL::oid, 'USAGE');`, Expected: []sql.Row{{nil, nil, nil, nil, nil}}},
 			{Query: `SELECT pg_has_role('inquiry_member', 'inquiry_target', '');`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
-			{Query: `SELECT pg_has_role('inquiry_member', 'inquiry_target', 'SET');`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT pg_has_role('inquiry_member', 'inquiry_target', 'SET');`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023",
+				// PostgreSQL 18 recognizes SET privilege for role membership (default SET option).
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"t"}}},
+			},
 			{Query: `SELECT pg_has_role('inquiry_member', 'inquiry_target', 'member,invalid');`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
 			{Query: `SELECT pg_has_role('inquiry_member', 'inquiry_target', 'MEMBER WITH  ADMIN OPTION');`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
 			{Query: `SELECT pg_has_role('inquiry_member', 'inquiry_target', 'MEMBER,');`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},

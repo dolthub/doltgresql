@@ -159,6 +159,9 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 							$$;`,
 					// TODO: error message should be:  function add_numbers(integer, integer) does not exist
 					ExpectedErr: "function: 'add_numbers' not found",
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    `CREATE FUNCTION add_numbers(int, int) RETURNS int LANGUAGE sql AS 'SELECT $1 + $2';`,

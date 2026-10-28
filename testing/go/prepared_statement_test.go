@@ -1478,6 +1478,9 @@ func TestPreparedErrorHandling(t *testing.T) {
 			{
 				Query:       "select v1 from doesNotExist where pk = 1;",
 				ExpectedErr: "table not found",
+
+				// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 			},
 			{
 				Query:    "select v1 from test where pk = 1;",

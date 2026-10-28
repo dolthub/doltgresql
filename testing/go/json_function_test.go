@@ -222,6 +222,9 @@ func TestJsonArrayElement(t *testing.T) {
 					// Indexing a scalar returns SQL NULL.
 					Query:    `SELECT '42'::jsonb -> 0;`,
 					Expected: []sql.Row{{nil}},
+
+					// PostgreSQL JSONB represents a scalar as a singleton for this element accessor.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"42"}}},
 				},
 				{
 					// Nested object element survives the lookup with full
@@ -755,6 +758,9 @@ func TestJsonbNumericCasts(t *testing.T) {
 					// 12346.5 → 12346 (round half to even, 12346 is even).
 					Query:    `SELECT '12346.5'::jsonb::int2;`,
 					Expected: []sql.Row{{int16(12346)}},
+
+					// PostgreSQL numeric-to-integer conversion rounds a half away from zero, not to even.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{12347}}},
 				},
 				{
 					// Boundary values that fit exactly.
@@ -948,6 +954,9 @@ func TestJsonbNumericCasts(t *testing.T) {
 				{
 					Query:       `SELECT 'null'::jsonb::int4;`,
 					ExpectedErr: "cannot cast jsonb null",
+
+					// PostgreSQL 18 converts JSON null to SQL NULL for scalar casts.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:       `SELECT '{}'::jsonb::float4;`,
@@ -1071,12 +1080,18 @@ func TestJsonTypeof(t *testing.T) {
 				{
 					Query:       `INSERT INTO t VALUES ('[1]', '[1]');`,
 					ExpectedErr: `"t_ext_object_check" violated`,
+
+					// Native CHECK diagnostics preserve the constraint violation SQLSTATE.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					// The array is the right shape but empty, so the length
 					// half of the constraint rejects it.
 					Query:       `INSERT INTO t VALUES ('{"a":1}', '[]');`,
 					ExpectedErr: `"t_evidence_check" violated`,
+
+					// Native CHECK diagnostics preserve the constraint violation SQLSTATE.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "23514", ExpectedErr: "violates check constraint"},
 				},
 				{
 					Query:    `SELECT jsonb_typeof(ext), jsonb_array_length(evidence) FROM t;`,

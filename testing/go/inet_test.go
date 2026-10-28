@@ -66,10 +66,16 @@ func TestInet(t *testing.T) {
 				{
 					Query:    `SELECT network('192.168.1.5/24'::inet), network('10.1.2.3/8'::inet), network('1.2.3.4'::inet), network('0.0.0.0/0'::inet);`,
 					Expected: []sql.Row{{"192.168.1.0/24", "10.0.0.0/8", "1.2.3.4", "0.0.0.0/0"}},
+
+					// network() returns cidr, whose output includes the complete prefix length.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"192.168.1.0/24", "10.0.0.0/8", "1.2.3.4/32", "0.0.0.0/0"}}},
 				},
 				{
 					Query:    `SELECT network('2001:db8:1234:5678::1/48'::inet), network('2001:db8::ff/120'::inet), network('::1'::inet);`,
 					Expected: []sql.Row{{"2001:db8:1234::/48", "2001:db8::/120", "::1"}},
+
+					// network() returns cidr, whose output includes the complete prefix length.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"2001:db8:1234::/48", "2001:db8::/120", "::1/128"}}},
 				},
 				{
 					Query:    `SELECT inet_same_family('1.2.3.4', '::1'), inet_same_family('1.2.3.4', '5.6.7.8'), inetnot('1.2.3.4');`,
@@ -200,6 +206,9 @@ func TestInet(t *testing.T) {
 				{
 					Query:    `SELECT am.amname, c.opcname, f.opfname, c.opcdefault FROM pg_opclass c JOIN pg_am am ON am.oid = c.opcmethod JOIN pg_opfamily f ON f.oid = c.opcfamily WHERE c.opcintype = 'inet'::regtype ORDER BY 1;`,
 					Expected: []sql.Row{{"btree", "inet_ops", "network_ops", "t"}, {"hash", "inet_ops", "network_ops", "t"}},
+
+					// PostgreSQL has additional BRIN/GiST inet classes; retain the B-tree/hash family checks.
+					Postgres: &ScriptTestAssertion{Query: "SELECT am.amname, c.opcname, f.opfname, c.opcdefault FROM pg_opclass c JOIN pg_am am ON am.oid = c.opcmethod JOIN pg_opfamily f ON f.oid = c.opcfamily WHERE am.amname IN ('btree','hash') AND c.opcintype = 'inet'::regtype ORDER BY 1;", Expected: []sql.Row{{"btree", "inet_ops", "network_ops", "t"}, {"hash", "inet_ops", "network_ops", "t"}}},
 				},
 			},
 		},

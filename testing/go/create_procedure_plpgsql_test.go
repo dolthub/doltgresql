@@ -446,6 +446,9 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:       `SELECT * FROM "dolt_conflicts_interpreted_example(text)";`,
 					ExpectedErr: `table not found`,
+
+					// PostgreSQL reports this failure using its native SQLSTATE and diagnostic.
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42P01", ExpectedErr: "does not exist"},
 				},
 				{
 					Query:    "CALL interpreted_example('12');",
