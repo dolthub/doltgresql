@@ -32,6 +32,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/libraries/utils/svcs"
+	"github.com/jackc/pgx/v5"
 	"github.com/madflojo/testcerts"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
@@ -239,9 +240,24 @@ func (s *externalServer) waitForListener() error {
 			return errors.Errorf("external server exited before accepting connections: %v", s.exitErr)
 		default:
 		}
-		conn, err := net.DialTimeout("tcp", address, time.Second)
-		if err == nil {
-			return conn.Close()
+		if externalPostgres() {
+			// PostgreSQL opens its listener before recovery finishes. A TCP
+			// connection alone is not evidence that SQL sessions can start.
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			conn, err := pgx.Connect(ctx, "postgres://postgres@"+address+"/postgres?sslmode=disable")
+			if err == nil {
+				err = conn.Ping(ctx)
+				_ = conn.Close(ctx)
+			}
+			cancel()
+			if err == nil {
+				return nil
+			}
+		} else {
+			conn, err := net.DialTimeout("tcp", address, time.Second)
+			if err == nil {
+				return conn.Close()
+			}
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
