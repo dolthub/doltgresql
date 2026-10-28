@@ -25,7 +25,16 @@ import (
 )
 
 func TestTypes(t *testing.T) {
-	RunScripts(t, typesTests)
+	scripts := append([]ScriptTest(nil), typesTests...)
+	for i := range scripts {
+		switch scripts[i].Name {
+		case "JSON key":
+			scripts[i].Skip = testTarget(t) != targetDoltgres
+		case "JSON key PostgreSQL rejection":
+			scripts[i].Skip = testTarget(t) == targetDoltgres
+		}
+	}
+	RunScripts(t, scripts)
 }
 
 var typesTests = []ScriptTest{
@@ -116,6 +125,16 @@ var typesTests = []ScriptTest{
 					pgtype.Bits{Bytes: []uint8{0x40}, Len: 2, Valid: true},
 					pgtype.Bits{Bytes: []uint8{0x80}, Len: 2, Valid: true},
 				}},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{
+					Expected: []sql.Row{{
+						pgtype.Bits{Bytes: []byte{0x80}, Len: 1, Valid: true},
+						pgtype.Bits{Bytes: []byte{0}, Len: 1, Valid: true},
+						pgtype.Bits{Bytes: []byte{0xc0}, Len: 2, Valid: true},
+						pgtype.Bits{Bytes: []byte{0x80}, Len: 2, Valid: true},
+					}},
+				},
 			},
 			{
 				Query:       "INSERT INTO t_bit VALUES (3, B'101', '111');",
@@ -613,18 +632,30 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "INSERT INTO t_char VALUES (6, 7);",
 				ExpectedErr: `target is of type "char" but expression is of type integer`,
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42804"},
 			},
 			{
 				Query:       "INSERT INTO t_char VALUES (6, true);",
 				ExpectedErr: `target is of type "char" but expression is of type boolean`,
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42804"},
 			},
 			{
 				Query:       `SELECT true::"char";`,
 				ExpectedErr: "cast from `boolean` to `\"char\"` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       `SELECT 100000::bigint::"char";`,
 				ExpectedErr: "cast from `bigint` to `\"char\"` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query: `SELECT 'abc'::"char", '123'::varchar(3)::"char";`,
@@ -648,6 +679,15 @@ var typesTests = []ScriptTest{
 					{4, 0, ""},
 					{5, nil, nil},
 				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{
+					{1, 97, "a"},
+					{2, 118, "v"},
+					{3, 49, "1"},
+					{4, 0, ""},
+					{5, nil, nil},
+				}},
 			},
 			{
 				Skip:  true, // TODO: We currently return '227'
@@ -1284,10 +1324,16 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "INSERT INTO t_interval VALUES (3, 7);",
 				ExpectedErr: `ASSIGNMENT_CAST: target is of type interval but expression is of type integer: 7`,
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42804"},
 			},
 			{
 				Query:       "INSERT INTO t_interval VALUES (3, true);",
 				ExpectedErr: `ASSIGNMENT_CAST: target is of type interval but expression is of type boolean: true`,
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42804"},
 			},
 			{
 				Query:    `SELECT CAST(interval '02:03' AS time) AS "02:03:00";`,
@@ -1342,6 +1388,10 @@ var typesTests = []ScriptTest{
 				},
 			},
 		},
+	},
+	{
+		Name:       "JSON key PostgreSQL rejection",
+		Assertions: []ScriptTestAssertion{{Query: `CREATE TABLE t_json(id json PRIMARY KEY, v1 json)`, ExpectedErrCode: "42704"}},
 	},
 	{
 		Name: "JSON type",
@@ -1791,6 +1841,9 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{0},
 				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P02"},
 			},
 			{
 				Query: "SELECT ('0'::name)::boolean, ('1'::name)::boolean;",
@@ -2161,22 +2214,37 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "SELECT NULL::regtype[]::oidvector;",
 				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT ARRAY[]::regtype[]::oidvector;",
 				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (ARRAY['integer'::regtype]::regtype[])::oidvector;",
 				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT v::oidvector FROM t_regtype_array;",
 				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (ARRAY['integer'::regtype] || ARRAY['text'::regtype])::oidvector;",
 				ExpectedErr: "cast from `regtype[]` to `oidvector` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT ARRAY['integer'::regtype, NULL]::oidvector;",
@@ -2256,10 +2324,16 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "SELECT coid::smallint FROM t_oid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT coid::smallint FROM t_oid WHERE id=2;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query: "SELECT coid::integer FROM t_oid WHERE id=1;",
@@ -2294,18 +2368,30 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "SELECT coid::float4 FROM t_oid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT coid::float8 FROM t_oid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT coid::numeric FROM t_oid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT coid::xid FROM t_oid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			// Cast to OID from types
 			{
@@ -2349,14 +2435,23 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "SELECT (1.1::float4)::oid;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (1.1::float8)::oid;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (1.1::decimal)::oid;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT ('922337203685477580'::text)::oid;",
@@ -2489,10 +2584,16 @@ var typesTests = []ScriptTest{
 				// Values that overflow float4 must be rejected, not wrapped to +/-Inf
 				Query:       "INSERT INTO t_real VALUES (3, 1.0e100);",
 				ExpectedErr: "real out of range",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003"},
 			},
 			{
 				Query:       "INSERT INTO t_real VALUES (3, 1.0e100::numeric);",
 				ExpectedErr: "real out of range",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003"},
 			},
 			{
 				// Largest finite float4 magnitude must still be accepted.
@@ -2511,6 +2612,9 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "SELECT ('1' || repeat('0', 320))::numeric::float8;",
 				ExpectedErr: "double precision out of range",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003"},
 			},
 		},
 	},
@@ -2575,6 +2679,9 @@ var typesTests = []ScriptTest{
 			{
 				Query:       `SELECT 'doesnotexist.public.testing'::regclass;`,
 				ExpectedErr: "database not found",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "0A000"},
 			},
 			{
 				Query: `SELECT 'testview'::regclass;`,
@@ -2603,6 +2710,9 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{"Testing2"},
 				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{`"Testing2"`}}},
 			},
 			{ // This tests that an invalid OID returns itself in string form
 				Query: `SELECT 4294967295::regclass;`,
@@ -2809,6 +2919,9 @@ var typesTests = []ScriptTest{
 				Expected: []sql.Row{
 					{"integer"},
 				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42704"},
 			},
 			{ // This tests that a raw OID properly converts
 				Query: `SELECT (('integer'::regtype)::oid)::regtype;`,
@@ -2835,14 +2948,23 @@ var typesTests = []ScriptTest{
 			{
 				Query:       `SELECT '"integer'::regtype;`,
 				ExpectedErr: "invalid name syntax",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42601"},
 			},
 			{
 				Query:       `SELECT 'integer"'::regtype;`,
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42601"},
 			},
 			{
 				Query:       `SELECT '""integer'::regtype;`,
 				ExpectedErr: "invalid name syntax",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42601"},
 			},
 		},
 	},
@@ -2894,22 +3016,37 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "SELECT NULL::int2[]::int2vector;",
 				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT ARRAY[]::int2[]::int2vector;",
 				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (ARRAY[1::int2]::int2[])::int2vector;",
 				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT v::int2vector FROM t_int2_array;",
 				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (ARRAY[1::int2] || ARRAY[2::int2])::int2vector;",
 				ExpectedErr: "cast from `smallint[]` to `int2vector` does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query: "SELECT * FROM t_int2vector ORDER BY id;",
@@ -3499,6 +3636,9 @@ var typesTests = []ScriptTest{
 			{
 				Query:       `CREATE TABLE t_tsvector (id INTEGER primary key, v1 TSVECTOR);`,
 				ExpectedErr: `type "tsvector" does not exist`,
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{}},
 			},
 		},
 	},
@@ -3600,6 +3740,9 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "INSERT INTO t_xid VALUES (1, 1234::xid, '100');",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:    "INSERT INTO t_xid VALUES (1, NULL, '100');",
@@ -3642,6 +3785,9 @@ var typesTests = []ScriptTest{
 			{
 				Query:    "INSERT INTO t_xid VALUES (5, '4294967296', 'b');",
 				Expected: []sql.Row{},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003"},
 			},
 			{
 				Query:    "INSERT INTO t_xid VALUES (6, '0', 'c');",
@@ -3654,6 +3800,9 @@ var typesTests = []ScriptTest{
 			{
 				Query:    "INSERT INTO t_xid VALUES (8, 'abc', 'd');",
 				Expected: []sql.Row{},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P02"},
 			},
 			{
 				Query: "SELECT * FROM t_xid ORDER BY id;",
@@ -3665,6 +3814,17 @@ var typesTests = []ScriptTest{
 					{6, 0, "c"},
 					{7, 4294967295, "d"},
 					{8, 0, "d"},
+				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{
+					Expected: []sql.Row{
+						{1, 9012, "100"},
+						{2, 100, "101"},
+						{4, 4294967295, "a"},
+						{6, 0, "c"},
+						{7, 4294967295, "d"},
+					},
 				},
 			},
 		},
@@ -3693,34 +3853,58 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "SELECT v1::smallint FROM t_xid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT v1::integer FROM t_xid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT v1::bigint FROM t_xid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT v1::oid FROM t_xid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT v1::float4 FROM t_xid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT v1::float8 FROM t_xid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT v1::numeric FROM t_xid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT v1::boolean FROM t_xid WHERE id=1;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			// Cast to XID from types
 			{
@@ -3744,72 +3928,114 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "SELECT (10::int2)::xid;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (10::boolean)::xid;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (10::int4)::xid;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (10::int8)::xid;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (1.1::float4)::xid;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (1.1::float8)::xid;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:       "SELECT (1.1::decimal)::xid;",
 				ExpectedErr: "does not exist",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query: "SELECT ('4294967295'::text)::xid, ('4294967297'::text)::xid;",
 				Expected: []sql.Row{
 					{4294967295, 1},
 				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003"},
 			},
 			{
 				Query: "SELECT ('-4294967295'::text)::xid, ('-4294967297'::text)::xid;",
 				Expected: []sql.Row{
 					{1, 4294967295},
 				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003"},
 			},
 			{
 				Query: "SELECT ('4294967295'::varchar)::xid, ('4294967296232'::varchar)::xid;",
 				Expected: []sql.Row{
 					{4294967295, 232},
 				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003"},
 			},
 			{
 				Query: "SELECT ('-4294967295'::varchar)::xid, ('-4294967296232'::varchar)::xid;",
 				Expected: []sql.Row{
 					{1, 4294967064},
 				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003"},
 			},
 			{
 				Query: "SELECT ('4294967295'::char(11))::xid, ('4294967296'::char(11))::xid;",
 				Expected: []sql.Row{
 					{4294967295, 0},
 				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003"},
 			},
 			{
 				Query: "SELECT ('4294967295'::name)::xid, ('4294967296'::name)::xid;",
 				Expected: []sql.Row{
 					{4294967295, 0},
 				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22003"},
 			},
 			{
 				Query: "SELECT ('abc'::text)::xid, ('abc'::char(3))::xid, ('abc'::varchar)::xid, ('abc'::name)::xid;",
 				Expected: []sql.Row{
 					{0, 0, 0, 0},
 				},
+
+				// Native semantics verified against stock PostgreSQL 18.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "22P02"},
 			},
 		},
 	},
@@ -3964,6 +4190,9 @@ var typesTests = []ScriptTest{
 			{
 				Query:       "INSERT INTO t_bpchar VALUES (4, 'c', 'y', 40);",
 				ExpectedErr: "duplicate unique key",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "23505"},
 			},
 			{
 				Query:    "SELECT c::text, length(c), c || '|' FROM t_bpchar WHERE id = 1;",
@@ -4067,11 +4296,17 @@ var typesTests = []ScriptTest{
 				Query:           "SELECT '<a/>'::xml::int;",
 				ExpectedErr:     "cast from `xml` to `integer` does not exist",
 				ExpectedErrCode: "42846",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:           "SELECT 1::xml;",
 				ExpectedErr:     "cast from `integer` to `xml` does not exist",
 				ExpectedErrCode: "42846",
+
+				// Stock PostgreSQL confirms the same failure with its native SQLSTATE.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "42846"},
 			},
 			{
 				Query:           "SELECT '<a/>'::xml = '<a/>'::xml;",
