@@ -86,6 +86,8 @@ func TestServerConfigVariableStatement(t *testing.T) {
 				{
 					Query:    "SHOW port",
 					Expected: []sql.Row{{port}},
+					// SHOW reports GUC values as text on PostgreSQL.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{fmt.Sprint(port)}}},
 				},
 				{
 					Query:       "SET port TO '5432'",
