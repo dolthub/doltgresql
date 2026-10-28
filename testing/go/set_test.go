@@ -7319,8 +7319,8 @@ var setStmts = []ScriptTest{
 				Query:    "SHOW remove_temp_files_after_crash",
 				Expected: []sql.Row{{int8(0)}},
 
-				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
+				// PostgreSQL enables crash-time temporary file removal by default.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 			{
 				Query:       "SET remove_temp_files_after_crash TO 'on'",
@@ -7329,6 +7329,7 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SELECT current_setting('remove_temp_files_after_crash')",
 				Expected: []sql.Row{{"off"}},
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
 			},
 		},
 	},
@@ -9373,12 +9374,14 @@ var setStmts = []ScriptTest{
 				Query:    "SHOW transaction_deferrable",
 				Expected: []sql.Row{{int8(1)}},
 
-				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
+				// This transaction characteristic resets at the end of the preceding standalone SET statement.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET transaction_deferrable TO DEFAULT",
 				Expected: []sql.Row{},
+				// Native transaction characteristics cannot be RESET like session defaults.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "0A000"},
 			},
 			{
 				Query:    "SHOW transaction_deferrable",
@@ -9442,12 +9445,14 @@ var setStmts = []ScriptTest{
 				Query:    "SHOW transaction_read_only",
 				Expected: []sql.Row{{int8(1)}},
 
-				// Native SHOW serializes boolean settings as on/off text.
-				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"on"}}},
+				// This transaction characteristic resets at the end of the preceding standalone SET statement.
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"off"}}},
 			},
 			{
 				Query:    "SET transaction_read_only TO DEFAULT",
 				Expected: []sql.Row{},
+				// Native transaction characteristics cannot be RESET like session defaults.
+				Postgres: &ScriptTestAssertion{ExpectedErrCode: "0A000"},
 			},
 			{
 				Query:    "SHOW transaction_read_only",
