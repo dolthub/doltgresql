@@ -1102,10 +1102,12 @@ func convertIndexAlter(statement *sqlparser.DDL) ([]string, bool) {
 			}
 		}
 		createIndex := tree.CreateIndex{
-			Name:    tree.Name(statement.IndexSpec.ToName.String()),
-			Table:   *translateTableName(statement.Table),
-			Unique:  statement.IndexSpec.Type == "unique",
-			Columns: cols,
+			Name:   tree.Name(statement.IndexSpec.ToName.String()),
+			Table:  *translateTableName(statement.Table),
+			Unique: statement.IndexSpec.Type == "unique",
+			// MySQL unique keys permit multiple NULL entries.
+			NullsDistinct: true,
+			Columns:       cols,
 		}
 		return []string{formatNodeWithUnqualifiedTableNames(&createIndex).String()}, true
 
@@ -1432,10 +1434,11 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 			}
 
 			createIndex := tree.CreateIndex{
-				Name:    tree.Name(index.Info.Name.String()),
-				Table:   *translateTableName(stmt.Table),
-				Unique:  index.Info.Unique,
-				Columns: make(tree.IndexElemList, len(index.Fields)),
+				Name:          tree.Name(index.Info.Name.String()),
+				Table:         *translateTableName(stmt.Table),
+				Unique:        index.Info.Unique,
+				NullsDistinct: true,
+				Columns:       make(tree.IndexElemList, len(index.Fields)),
 			}
 
 			for i, col := range index.Fields {
@@ -2087,7 +2090,7 @@ func TestConvertQuery(t *testing.T) {
 			input: "CREATE TABLE foo (a INT primary key, b int, key (b))",
 			expected: []string{
 				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL)",
-				"CREATE INDEX ON foo ( b ASC ) NULLS NOT DISTINCT ",
+				"CREATE INDEX ON foo ( b ASC ) NULLS DISTINCT ",
 			},
 		},
 		{
@@ -2106,16 +2109,16 @@ func TestConvertQuery(t *testing.T) {
 			input: "CREATE TABLE foo (a INT primary key, b int, c int, key (c,b))",
 			expected: []string{
 				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL, c INTEGER NULL)",
-				"CREATE INDEX ON foo ( c ASC, b ASC ) NULLS NOT DISTINCT ",
+				"CREATE INDEX ON foo ( c ASC, b ASC ) NULLS DISTINCT ",
 			},
 		},
 		{
 			input: "CREATE TABLE foo (a INT primary key, b int, c int not null, d int, key (c), key (b), key (b,c))",
 			expected: []string{
 				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL, c INTEGER NOT NULL, d INTEGER NULL)",
-				"CREATE INDEX ON foo ( c ASC ) NULLS NOT DISTINCT ",
-				"CREATE INDEX ON foo ( b ASC ) NULLS NOT DISTINCT ",
-				"CREATE INDEX ON foo ( b ASC, c ASC ) NULLS NOT DISTINCT ",
+				"CREATE INDEX ON foo ( c ASC ) NULLS DISTINCT ",
+				"CREATE INDEX ON foo ( b ASC ) NULLS DISTINCT ",
+				"CREATE INDEX ON foo ( b ASC, c ASC ) NULLS DISTINCT ",
 			},
 		},
 		{
@@ -2494,11 +2497,11 @@ func TestAlterTableConversion(t *testing.T) {
 		},
 		{
 			input:    "ALTER TABLE foo ADD INDEX my_idx (a, b)",
-			expected: []string{"CREATE INDEX my_idx ON foo ( a ASC, b ASC ) NULLS NOT DISTINCT "},
+			expected: []string{"CREATE INDEX my_idx ON foo ( a ASC, b ASC ) NULLS DISTINCT "},
 		},
 		{
 			input:    "ALTER TABLE foo ADD UNIQUE my_uq (a)",
-			expected: []string{"CREATE UNIQUE INDEX my_uq ON foo ( a ASC ) NULLS NOT DISTINCT "},
+			expected: []string{"CREATE UNIQUE INDEX my_uq ON foo ( a ASC ) NULLS DISTINCT "},
 		},
 		{
 			input:    "ALTER TABLE foo DROP INDEX my_idx",
