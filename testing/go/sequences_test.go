@@ -1410,5 +1410,115 @@ ORDER BY 1,2;`,
 				},
 			},
 		},
+		{
+			Name: "nextval follows setval, and dropped sequences leave no state (issue 3690)",
+			SetUpScript: []string{
+				"CREATE SEQUENCE a;",
+				"CREATE SEQUENCE b;",
+				"CREATE SEQUENCE c AS smallint;",
+				"CREATE SEQUENCE d AS integer;",
+				"CREATE TABLE t (id SERIAL PRIMARY KEY, v INT);",
+				"INSERT INTO t (v) VALUES (1), (2), (3);",
+				"CREATE TABLE u (id BIGSERIAL PRIMARY KEY, v INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT setval('a', 100);",
+					Expected: []sql.Row{{100}},
+				},
+				{
+					Query:    "SELECT setval('a', 300);",
+					Expected: []sql.Row{{300}},
+				},
+				{
+					Query:    "SELECT last_value FROM pg_sequences WHERE sequencename = 'a';",
+					Expected: []sql.Row{{300}},
+				},
+				{
+					Query:    "SELECT nextval('a');",
+					Expected: []sql.Row{{301}},
+				},
+				{
+					Query:    "SELECT setval('b', 500);",
+					Expected: []sql.Row{{500}},
+				},
+				{
+					Query:    "SELECT setval('b', 600);",
+					Expected: []sql.Row{{600}},
+				},
+				{
+					Query:    "SELECT nextval('b');",
+					Expected: []sql.Row{{601}},
+				},
+				{
+					Query:    "SELECT nextval('b');",
+					Expected: []sql.Row{{602}},
+				},
+				{
+					Query:    "DROP SEQUENCE b;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SEQUENCE b;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT nextval('b');",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT setval('b', 50, false);",
+					Expected: []sql.Row{{50}},
+				},
+				{
+					Query:    "SELECT nextval('b');",
+					Expected: []sql.Row{{50}},
+				},
+				{
+					Query:    "SELECT setval('b', 10);",
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    "SELECT nextval('b');",
+					Expected: []sql.Row{{11}},
+				},
+				{
+					Query:    "SELECT setval('c', 30000);",
+					Expected: []sql.Row{{30000}},
+				},
+				{
+					Query:    "SELECT nextval('c');",
+					Expected: []sql.Row{{30001}},
+				},
+				{
+					Query:    "SELECT setval('d', 2000000000);",
+					Expected: []sql.Row{{2000000000}},
+				},
+				{
+					Query:    "SELECT nextval('d');",
+					Expected: []sql.Row{{2000000001}},
+				},
+				{
+					Query:    "DROP TABLE t;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE t (id SERIAL PRIMARY KEY, v INT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t (v) VALUES (1) RETURNING id;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT setval('u_id_seq', 1000);",
+					Expected: []sql.Row{{1000}},
+				},
+				{
+					Query:    "INSERT INTO u (v) VALUES (1) RETURNING id;",
+					Expected: []sql.Row{{1001}},
+				},
+			},
+		},
 	})
 }
