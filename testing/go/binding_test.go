@@ -338,7 +338,7 @@ func TestIssue2386(t *testing.T) {
 	require.NoError(t, err)
 	targetIDs := []int32{1, 3}
 	rows, err := conn.Query(ctx,
-		`SELECT id, name FROM users WHERE id = ANY($1)`,
+		`SELECT id, name FROM users WHERE id = ANY($1) ORDER BY id`,
 		targetIDs,
 	)
 	require.NoError(t, err)
@@ -361,6 +361,8 @@ func TestIssue2386(t *testing.T) {
 		}
 		i++
 	}
+	require.NoError(t, rows.Err())
+	require.Equal(t, len(targetIDs), i)
 }
 
 func TestBindingWithTextArray(t *testing.T) {

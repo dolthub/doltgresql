@@ -494,6 +494,10 @@ func TestDoltCherryPick(t *testing.T) {
 				{ // This returns a hash, so we need to take the consistent substring portion for testing
 					Query:    `SELECT substring(DOLT_CHERRY_PICK('main')::text, 34);`,
 					Expected: []sql.Row{{",0,0,0)"}},
+					PostgresFork: &ScriptTestAssertion{
+						Query:    "SELECT DOLT_CHERRY_PICK('main')::text ~ '^[(][0-9a-f]{64},0,0,0[)]$';",
+						Expected: []sql.Row{{"t"}},
+					},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -1528,6 +1532,9 @@ func TestDoltDiffStat(t *testing.T) {
 				{
 					Query:    "SELECT COUNT(*) FROM DOLT_DIFF_STAT('main', 'original');",
 					Expected: []sql.Row{{15}},
+					// Twelve tables and two routines changed; shared sequence
+					// allocation is not a branch-local definition change.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{14}}},
 				},
 				{
 					Query:    "SELECT table_name FROM DOLT_DIFF_STAT('main', 'original', 't_simple');",
@@ -1649,6 +1656,9 @@ func TestDoltDiffSummary(t *testing.T) {
 				{
 					Query:    "SELECT COUNT(*) FROM DOLT_DIFF_SUMMARY('main', 'original');",
 					Expected: []sql.Row{{15}},
+					// Twelve tables and two routines changed; shared sequence
+					// allocation is not a branch-local definition change.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{14}}},
 				},
 				{
 					Query:    "SELECT from_table_name FROM DOLT_DIFF_SUMMARY('main', 'original', 't_simple');",
@@ -1707,8 +1717,9 @@ func TestDoltDiffSummary(t *testing.T) {
 					Expected: []sql.Row{{"public.f_default()"}},
 				},
 				{
-					Query:    "SELECT from_table_name FROM DOLT_DIFF_SUMMARY('main', 'original', 't_serial_pk_seq');",
-					Expected: []sql.Row{{"public.t_serial_pk_seq"}},
+					Query:        "SELECT from_table_name FROM DOLT_DIFF_SUMMARY('main', 'original', 't_serial_pk_seq');",
+					Expected:     []sql.Row{{"public.t_serial_pk_seq"}},
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{}},
 				},
 			},
 		},
@@ -1847,10 +1858,14 @@ func TestDoltLog(t *testing.T) {
 				{
 					Query:    "SELECT COUNT(*) FROM DOLT_LOG('main');",
 					Expected: []sql.Row{{4}},
+					// The fork deliberately has no extra CREATE DATABASE commit.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{3}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM DOLT_LOG('original');",
 					Expected: []sql.Row{{3}},
+					// The fork deliberately has no extra CREATE DATABASE commit.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{2}}},
 				},
 			},
 		},
@@ -2452,6 +2467,10 @@ func TestDoltRevert(t *testing.T) {
 					// This returns a hash, so we need to take the consistent substring portion for testing
 					Query:    `SELECT substring(DOLT_REVERT('HEAD')::text, 34);`,
 					Expected: []sql.Row{{",0,0,0)"}},
+					PostgresFork: &ScriptTestAssertion{
+						Query:    "SELECT DOLT_REVERT('HEAD')::text ~ '^[(][0-9a-f]{64},0,0,0[)]$';",
+						Expected: []sql.Row{{"t"}},
+					},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,

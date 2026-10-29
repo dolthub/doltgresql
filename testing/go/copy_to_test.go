@@ -37,6 +37,7 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl1 TO STDOUT;",
 					CopyToStdOutFile: "copy-to-basic.txt",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl1 ORDER BY pk) TO STDOUT;", CopyToStdOutFile: "copy-to-basic.txt"},
 				},
 			},
 		},
@@ -47,6 +48,7 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl1 TO STDOUT WITH (HEADER);",
 					CopyToStdOutFile: "copy-to-header.txt",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl1 ORDER BY pk) TO STDOUT WITH (HEADER);", CopyToStdOutFile: "copy-to-header.txt"},
 				},
 			},
 		},
@@ -57,6 +59,7 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl1 (c1, pk) TO STDOUT;",
 					CopyToStdOutFile: "copy-to-columns.txt",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT c1, pk FROM tbl1 ORDER BY pk) TO STDOUT;", CopyToStdOutFile: "copy-to-columns.txt"},
 				},
 			},
 		},
@@ -67,10 +70,12 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl1 TO STDOUT (FORMAT CSV, HEADER);",
 					CopyToStdOutFile: "copy-to-basic.csv",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl1 ORDER BY pk) TO STDOUT (FORMAT CSV, HEADER);", CopyToStdOutFile: "copy-to-basic.csv"},
 				},
 				{
 					Query:            "COPY tbl1 TO STDOUT (FORMAT 'csv', HEADER);",
 					CopyToStdOutFile: "copy-to-basic.csv",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl1 ORDER BY pk) TO STDOUT (FORMAT 'csv', HEADER);", CopyToStdOutFile: "copy-to-basic.csv"},
 				},
 			},
 		},
@@ -81,6 +86,7 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl1 TO STDOUT (FORMAT CSV, HEADER, DELIMITER '|');",
 					CopyToStdOutFile: "copy-to-header.psv",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl1 ORDER BY pk) TO STDOUT (FORMAT CSV, HEADER, DELIMITER '|');", CopyToStdOutFile: "copy-to-header.psv"},
 				},
 			},
 		},
@@ -139,10 +145,12 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl3 TO STDOUT (FORMAT BINARY);",
 					CopyToStdOutFile: "copy-to-basic.bin",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl3 ORDER BY pk) TO STDOUT (FORMAT BINARY);", CopyToStdOutFile: "copy-to-basic.bin"},
 				},
 				{
 					Query:            "COPY tbl3 TO STDOUT BINARY;",
 					CopyToStdOutFile: "copy-to-basic.bin",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl3 ORDER BY pk) TO STDOUT BINARY;", CopyToStdOutFile: "copy-to-basic.bin"},
 				},
 				{
 					Query:            "COPY (SELECT * FROM tbl3 ORDER BY pk) TO STDOUT (FORMAT BINARY);",

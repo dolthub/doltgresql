@@ -299,19 +299,19 @@ func TestAggregateFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT array_agg(pk) FROM t1;`,
+					Query: `SELECT array_agg(pk ORDER BY pk) FROM t1;`,
 					Expected: []sql.Row{
 						{"{1,2,3}"},
 					},
 				},
 				{
-					Query: `SELECT array_agg(t) FROM t1;`,
+					Query: `SELECT array_agg(t ORDER BY pk) FROM t1;`,
 					Expected: []sql.Row{
 						{`{"2023-01-01 00:00:00","2023-01-02 00:00:00","2023-01-03 00:00:00"}`},
 					},
 				},
 				{
-					Query: `SELECT array_agg(v) FROM t1;`,
+					Query: `SELECT array_agg(v ORDER BY pk) FROM t1;`,
 					Expected: []sql.Row{
 						{"{a,b,c}"},
 					},
@@ -425,7 +425,7 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with NULL values (NULLS FIRST behavior)
 				{
-					Query: `SELECT array_agg(name ORDER BY nullable_field) FROM test_data;`,
+					Query: `SELECT array_agg(name ORDER BY nullable_field, id) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Alice,Charlie,Eve,Frank,Bob,Diana}"},
 					},
@@ -450,7 +450,7 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 				// ORDER BY with COALESCE for NULL handling
 				{
-					Query: `SELECT array_agg(name ORDER BY COALESCE(nullable_field, 'zzz')) FROM test_data;`,
+					Query: `SELECT array_agg(name ORDER BY COALESCE(nullable_field, 'zzz'), id) FROM test_data;`,
 					Expected: []sql.Row{
 						{"{Alice,Charlie,Eve,Frank,Bob,Diana}"},
 					},
@@ -504,19 +504,19 @@ func TestAggregateFunctions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1 ELSE NULL END) FROM t1;`,
+					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1 ELSE NULL END ORDER BY pk) FROM t1;`,
 					Expected: []sql.Row{
 						{"{NULL,30,50}"},
 					},
 				},
 				{
-					Query: `SELECT array_agg(CASE WHEN v1 >= 20 THEN v2 ELSE NULL END) FROM t2;`,
+					Query: `SELECT array_agg(CASE WHEN v1 >= 20 THEN v2 ELSE NULL END ORDER BY pk) FROM t2;`,
 					Expected: []sql.Row{
 						{"{NULL,b,c}"},
 					},
 				},
 				{
-					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1::text ELSE v2 END) FROM t2;`,
+					Query: `SELECT array_agg(CASE WHEN v1 > 20 THEN v1::text ELSE v2 END ORDER BY pk) FROM t2;`,
 					Expected: []sql.Row{
 						{"{a,b,30}"},
 					},
@@ -979,7 +979,8 @@ func TestFunctionsMath(t *testing.T) {
 					},
 				},
 				{
-					Query: `select power('3'::numeric, '-3'::numeric);`,
+					Query:    `select power('3'::numeric, '-3'::numeric);`,
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{Numeric("0.03703703703703704")}}},
 					Expected: []sql.Row{
 						{Numeric("0.0370370370370370")},
 					},
@@ -1015,7 +1016,8 @@ func TestFunctionsMath(t *testing.T) {
 					},
 				},
 				{
-					Query: `select power('0'::numeric, '3'::numeric);`,
+					Query:    `select power('0'::numeric, '3'::numeric);`,
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{Numeric("0")}}},
 					Expected: []sql.Row{
 						{Numeric("0.0000000000000000")},
 					},
@@ -1921,7 +1923,12 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Name: "version",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:            `SELECT version();`,
+					Query: `SELECT version();`,
+					Postgres: &ScriptTestAssertion{
+						Query:            "SELECT version() LIKE 'PostgreSQL %' AS version;",
+						ExpectedColNames: []string{"version"},
+						Expected:         []sql.Row{{"t"}},
+					},
 					ExpectedColNames: []string{"version"},
 					Expected: []sql.Row{
 						{"PostgreSQL 15.5"},
@@ -2208,11 +2215,14 @@ func TestSystemInformationFunctions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:            `SELECT pg_get_constraintdef(845743985);`,
+					Postgres:         &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 					ExpectedColNames: []string{"pg_get_constraintdef"},
 					Expected:         []sql.Row{{""}},
 				},
 				{
-					Query:            `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing'::regclass;`,
+					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing'::regclass;`,
+					// PostgreSQL 18 exposes NOT NULL constraints in pg_constraint.
+					Postgres:         &ScriptTestAssertion{Expected: []sql.Row{{"NOT NULL pk"}, {"PRIMARY KEY (pk)"}, {"UNIQUE (v1)"}}},
 					ExpectedColNames: []string{"pg_get_constraintdef"},
 					Expected: []sql.Row{
 						{"PRIMARY KEY (pk)"},
@@ -2221,6 +2231,8 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 				{
 					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing2'::regclass;`,
+					// PostgreSQL 18 exposes NOT NULL constraints in pg_constraint.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"NOT NULL pk"}, {"FOREIGN KEY (pktesting) REFERENCES testing(pk)"}, {"PRIMARY KEY (pk)"}}},
 					Expected: []sql.Row{
 						{"FOREIGN KEY (pktesting) REFERENCES testing(pk)"},
 						{"PRIMARY KEY (pk)"},
@@ -2228,18 +2240,24 @@ func TestSystemInformationFunctions(t *testing.T) {
 				},
 				{
 					Query: `SELECT pg_get_constraintdef(oid) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,
+					// PostgreSQL 18 exposes NOT NULL constraints in pg_constraint.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"NOT NULL pk1"}, {"NOT NULL pk2"}, {"PRIMARY KEY (pk1, pk2)"}}},
 					Expected: []sql.Row{
 						{"PRIMARY KEY (pk1, pk2)"},
 					},
 				},
 				{
 					Query: `SELECT pg_get_constraintdef(oid, true) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,
+					// PostgreSQL 18 exposes NOT NULL constraints in pg_constraint.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"NOT NULL pk1"}, {"NOT NULL pk2"}, {"PRIMARY KEY (pk1, pk2)"}}},
 					Expected: []sql.Row{
 						{"PRIMARY KEY (pk1, pk2)"},
 					},
 				},
 				{
 					Query: `SELECT pg_get_constraintdef(oid, false) FROM pg_catalog.pg_constraint WHERE conrelid='testing3'::regclass;`,
+					// PostgreSQL 18 exposes NOT NULL constraints in pg_constraint.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"NOT NULL pk1"}, {"NOT NULL pk2"}, {"PRIMARY KEY (pk1, pk2)"}}},
 					Expected: []sql.Row{
 						{"PRIMARY KEY (pk1, pk2)"},
 					},
@@ -4826,10 +4844,12 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 				{
 					Query:    `SELECT EXTRACT(TIMEZONE FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{Numeric("0")}}},
 					Expected: []sql.Row{{Numeric("-28800")}},
 				},
 				{
 					Query:    `SELECT EXTRACT(TIMEZONE_HOUR FROM TIMESTAMP WITH TIME ZONE '2001-02-16 12:38:40.12-05');`,
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{Numeric("0")}}},
 					Expected: []sql.Row{{Numeric("-8")}},
 				},
 				{
@@ -5511,7 +5531,11 @@ func TestDateAndTimeFunction(t *testing.T) {
 			Name: "current_time and now functions",
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:    `SELECT now()::timetz::text = current_time()::text;`,
+					Query: `SELECT now()::timetz::text = current_time()::text;`,
+					Postgres: &ScriptTestAssertion{
+						Query:    "SELECT now()::timetz::text = current_time::text;",
+						Expected: []sql.Row{{"t"}},
+					},
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -6068,19 +6092,19 @@ func TestStringFunction(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: `SELECT string_agg(v1::text, ',') FROM test;`,
+					Query: `SELECT string_agg(v1::text, ',' ORDER BY pk) FROM test;`,
 					Expected: []sql.Row{
 						{"1,2,3,4,5"},
 					},
 				},
 				{
-					Query: `SELECT string_agg(v2, '|') FROM test;`,
+					Query: `SELECT string_agg(v2, '|' ORDER BY pk) FROM test;`,
 					Expected: []sql.Row{
 						{"a|b|c|d|e"},
 					},
 				},
 				{
-					Query: `SELECT STRING_AGG(concat(v1::text, v2), ' * ') FROM test;`,
+					Query: `SELECT STRING_AGG(concat(v1::text, v2), ' * ' ORDER BY pk) FROM test;`,
 					Expected: []sql.Row{
 						{"1a * 2b * 3c * 4d * 5e"},
 					},
@@ -6107,13 +6131,13 @@ func TestStringFunction(t *testing.T) {
 					Postgres: &ScriptTestAssertion{ExpectedErrCode: "42883", ExpectedErr: "does not exist"},
 				},
 				{
-					Query: `SELECT STRING_AGG(concat(v1::text, v2), ' * '::text) FROM test;`,
+					Query: `SELECT STRING_AGG(concat(v1::text, v2), ' * '::text ORDER BY pk) FROM test;`,
 					Expected: []sql.Row{
 						{"1a * 2b * 3c * 4d * 5e"},
 					},
 				},
 				{
-					Query: `SELECT STRING_AGG(concat(v1::text, v2), 8::text) FROM test;`,
+					Query: `SELECT STRING_AGG(concat(v1::text, v2), 8::text ORDER BY pk) FROM test;`,
 					Expected: []sql.Row{
 						{"1a82b83c84d85e"},
 					},
@@ -6756,11 +6780,16 @@ func TestParseIdentInvalidInput(t *testing.T) {
 	var assertions []ScriptTestAssertion
 	for _, input := range invalidInputs {
 		for _, mode := range []string{"", ", true", ", false"} {
-			assertions = append(assertions, ScriptTestAssertion{
+			assertion := ScriptTestAssertion{
 				Query:           fmt.Sprintf("SELECT parse_ident(%s%s);", input, mode),
 				ExpectedErr:     "string is not a valid identifier",
 				ExpectedErrCode: "22023",
-			})
+			}
+			// PostgreSQL accepts vertical tab as leading whitespace.
+			if input == `E'\013foo'` {
+				assertion.Postgres = &ScriptTestAssertion{Expected: []sql.Row{{"{foo}"}}}
+			}
+			assertions = append(assertions, assertion)
 		}
 	}
 	RunScripts(t, []ScriptTest{{Name: "invalid identifiers in either mode", Assertions: assertions}})

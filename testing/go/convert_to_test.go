@@ -110,7 +110,12 @@ func TestConvertTo(t *testing.T) {
 					ExpectedErrCode: "22P05",
 				},
 				{
-					Query:           `SELECT convert_to('x', 'EUC_CN');`,
+					Query: `SELECT convert_to('x', 'EUC_CN');`,
+					// ASCII x has the same byte representation in EUC_CN.
+					Postgres: &ScriptTestAssertion{
+						Query:    "SELECT encode(convert_to('x', 'EUC_CN'), 'hex');",
+						Expected: []sql.Row{{"78"}},
+					},
 					ExpectedErr:     `destination encoding "EUC_CN" is recognized but not yet supported; request support at https://github.com/dolthub/doltgresql/issues`,
 					ExpectedErrCode: "0A000",
 				},
