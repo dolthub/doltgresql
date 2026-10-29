@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+	goerrors "errors"
 	"fmt"
 	"strings"
 
@@ -117,8 +118,14 @@ func (h *ConnectionHandler) discardAll(simpleQuery *simpleQueryExecution) error 
 	if h.state.txState != idleTransactionState || (simpleQuery != nil && len(simpleQuery.statements) > 1) {
 		return pgerror.New(pgcode.ActiveSQLTransaction, "DISCARD ALL cannot run inside a transaction block")
 	}
-	if err := h.doltgresHandler.ComResetConnection(h.mysqlConn); err != nil {
-		return err
+	// The old session cannot end with a command open, so the message's command moves to the new session.
+	h.endCommand()
+	resetErr := h.doltgresHandler.ComResetConnection(h.mysqlConn)
+	if err := h.beginCommand(); err != nil {
+		return goerrors.Join(resetErr, err)
+	}
+	if resetErr != nil {
+		return resetErr
 	}
 	h.state.resetExtendedQueryObjects()
 	return h.send(&pgproto3.CommandComplete{CommandTag: []byte("DISCARD ALL")})

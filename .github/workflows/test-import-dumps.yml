@@ -11,7 +11,9 @@ jobs:
       fail-fast: false
       matrix:
         platform: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.platform }}
+    # ubuntu-latest is moving to Ubuntu 26.04, which has no apt-key, and tj-actions/install-postgresql uses it. The
+    # matrix keeps the ubuntu-latest name so that the check names, which branch protection requires, are unchanged.
+    runs-on: ${{ matrix.platform == 'ubuntu-latest' && 'ubuntu-24.04' || matrix.platform }}
     env:
       GITHUB_ACTION_IMPORT_DUMPS: true
     steps:
