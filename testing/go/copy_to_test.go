@@ -124,6 +124,7 @@ func TestCopyTo(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:            "COPY tbl2 TO STDOUT;",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl2 ORDER BY pk) TO STDOUT;", CopyToStdOutFile: "copy-to-bool.txt"},
 					CopyToStdOutFile: "copy-to-bool.txt",
 				},
 			},
@@ -138,6 +139,7 @@ func TestCopyTo(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:            "COPY s1.tbl2 TO STDOUT;",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM s1.tbl2 ORDER BY pk) TO STDOUT;", CopyToStdOutFile: "copy-to-bool.txt"},
 					CopyToStdOutFile: "copy-to-bool.txt",
 				},
 			},

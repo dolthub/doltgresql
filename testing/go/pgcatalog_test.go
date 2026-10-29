@@ -776,7 +776,8 @@ func TestPgClass(t *testing.T) {
 					ExpectedErr: "not",
 				},
 				{ // Different cases but non-quoted, so it works
-					Query: "SELECT relname FROM PG_catalog.pg_CLASS where relnamespace not in (select oid from pg_namespace where nspname = 'dolt') ORDER BY relname ASC LIMIT 3;",
+					Query:    "SELECT relname FROM PG_catalog.pg_CLASS where relnamespace not in (select oid from pg_namespace where nspname = 'dolt') ORDER BY relname ASC LIMIT 3;",
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"_pg_foreign_data_wrappers"}, {"_pg_foreign_servers"}, {"_pg_foreign_table_columns"}}},
 					Expected: []sql.Row{
 						{"administrable_role_authorizations"},
 						{"applicable_roles"},
@@ -794,6 +795,10 @@ func TestPgClass(t *testing.T) {
 				},
 				{
 					Query: "SELECT relname from pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid  WHERE n.nspname = 'pg_catalog' LIMIT 3;",
+					Postgres: &ScriptTestAssertion{
+						Query:    "SELECT relname FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace=n.oid WHERE n.nspname='pg_catalog' AND c.relkind='r' ORDER BY relname LIMIT 3;",
+						Expected: []sql.Row{{"pg_aggregate"}, {"pg_am"}, {"pg_amop"}},
+					},
 					Expected: []sql.Row{
 						{"pg_aggregate"},
 						{"pg_am"},
@@ -908,7 +913,8 @@ JOIN pg_class t ON t.oid = i.indrelid
 JOIN pg_class ix ON ix.oid = i.indexrelid 
 JOIN pg_namespace n ON t.relnamespace = n.oid 
 JOIN pg_am AS am ON ix.relam = am.oid WHERE t.relname = 'foo' AND n.nspname = 'public';`,
-					Expected: []sql.Row{{"foo_pkey", "BTREE"}, {"foo_b_a_idx", "BTREE"}, {"foo_b_idx", "BTREE"}},
+					Expected:     []sql.Row{{"foo_pkey", "BTREE"}, {"foo_b_a_idx", "BTREE"}, {"foo_b_idx", "BTREE"}},
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{"foo_pkey", "DOLT_PROLLY_INDEX"}, {"foo_b_a_idx", "DOLT_PROLLY_INDEX"}, {"foo_b_idx", "DOLT_PROLLY_INDEX"}}},
 				},
 			},
 		},
@@ -1180,7 +1186,7 @@ func TestPgConstraintIndexes(t *testing.T) {
 					},
 
 					// Resolve runtime identities and exclude PostgreSQL 18 NOT NULL rows from this older constraint fixture.
-					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND oid IN (SELECT oid FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname LIKE '%_pkey' ORDER BY conname LIMIT 3);", Expected: []sql.Row{
+					Postgres: &ScriptTestAssertion{Query: "SELECT conname FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND oid IN (SELECT oid FROM pg_catalog.pg_constraint WHERE connamespace='public'::regnamespace AND contype<>'n' AND conname LIKE '%_pkey' ORDER BY conname LIMIT 3) ORDER BY conname;", Expected: []sql.Row{
 						{"test_table1_pkey"},
 						{"test_table2_pkey"},
 						{"test_table3_pkey"},

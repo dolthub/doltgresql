@@ -549,7 +549,8 @@ func TestAggregateFunctions(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					// Order is non-deterministic without ORDER BY; value reflects insertion-order of first occurrences
-					Query: `SELECT array_agg(DISTINCT name) FROM test_items;`,
+					Query:    `SELECT array_agg(DISTINCT name) FROM test_items;`,
+					Postgres: &ScriptTestAssertion{Query: "SELECT array_agg(DISTINCT name ORDER BY name) FROM test_items;", Expected: []sql.Row{{"{bar,baz,foo}"}}},
 					Expected: []sql.Row{
 						{"{foo,bar,baz}"},
 					},
@@ -672,6 +673,12 @@ func TestAggregateFunctions(t *testing.T) {
 						{2, Numeric("0.00"), "numeric"},
 						{3, Numeric("100000000.00"), "numeric"},
 					},
+					// COALESCE falls back to scale-zero numeric 0 for an all-NULL group.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{
+						{1, Numeric("12.50"), "numeric"},
+						{2, Numeric("0"), "numeric"},
+						{3, Numeric("100000000.00"), "numeric"},
+					}},
 				},
 				{
 					Query: `SELECT grp, amount,
@@ -685,6 +692,14 @@ func TestAggregateFunctions(t *testing.T) {
 						{3, Numeric("0.01"), Numeric("0.01"), "numeric"},
 						{3, Numeric("99999999.99"), Numeric("100000000.00"), "numeric"},
 					},
+					// COALESCE falls back to scale-zero numeric 0 for an all-NULL group.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{
+						{1, Numeric("12.50"), Numeric("12.50"), "numeric"},
+						{1, nil, Numeric("12.50"), "numeric"},
+						{2, nil, Numeric("0"), "numeric"},
+						{3, Numeric("0.01"), Numeric("0.01"), "numeric"},
+						{3, Numeric("99999999.99"), Numeric("100000000.00"), "numeric"},
+					}},
 				},
 				{
 					Query: `SELECT id,
@@ -695,6 +710,11 @@ func TestAggregateFunctions(t *testing.T) {
 						{1, Numeric("12.50"), "numeric"},
 						{2, Numeric("0.00"), "numeric"},
 					},
+					// COALESCE falls back to scale-zero numeric 0 for an all-NULL group.
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{
+						{1, Numeric("12.50"), "numeric"},
+						{2, Numeric("0"), "numeric"},
+					}},
 				},
 			},
 		},
