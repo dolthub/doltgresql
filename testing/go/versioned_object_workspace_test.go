@@ -83,3 +83,90 @@ func TestVersionedRoutineDiffSummary(t *testing.T) {
 		},
 	})
 }
+
+// Dolt counts each changed routine as one object, not its individual properties.
+func TestVersionedObjectDiffStat(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "routine additions modifications and deletions",
+		SetUpScript: []string{
+			"CREATE FUNCTION f() RETURNS integer LANGUAGE sql AS 'SELECT 1'",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT table_name, rows_added, rows_deleted, rows_modified FROM dolt_diff_stat('HEAD','WORKING','f()')",
+				Expected: []sql.Row{{"public.f()", 1, 0, 0}},
+			},
+			{Query: "SELECT dolt_commit('-Am','base')", SkipResultsCheck: true},
+			{Query: "CREATE OR REPLACE FUNCTION f() RETURNS integer LANGUAGE sql AS 'SELECT 2'"},
+			{
+				Query:    "SELECT table_name, rows_added, rows_deleted, rows_modified FROM dolt_diff_stat('HEAD','WORKING')",
+				Expected: []sql.Row{{"public.f()", 0, 0, 1}},
+			},
+			{
+				Query:    "SELECT count(*) FROM dolt_diff_stat('HEAD','HEAD','f()')",
+				Expected: []sql.Row{{0}},
+			},
+			{
+				// Dolt omits object totals, so rows_unmodified becomes -1.
+				// Preserve this interface exactly on both implementations.
+				Query:    "SELECT rows_unmodified, old_row_count, new_row_count, cells_modified FROM dolt_diff_stat('HEAD','WORKING','f()')",
+				Expected: []sql.Row{{-1, 0, 0, 0}},
+			},
+			{Query: "DROP FUNCTION f()"},
+			{
+				Query:    "SELECT table_name, rows_added, rows_deleted, rows_modified FROM dolt_diff_stat('HEAD','WORKING','f()')",
+				Expected: []sql.Row{{"public.f()", 0, 1, 0}},
+			},
+			{
+				Query:    "SELECT rows_unmodified, old_row_count, new_row_count FROM dolt_diff_stat('HEAD','WORKING','f()')",
+				Expected: []sql.Row{{-1, 0, 0}},
+			},
+		},
+	}})
+}
+
+// Doltgres rejects detailed routine dolt_diff calls. These assertions specify
+// the fork's read-only canonical property view, not conflict-table DML.
+func TestVersionedObjectPropertyDiff(t *testing.T) {
+	if testTarget(t) != targetPostgresFork {
+		t.Skip("canonical schema property diffs are a fork extension")
+	}
+	RunScripts(t, []ScriptTest{{
+		Name: "routine properties across working staged and retained revisions",
+		SetUpScript: []string{
+			"CREATE FUNCTION f() RETURNS integer LANGUAGE sql AS 'SELECT 1'",
+			"SELECT dolt_commit('-Am','base')",
+			"CREATE OR REPLACE FUNCTION f() RETURNS integer LANGUAGE sql AS 'SELECT 2'",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT from_property, from_value #>> '{}', to_value #>> '{}', diff_type FROM dolt_diff('HEAD','WORKING','f()')",
+				Expected: []sql.Row{{"prosrc", "SELECT 1", "SELECT 2", "modified"}},
+			},
+			{
+				Query:    "SELECT from_commit, to_commit, from_commit_date IS NOT NULL, to_commit_date IS NULL FROM dolt_diff('HEAD..WORKING','f()')",
+				Expected: []sql.Row{{"HEAD", "WORKING", "t", "t"}},
+			},
+			{Query: "SELECT dolt_add('f()')", Expected: []sql.Row{{0}}},
+			{Query: "CREATE OR REPLACE FUNCTION f() RETURNS integer LANGUAGE sql AS 'SELECT 3'"},
+			{
+				Query:    "SELECT from_value #>> '{}', to_value #>> '{}' FROM dolt_diff('STAGED','WORKING','f()')",
+				Expected: []sql.Row{{"SELECT 2", "SELECT 3"}},
+			},
+			{Query: "SELECT dolt_commit('-Am','three')", SkipResultsCheck: true},
+			{
+				Query:    "SELECT from_value #>> '{}', to_value #>> '{}' FROM dolt_diff('HEAD~1','HEAD','f()')",
+				Expected: []sql.Row{{"SELECT 1", "SELECT 3"}},
+			},
+			{Query: "DROP FUNCTION f()"},
+			{
+				Query:    "SELECT from_property, from_value #>> '{}', to_property IS NULL, diff_type FROM dolt_diff('HEAD','WORKING','f()') WHERE from_property='prosrc'",
+				Expected: []sql.Row{{"prosrc", "SELECT 3", "t", "removed"}},
+			},
+			{
+				Query:    "SELECT to_property, to_value #>> '{}', from_property IS NULL, diff_type FROM dolt_diff('WORKING','HEAD','f()') WHERE to_property='prosrc'",
+				Expected: []sql.Row{{"prosrc", "SELECT 3", "t", "added"}},
+			},
+		},
+	}})
+}
