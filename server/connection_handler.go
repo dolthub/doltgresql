@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqlserver"
 	"github.com/dolthub/go-mysql-server/server"
+	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/vitess/go/mysql"
 	"github.com/jackc/pgx/v5/pgproto3"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -210,6 +211,12 @@ func (h *ConnectionHandler) Conn() net.Conn {
 // error is handled appropriately. The return value indicates whether the connection should be closed.
 func (h *ConnectionHandler) receiveMessage() (stop bool, err error) {
 	result := continueResult()
+	commandStarted := false
+	defer func() {
+		if commandStarted {
+			sql.SessionCommandEnd(h.doltgresHandler.sm.GetSession(h.mysqlConn))
+		}
+	}()
 	// For the time being, we handle panics in this function and treat them the same as errors so that they don't
 	// forcibly close the connection. Contrast this with the panic handling logic in HandleConnection, where we treat any
 	// panic as unrecoverable to the connection. As we fill out the implementation, we can revisit this decision and
@@ -242,6 +249,10 @@ func (h *ConnectionHandler) receiveMessage() (stop bool, err error) {
 		logrus.Debugf("Received message: %t", msg)
 	}
 
+	if err = sql.SessionCommandBegin(h.doltgresHandler.sm.GetSession(h.mysqlConn)); err != nil {
+		return false, err
+	}
+	commandStarted = true
 	result = h.handleMessage(msg)
 	if result.err != nil {
 		h.handleMessageError(result.err)

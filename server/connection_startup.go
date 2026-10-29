@@ -51,7 +51,12 @@ func (h *ConnectionHandler) handleStartup() (bool, error) {
 		if err = h.doltgresHandler.sm.NewSession(context.Background(), h.mysqlConn); err != nil {
 			return false, err
 		}
-		if err = auth.InitializeSessionIdentity(h.doltgresHandler.sm.GetSession(h.mysqlConn), h.mysqlConn.User); err != nil {
+		session := h.doltgresHandler.sm.GetSession(h.mysqlConn)
+		if err = sql.SessionCommandBegin(session); err != nil {
+			return false, err
+		}
+		defer sql.SessionCommandEnd(session)
+		if err = auth.InitializeSessionIdentity(session, h.mysqlConn.User); err != nil {
 			return false, err
 		}
 		if err = h.sendClientStartupMessages(); err != nil {

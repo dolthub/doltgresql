@@ -31,7 +31,7 @@ import (
 )
 
 func TestConcurrentGC(t *testing.T) {
-	t.Skip("Doltgres does not yet handle dolt_gc() concurrently with active write connections the way this test expects: writers fail with 'unexpected EOF' / connection resets rather than the retriable safepoint errors Dolt produces (behavioral difference)")
+	t.Skip("Doltgres describes the parameters of the final read's IN list as unknown (OID 705), which pgx cannot encode")
 	t.Parallel()
 	type dimension struct {
 		names   []string

@@ -292,6 +292,10 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 
 	// Dispose of the connection's current session
 	h.maybeReleaseAllLocks(c)
+	sql.SessionCommandEnd(h.sm.GetSession(c))
+	defer func() {
+		_ = sql.SessionCommandBegin(h.sm.GetSession(c))
+	}()
 	h.e.CloseSession(c.ConnectionID)
 
 	ctx := context.Background()
@@ -319,6 +323,12 @@ func (h *DoltgresHandler) ConnectionClosed(c *mysql.Conn) {
 	defer h.sm.RemoveConn(c)
 	defer h.e.CloseSession(c.ConnectionID)
 
+	session := h.sm.GetSession(c)
+	if err := sql.SessionCommandBegin(session); err != nil {
+		logrus.Errorf("unable to release all locks on session close: %s", err)
+		return
+	}
+	defer sql.SessionCommandEnd(session)
 	h.maybeReleaseAllLocks(c)
 
 	logrus.WithField(sql.ConnectionIdLogField, c.ConnectionID).Infof("ConnectionClosed")
