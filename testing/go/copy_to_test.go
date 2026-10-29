@@ -15,12 +15,19 @@
 package _go
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCopyTo(t *testing.T) {
+	serverFile := filepath.Join(t.TempDir(), "copy.csv")
+	quotedFile := strings.ReplaceAll(serverFile, "'", "''")
 	// The setup script used by most of the tests below, exercising NULLs, empty strings, and values that need
 	// escaping or quoting in the output.
 	setup := []string{
@@ -394,10 +401,21 @@ func TestCopyTo(t *testing.T) {
 				},
 				{
 					// Writing files on the server is deliberately unsupported, as a security measure
-					Query:       "COPY tbl1 TO '/tmp/copy-to-out.csv' (FORMAT CSV);",
+					Query: fmt.Sprintf("COPY tbl1 TO '%s' (FORMAT CSV);", quotedFile),
+					Postgres: &ScriptTestAssertion{
+						Query:    fmt.Sprintf("COPY (SELECT * FROM tbl1 ORDER BY pk) TO '%s' (FORMAT CSV, HEADER);", quotedFile),
+						Expected: []sql.Row{},
+					},
 					ExpectedErr: "COPY TO a server-side file is not supported",
 				},
 			},
 		},
 	})
+	if testTarget(t) != targetDoltgres {
+		actual, err := os.ReadFile(serverFile)
+		require.NoError(t, err)
+		expected, err := os.ReadFile("testdata/copy-to-basic.csv")
+		require.NoError(t, err)
+		require.Equal(t, string(expected), string(actual), "native server-side COPY contents")
+	}
 }
