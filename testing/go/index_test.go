@@ -2022,6 +2022,74 @@ func TestBasicIndexing(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "CHECK constraints on a table with expression indexes",
+			SetUpScript: []string{
+				"CREATE TABLE ck (id BIGINT PRIMARY KEY, s TEXT NOT NULL CONSTRAINT ck_s_check CHECK (s IN ('a', 'b')), u TEXT UNIQUE);",
+				"CREATE INDEX ck_length_idx ON ck ((length(u)));",
+				"CREATE UNIQUE INDEX ck_md5_idx ON ck ((md5(s || u)));",
+				"INSERT INTO ck VALUES (1, 'a', 'x');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "INSERT INTO ck VALUES (2, 'zzz', 'y');",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Skip:            true, // TODO: GMS reports check violations with different text
+					Query:           "INSERT INTO ck VALUES (2, 'zzz', 'y');",
+					ExpectedErr:     `new row for relation "ck" violates check constraint "ck_s_check"`,
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query:           "UPDATE ck SET s = 'zzz';",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query:           "INSERT INTO ck VALUES (1, 'a', 'x') ON CONFLICT (id) DO UPDATE SET s = 'zzz';",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query:           "ALTER TABLE ck ADD CONSTRAINT ck_id_check CHECK (id > 5);",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Skip:            true, // TODO: GMS reports check violations with different text
+					Query:           "ALTER TABLE ck ADD CONSTRAINT ck_id_check CHECK (id > 5);",
+					ExpectedErr:     `check constraint "ck_id_check" of relation "ck" is violated by some row`,
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query:    "ALTER TABLE ck ADD CONSTRAINT ck_id_check CHECK (id < 100);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           "INSERT INTO ck VALUES (200, 'a', 'y');",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query:    "ALTER TABLE ck DROP CONSTRAINT ck_u_key;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER TABLE ck DROP CONSTRAINT ck_s_check;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO ck VALUES (2, 'zzz', 'x');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM ck ORDER BY id;",
+					Expected: []sql.Row{{1, "a", "x"}, {2, "zzz", "x"}},
+				},
+			},
+		},
 	})
 }
 

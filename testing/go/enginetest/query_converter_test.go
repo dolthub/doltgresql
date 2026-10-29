@@ -978,9 +978,9 @@ func convertConstraintAlter(statement *sqlparser.DDL) ([]string, bool) {
 		tableName := *translateTableName(statement.Table)
 		switch d := c.Details.(type) {
 		case *sqlparser.ForeignKeyDefinition:
-			return []string{createForeignKeyStatement(tableName, d)}, true
+			return []string{createForeignKeyStatement(tableName, c.Name, d)}, true
 		case *sqlparser.CheckConstraintDefinition:
-			return []string{createCheckConstraintStatement(tableName, d)}, true
+			return []string{createCheckConstraintStatement(tableName, c.Name, d)}, true
 		default:
 			return nil, false
 		}
@@ -1452,12 +1452,12 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	}
 
 	// convert constraints into separate statements as well
-	for _, c := range stmt.TableSpec.Constraints {
-		switch c := c.Details.(type) {
+	for _, constraint := range stmt.TableSpec.Constraints {
+		switch c := constraint.Details.(type) {
 		case *sqlparser.ForeignKeyDefinition:
-			queries = append(queries, createForeignKeyStatement(createTable.Table, c))
+			queries = append(queries, createForeignKeyStatement(createTable.Table, constraint.Name, c))
 		case *sqlparser.CheckConstraintDefinition:
-			queries = append(queries, createCheckConstraintStatement(createTable.Table, c))
+			queries = append(queries, createCheckConstraintStatement(createTable.Table, constraint.Name, c))
 		default:
 			// do nothing, unsupported
 		}
@@ -1466,7 +1466,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	return queries, true
 }
 
-func createCheckConstraintStatement(table tree.TableName, c *sqlparser.CheckConstraintDefinition) string {
+func createCheckConstraintStatement(table tree.TableName, constraintName string, c *sqlparser.CheckConstraintDefinition) string {
 	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Table(), "", ""}, 0)
 	if err != nil {
 		panic(err)
@@ -1478,6 +1478,7 @@ func createCheckConstraintStatement(table tree.TableName, c *sqlparser.CheckCons
 
 	alter.Cmds = append(alter.Cmds, &tree.AlterTableAddConstraint{
 		ConstraintDef: &tree.CheckConstraintTableDef{
+			Name: tree.Name(constraintName),
 			Expr: convertExpr(c.Expr),
 		},
 	})
@@ -1486,7 +1487,7 @@ func createCheckConstraintStatement(table tree.TableName, c *sqlparser.CheckCons
 	return ctx.String()
 }
 
-func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefinition) string {
+func createForeignKeyStatement(table tree.TableName, constraintName string, c *sqlparser.ForeignKeyDefinition) string {
 	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Table(), "", ""}, 0)
 	if err != nil {
 		panic(err)
@@ -1509,6 +1510,7 @@ func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefi
 
 	alter.Cmds = append(alter.Cmds, &tree.AlterTableAddConstraint{
 		ConstraintDef: &tree.ForeignKeyConstraintTableDef{
+			Name:     tree.Name(constraintName),
 			FromCols: fromCols,
 			Table:    *translateTableName(c.ReferencedTable),
 			ToCols:   toCols,
@@ -2489,7 +2491,7 @@ func TestAlterTableConversion(t *testing.T) {
 		{
 			input: "ALTER TABLE foo ADD CONSTRAINT my_fk FOREIGN KEY (a) REFERENCES bar(b)",
 			expected: []string{
-				"ALTER TABLE foo ADD FOREIGN KEY (a) REFERENCES bar (b)",
+				"ALTER TABLE foo ADD CONSTRAINT my_fk FOREIGN KEY (a) REFERENCES bar (b)",
 			},
 		},
 		{
