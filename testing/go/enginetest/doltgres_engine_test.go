@@ -1922,6 +1922,11 @@ func TestStatsStorage(t *testing.T) {
 	denginetest.RunStatsStorageTests(t, h)
 }
 
+func TestRevisionStatistics(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	denginetest.RunRevisionStatisticsTests(t, h)
+}
+
 func TestJoinStats(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	denginetest.RunJoinStatsTests(t, h)

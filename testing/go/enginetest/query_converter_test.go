@@ -46,6 +46,10 @@ func transformAST(query string) ([]string, bool) {
 		}
 	case *sqlparser.Set:
 		return transformSet(stmt)
+	case *sqlparser.Explain:
+		if strings.EqualFold(stmt.ExplainFormat, "tree") && !stmt.Analyze {
+			return []string{"EXPLAIN " + formatNode(stmt.Statement)}, true
+		}
 	case *sqlparser.Select:
 		return transformSelect(stmt)
 	case *sqlparser.Insert:
@@ -2324,6 +2328,14 @@ func TestQualifiedNameConversion(t *testing.T) {
 		{
 			input:    "SELECT db1.t1.i FROM db1.t1 WHERE db1.t1.i > 0",
 			expected: []string{"select db1.public.t1.i from db1.public.t1 where db1.public.t1.i > 0"},
+		},
+		{
+			input:    "EXPLAIN FORMAT=TREE SELECT pk FROM `mydb/feature/stats`.x",
+			expected: []string{`EXPLAIN select pk from "mydb/feature/stats".public.x`},
+		},
+		{
+			input:    "explain format=tree select pk from x",
+			expected: []string{"EXPLAIN select pk from x"},
 		},
 		{
 			input:    "DELETE FROM test.x WHERE pk = 2",
