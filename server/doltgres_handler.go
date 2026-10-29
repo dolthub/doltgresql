@@ -134,6 +134,7 @@ const (
 // DoltgresHandler is a handler uses SQLe engine directly
 // running Doltgres specific queries.
 type DoltgresHandler struct {
+	command           pgCommandLifecycle
 	e                 *sqle.Engine
 	sm                *server.SessionManager
 	readTimeout       time.Duration
@@ -146,6 +147,11 @@ var _ Handler = &DoltgresHandler{}
 
 // ComBind implements the Handler interface.
 func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars BindVariables, formatCodes []int16) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
+	end, err := h.beginCommand(c)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer end()
 	sqlCtx, err := h.NewContext(ctx, c, query)
 	if err != nil {
 		return nil, nil, err
@@ -177,6 +183,11 @@ func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query stri
 
 // ComExecuteBound implements the Handler interface.
 func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn, query string, boundQuery mysql.BoundQuery, formatCodes []int16, callback func(*sql.Context, *Result) error) error {
+	end, beginErr := h.beginCommand(conn)
+	if beginErr != nil {
+		return beginErr
+	}
+	defer end()
 	analyzedPlan, ok := boundQuery.(sql.Node)
 	if !ok {
 		return errors.Errorf("boundQuery must be a sql.Node, but got %T", boundQuery)
@@ -202,6 +213,11 @@ func (h *DoltgresHandler) ComExecuteBound(ctx context.Context, conn *mysql.Conn,
 
 // ComPrepareParsed implements the Handler interface.
 func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement) (mysql.ParsedQuery, []pgproto3.FieldDescription, error) {
+	end, beginErr := h.beginCommand(c)
+	if beginErr != nil {
+		return nil, nil, beginErr
+	}
+	defer end()
 	sqlCtx, ok := ctx.(*sql.Context)
 	if !ok {
 		var err error
@@ -209,6 +225,9 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 		if err != nil {
 			return nil, nil, err
 		}
+	}
+	if sqlCtx.Session != h.command.session {
+		return nil, nil, errors.New("Prepared context belongs to another SQL session")
 	}
 	if err := installPrivilegeSet(sqlCtx); err != nil {
 		return nil, nil, err
@@ -279,6 +298,11 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 
 // ComResetConnection implements the Handler interface.
 func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
+	end, beginErr := h.beginCommand(c)
+	if beginErr != nil {
+		return beginErr
+	}
+	defer end()
 	logrus.WithField("connectionId", c.ConnectionID).Debug("COM_RESET_CONNECTION command received")
 	oldIdentity, err := core.IdentityFromSession(h.sm.GetSession(c))
 	if err != nil {
@@ -290,8 +314,10 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	// Grab the currently selected database name
 	db := h.sm.GetCurrentDB(c)
 
-	// Dispose of the connection's current session
+	// Dispose of the connection's current session. SetDB below owns the new
+	// session lifecycle; do not nest its Begin under the old message command.
 	h.maybeReleaseAllLocks(c)
+	h.command.releaseSession()
 	h.e.CloseSession(c.ConnectionID)
 
 	ctx := context.Background()
@@ -339,6 +365,9 @@ func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
 
 // NewContext implements the Handler interface.
 func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query string) (*sql.Context, error) {
+	if err := h.requireCommand(c); err != nil {
+		return nil, err
+	}
 	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
 	if err != nil {
 		return nil, err
@@ -406,6 +435,11 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 
 func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error, formatCodes []int16) error {
+	end, beginErr := h.beginCommand(c)
+	if beginErr != nil {
+		return beginErr
+	}
+	defer end()
 	sqlCtx, err := h.NewContext(ctx, c, query)
 	if err != nil {
 		return err
@@ -513,6 +547,17 @@ func (h *DoltgresHandler) executeBoundPlan(ctx *sql.Context, query string, _ sql
 // maybeReleaseAllLocks makes a best effort attempt to release all locks on the given connection. If the attempt fails,
 // an error is logged but not returned.
 func (h *DoltgresHandler) maybeReleaseAllLocks(c *mysql.Conn) {
+	// Authentication can fail before a session exists. Cleanup must not create
+	// one, and catalog table unlocking must finish before SessionEnd unregisters it.
+	if h.sm.GetSession(c) == nil {
+		return
+	}
+	end, err := h.beginCommand(c)
+	if err != nil {
+		logrus.Errorf("unable to begin lock cleanup on session close: %s", err)
+		return
+	}
+	defer end()
 	if ctx, err := h.sm.NewContextWithQuery(context.Background(), c, ""); err != nil {
 		logrus.Errorf("unable to release all locks on session close: %s", err)
 		logrus.Errorf("unable to unlock tables on session close: %s", err)

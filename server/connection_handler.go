@@ -210,6 +210,13 @@ func (h *ConnectionHandler) Conn() net.Conn {
 // error is handled appropriately. The return value indicates whether the connection should be closed.
 func (h *ConnectionHandler) receiveMessage() (stop bool, err error) {
 	result := continueResult()
+	// Registered before panic recovery so error handling can still access roots.
+	var endCommand func()
+	defer func() {
+		if endCommand != nil {
+			endCommand()
+		}
+	}()
 	// For the time being, we handle panics in this function and treat them the same as errors so that they don't
 	// forcibly close the connection. Contrast this with the panic handling logic in HandleConnection, where we treat any
 	// panic as unrecoverable to the connection. As we fill out the implementation, we can revisit this decision and
@@ -242,6 +249,10 @@ func (h *ConnectionHandler) receiveMessage() (stop bool, err error) {
 		logrus.Debugf("Received message: %t", msg)
 	}
 
+	endCommand, err = h.doltgresHandler.beginCommand(h.mysqlConn)
+	if err != nil {
+		return false, err
+	}
 	result = h.handleMessage(msg)
 	if result.err != nil {
 		h.handleMessageError(result.err)

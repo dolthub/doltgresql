@@ -51,6 +51,13 @@ func (h *ConnectionHandler) handleStartup() (bool, error) {
 		if err = h.doltgresHandler.sm.NewSession(context.Background(), h.mysqlConn); err != nil {
 			return false, err
 		}
+		// Authentication may wait for client I/O; only the initialized session's
+		// parameter/catalog work belongs to this GC command.
+		endCommand, beginErr := h.doltgresHandler.beginCommand(h.mysqlConn)
+		if beginErr != nil {
+			return false, beginErr
+		}
+		defer endCommand()
 		if err = auth.InitializeSessionIdentity(h.doltgresHandler.sm.GetSession(h.mysqlConn), h.mysqlConn.User); err != nil {
 			return false, err
 		}
