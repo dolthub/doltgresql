@@ -2090,6 +2090,85 @@ func TestBasicIndexing(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "merge join with a literal of another type on the key (issue 3691)",
+			SetUpScript: []string{
+				"CREATE TABLE mj_a2 (k SMALLINT PRIMARY KEY);",
+				"CREATE TABLE mj_b2 (k SMALLINT PRIMARY KEY);",
+				"CREATE TABLE mj_a8 (k BIGINT PRIMARY KEY);",
+				"CREATE TABLE mj_b8 (k BIGINT PRIMARY KEY);",
+				"CREATE TABLE mj_ad (k DATE PRIMARY KEY);",
+				"CREATE TABLE mj_bd (k DATE PRIMARY KEY);",
+				"CREATE TABLE mj_as (id INT PRIMARY KEY, k SMALLINT);",
+				"CREATE TABLE mj_bs (id INT PRIMARY KEY, k SMALLINT);",
+				"CREATE INDEX mj_as_k ON mj_as (k);",
+				"CREATE INDEX mj_bs_k ON mj_bs (k);",
+				"CREATE TABLE mj_t (w SMALLINT, n SMALLINT, PRIMARY KEY (w, n));",
+				"INSERT INTO mj_t SELECT w, n FROM generate_series(1, 3) w, generate_series(1, 2) n;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM mj_a2 a JOIN mj_b2 b ON b.k = a.k WHERE a.k = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM mj_a8 a JOIN mj_b8 b ON b.k = a.k WHERE a.k = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM mj_ad a JOIN mj_bd b ON b.k = a.k WHERE a.k = '2026-01-01';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM mj_as a JOIN mj_bs b ON b.k = a.k WHERE a.k = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM mj_t x JOIN mj_t y ON y.w = x.w WHERE x.w = 1 ORDER BY 1, 2, 3, 4;",
+					Expected: []sql.Row{
+						{1, 1, 1, 1},
+						{1, 1, 1, 2},
+						{1, 2, 1, 1},
+						{1, 2, 1, 2},
+					},
+				},
+				{
+					Query: "SELECT * FROM mj_t x JOIN mj_t y ON y.n = x.n WHERE x.w = 1 AND y.w = 2 ORDER BY 1, 2, 3, 4;",
+					Expected: []sql.Row{
+						{1, 1, 2, 1},
+						{1, 2, 2, 2},
+					},
+				},
+				{
+					Query:    "SELECT * FROM mj_t x JOIN mj_t y ON y.w = x.w WHERE x.w = 100000;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO mj_ad VALUES ('2026-01-01'), ('2026-01-02');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO mj_bd VALUES ('2026-01-01'), ('2026-01-03');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM mj_ad a JOIN mj_bd b ON b.k = a.k WHERE a.k = '2026-01-01';",
+					Expected: []sql.Row{{"2026-01-01", "2026-01-01"}},
+				},
+				{
+					Query:    "INSERT INTO mj_as VALUES (1, 1), (2, 2), (3, 1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO mj_bs VALUES (1, 1), (2, 3);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM mj_as a JOIN mj_bs b ON b.k = a.k WHERE a.k = 1 ORDER BY a.id, b.id;",
+					Expected: []sql.Row{{1, 1, 1, 1}, {3, 1, 1, 1}},
+				},
+			},
+		},
 	})
 }
 
