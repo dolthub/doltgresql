@@ -52,7 +52,19 @@ jobs:
       run: ./build.sh
       working-directory: ./postgres/parser
       shell: bash
+    - name: Setup PostgreSQL (Linux)
+      if: ${{ runner.os == 'Linux' }}
+      # tj-actions/install-postgresql uses apt-key, which Ubuntu 26.04 does not have.
+      run: |
+        sudo install -d /usr/share/postgresql-common/pgdg
+        sudo curl -fsSLo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        . /etc/os-release
+        echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+        sudo apt-get update
+        sudo apt-get install -y postgresql-15
+        echo /usr/lib/postgresql/15/bin >> "$GITHUB_PATH"
     - name: Setup PostgreSQL
+      if: ${{ runner.os != 'Linux' }}
       uses: tj-actions/install-postgresql@v3
       with:
         postgresql-version: 15
