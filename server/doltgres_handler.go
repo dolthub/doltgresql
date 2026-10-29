@@ -277,7 +277,8 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 	return err
 }
 
-// ComResetConnection implements the Handler interface.
+// ComResetConnection implements the Handler interface. It replaces the connection's session, so it must be called
+// while the session has no command open.
 func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	logrus.WithField("connectionId", c.ConnectionID).Debug("COM_RESET_CONNECTION command received")
 	oldIdentity, err := core.IdentityFromSession(h.sm.GetSession(c))
@@ -291,7 +292,7 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	db := h.sm.GetCurrentDB(c)
 
 	// Dispose of the connection's current session
-	h.maybeReleaseAllLocks(c)
+	h.releaseSessionLocks(c)
 	h.e.CloseSession(c.ConnectionID)
 
 	ctx := context.Background()
@@ -319,7 +320,7 @@ func (h *DoltgresHandler) ConnectionClosed(c *mysql.Conn) {
 	defer h.sm.RemoveConn(c)
 	defer h.e.CloseSession(c.ConnectionID)
 
-	h.maybeReleaseAllLocks(c)
+	h.releaseSessionLocks(c)
 
 	logrus.WithField(sql.ConnectionIdLogField, c.ConnectionID).Infof("ConnectionClosed")
 }
@@ -508,6 +509,22 @@ func (h *DoltgresHandler) executeQuery(ctx *sql.Context, query string, parsed sq
 // statement, which may be nil.
 func (h *DoltgresHandler) executeBoundPlan(ctx *sql.Context, query string, _ sqlparser.Statement, plan sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 	return h.e.PrepQueryPlanForExecution(ctx, query, plan, nil)
+}
+
+// releaseSessionLocks releases the locks held by the connection's session before the session ends, in a command of
+// its own. It must be called while the session has no command open. A connection that closes before authentication
+// has no session, and so holds no locks.
+func (h *DoltgresHandler) releaseSessionLocks(c *mysql.Conn) {
+	session := h.sm.GetSession(c)
+	if session == nil {
+		return
+	}
+	if err := sql.SessionCommandBegin(session); err != nil {
+		logrus.Errorf("unable to release all locks on session close: %s", err)
+		return
+	}
+	defer sql.SessionCommandEnd(session)
+	h.maybeReleaseAllLocks(c)
 }
 
 // maybeReleaseAllLocks makes a best effort attempt to release all locks on the given connection. If the attempt fails,
