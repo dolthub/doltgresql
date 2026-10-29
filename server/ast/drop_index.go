@@ -19,6 +19,8 @@ import (
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
@@ -26,6 +28,14 @@ import (
 func nodeDropIndex(ctx *Context, node *tree.DropIndex) (*vitess.AlterTable, error) {
 	if node == nil || len(node.IndexList) == 0 {
 		return nil, nil
+	}
+	if node.Concurrently {
+		if len(node.IndexList) > 1 {
+			return nil, pgerror.New(pgcode.FeatureNotSupported, "DROP INDEX CONCURRENTLY does not support dropping multiple objects")
+		}
+		if node.DropBehavior == tree.DropCascade {
+			return nil, pgerror.New(pgcode.FeatureNotSupported, "DROP INDEX CONCURRENTLY does not support CASCADE")
+		}
 	}
 	switch node.DropBehavior {
 	case tree.DropDefault:
@@ -37,9 +47,6 @@ func nodeDropIndex(ctx *Context, node *tree.DropIndex) (*vitess.AlterTable, erro
 	}
 	if len(node.IndexList) > 1 {
 		return nil, errors.Errorf("multi-index dropping is not yet supported")
-	}
-	if node.Concurrently {
-		return nil, errors.Errorf("concurrent indexes are not yet supported")
 	}
 	var tableName vitess.TableName
 	ddls := make([]*vitess.DDL, len(node.IndexList))

@@ -25,6 +25,85 @@ import (
 func TestBasicIndexing(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "CREATE INDEX CONCURRENTLY and DROP INDEX CONCURRENTLY",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk INT PRIMARY KEY, v INT, w TEXT);",
+				"INSERT INTO t VALUES (1, 10, 'a'), (2, 20, 'b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE INDEX CONCURRENTLY IF NOT EXISTS "t_v_idx" ON "public"."t" ("v");`,
+				},
+				{
+					Query: `CREATE INDEX CONCURRENTLY IF NOT EXISTS "t_v_idx" ON "public"."t" ("v");`,
+				},
+				{
+					Query: "CREATE UNIQUE INDEX CONCURRENTLY t_w_idx ON t (w);",
+				},
+				{
+					Query:           "INSERT INTO t VALUES (3, 30, 'a');",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "INSERT INTO t VALUES (3, 30, 'a');",
+					ExpectedErr:     `duplicate key value violates unique constraint "t_w_idx"`,
+					ExpectedErrCode: "23505",
+					Skip:            true,
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't' ORDER BY indexname;",
+					Expected: []sql.Row{{"t_pkey"}, {"t_v_idx"}, {"t_w_idx"}},
+				},
+				{
+					Query: "BEGIN;",
+				},
+				{
+					Query:           "CREATE INDEX CONCURRENTLY t_v2_idx ON t (v);",
+					ExpectedErr:     "CREATE INDEX CONCURRENTLY cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
+				},
+				{
+					Query: "ROLLBACK;",
+				},
+				{
+					Query: "BEGIN;",
+				},
+				{
+					Query:           "DROP INDEX CONCURRENTLY t_v_idx;",
+					ExpectedErr:     "DROP INDEX CONCURRENTLY cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
+				},
+				{
+					Query: "ROLLBACK;",
+				},
+				{
+					Query:           "DROP INDEX CONCURRENTLY t_v_idx, t_w_idx;",
+					ExpectedErr:     "DROP INDEX CONCURRENTLY does not support dropping multiple objects",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           "DROP INDEX CONCURRENTLY t_v_idx CASCADE;",
+					ExpectedErr:     "DROP INDEX CONCURRENTLY does not support CASCADE",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't' ORDER BY indexname;",
+					Expected: []sql.Row{{"t_pkey"}, {"t_v_idx"}, {"t_w_idx"}},
+				},
+				{
+					Query: "DROP INDEX CONCURRENTLY t_v_idx;",
+				},
+				{
+					Query: "DROP INDEX CONCURRENTLY IF EXISTS t_v_idx;",
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't' ORDER BY indexname;",
+					Expected: []sql.Row{{"t_pkey"}, {"t_w_idx"}},
+				},
+			},
+		},
+		{
 			Name: "Covering Index",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
@@ -3176,6 +3255,36 @@ func TestIndexColumnOptions(t *testing.T) {
 					Query:    "SELECT pk FROM uq WHERE e = 3;",
 					Expected: []sql.Row{{3}},
 				},
+			},
+		},
+	})
+}
+
+// TestIndexConcurrentlyInMultiStatementSimpleQuery verifies that CONCURRENTLY index statements are refused inside the
+// implicit transaction block of a simple query with several statements.
+func TestIndexConcurrentlyInMultiStatementSimpleQuery(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name: "CONCURRENTLY index statements in an implicit block",
+			Steps: []FlowStep{
+				SimpleQuery{Query: "CREATE TABLE t (pk INT PRIMARY KEY, v INT);", Expected: []StatementResult{{Tag: "CREATE TABLE"}}},
+				SimpleQuery{
+					Query:           "CREATE INDEX CONCURRENTLY t_v_idx ON t (v); SELECT 1;",
+					ExpectedErr:     "CREATE INDEX CONCURRENTLY cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
+				},
+				SimpleQuery{Query: "CREATE INDEX CONCURRENTLY t_v_idx ON t (v);", Expected: []StatementResult{{Tag: "CREATE INDEX"}}},
+				SimpleQuery{
+					Query:           "SELECT 1; DROP INDEX CONCURRENTLY t_v_idx;",
+					Expected:        []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"1"}}}},
+					ExpectedErr:     "DROP INDEX CONCURRENTLY cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
+				},
+				SimpleQuery{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't' ORDER BY indexname;",
+					Expected: []StatementResult{{Tag: "SELECT 2", Rows: [][]string{{"t_pkey"}, {"t_v_idx"}}}},
+				},
+				SimpleQuery{Query: "DROP INDEX CONCURRENTLY t_v_idx;", Expected: []StatementResult{{Tag: "DROP INDEX"}}},
 			},
 		},
 	})

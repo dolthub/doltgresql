@@ -35,9 +35,6 @@ func nodeCreateIndex(ctx *Context, node *tree.CreateIndex) (*vitess.AlterTable, 
 	if node == nil {
 		return nil, nil
 	}
-	if node.Concurrently {
-		return nil, errors.Errorf("concurrent index creation is not yet supported")
-	}
 	var vectorOptions []*vitess.IndexOption
 	columns := node.Columns
 	indexParams := node.IndexParams
