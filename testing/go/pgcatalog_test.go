@@ -823,7 +823,13 @@ func TestPgClass(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				// Branch and remote-branch virtual indexes have distinct catalog names.
 				{
-					Query: `SELECT c.relname, c.relkind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = 'public' AND c.relname IN ('dolt_branches_dolt_branches_name_idx_key', 'dolt_remote_branches_dolt_branches_name_idx_key') ORDER BY c.relname;`,
+					Query:    `SELECT c.relname, c.relkind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = 'public' AND c.relname IN ('dolt_branches_dolt_branches_name_idx_key', 'dolt_remote_branches_dolt_branches_name_idx_key') ORDER BY c.relname;`,
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{}},
+					PostgresFork: &ScriptTestAssertion{
+						// The fork exposes these interfaces as views, not indexed virtual tables.
+						Query:    "SELECT c.relname, c.relkind::text, NOT EXISTS (SELECT 1 FROM pg_index i WHERE i.indrelid=c.oid) FROM pg_class c JOIN pg_namespace n ON c.relnamespace=n.oid WHERE n.nspname='pg_catalog' AND c.relname IN ('dolt_branches','dolt_remote_branches') ORDER BY c.relname;",
+						Expected: []sql.Row{{"dolt_branches", "v", "t"}, {"dolt_remote_branches", "v", "t"}},
+					},
 					Expected: []sql.Row{
 						{"dolt_branches_dolt_branches_name_idx_key", "i"},
 						{"dolt_remote_branches_dolt_branches_name_idx_key", "i"},

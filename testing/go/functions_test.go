@@ -2318,16 +2318,28 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Expected:         []sql.Row{{"(celsius * 9 / 5 + 32)"}},
 				},
 				{
-					Query:            `SELECT indexrelid, pg_get_expr(indpred, indrelid) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Query: `SELECT indexrelid, pg_get_expr(indpred, indrelid) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Postgres: &ScriptTestAssertion{
+						Query:    "SELECT indexrelid='testing_pkey'::regclass AS indexrelid, pg_get_expr(indpred, indrelid) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;",
+						Expected: []sql.Row{{"t", nil}},
+					},
 					ExpectedColNames: []string{"indexrelid", "pg_get_expr"},
 					Expected:         []sql.Row{{3757635986, nil}},
 				},
 				{
-					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, true) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Query: `SELECT indexrelid, pg_get_expr(indpred, indrelid, true) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Postgres: &ScriptTestAssertion{
+						Query:    "SELECT indexrelid='testing_pkey'::regclass AS indexrelid, pg_get_expr(indpred, indrelid, true) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;",
+						Expected: []sql.Row{{"t", nil}},
+					},
 					Expected: []sql.Row{{3757635986, nil}},
 				},
 				{
-					Query:    `SELECT indexrelid, pg_get_expr(indpred, indrelid, NULL) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Query: `SELECT indexrelid, pg_get_expr(indpred, indrelid, NULL) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;`,
+					Postgres: &ScriptTestAssertion{
+						Query:    "SELECT indexrelid='testing_pkey'::regclass AS indexrelid, pg_get_expr(indpred, indrelid, NULL) FROM pg_catalog.pg_index WHERE indrelid='testing'::regclass;",
+						Expected: []sql.Row{{"t", nil}},
+					},
 					Expected: []sql.Row{{3757635986, nil}},
 				},
 			},
@@ -2420,6 +2432,10 @@ func TestSystemInformationFunctions(t *testing.T) {
 				{
 					// TODO: add all config parameters
 					Query: `SELECT name FROM pg_show_all_settings();`,
+					Postgres: &ScriptTestAssertion{
+						Query:    "SELECT (SELECT array_agg(name ORDER BY name) FROM pg_show_all_settings()) = (SELECT array_agg(name ORDER BY name) FROM pg_settings);",
+						Expected: []sql.Row{{"t"}},
+					},
 					Expected: []sql.Row{
 						{"bytea_output"},
 					},
