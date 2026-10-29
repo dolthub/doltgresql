@@ -818,9 +818,14 @@ func TestPgClass(t *testing.T) {
 			},
 		},
 		{
-			Name:        "pg_class branch virtual index names",
-			SetUpScript: []string{"set dolt_show_system_tables=1"},
+			Name: "pg_class branch virtual index names",
 			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "set dolt_show_system_tables=1",
+					Expected: []sql.Row{},
+					// Native catalog views are visible without Doltgres's discovery setting.
+					Postgres: &ScriptTestAssertion{Query: "SELECT 1", Expected: []sql.Row{{1}}},
+				},
 				// Branch and remote-branch virtual indexes have distinct catalog names.
 				{
 					Query:    `SELECT c.relname, c.relkind FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid WHERE n.nspname = 'public' AND c.relname IN ('dolt_branches_dolt_branches_name_idx_key', 'dolt_remote_branches_dolt_branches_name_idx_key') ORDER BY c.relname;`,
