@@ -17,6 +17,9 @@ package _go
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -46,15 +49,64 @@ func runBackupTest(t *testing.T, script ScriptTest) {
 	t.Helper()
 	t.Run(script.Name, func(t *testing.T) {
 		t.Helper()
-		port, err := sql.GetEmptyPort()
-		require.NoError(t, err)
-		ctx, conn, controller := CreateServerLocalWithPort(t, "postgres", port)
-		defer func() {
-			conn.Close(ctx)
-			controller.Stop()
-			require.NoError(t, controller.WaitForStop())
-		}()
-		runScript(t, ctx, script, conn, true)
+		for _, native := range []bool{false, true} {
+			name := "doltgres"
+			if native {
+				name = "postgres-fork"
+			}
+			t.Run(name, func(t *testing.T) {
+				script := script
+				if native && script.Postgres != nil {
+					script = *script.Postgres
+				}
+				if native != (testTarget(t) == targetPostgresFork) {
+					t.Skip("counterpart selected by DOLTGRES_TEST_TARGET")
+				}
+				if testTarget(t) == targetPostgres {
+					t.Skip("stock PostgreSQL does not implement version-control backups")
+				}
+				port, err := sql.GetEmptyPort()
+				require.NoError(t, err)
+				ctx, conn, controller := CreateServerLocalWithPort(t, "postgres", port)
+				defer func() {
+					conn.Close(ctx)
+					controller.Stop()
+					require.NoError(t, controller.WaitForStop())
+				}()
+				if !native {
+					runScript(t, ctx, script, conn, true)
+					return
+				}
+
+				// PostgreSQL selects a database at connection startup. USE in
+				// the Doltgres fixture becomes an explicit reconnect here.
+				reconnect := func(query string) bool {
+					fields := strings.Fields(strings.TrimSuffix(strings.TrimSpace(query), ";"))
+					if len(fields) != 2 || !strings.EqualFold(fields[0], "USE") {
+						return false
+					}
+					config := conn.Default.Config()
+					config.Database = fields[1]
+					next, err := pgx.ConnectConfig(ctx, config)
+					require.NoError(t, err)
+					conn.Close(ctx)
+					conn.Default = next
+					conn.Current = next
+					return true
+				}
+				for _, query := range script.SetUpScript {
+					if !reconnect(query) {
+						_, err := conn.Exec(ctx, query)
+						require.NoError(t, err, "setup: %s", query)
+					}
+				}
+				for _, assertion := range script.Assertions {
+					if !reconnect(assertion.Query) {
+						runScript(t, ctx, ScriptTest{Assertions: []ScriptTestAssertion{assertion}}, conn, true)
+					}
+				}
+			})
+		}
 	})
 }
 
@@ -78,13 +130,13 @@ func TestDoltBackup(t *testing.T) {
 				Expected: []sql.Row{{1, "apple"}, {2, "banana"}, {3, "cherry"}},
 			},
 			{
-				// 4 commits: Initialize + CREATE DATABASE + 2 user commits.
-				Query:    "select count(*) from dolt.commits;",
-				Expected: []sql.Row{{int64(4)}},
+				// Initialization plus two user commits; CREATE DATABASE is an optional artifact.
+				Query:    "select count(*) from dolt.commits where message <> 'CREATE DATABASE';",
+				Expected: []sql.Row{{int64(3)}},
 			},
 			{
-				Query:    "select message from dolt.commits order by date;",
-				Expected: []sql.Row{{"Initialize data repository"}, {"CREATE DATABASE"}, {"first commit: add apple and banana"}, {"second commit: add cherry"}},
+				Query:    "select message from dolt.commits where message <> 'CREATE DATABASE' order by date;",
+				Expected: []sql.Row{{"Initialize data repository"}, {"first commit: add apple and banana"}, {"second commit: add cherry"}},
 			},
 			{
 				// NOT NULL constraint on label must survive restore.
@@ -116,13 +168,13 @@ func TestDoltBackup(t *testing.T) {
 				Expected: []sql.Row{{1, "widget", 10}, {2, "gadget", 5}},
 			},
 			{
-				// 4 commits: Initialize + CREATE DATABASE + 2 user commits.
-				Query:    "select count(*) from dolt.commits;",
-				Expected: []sql.Row{{int64(4)}},
+				// Initialization plus two user commits; CREATE DATABASE is an optional artifact.
+				Query:    "select count(*) from dolt.commits where message <> 'CREATE DATABASE';",
+				Expected: []sql.Row{{int64(3)}},
 			},
 			{
-				Query:    "select message from dolt.commits order by date;",
-				Expected: []sql.Row{{"Initialize data repository"}, {"CREATE DATABASE"}, {"initial order"}, {"second order"}},
+				Query:    "select message from dolt.commits where message <> 'CREATE DATABASE' order by date;",
+				Expected: []sql.Row{{"Initialize data repository"}, {"initial order"}, {"second order"}},
 			},
 		},
 	})
@@ -189,9 +241,9 @@ func TestDoltBackup(t *testing.T) {
 				Expected: []sql.Row{{1, "original"}},
 			},
 			{
-				// Initialize + CREATE DATABASE + seed.
-				Query:    "select count(*) from dolt.commits;",
-				Expected: []sql.Row{{int64(3)}},
+				// Initialization plus the seed commit (excluding the optional CREATE DATABASE artifact).
+				Query:    "select count(*) from dolt.commits where message <> 'CREATE DATABASE';",
+				Expected: []sql.Row{{int64(2)}},
 			},
 			{
 				Query: "USE postgres;",
@@ -271,9 +323,9 @@ func TestDoltBackup(t *testing.T) {
 				Expected: []sql.Row{{1, "committed"}, {2, "staged only"}, {3, "unstaged"}},
 			},
 			{
-				// Only the first user commit; rows 2 and 3 are in the working set only.
-				Query:    "select count(*) from dolt.commits;",
-				Expected: []sql.Row{{int64(3)}},
+				// Initialization plus the first user commit; rows 2 and 3 are uncommitted.
+				Query:    "select count(*) from dolt.commits where message <> 'CREATE DATABASE';",
+				Expected: []sql.Row{{int64(2)}},
 			},
 		},
 	})
@@ -303,9 +355,9 @@ func TestDoltBackup(t *testing.T) {
 				Expected: []sql.Row{{1, "first"}, {2, "second"}},
 			},
 			{
-				// Initialize + CREATE DATABASE + 2 user commits.
-				Query:    "select count(*) from dolt.commits;",
-				Expected: []sql.Row{{int64(4)}},
+				// Initialization plus two user commits; CREATE DATABASE is an optional artifact.
+				Query:    "select count(*) from dolt.commits where message <> 'CREATE DATABASE';",
+				Expected: []sql.Row{{int64(3)}},
 			},
 		},
 	})
@@ -393,8 +445,8 @@ func TestDoltBackup(t *testing.T) {
 				Expected: []sql.Row{{int64(0)}},
 			},
 			{
-				// At minimum, Initialize + CREATE DATABASE commits must be present.
-				Query:    "select count(*) >= 2 from dolt.commits;",
+				// The initialization commit is required; CREATE DATABASE is optional.
+				Query:    "select count(*) = 1 from dolt.commits where message = 'Initialize data repository';",
 				Expected: []sql.Row{{"t"}},
 			},
 		},
@@ -495,8 +547,9 @@ func TestDoltBackup(t *testing.T) {
 				Expected: []sql.Row{{1, "apple"}, {2, "carrot"}},
 			},
 			{
-				Query:       "insert into items values (3, 99, 'mystery');",
-				ExpectedErr: "Foreign key",
+				Query:        "insert into items values (3, 99, 'mystery');",
+				ExpectedErr:  "Foreign key",
+				PostgresFork: &ScriptTestAssertion{ExpectedErrCode: "23503"},
 			},
 			{
 				Query:    "select count(*) from information_schema.referential_constraints where constraint_schema = 'public';",
@@ -715,6 +768,25 @@ func TestDoltBackup(t *testing.T) {
 	backupUrl = localBackupUrl(t, "backup")
 	runBackupTest(t, ScriptTest{
 		Name: "extension is preserved across backup and restore",
+		Postgres: &ScriptTest{
+			Name: "native extension is reinstalled during restore",
+			SetUpScript: []string{
+				"CREATE EXTENSION hstore;",
+				fmt.Sprintf("select dolt_backup('sync-url', '%s');", backupUrl),
+				fmt.Sprintf("select dolt_backup('restore', '%s', 'restored_ext');", backupUrl),
+				"USE restored_ext",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT extname FROM pg_extension WHERE extname <> 'plpgsql'",
+					Expected: []sql.Row{{"hstore"}},
+				},
+				{
+					Query:    "SELECT 'key=>value'::hstore->'key'",
+					Expected: []sql.Row{{"value"}},
+				},
+			},
+		},
 		SetUpScript: []string{
 			`create extension "uuid-ossp";`,
 			fmt.Sprintf("select dolt_backup('sync-url', '%s');", backupUrl),
