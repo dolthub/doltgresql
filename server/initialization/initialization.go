@@ -47,12 +47,10 @@ import (
 )
 
 var once = &sync.Once{}
-var legacyVariablesOnce sync.Once
 
-// Initialize initializes each package across the project. This function should be used instead of an init() function.
-func Initialize(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
+// InitializeProcess initializes each package across the project. This function should be used instead of an init() function.
+func InitializeProcess(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 	initializeProcess(dEnv, cfg)
-	legacyVariablesOnce.Do(config.Init)
 }
 
 // InitializeWithVariables initializes process-wide catalogs once and registers

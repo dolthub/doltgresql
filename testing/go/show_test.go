@@ -347,6 +347,42 @@ func TestShowCreateTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "show create table with CHECK constraints",
+			SetUpScript: []string{
+				`CREATE TABLE t1 (id INT PRIMARY KEY, s TEXT CONSTRAINT t1_s_check CHECK (s IN ('a', 'b')), n INT CONSTRAINT t1_n_check CHECK (n > 0))`,
+				`CREATE TABLE t2 (id INT PRIMARY KEY, s TEXT CONSTRAINT t2_s_check CHECK (s IN ('a', 'b')), n INT CONSTRAINT t2_n_check CHECK (n > 0))`,
+				`CREATE INDEX t2_length_idx ON t2 ((length(s)))`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SHOW CREATE TABLE t1`,
+					Expected: []sql.Row{
+						{"t1", `CREATE TABLE "t1" (
+  "id" integer NOT NULL,
+  "s" text,
+  "n" integer,
+  PRIMARY KEY ("id"),
+  CONSTRAINT "t1_s_check" CHECK ("s" IN ('a', 'b')),
+  CONSTRAINT "t1_n_check" CHECK ("n" > 0)
+)`},
+					},
+				},
+				{
+					Query: `SHOW CREATE TABLE t2`,
+					Expected: []sql.Row{
+						{"t2", `CREATE TABLE "t2" (
+  "id" integer NOT NULL,
+  "s" text,
+  "n" integer,
+  PRIMARY KEY ("id"),
+  CONSTRAINT "t2_s_check" CHECK ("s" IN ('a', 'b')),
+  CONSTRAINT "t2_n_check" CHECK ("n" > 0)
+)`},
+					},
+				},
+			},
+		},
 	})
 }
 

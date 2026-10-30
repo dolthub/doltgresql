@@ -28,8 +28,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	dserver "github.com/dolthub/doltgresql/server"
-	"github.com/dolthub/doltgresql/server/initialization"
-	doltgresservercfg "github.com/dolthub/doltgresql/servercfg"
 )
 
 // database bundles the storage-layer handles for a single database found in the data directory.
@@ -46,8 +44,6 @@ type database struct {
 // |dir| may either be a database directory itself (contains .dolt) or a data directory containing databases.
 // The returned cleanup function releases the underlying engine, sessions, and databases.
 func openDatabases(ctx context.Context, dir string) ([]*database, func(), error) {
-	initialization.Initialize(nil, doltgresservercfg.DefaultServerConfig())
-
 	fs, err := filesys.LocalFilesysWithWorkingDir(dir)
 	if err != nil {
 		return nil, nil, err
