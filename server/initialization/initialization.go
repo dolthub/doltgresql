@@ -48,7 +48,7 @@ import (
 
 var once = &sync.Once{}
 
-// InitializeProcess initializes process-wide catalogs without registering variables.
+// InitializeProcess initializes each package across the project. This function should be used instead of an init() function.
 func InitializeProcess(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) {
 	initializeProcess(dEnv, cfg)
 }
