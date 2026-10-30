@@ -178,7 +178,7 @@ func newExternalServer(t *testing.T, binary string, config *servercfg.DoltgresCo
 		if err != nil {
 			return nil, err
 		}
-		initdb := exec.Command(filepath.Join(filepath.Dir(path), "initdb"), "-D", dataDir, "-U", "postgres", "--auth=trust", "--encoding=UTF8", "--locale=C", "--no-sync")
+		initdb := exec.Command(filepath.Join(filepath.Dir(path), "initdb"), "-D", dataDir, "-U", "postgres", "--auth=trust", "--encoding=UTF8", "--locale=C", "--no-sync", "-c", "dynamic_shared_memory_type=mmap")
 		if output, err := initdb.CombinedOutput(); err != nil {
 			return nil, errors.Errorf("initdb failed: %s: %w", output, err)
 		}
