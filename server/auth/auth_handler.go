@@ -142,6 +142,11 @@ func (h *AuthorizationHandler) HandleAuth(ctx *sql.Context, aqs sql.Authorizatio
 		privileges = []Privilege{Privilege_INSERT}
 	case AuthType_SELECT:
 		privileges = []Privilege{Privilege_SELECT}
+	case AuthType_SUPER:
+		if !state.role.IsSuperUser {
+			return pgerror.New(pgcode.InsufficientPrivilege, "permission denied to set parameter")
+		}
+		return nil
 	case AuthType_TRUNCATE:
 		privileges = []Privilege{Privilege_TRUNCATE}
 	case AuthType_USAGE:
