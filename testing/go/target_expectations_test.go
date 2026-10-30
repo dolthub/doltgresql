@@ -84,3 +84,11 @@ func TestTargetExpectationExecutesOnce(t *testing.T) {
 	}, 3)
 
 }
+
+func TestPlanNodeFragments(t *testing.T) {
+	plan := `[{"Plan":{"Node Type":"Hash Join","Plans":[{"Node Type":"Seq Scan","Relation Name":"big"},{"Node Type":"Hash","Plans":[{"Node Type":"Seq Scan","Relation Name":"small","Plan Rows":10}]}]}}]`
+	require.NoError(t, checkPlanNodes(plan, []map[string]any{{"Node Type": "Hash", "Plans": []any{map[string]any{"Relation Name": "small", "Plan Rows": float64(10)}}}}))
+	require.Error(t, checkPlanNodes(plan, []map[string]any{{"Node Type": "Hash", "Plans": []any{map[string]any{"Relation Name": "big"}}}}))
+	require.Error(t, checkPlanNodes(plan, []map[string]any{{"Relation Name": "small", "Plan Rows": float64(1000)}}))
+	require.Error(t, checkPlanNodes(`[]`, []map[string]any{{"Node Type": "Hash"}}))
+}

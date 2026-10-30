@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"testing"
 )
 
@@ -177,6 +178,70 @@ func checkCatalogScanAliases(plan string, aliases []string) error {
 	for _, alias := range aliases {
 		if !found[alias] {
 			return fmt.Errorf("missing DoltCatalogScan for alias %s", alias)
+		}
+	}
+	return nil
+}
+
+// checkPlanNodes requires each fragment to occur in one plan node. Nested Plans
+// fragments must match that node's direct children, preserving join-side checks.
+func checkPlanNodes(plan string, expected []map[string]any) error {
+	if len(expected) == 0 {
+		return nil
+	}
+	var roots []struct{ Plan map[string]any }
+	if err := json.Unmarshal([]byte(plan), &roots); err != nil {
+		return err
+	}
+	if len(roots) != 1 {
+		return fmt.Errorf("missing native plan root")
+	}
+	var subset func(any, any) bool
+	subset = func(actual, want any) bool {
+		switch w := want.(type) {
+		case map[string]any:
+			a, ok := actual.(map[string]any)
+			if !ok {
+				return false
+			}
+			for k, v := range w {
+				if !subset(a[k], v) {
+					return false
+				}
+			}
+			return true
+		case []any:
+			a, ok := actual.([]any)
+			if !ok || len(a) != len(w) {
+				return false
+			}
+			for i := range w {
+				if !subset(a[i], w[i]) {
+					return false
+				}
+			}
+			return true
+		default:
+			return reflect.DeepEqual(actual, w)
+		}
+	}
+	var contains func(map[string]any, map[string]any) bool
+	contains = func(node, want map[string]any) bool {
+		if subset(node, want) {
+			return true
+		}
+		if children, ok := node["Plans"].([]any); ok {
+			for _, c := range children {
+				if child, ok := c.(map[string]any); ok && contains(child, want) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	for _, want := range expected {
+		if !contains(roots[0].Plan, want) {
+			return fmt.Errorf("missing plan fragment %v in %s", want, plan)
 		}
 	}
 	return nil

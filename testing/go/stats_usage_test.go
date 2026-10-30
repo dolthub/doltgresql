@@ -58,6 +58,7 @@ var StatsAggregateTests = []ScriptTest{
 				Expected: []sql.Row{{Numeric("60")}},
 			},
 			{
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{Numeric("100.0000000000000000")}}},
 				Query:    "SELECT avg(row_count) FROM dolt_statistics WHERE table_name = 't';",
 				Expected: []sql.Row{{Numeric("100")}},
 			},
@@ -223,7 +224,8 @@ var StatsUsageTests = []ScriptTest{
 			{
 				// The planner should scan the small table (10 rows) and use the index on the
 				// big table (5000 rows) for lookups, not the other way around.
-				Query: "EXPLAIN SELECT * FROM small JOIN big ON small.pk = big.highcard;",
+				Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT * FROM small JOIN big ON small.pk = big.highcard;", ExpectedPlanNodes: []map[string]any{{"Relation Name": "small", "Plan Rows": float64(10)}, {"Index Name": "big_highcard_idx"}}},
+				Query:    "EXPLAIN SELECT * FROM small JOIN big ON small.pk = big.highcard;",
 				Expected: []sql.Row{
 					{"LookupJoin"},
 					{" ├─ Table"},
@@ -239,7 +241,8 @@ var StatsUsageTests = []ScriptTest{
 				// With the FROM order reversed, the planner should still put the small table on
 				// the scan side of the join. The Project node restores the SELECT * column order,
 				// which shows the join inputs were reordered from the query text.
-				Query: "EXPLAIN SELECT * FROM big JOIN small ON small.pk = big.highcard;",
+				Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT * FROM big JOIN small ON small.pk = big.highcard;", ExpectedPlanNodes: []map[string]any{{"Relation Name": "small", "Plan Rows": float64(10)}, {"Index Name": "big_highcard_idx"}}},
+				Query:    "EXPLAIN SELECT * FROM big JOIN small ON small.pk = big.highcard;",
 				Expected: []sql.Row{
 					{"Project"},
 					{" ├─ columns: [big.pk, big.lowcard, big.highcard, small.pk, small.c1]"},
@@ -270,7 +273,8 @@ var StatsUsageTests = []ScriptTest{
 		Assertions: []ScriptTestAssertion{
 			{
 				// The hash table (the HashLookup child) should be built from the small table
-				Query: "EXPLAIN SELECT * FROM big JOIN small ON big.val = small.val;",
+				Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT * FROM big JOIN small ON big.val = small.val;", ExpectedPlanNodes: []map[string]any{{"Node Type": "Hash", "Plans": []any{map[string]any{"Relation Name": "small", "Plan Rows": float64(10)}}}}},
+				Query:    "EXPLAIN SELECT * FROM big JOIN small ON big.val = small.val;",
 				Expected: []sql.Row{
 					{"HashJoin"},
 					{" ├─ big.val = small.val"},
@@ -287,7 +291,8 @@ var StatsUsageTests = []ScriptTest{
 			},
 			{
 				// Same plan when the FROM order is reversed
-				Query: "EXPLAIN SELECT * FROM small JOIN big ON big.val = small.val;",
+				Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT * FROM small JOIN big ON big.val = small.val;", ExpectedPlanNodes: []map[string]any{{"Node Type": "Hash", "Plans": []any{map[string]any{"Relation Name": "small", "Plan Rows": float64(10)}}}}},
+				Query:    "EXPLAIN SELECT * FROM small JOIN big ON big.val = small.val;",
 				Expected: []sql.Row{
 					{"Project"},
 					{" ├─ columns: [small.pk, small.val, big.pk, big.val]"},
@@ -321,7 +326,8 @@ var StatsUsageTests = []ScriptTest{
 				// that matches 1 row (highcard = 42), the planner should pick the
 				// high-cardinality index. The matched filter is converted to an index range and
 				// removed from the Filter node above the scan.
-				Query: "EXPLAIN SELECT * FROM t WHERE lowcard = 3 AND highcard = 42;",
+				Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT * FROM t WHERE lowcard = 3 AND highcard = 42;", ExpectedPlanNodes: []map[string]any{{"Index Name": "t_highcard_idx"}}},
+				Query:    "EXPLAIN SELECT * FROM t WHERE lowcard = 3 AND highcard = 42;",
 				Expected: []sql.Row{
 					{"Filter"},
 					{" ├─ t.lowcard = 3"},
@@ -334,7 +340,8 @@ var StatsUsageTests = []ScriptTest{
 			{
 				// When the highcard predicate matches every row (highcard > 0) and the lowcard
 				// predicate matches ~500 rows, the index choice should flip to lowcard.
-				Query: "EXPLAIN SELECT * FROM t WHERE lowcard = 3 AND highcard > 0;",
+				Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT * FROM t WHERE lowcard = 3 AND highcard > 0;", ExpectedPlanNodes: []map[string]any{{"Index Name": "t_lowcard_idx"}}},
+				Query:    "EXPLAIN SELECT * FROM t WHERE lowcard = 3 AND highcard > 0;",
 				Expected: []sql.Row{
 					{"Filter"},
 					{" ├─ t.highcard > 0"},
@@ -367,7 +374,8 @@ var StatsUsageTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "EXPLAIN SELECT * FROM small JOIN big ON big.jc = small.pk WHERE big.val > 4950;",
+				Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT * FROM small JOIN big ON big.jc = small.pk WHERE big.val > 4950;", ExpectedPlanNodes: []map[string]any{{"Index Name": "big_val_idx", "Plan Rows": float64(50)}}},
+				Query:    "EXPLAIN SELECT * FROM small JOIN big ON big.jc = small.pk WHERE big.val > 4950;",
 				Expected: []sql.Row{
 					{"Project"},
 					{" ├─ columns: [small.pk, small.c1, big.pk, big.val, big.jc]"},

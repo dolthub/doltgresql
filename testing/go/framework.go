@@ -116,6 +116,8 @@ type ScriptTestAssertion struct {
 	ExpectedNotices []ExpectedNotice
 	// ExpectedPlanRelations checks native JSON plans without depending on costs or scan choice.
 	ExpectedPlanRelations []string
+	// ExpectedPlanNodes matches structural JSON plan fragments, excluding unstable costs.
+	ExpectedPlanNodes []map[string]any
 	// ExpectedCatalogScanAliases checks fork-native branch-aware catalog plan nodes.
 	ExpectedCatalogScanAliases []string
 	Focus                      bool
@@ -341,10 +343,11 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 				return
 			}
 			// If we're skipping the results check, then we call Execute, as it uses a simplified message model.
-			if len(assertion.ExpectedPlanRelations) > 0 || len(assertion.ExpectedCatalogScanAliases) > 0 {
+			if len(assertion.ExpectedPlanRelations) > 0 || len(assertion.ExpectedCatalogScanAliases) > 0 || len(assertion.ExpectedPlanNodes) > 0 {
 				var plan string
 				require.NoError(t, conn.Current.QueryRow(ctx, assertion.Query).Scan(&plan))
 				require.NoError(t, checkPlanRelations(plan, assertion.ExpectedPlanRelations))
+				require.NoError(t, checkPlanNodes(plan, assertion.ExpectedPlanNodes))
 				require.NoError(t, checkCatalogScanAliases(plan, assertion.ExpectedCatalogScanAliases))
 			} else if assertion.CopyFromStdInFile != "" {
 				copyFromStdin(t, conn.Current, assertion.Query, assertion.CopyFromStdInFile, assertion.ExpectedErr)
