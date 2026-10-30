@@ -68,3 +68,20 @@ func testNativeShowSequences(t *testing.T) {
 		{Name: "explicit database sequences", Database: "db1", SetUpScript: []string{"CREATE SEQUENCE seq4", "CREATE SCHEMA schema2", "CREATE SEQUENCE schema2.seq5"}, Assertions: []ScriptTestAssertion{{Query: "SELECT current_database(),schemaname,sequencename FROM pg_sequences WHERE schemaname IN ('public','schema2') ORDER BY schemaname,sequencename", Expected: []sql.Row{{"db1", "public", "seq4"}, {"db1", "schema2", "seq5"}}}}},
 	})
 }
+
+func testNativeDescribe(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{Name: "native column description", SetUpScript: []string{"CREATE TABLE t1(id int PRIMARY KEY, name text)"}, Assertions: []ScriptTestAssertion{
+			{Query: "SELECT attname,format_type(atttypid,atttypmod),attnotnull FROM pg_attribute WHERE attrelid='t1'::regclass AND attnum>0 AND NOT attisdropped ORDER BY attnum", Expected: []sql.Row{{"id", "integer", "t"}, {"name", "text", "f"}}},
+			{Query: "SELECT * FROM public.t1 LIMIT 0", Expected: []sql.Row{}, ExpectedColNames: []string{"id", "name"}},
+			{Query: "SELECT * FROM postgres.public.t1 LIMIT 0", Expected: []sql.Row{}, ExpectedColNames: []string{"id", "name"}},
+		}},
+		{Name: "native revision row descriptions", SetUpScript: []string{
+			"CREATE TABLE t1(id int PRIMARY KEY, name text)", "SELECT dolt_commit('-Am','first commit')", "ALTER TABLE t1 ADD COLUMN age int", "SELECT dolt_commit('-am','second commit')", "ALTER TABLE t1 ADD COLUMN height int",
+		}, Assertions: []ScriptTestAssertion{
+			{Query: "SELECT * FROM t1 LIMIT 0", Expected: []sql.Row{}, ExpectedColNames: []string{"id", "name", "age", "height"}},
+			{Query: "SELECT * FROM public.t1 AS OF 'HEAD' LIMIT 0", Expected: []sql.Row{}, ExpectedColNames: []string{"id", "name", "age"}},
+			{Query: "SELECT * FROM t1 AS OF 'HEAD~1' LIMIT 0", Expected: []sql.Row{}, ExpectedColNames: []string{"id", "name"}},
+		}},
+	})
+}

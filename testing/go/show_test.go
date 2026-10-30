@@ -21,6 +21,16 @@ import (
 )
 
 func TestDescribe(t *testing.T) {
+	runTargetPair(t, func(t *testing.T, native bool) {
+		if native {
+			testNativeDescribe(t)
+		} else {
+			testDoltDescribe(t)
+		}
+	})
+}
+
+func testDoltDescribe(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "describe table",

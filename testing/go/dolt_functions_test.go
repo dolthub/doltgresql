@@ -970,7 +970,7 @@ func TestDoltCommitTrackedTables(t *testing.T) {
 }
 
 func TestDoltConflictsResolve(t *testing.T) {
-	RunScripts(t, []ScriptTest{
+	runConflictCounterparts(t, []ScriptTest{
 		{
 			Name:        "Simple conflicts resolve all using --ours",
 			SetUpScript: simpleConflictResolveSetupScript,
@@ -2301,7 +2301,7 @@ func TestDoltQueryDiff(t *testing.T) {
 
 // TestDoltReset includes a multitude of items to ensure that we're able to reset all item types.
 func TestDoltReset(t *testing.T) {
-	RunScripts(t, []ScriptTest{
+	runResetCounterparts(t, []ScriptTest{
 		{
 			Name: "Hard",
 			SetUpScript: []string{
@@ -3558,4 +3558,39 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 			},
 		},
 	})
+}
+
+// Native version-control commands commit at statement boundaries. Preserve the
+// conflict-resolution assertions while removing Dolt's implicit-commit BEGIN.
+func runConflictCounterparts(t *testing.T, scripts []ScriptTest) {
+	for i, original := range scripts {
+		native := original
+		native.Assertions = nil
+		for _, a := range original.Assertions {
+			if a.Query == "BEGIN;" {
+				continue
+			}
+			if a.Query == "SELECT DOLT_MERGE('other', '--no-ff');" {
+				// No commit is published on conflict; the native OUT hash is NULL.
+				a.Expected = []sql.Row{{[]any{nil, int64(0), int64(1), "conflicts found"}}}
+			}
+			native.Assertions = append(native.Assertions, a)
+		}
+		scripts[i].Postgres = &native
+	}
+	RunScripts(t, scripts)
+}
+
+func runResetCounterparts(t *testing.T, scripts []ScriptTest) {
+	for i, original := range scripts {
+		if original.Name != "Hard" {
+			continue
+		}
+		native := original
+		// Create the ancestor explicitly rather than depending on CREATE DATABASE
+		// making an extra initialization commit.
+		native.SetUpScript = append([]string{"SELECT dolt_commit('--allow-empty', '-m', 'reset fixture base')"}, original.SetUpScript...)
+		scripts[i].Postgres = &native
+	}
+	RunScripts(t, scripts)
 }

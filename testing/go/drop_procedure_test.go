@@ -199,6 +199,11 @@ func TestDropProcedure(t *testing.T) {
 					ExpectedErr: "is not unique",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42725",
+						Query:           "DROP PROCEDURE proc3;",
+					},
+
 					Query:    "DROP PROCEDURE proc3;",
 					Expected: []sql.Row{},
 				},
