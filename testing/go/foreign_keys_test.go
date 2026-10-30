@@ -271,6 +271,11 @@ func TestForeignKeys(t *testing.T) {
 						ExpectedErr: "incompatible types",
 					},
 					{
+						Postgres: &ScriptTestAssertion{
+							ExpectedErrCode: "42830",
+							Query:           "alter table child add constraint fvj foreign key (v) references parent(j);",
+						},
+
 						Query:       "alter table child add constraint fvj foreign key (v) references parent(j);",
 						ExpectedErr: "incompatible types",
 					},

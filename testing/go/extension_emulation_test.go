@@ -29,7 +29,38 @@ import (
 	"github.com/dolthub/doltgresql/utils"
 )
 
+// Native counterparts exercise real extension registration and storage, rather
+// than requiring PostgreSQL to implement Doltgres's emulation registry.
 func TestExtensionEmulation(t *testing.T) {
+	runTargetPair(t, func(t *testing.T, native bool) {
+		if !native {
+			testDoltgresExtensionEmulation(t)
+			return
+		}
+		RunScripts(t, []ScriptTest{
+			{Name: "native extension definitions and operators", SetUpScript: []string{"CREATE EXTENSION citext"}, Assertions: []ScriptTestAssertion{
+				{Query: "SELECT t.typtype::text, a.typcategory::text FROM pg_type t JOIN pg_type a ON a.oid=t.typarray WHERE t.oid='citext'::regtype", Expected: []sql.Row{{"b", "A"}}},
+				{Query: "SELECT 'Mixed'::citext = 'MIXED'::citext, 'Mixed'::citext = 'other'::citext, ('Mixed'::citext)::text", Expected: []sql.Row{{"t", "f", "Mixed"}}},
+				{Query: "SELECT ARRAY['a','B']::citext[] = ARRAY['A','b']::citext[]", Expected: []sql.Row{{"t"}}},
+			}},
+			{Name: "native extension type storage and dependencies", SetUpScript: []string{
+				"CREATE EXTENSION citext", "CREATE TABLE native_types (id int PRIMARY KEY, value citext, items citext[])",
+				"INSERT INTO native_types VALUES (1,'Mixed',ARRAY['a','B']::citext[]),(2,NULL,NULL)",
+			}, Assertions: []ScriptTestAssertion{
+				{Query: "SELECT id, value::text, items::text FROM native_types ORDER BY id", Expected: []sql.Row{{1, "Mixed", "{a,B}"}, {2, nil, nil}}},
+				{Query: "UPDATE native_types SET value='Changed' WHERE value='MIXED'", Expected: []sql.Row{}},
+				{Query: "SELECT id, value::text FROM native_types ORDER BY id", Expected: []sql.Row{{1, "Changed"}, {2, nil}}},
+				{Query: "DELETE FROM native_types WHERE id=2", Expected: []sql.Row{}},
+				{Query: "SELECT count(*) FROM native_types WHERE value='CHANGED'", Expected: []sql.Row{{1}}},
+				{Query: "DROP EXTENSION citext", ExpectedErrCode: "2BP01"},
+				{Query: "DROP TABLE native_types", Expected: []sql.Row{}},
+				{Query: "DROP EXTENSION citext", Expected: []sql.Row{}},
+			}},
+		})
+	})
+}
+
+func testDoltgresExtensionEmulation(t *testing.T) {
 	registerTestExtension()
 	RunScripts(t, []ScriptTest{
 		{

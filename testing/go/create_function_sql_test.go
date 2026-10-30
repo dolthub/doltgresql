@@ -31,7 +31,7 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				// PostgreSQL also rejects this as ambiguous. Doltgres currently
 				// reports unresolved overloads as "does not exist" (42883).
-				{Query: `SELECT crossed_overload('1', '2');`, ExpectedErr: "does not exist", ExpectedErrCode: "42883"},
+				{Query: `SELECT crossed_overload('1', '2');`, ExpectedErr: "does not exist", ExpectedErrCode: "42883", Postgres: &ScriptTestAssertion{ExpectedErrCode: "42725"}},
 				{Query: `SELECT crossed_overload('1'::text, '2');`, Expected: []sql.Row{{"text-int"}}},
 				{Query: `SELECT crossed_overload('1', '2'::text);`, Expected: []sql.Row{{"int-text"}}},
 				{Query: `SELECT crossed_overload('1', 2);`, Expected: []sql.Row{{"text-int"}}},
@@ -210,6 +210,7 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				{
 					Query:    `SELECT public.sp_build_view_bathymetry_layer()`,
 					Expected: []sql.Row{},
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT * from view_bathymetry_layer`,
@@ -218,6 +219,7 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				{
 					Query:    `SELECT public.sp_build_view_bathymetry_layer()`,
 					Expected: []sql.Row{},
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{nil}}},
 				},
 				{
 					Query:    `SELECT * from view_bathymetry_layer`,
@@ -426,6 +428,7 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 					// TODO: the error message should be "function dfunc(integer) is not unique"
 					Query:       `SELECT dfunc(50);`,
 					ExpectedErr: `does not exist`,
+					Postgres:    &ScriptTestAssertion{ExpectedErrCode: "42725"},
 				},
 			},
 		},
@@ -529,6 +532,7 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 					// In a SELECT list the same call produces one record value per row
 					Query:    `SELECT figures();`,
 					Expected: []sql.Row{{"(triangle,3)"}, {"(square,4)"}},
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{[]any{"triangle", 3}}, {[]any{"square", 4}}}},
 				},
 			},
 		},

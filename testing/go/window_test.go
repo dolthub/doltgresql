@@ -304,6 +304,11 @@ func TestWindowFunctions(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{1, 10, Numeric("15.0000000000000000")}, {1, 20, Numeric("15.0000000000000000")}, {2, 5, Numeric("5.0000000000000000")}},
+						Query:    "SELECT grp, val, grp_avg FROM (SELECT grp, val, AVG(val) OVER (PARTITION BY grp) AS grp_avg FROM wrapper_probe) sub ORDER BY grp, val;",
+					},
+
 					Query: "SELECT grp, val, grp_avg FROM (SELECT grp, val, AVG(val) OVER (PARTITION BY grp) AS grp_avg FROM wrapper_probe) sub ORDER BY grp, val;",
 					Expected: []sql.Row{
 						{1, 10, Numeric("15")},

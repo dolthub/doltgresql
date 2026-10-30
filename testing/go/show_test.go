@@ -21,6 +21,16 @@ import (
 )
 
 func TestDescribe(t *testing.T) {
+	runTargetPair(t, func(t *testing.T, native bool) {
+		if native {
+			testNativeDescribe(t)
+		} else {
+			testDoltDescribe(t)
+		}
+	})
+}
+
+func testDoltDescribe(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "describe table",
@@ -155,6 +165,16 @@ func TestDescribe(t *testing.T) {
 }
 
 func TestShowTables(t *testing.T) {
+	runTargetPair(t, func(t *testing.T, native bool) {
+		if native {
+			testNativeShowTables(t)
+		} else {
+			testDoltShowTables(t)
+		}
+	})
+}
+
+func testDoltShowTables(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "show tables in single schema",
@@ -300,6 +320,16 @@ func TestShowTables(t *testing.T) {
 }
 
 func TestShowCreateTable(t *testing.T) {
+	runTargetPair(t, func(t *testing.T, native bool) {
+		if native {
+			testNativeShowCreateTable(t)
+		} else {
+			testDoltShowCreateTable(t)
+		}
+	})
+}
+
+func testDoltShowCreateTable(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "show create table",
@@ -351,6 +381,16 @@ func TestShowCreateTable(t *testing.T) {
 }
 
 func TestShowIndexes(t *testing.T) {
+	runTargetPair(t, func(t *testing.T, native bool) {
+		if native {
+			testNativeShowIndexes(t)
+		} else {
+			testDoltShowIndexes(t)
+		}
+	})
+}
+
+func testDoltShowIndexes(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "show indexes",
@@ -378,6 +418,16 @@ func TestShowIndexes(t *testing.T) {
 }
 
 func TestShowDatabasesAndSchemas(t *testing.T) {
+	runTargetPair(t, func(t *testing.T, native bool) {
+		if native {
+			testNativeShowDatabasesAndSchemas(t)
+		} else {
+			testDoltShowDatabasesAndSchemas(t)
+		}
+	})
+}
+
+func testDoltShowDatabasesAndSchemas(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "show databases",
@@ -438,6 +488,16 @@ func TestShowDatabasesAndSchemas(t *testing.T) {
 }
 
 func TestShowSequences(t *testing.T) {
+	runTargetPair(t, func(t *testing.T, native bool) {
+		if native {
+			testNativeShowSequences(t)
+		} else {
+			testDoltShowSequences(t)
+		}
+	})
+}
+
+func testDoltShowSequences(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "show sequences",

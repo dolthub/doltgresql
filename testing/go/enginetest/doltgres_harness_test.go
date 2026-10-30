@@ -199,7 +199,13 @@ func (d *DoltgresHarness) NewEngine(t *testing.T) (enginetest.QueryEngine, error
 
 	dbs := d.allDatabaseNames(ctx, queryEngine)
 
-	for _, setupScript := range commitScripts(dbs) {
+	commits := commitScripts(dbs)
+	if d.skipSetupCommit || os.Getenv("DOLTGRES_TEST_TARGET") == "postgres" {
+		// Stock validates ordinary SQL; creating a version-control checkpoint is
+		// harness setup, not part of these assertions.
+		commits = []setup.SetupScript{{"use mydb"}}
+	}
+	for _, setupScript := range commits {
 		for _, s := range setupScript {
 			runQuery, sanitized := sanitizeQuery(s)
 			if !runQuery {
@@ -661,6 +667,14 @@ func (d *DoltgresHarness) EvaluateExpectedError(t *testing.T, expected string, e
 // EvaluateExpectedErrorKind is a harness extension that gives us more control over matching expected errors. We don't
 // have access to the error kind object eny longer, so we have to see if the error we get matches its pattern
 func (d *DoltgresHarness) EvaluateExpectedErrorKind(t *testing.T, expected *gmserrors.Kind, actualErr error) {
+	if nativePostgresEngine() {
+		if code, ok := nativeErrorCodes[expected]; ok {
+			var pgerr *pgconn.PgError
+			require.True(t, errors.As(actualErr, &pgerr), "expected PostgreSQL error: %v", actualErr)
+			require.Equal(t, code, pgerr.Code)
+			return
+		}
+	}
 	pattern := strings.ReplaceAll(expected.Message, "*", "\\*")
 	pattern = strings.ReplaceAll(pattern, "(", "\\(")
 	pattern = strings.ReplaceAll(pattern, ")", "\\)")

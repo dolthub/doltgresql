@@ -818,7 +818,7 @@ func TestImplicitTransactionsExtendedProtocol(t *testing.T) {
 				Bind{PreparedStatement: "ins1"},
 				Execute{Tag: "INSERT 0 1"},
 				Parse{Name: "boom", Query: "SELECT 1/0"},
-				Bind{PreparedStatement: "boom"},
+				TargetFlowStep{Doltgres: Bind{PreparedStatement: "boom"}, Postgres: Bind{PreparedStatement: "boom", ExpectedErr: "division by zero", ExpectedErrCode: "22012"}},
 				Execute{ExpectedErr: "division by zero"},
 				// After the error, the server discards all messages until the Sync, so these produce no
 				// responses and the INSERT of 2 is never executed
@@ -902,7 +902,7 @@ func TestImplicitTransactionsExtendedProtocol(t *testing.T) {
 				Bind{PreparedStatement: "ins1"},
 				Execute{Tag: "INSERT 0 1"},
 				Parse{Name: "boom", Query: "SELECT 1/0"},
-				Bind{PreparedStatement: "boom"},
+				TargetFlowStep{Doltgres: Bind{PreparedStatement: "boom"}, Postgres: Bind{PreparedStatement: "boom", ExpectedErr: "division by zero", ExpectedErrCode: "22012"}},
 				Execute{ExpectedErr: "division by zero"},
 				// Sync does not roll back the explicit transaction block; the session is left in a failed
 				// transaction
@@ -930,7 +930,7 @@ func TestImplicitTransactionsExtendedProtocol(t *testing.T) {
 				Bind{PreparedStatement: "ins2"},
 				Execute{Tag: "INSERT 0 1"},
 				Parse{Name: "boom", Query: "SELECT 1/0"},
-				Bind{PreparedStatement: "boom"},
+				TargetFlowStep{Doltgres: Bind{PreparedStatement: "boom"}, Postgres: Bind{PreparedStatement: "boom", ExpectedErr: "division by zero", ExpectedErrCode: "22012"}},
 				Execute{ExpectedErr: "division by zero"},
 				Sync{},
 				QueryOnOtherConnection{

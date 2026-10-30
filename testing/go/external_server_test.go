@@ -32,15 +32,20 @@ func TestExternalPostgresIsolation(t *testing.T) {
 	t.Run("long,comma-name-"+strings.Repeat("x", 90), func(t *testing.T) {
 		for i := 0; i < 2; i++ {
 			ctx, conn, controller := CreateServer(t, "isolated")
+			var sharedMemory string
+			require.NoError(t, conn.Default.QueryRow(ctx, "SHOW dynamic_shared_memory_type").Scan(&sharedMemory))
+			require.Equal(t, "mmap", sharedMemory)
 			var count int
-			require.NoError(t, conn.Default.QueryRow(ctx, "SELECT count(*) FROM pg_dolt_ref").Scan(&count))
-			require.Zero(t, count)
+			require.NoError(t, conn.Default.QueryRow(ctx, "SELECT count(*) FROM pg_class WHERE relname='reused'").Scan(&count))
+			require.Zero(t, count) // Prior server data must not leak; initial branch refs are intentional.
 			_, err := conn.Exec(ctx, "CREATE TABLE reused (id int PRIMARY KEY)")
 			require.NoError(t, err)
 			_, err = conn.Exec(ctx, "INSERT INTO reused VALUES (1)")
 			require.NoError(t, err)
-			_, err = conn.Exec(ctx, "SELECT dolt_commit('-Am','first')")
-			require.NoError(t, err)
+			if testTarget(t) != targetPostgres {
+				_, err = conn.Exec(ctx, "SELECT dolt_commit('-Am','first')")
+				require.NoError(t, err)
+			}
 			conn.Close(ctx)
 			controller.Stop()
 			require.NoError(t, controller.WaitForStop())

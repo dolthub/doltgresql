@@ -16,6 +16,7 @@ package _go
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -66,6 +67,21 @@ func (c typeAliasCase) expected() string {
 // typeAliasScript builds a ScriptTest that creates one function per case and asserts on what each one returns.
 func typeAliasScript(name string, cases []typeAliasCase) ScriptTest {
 	script := ScriptTest{Name: name}
+	native := ScriptTest{Name: name}
+	// Qualified names must use pg_type.typname, not parser-only SQL aliases.
+	names := map[string]string{
+		"boolean": "bool", "int": "int4", "integer": "int4", "bigint": "int8", "smallint": "int2", "decimal": "numeric", "dec": "numeric", "real": "float4", "double precision": "float8", "float": "float8",
+		"character varying": "varchar", "char varying": "varchar", "national character varying": "varchar", "national char varying": "varchar", "nchar varying": "varchar", "character": "bpchar", "national character": "bpchar", "nchar": "bpchar",
+		"timestamp without time zone": "timestamp", "timestamp with time zone": "timestamptz", "time without time zone": "time", "time with time zone": "timetz", "integer[]": "int4[]", "bit varying": "varbit",
+	}
+	for _, c := range cases {
+		if canonical, ok := names[strings.Join(strings.Fields(strings.TrimPrefix(c.TypeName, "pg_catalog.")), " ")]; ok && strings.HasPrefix(c.TypeName, "pg_catalog.") {
+			c.TypeName = "pg_catalog." + canonical
+		}
+		native.SetUpScript = append(native.SetUpScript, c.statement())
+		native.Assertions = append(native.Assertions, ScriptTestAssertion{Query: fmt.Sprintf("SELECT %s();", c.FuncName), Expected: []sql.Row{{c.expected()}}})
+	}
+	script.Postgres = &native
 	for _, c := range cases {
 		script.SetUpScript = append(script.SetUpScript, c.statement())
 		script.Assertions = append(script.Assertions, ScriptTestAssertion{
@@ -183,6 +199,10 @@ func TestPlpgsqlDeclareUnknownType(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "unknown schema-qualified type names are still rejected",
+			Postgres: &ScriptTest{Assertions: []ScriptTestAssertion{
+				{Query: `CREATE FUNCTION unknown_type() RETURNS text AS $$ DECLARE b pg_catalog.not_a_type; BEGIN RETURN 'x'; END; $$ LANGUAGE plpgsql;`, ExpectedErrCode: "42704"},
+				{Query: `CREATE FUNCTION unknown_multiword_type() RETURNS text AS $$ DECLARE b pg_catalog.double imprecision; BEGIN RETURN 'x'; END; $$ LANGUAGE plpgsql;`, ExpectedErrCode: "42601"},
+			}},
 			SetUpScript: []string{
 				`CREATE FUNCTION unknown_type() RETURNS text AS $$ DECLARE b pg_catalog.not_a_type; BEGIN RETURN 'x'; END; $$ LANGUAGE plpgsql;`,
 				`CREATE FUNCTION unknown_multiword_type() RETURNS text AS $$ DECLARE b pg_catalog.double imprecision; BEGIN RETURN 'x'; END; $$ LANGUAGE plpgsql;`,

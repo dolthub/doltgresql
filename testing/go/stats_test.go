@@ -48,6 +48,11 @@ var StatsTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "0A000",
+					Query:           "ANALYZE doesnotexists.public.t;",
+				},
+
 				Query:       "ANALYZE doesnotexists.public.t;",
 				ExpectedErr: "ERROR: database not found: doesnotexists (SQLSTATE 3D000)",
 			},

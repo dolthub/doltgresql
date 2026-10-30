@@ -15,12 +15,19 @@
 package _go
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/stretchr/testify/require"
 )
 
 func TestCopyTo(t *testing.T) {
+	serverFile := filepath.Join(t.TempDir(), "copy.csv")
+	quotedFile := strings.ReplaceAll(serverFile, "'", "''")
 	// The setup script used by most of the tests below, exercising NULLs, empty strings, and values that need
 	// escaping or quoting in the output.
 	setup := []string{
@@ -37,6 +44,7 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl1 TO STDOUT;",
 					CopyToStdOutFile: "copy-to-basic.txt",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl1 ORDER BY pk) TO STDOUT;", CopyToStdOutFile: "copy-to-basic.txt"},
 				},
 			},
 		},
@@ -47,6 +55,7 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl1 TO STDOUT WITH (HEADER);",
 					CopyToStdOutFile: "copy-to-header.txt",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl1 ORDER BY pk) TO STDOUT WITH (HEADER);", CopyToStdOutFile: "copy-to-header.txt"},
 				},
 			},
 		},
@@ -57,6 +66,7 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl1 (c1, pk) TO STDOUT;",
 					CopyToStdOutFile: "copy-to-columns.txt",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT c1, pk FROM tbl1 ORDER BY pk) TO STDOUT;", CopyToStdOutFile: "copy-to-columns.txt"},
 				},
 			},
 		},
@@ -67,10 +77,12 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl1 TO STDOUT (FORMAT CSV, HEADER);",
 					CopyToStdOutFile: "copy-to-basic.csv",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl1 ORDER BY pk) TO STDOUT (FORMAT CSV, HEADER);", CopyToStdOutFile: "copy-to-basic.csv"},
 				},
 				{
 					Query:            "COPY tbl1 TO STDOUT (FORMAT 'csv', HEADER);",
 					CopyToStdOutFile: "copy-to-basic.csv",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl1 ORDER BY pk) TO STDOUT (FORMAT 'csv', HEADER);", CopyToStdOutFile: "copy-to-basic.csv"},
 				},
 			},
 		},
@@ -81,6 +93,7 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl1 TO STDOUT (FORMAT CSV, HEADER, DELIMITER '|');",
 					CopyToStdOutFile: "copy-to-header.psv",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl1 ORDER BY pk) TO STDOUT (FORMAT CSV, HEADER, DELIMITER '|');", CopyToStdOutFile: "copy-to-header.psv"},
 				},
 			},
 		},
@@ -111,6 +124,7 @@ func TestCopyTo(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:            "COPY tbl2 TO STDOUT;",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl2 ORDER BY pk) TO STDOUT;", CopyToStdOutFile: "copy-to-bool.txt"},
 					CopyToStdOutFile: "copy-to-bool.txt",
 				},
 			},
@@ -125,6 +139,7 @@ func TestCopyTo(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:            "COPY s1.tbl2 TO STDOUT;",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM s1.tbl2 ORDER BY pk) TO STDOUT;", CopyToStdOutFile: "copy-to-bool.txt"},
 					CopyToStdOutFile: "copy-to-bool.txt",
 				},
 			},
@@ -139,10 +154,12 @@ func TestCopyTo(t *testing.T) {
 				{
 					Query:            "COPY tbl3 TO STDOUT (FORMAT BINARY);",
 					CopyToStdOutFile: "copy-to-basic.bin",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl3 ORDER BY pk) TO STDOUT (FORMAT BINARY);", CopyToStdOutFile: "copy-to-basic.bin"},
 				},
 				{
 					Query:            "COPY tbl3 TO STDOUT BINARY;",
 					CopyToStdOutFile: "copy-to-basic.bin",
+					Postgres:         &ScriptTestAssertion{Query: "COPY (SELECT * FROM tbl3 ORDER BY pk) TO STDOUT BINARY;", CopyToStdOutFile: "copy-to-basic.bin"},
 				},
 				{
 					Query:            "COPY (SELECT * FROM tbl3 ORDER BY pk) TO STDOUT (FORMAT BINARY);",
@@ -386,10 +403,21 @@ func TestCopyTo(t *testing.T) {
 				},
 				{
 					// Writing files on the server is deliberately unsupported, as a security measure
-					Query:       "COPY tbl1 TO '/tmp/copy-to-out.csv' (FORMAT CSV);",
+					Query: fmt.Sprintf("COPY tbl1 TO '%s' (FORMAT CSV);", quotedFile),
+					Postgres: &ScriptTestAssertion{
+						Query:    fmt.Sprintf("COPY (SELECT * FROM tbl1 ORDER BY pk) TO '%s' (FORMAT CSV, HEADER);", quotedFile),
+						Expected: []sql.Row{},
+					},
 					ExpectedErr: "COPY TO a server-side file is not supported",
 				},
 			},
 		},
 	})
+	if testTarget(t) != targetDoltgres {
+		actual, err := os.ReadFile(serverFile)
+		require.NoError(t, err)
+		expected, err := os.ReadFile("testdata/copy-to-basic.csv")
+		require.NoError(t, err)
+		require.Equal(t, string(expected), string(actual), "native server-side COPY contents")
+	}
 }

@@ -124,6 +124,13 @@ func TestSelect(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{
+							{2},
+						},
+						Query: "SELECT DISTINCT ON(v3) v1 FROM test2 ORDER BY v3, v1 DESC;",
+					},
+
 					Query: "SELECT DISTINCT ON(v3) v1 FROM test2;",
 					Expected: []sql.Row{
 						{2},
@@ -224,10 +231,20 @@ func TestSelect(t *testing.T) {
 			Name: "select large limit",
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "22003",
+						Query:           "select 1 limit 18446744073709551615",
+					},
+
 					Query:       "select 1 limit 18446744073709551615",
 					ExpectedErr: "limit/offset value 18446744073709551615 is outside of int64 range",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "22003",
+						Query:           "select 1 limit -18446744073709551616",
+					},
+
 					Query:       "select 1 limit -18446744073709551616",
 					ExpectedErr: "limit/offset value -18446744073709551616 is outside of int64 range",
 				},
@@ -363,24 +380,48 @@ select 'drop table gexec_test', 'select ''2000-01-01''::date as party_over'`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected:         []sql.Row{},
+						ExpectedColNames: []string{"relid"},
+						Query:            "SELECT relid FROM pg_partition_ancestors('ft');",
+					},
+
 					// The named OUT parameter provides the column name when no alias is given
 					Query:            "SELECT relid FROM pg_partition_ancestors('ft');",
 					Expected:         []sql.Row{{"ft"}},
 					ExpectedColNames: []string{"relid"},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected:         []sql.Row{},
+						ExpectedColNames: []string{"relid"},
+						Query:            "SELECT pg_partition_ancestors.relid FROM pg_partition_ancestors('ft');",
+					},
+
 					// The table takes the function's name, leaving the column name alone
 					Query:            "SELECT pg_partition_ancestors.relid FROM pg_partition_ancestors('ft');",
 					Expected:         []sql.Row{{"ft"}},
 					ExpectedColNames: []string{"relid"},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected:         []sql.Row{},
+						ExpectedColNames: []string{"x"},
+						Query:            "SELECT x FROM pg_partition_ancestors('ft') AS x;",
+					},
+
 					// A table alias renames a single-column function result
 					Query:            "SELECT x FROM pg_partition_ancestors('ft') AS x;",
 					Expected:         []sql.Row{{"ft"}},
 					ExpectedColNames: []string{"x"},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected:         []sql.Row{},
+						ExpectedColNames: []string{"relid"},
+						Query:            "SELECT relid FROM ft, pg_partition_ancestors('ft');",
+					},
+
 					// The OUT parameter's name also survives an implicit lateral join
 					Query:            "SELECT relid FROM ft, pg_partition_ancestors('ft');",
 					Expected:         []sql.Row{{"ft"}},

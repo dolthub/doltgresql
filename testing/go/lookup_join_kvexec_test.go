@@ -37,7 +37,9 @@ func TestLookupJoinExtendedKeyStoragePosition(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "select /*+ lookup_join(m, c) */ HINT count(*) from m join c on c.id = m.company_id;",
-					Expected: []sql.Row{{1}},
+					Expected: []sql.Row{{1}}, Postgres: &ScriptTestAssertion{Query: "select count(*) from m join c on c.id = m.company_id;",
+
+						Expected: []sql.Row{{1}}},
 				},
 			},
 		},
@@ -52,7 +54,9 @@ func TestLookupJoinExtendedKeyStoragePosition(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "select /*+ lookup_join(m, c) */ HINT count(*) from m join c on c.id = m.company_id;",
-					Expected: []sql.Row{{1}},
+					Expected: []sql.Row{{1}}, Postgres: &ScriptTestAssertion{Query: "select count(*) from m join c on c.id = m.company_id;",
+
+						Expected: []sql.Row{{1}}},
 				},
 			},
 		},
@@ -67,7 +71,9 @@ func TestLookupJoinExtendedKeyStoragePosition(t *testing.T) {
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "select /*+ lookup_join(m, c) */ HINT count(*) from m join c on c.id = m.company_id;",
-					Expected: []sql.Row{{1}},
+					Expected: []sql.Row{{1}}, Postgres: &ScriptTestAssertion{Query: "select count(*) from m join c on c.id = m.company_id;",
+
+						Expected: []sql.Row{{1}}},
 				},
 			},
 		},
@@ -87,6 +93,9 @@ func TestLookupJoinExtendedKeyStoragePosition(t *testing.T) {
 					Expected: []sql.Row{
 						{1, "c1"},
 						{2, "c2"},
+					}, Postgres: &ScriptTestAssertion{Query: "select m.seq, c.tag from m join c on c.code = m.ref_code and c.label = m.ref_label order by m.seq;",
+
+						Expected: []sql.Row{{1, "c1"}, {2, "c2"}},
 					},
 				},
 			},

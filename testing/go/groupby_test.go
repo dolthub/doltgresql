@@ -51,6 +51,7 @@ func TestGroupBy(t *testing.T) {
 				},
 				{
 					Query:       "SELECT team, COUNT(*) FROM members GROUP BY team ORDER BY columndoesnotexist",
+					Postgres:    &ScriptTestAssertion{ExpectedErrCode: "42703"},
 					ExpectedErr: "not be found",
 				},
 				{
@@ -58,7 +59,12 @@ func TestGroupBy(t *testing.T) {
 					Expected: []sql.Row{{3}, {4}, {5}, {6}, {7}, {8}},
 				},
 				{
-					Query:    "SELECT id as alias1, (SELECT alias1+1 group by alias1 having alias1 > 0) FROM members where id < 6;",
+					Query: "SELECT id as alias1, (SELECT alias1+1 group by alias1 having alias1 > 0) FROM members where id < 6;",
+					Postgres: &ScriptTestAssertion{
+						// SELECT-list aliases are not visible inside sibling expressions.
+						Query:    "SELECT id as alias1, (SELECT id+1 GROUP BY id HAVING id > 0) FROM members WHERE id < 6;",
+						Expected: []sql.Row{{3, 4}, {4, 5}, {5, 6}},
+					},
 					Expected: []sql.Row{{3, 4}, {4, 5}, {5, 6}},
 				},
 				{

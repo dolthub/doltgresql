@@ -24,6 +24,7 @@ func TestParameters(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "default_with_oids",
+			Skip: testTarget(t) != targetDoltgres, // Removed from PostgreSQL; no native counterpart is required.
 			Assertions: []ScriptTestAssertion{
 				{
 					Query:    "SELECT default_with_oids;",

@@ -355,11 +355,8 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 			} else if assertion.SkipResultsCheck || assertion.ExpectedErr != "" || assertion.ExpectedErrCode != "" {
 				_, err := conn.Exec(ctx, assertion.Query, assertion.BindVars...)
 				if assertion.ExpectedErrCode != "" {
-					pgErrCode := ""
-					if pgErr, ok := err.(*pgconn.PgError); ok {
-						pgErrCode = pgErr.Code
-					}
-					assert.Equal(t, pgErrCode, assertion.ExpectedErrCode)
+					pgErrCode := scriptErrorCode(err)
+					assert.Equal(t, assertion.ExpectedErrCode, pgErrCode, "query error: %v", err)
 				}
 				if assertion.ExpectedErr != "" {
 					require.Error(t, err)
@@ -1407,4 +1404,13 @@ func postgresErrorEquivalent(err error, expected string) bool {
 		return pgErr.Code == "42703"
 	}
 	return false
+}
+
+// pgx may wrap server errors while preparing or describing a statement.
+func scriptErrorCode(err error) string {
+	var pgErr *pgconn.PgError
+	if goerrors.As(err, &pgErr) {
+		return pgErr.Code
+	}
+	return ""
 }

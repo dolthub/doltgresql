@@ -4099,7 +4099,12 @@ func TestCaseInsensitiveRegex(t *testing.T) {
 			{Query: `SELECT NULL::text ~* '[', NULL::text !~* '[';`, Expected: []sql.Row{{nil, nil}}},
 			{Query: `SELECT 'AbC123' ~* '^[a-z]+[[:digit:]]+$', 'AbC' ~* '^(xyz|abc)$';`, Expected: []sql.Row{{"t", "t"}}},
 			{Query: `SELECT E'A\nB' ~* '^a.b$', E'A\nB' !~* '^a.b$';`, Expected: []sql.Row{{"t", "f"}}},
-			{Query: `SELECT 'Éclair' ~* '^é', '日本語' ~* '^日本';`, Expected: []sql.Row{{"t", "t"}}},
+			{
+				Postgres: &ScriptTestAssertion{
+					Expected: []sql.Row{{"f", "t"}},
+					Query:    "SELECT '\u00c9clair' COLLATE \"C\" ~* '^\u00e9', '\u65e5\u672c\u8a9e' ~* '^\u65e5\u672c';",
+				},
+				Query: `SELECT 'Éclair' ~* '^é', '日本語' ~* '^日本';`, Expected: []sql.Row{{"t", "t"}}},
 			{Query: `SELECT 'AbC'::varchar ~* '^abc$', 'AbC'::name ~* '^abc$';`, Expected: []sql.Row{{"t", "t"}}},
 			{Query: `SELECT 'pg_catalog'::name ~* '^PG_', 'public'::name !~* '^PG_';`, Expected: []sql.Row{{"t", "t"}}},
 			{Query: `SELECT texticregexeq('AbC', '^abc$'), texticregexne('AbC', '^abc$');`, Expected: []sql.Row{{"t", "f"}}},

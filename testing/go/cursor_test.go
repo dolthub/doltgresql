@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -25,7 +26,7 @@ func TestCursors(t *testing.T) {
 		"CREATE TABLE ct (id INT4 PRIMARY KEY, v TEXT);",
 		"INSERT INTO ct VALUES (1, 'a'), (2, 'b'), (3, 'c'), (4, 'd'), (5, 'e');",
 	}
-	RunScripts(t, []ScriptTest{
+	runCursorScripts(t, []ScriptTest{
 		{
 			Name:        "FETCH and MOVE directions on a SCROLL cursor",
 			SetUpScript: setup,
@@ -1412,4 +1413,30 @@ func TestCursorsExtendedProtocol(t *testing.T) {
 			},
 		},
 	})
+}
+
+// Native version-control commits are standalone. WITH HOLD pins and materializes
+// the same cursor snapshots across the intervening SQL COMMIT before HEAD moves.
+func runCursorScripts(t *testing.T, scripts []ScriptTest) {
+	for i, original := range scripts {
+		if original.Name != "cursors over historical data" && original.Name != "cursors over table functions and system tables" {
+			continue
+		}
+		native := original
+		native.Assertions = nil
+		for _, a := range original.Assertions {
+			if strings.HasPrefix(a.Query, "DECLARE ") && !strings.Contains(a.Query, "WITH HOLD") {
+				a.Query = strings.Replace(a.Query, "CURSOR FOR", "CURSOR WITH HOLD FOR", 1)
+			}
+			if strings.HasPrefix(a.Query, "SELECT dolt_commit(") {
+				native.Assertions = append(native.Assertions, ScriptTestAssertion{Query: "COMMIT;", Expected: []sql.Row{}})
+			}
+			if a.Query == "ROLLBACK;" {
+				continue
+			}
+			native.Assertions = append(native.Assertions, a)
+		}
+		scripts[i].Postgres = &native
+	}
+	RunScripts(t, scripts)
 }

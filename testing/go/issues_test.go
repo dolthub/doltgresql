@@ -813,6 +813,17 @@ func TestIssuesWire(t *testing.T) {
 			},
 			Assertions: []WireScriptTestAssertion{
 				{
+					PostgresReceive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 0, DataTypeOID: 20, DataTypeSize: 8, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+
 					Send: []pgproto3.FrontendMessage{
 						&pgproto3.Parse{Name: "s1", Query: "SELECT count(*) FROM g_arr WHERE $1 = ANY(vals)"},
 						&pgproto3.Describe{ObjectType: 'S', Name: "s1"},
@@ -830,6 +841,17 @@ func TestIssuesWire(t *testing.T) {
 					},
 				},
 				{
+					PostgresReceive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 0, DataTypeOID: 20, DataTypeSize: 8, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+
 					Send: []pgproto3.FrontendMessage{
 						&pgproto3.Parse{Name: "s2", Query: "SELECT count(*) FROM g_arr WHERE $1 = ANY(SELECT v FROM g_arr)"},
 						&pgproto3.Describe{ObjectType: 'S', Name: "s2"},
@@ -847,6 +869,17 @@ func TestIssuesWire(t *testing.T) {
 					},
 				},
 				{
+					PostgresReceive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 0, DataTypeOID: 20, DataTypeSize: 8, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+
 					Send: []pgproto3.FrontendMessage{
 						&pgproto3.Parse{Name: "s3", Query: "SELECT count(*) FROM g_arr WHERE vals[$1] = 2"},
 						&pgproto3.Describe{ObjectType: 'S', Name: "s3"},
@@ -864,6 +897,17 @@ func TestIssuesWire(t *testing.T) {
 					},
 				},
 				{
+					PostgresReceive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 0, DataTypeOID: 20, DataTypeSize: 8, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+
 					Send: []pgproto3.FrontendMessage{
 						&pgproto3.Parse{Name: "s4", Query: "SELECT count(*) FROM g_arr WHERE coalesce($1, v) = 1"},
 						&pgproto3.Describe{ObjectType: 'S', Name: "s4"},
@@ -881,6 +925,17 @@ func TestIssuesWire(t *testing.T) {
 					},
 				},
 				{
+					PostgresReceive: []pgproto3.BackendMessage{
+						&pgproto3.ParseComplete{},
+						&pgproto3.ParameterDescription{ParameterOIDs: []uint32{23}}, // int4
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{Name: []byte("count"), TableAttributeNumber: 0, DataTypeOID: 20, DataTypeSize: 8, TypeModifier: -1},
+							},
+						},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+
 					Send: []pgproto3.FrontendMessage{
 						&pgproto3.Parse{Name: "s5", Query: "SELECT count(*) FROM g_arr WHERE greatest($1, v) = 1"},
 						&pgproto3.Describe{ObjectType: 'S', Name: "s5"},
@@ -1062,6 +1117,26 @@ func TestIssuesWire(t *testing.T) {
 			},
 			Assertions: []WireScriptTestAssertion{
 				{
+					PostgresReceive: []pgproto3.BackendMessage{
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("unnest"),
+									TableOID:             0,
+									TableAttributeNumber: 0,
+									DataTypeOID:          21,
+									DataTypeSize:         2,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("1")}},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("2")}},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 2")},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+
 					Send: []pgproto3.FrontendMessage{
 						&pgproto3.Query{String: "SELECT unnest(indkey) FROM pg_index WHERE indexrelid = 'bug14_ab'::regclass;"},
 					},
@@ -1086,6 +1161,27 @@ func TestIssuesWire(t *testing.T) {
 					},
 				},
 				{
+					PostgresReceive: []pgproto3.BackendMessage{
+						&pgproto3.RowDescription{
+							Fields: []pgproto3.FieldDescription{
+								{
+									Name:                 []byte("unnest"),
+									TableOID:             0,
+									TableAttributeNumber: 0,
+									DataTypeOID:          23,
+									DataTypeSize:         4,
+									TypeModifier:         -1,
+									Format:               0,
+								},
+							},
+						},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("10")}},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("20")}},
+						&pgproto3.DataRow{Values: [][]byte{[]byte("30")}},
+						&pgproto3.CommandComplete{CommandTag: []byte("SELECT 3")},
+						&pgproto3.ReadyForQuery{TxStatus: 'I'},
+					},
+
 					Send: []pgproto3.FrontendMessage{
 						&pgproto3.Query{String: "SELECT unnest(arr) FROM arrtbl WHERE pk = 1;"},
 					},

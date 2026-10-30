@@ -26,7 +26,7 @@ func TestCommitHashCompatibility(t *testing.T) {
 	if testTarget(t) == targetPostgres {
 		t.Skip("stock PostgreSQL has no version-control interfaces")
 	}
-	runTargetPair(t, func(t *testing.T, postgres bool) {
+	runTargetPair(t, func(t *testing.T, _ bool) {
 		ctx, conn, controller := CreateServer(t, "postgres")
 		defer func() { conn.Close(ctx); controller.Stop(); require.NoError(t, controller.WaitForStop()) }()
 		_, err := conn.Exec(ctx, "CREATE TABLE hash_identity (id int PRIMARY KEY)")
@@ -35,11 +35,7 @@ func TestCommitHashCompatibility(t *testing.T) {
 		require.NoError(t, err)
 		var hash string
 		require.NoError(t, conn.Default.QueryRow(ctx, "SELECT hash FROM dolt_commit('-Am', 'hash identity')").Scan(&hash))
-		if postgres {
-			require.Regexp(t, "^[0-9a-f]{64}$", hash)
-		} else {
-			require.Regexp(t, "^[0-9a-v]{32}$", hash)
-		}
+		require.Regexp(t, "^[0-9a-v]{32}$", hash)
 		runScript(t, ctx, ScriptTest{Assertions: []ScriptTestAssertion{
 			{Query: "SELECT count(*) FROM dolt_log l JOIN dolt_branches b ON b.hash=l.commit_hash WHERE b.name='main' AND l.message='hash identity' AND l.commit_hash=$1", BindVars: []any{hash}, Expected: []sql.Row{{1}}},
 			{Query: "INSERT INTO hash_identity VALUES (2)"},

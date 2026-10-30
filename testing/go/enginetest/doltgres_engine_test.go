@@ -150,7 +150,7 @@ func TestAutoIncrementTrackerLockMode(t *testing.T) {
 	denginetest.RunAutoIncrementTrackerLockModeTest(t, harness)
 }
 
-func TestVersionedQueries(t *testing.T) {
+func runVersionedQueries(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		// MySQL-only `cast(... as signed)` syntax — postgres uses `cast(... as integer)`.
 		// These views aren't referenced by the assertions, so dropping them from
@@ -215,7 +215,7 @@ func TestInfoSchema(t *testing.T) {
 	denginetest.RunInfoSchemaTests(t, h)
 }
 
-func TestColumnAliases(t *testing.T) {
+func runColumnAliases(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"SELECT s as Date, SUM(i) TimeStamp FROM mytable group by 1 order by 2", // ERROR: at or near "timestamp": syntax error
 		"SELECT 1 as a, (select a) as b from dual",                              // table not found: dual
@@ -224,7 +224,7 @@ func TestColumnAliases(t *testing.T) {
 	enginetest.TestColumnAliases(t, h)
 }
 
-func TestOrderByGroupBy(t *testing.T) {
+func runOrderByGroupBy(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"Group by with decimal columns", // syntax error
 		"Validation for use of non-aggregated columns with implicit grouping of all rows", // bad error matching
@@ -270,7 +270,7 @@ func TestInsertIgnoreInto(t *testing.T) {
 	enginetest.TestInsertIgnoreInto(t, h)
 }
 
-func TestInsertDuplicateKeyKeyless(t *testing.T) {
+func runInsertDuplicateKeyKeyless(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"select c1, c2, c3 from t order by c1, c2, c3", // expects MySQL's NULLs-first ordering
 	})
@@ -329,7 +329,7 @@ func TestReplaceIntoErrors(t *testing.T) {
 	enginetest.TestReplaceIntoErrors(t, h)
 }
 
-func TestUpdate(t *testing.T) {
+func runUpdate(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"UPDATE mytable SET s = _binary 'updated' WHERE i = 3;",         // _binary not supported
 		"UPDATE mytable SET s = 'updated' ORDER BY i LIMIT 1 OFFSET 1;", // offset not supported (limit isn't selected in vanilla postgres but is in the cockroach grammar)
@@ -417,7 +417,7 @@ func TestDeleteFrom(t *testing.T) {
 	})
 }
 
-func TestDeleteFromErrors(t *testing.T) {
+func runDeleteFromErrors(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 
@@ -494,7 +494,7 @@ func TestConvert(t *testing.T) {
 	enginetest.TestConvertPrepared(t, h)
 }
 
-func TestAggregationScripts(t *testing.T) {
+func runAggregationScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"sum() and avg() on non-DECIMAL type column returns the DOUBLE type result", // MySQL-specific: MySQL widens FLOAT to DOUBLE for SUM; Postgres sum(real) stays real
 		"sum() and avg() on DECIMAL type column returns the DECIMAL type result",    // MySQL-specific: MySQL truncates AVG's decimal scale; Postgres numeric division keeps full precision
@@ -503,13 +503,13 @@ func TestAggregationScripts(t *testing.T) {
 	enginetest.TestAggregationScripts(t, h)
 }
 
-func TestAutoIncrementScripts(t *testing.T) {
+func runAutoIncrementScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestAutoIncrementScripts(t, h)
 }
 
-func TestConversionsScripts(t *testing.T) {
+func runConversionsScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"Handle hex number to binary conversion", // ERROR: can't convert 0x7ED0599B to decimal: exponent is not numeric
 	})
@@ -549,7 +549,7 @@ func TestEnumsAndSetsScripts(t *testing.T) {
 	enginetest.TestEnumsAndSetsScripts(t, h)
 }
 
-func TestExpressionsScripts(t *testing.T) {
+func runExpressionsScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"(x between y and z), (x between x and z)", // expects MySQL's NULLs-first ordering
 		"coalesce with system types",               // unsupported
@@ -585,7 +585,7 @@ func TestJoinsScripts(t *testing.T) {
 	enginetest.TestJoinsScripts(t, h)
 }
 
-func TestNameResolutionScripts(t *testing.T) {
+func runNameResolutionScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"db1.``.i > 0",               // Multi-db Aliasing: MySQL-only empty-backtick ref
 		"join db2.t2 order by",       // Multi-db Aliasing: MySQL implicit-cross-join (no ON)
@@ -596,7 +596,7 @@ func TestNameResolutionScripts(t *testing.T) {
 	enginetest.TestNameResolutionScripts(t, h)
 }
 
-func TestNumericScripts(t *testing.T) {
+func runNumericScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"Ensure proper DECIMAL support (found by fuzzer)",                                                       // unsupported type: SET
 		"arithmetic bit operations on int, float and decimal types",                                             // the power operator is not yet supported
@@ -606,7 +606,7 @@ func TestNumericScripts(t *testing.T) {
 	enginetest.TestNumericScripts(t, h)
 }
 
-func TestOrderingScripts(t *testing.T) {
+func runOrderingScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestOrderingScripts(t, h)
@@ -628,7 +628,7 @@ func TestSessionResultsScripts(t *testing.T) {
 	enginetest.TestSessionResultsScripts(t, h)
 }
 
-func TestSetOperationsScripts(t *testing.T) {
+func runSetOperationsScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"WITH RECURSIVE\n" +
 			"    rt (foo) AS (\n" +
@@ -662,7 +662,7 @@ func TestStringFunctionsScripts(t *testing.T) {
 	enginetest.TestStringFunctionsScripts(t, h)
 }
 
-func TestSubqueriesScripts(t *testing.T) {
+func runSubqueriesScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestSubqueriesScripts(t, h)
@@ -683,13 +683,13 @@ func TestTemporalScripts(t *testing.T) {
 	enginetest.TestTemporalScripts(t, h)
 }
 
-func TestTransactionsScripts(t *testing.T) {
+func runTransactionsScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestTransactionsScripts(t, h)
 }
 
-func TestTupleComparisonsScripts(t *testing.T) {
+func runTupleComparisonsScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"select count(*) from t where (f in (null, cast(0.8 as float)));", // incorrect result, needs a fix
 		"mismatched collation using hash in tuples",                       // ERROR: plan is not resolved because of node '*plan.Project'
@@ -867,7 +867,7 @@ func TestBlobs(t *testing.T) {
 	enginetest.TestBlobs(t, h)
 }
 
-func TestIndexes(t *testing.T) {
+func runIndexes(t *testing.T) {
 	// MySQL index metadata and error behavior differ.
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"show create table with duplicate primary key", // auto-generated constraint names differ
@@ -924,7 +924,7 @@ func TestDropForeignKeys(t *testing.T) {
 	enginetest.TestDropForeignKeys(t, h)
 }
 
-func TestForeignKeys(t *testing.T) {
+func runForeignKeys(t *testing.T) {
 	// MySQL foreign-key syntax, metadata, or error expectations differ.
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"Delayed foreign key resolution: update",
@@ -1063,7 +1063,7 @@ func TestReadOnly(t *testing.T) {
 	enginetest.TestReadOnly(t, h, false /* testStoredProcedures */)
 }
 
-func TestViews(t *testing.T) {
+func runViews(t *testing.T) {
 	// MySQL view metadata, syntax, and errors differ.
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"can't create table with same name as existing view", // Doltgres needs to return a different error message
@@ -1099,7 +1099,7 @@ func TestVersionedViews(t *testing.T) {
 	denginetest.RunVersionedViewsTest(t, h)
 }
 
-func TestWindowFunctions(t *testing.T) {
+func runWindowFunctions(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"select 1 as a, 'x' as a",     // duplicate derived column names are a MySQL-only error
 		"t(a, a)",                     // duplicate derived column names are a MySQL-only error
@@ -1115,7 +1115,7 @@ func TestWindowRowFrames(t *testing.T) {
 	enginetest.TestWindowRowFrames(t, h)
 }
 
-func TestWindowRangeFrames(t *testing.T) {
+func runWindowRangeFrames(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		// MySQL's unquoted numeric interval literal ("interval 1 DAY") isn't valid Postgres grammar
 		// (Postgres requires a quoted quantity, e.g. "interval '1' DAY"). The equivalent quoted-quantity
@@ -1138,7 +1138,7 @@ func TestWindowRangeFrames(t *testing.T) {
 	enginetest.TestWindowRangeFrames(t, h)
 }
 
-func TestNamedWindows(t *testing.T) {
+func runNamedWindows(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestNamedWindows(t, h)
@@ -1162,7 +1162,7 @@ func TestInnerNestedInNaturalJoins(t *testing.T) {
 	enginetest.TestInnerNestedInNaturalJoins(t, h)
 }
 
-func TestColumnDefaults(t *testing.T) {
+func runColumnDefaults(t *testing.T) {
 	// MySQL default syntax and result formatting differ.
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"update columns with default", // broken, see repro in update_test.go
@@ -1212,7 +1212,7 @@ func TestOnUpdateExprScripts(t *testing.T) {
 	enginetest.TestOnUpdateExprScripts(t, h)
 }
 
-func TestAlterTable(t *testing.T) {
+func runAlterTable(t *testing.T) {
 	// MySQL ALTER TABLE syntax, metadata, or error behavior differs.
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"modify set column",
@@ -1284,7 +1284,7 @@ func TestSelectIntoFile(t *testing.T) {
 	enginetest.TestSelectIntoFile(t, h)
 }
 
-func TestJsonScripts(t *testing.T) {
+func runJsonScripts(t *testing.T) {
 	// MySQL JSON functions, formats, or error expectations differ.
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"types survive round-trip into tables",
@@ -1553,7 +1553,7 @@ func TestDescribeTableAsOf(t *testing.T) {
 	enginetest.TestScript(t, h, denginetest.DescribeTableAsOfScriptTest)
 }
 
-func TestShowCreateTable(t *testing.T) {
+func runShowCreateTable(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		// These scripts call dolt_commit_hash_out(@Commit1, ...). Passing a
 		// user variable to dolt_commit_hash_out via the converter's
@@ -1733,7 +1733,7 @@ func TestBrokenSystemTableQueries(t *testing.T) {
 	enginetest.RunQueryTests(t, h, denginetest.BrokenSystemTableQueries)
 }
 
-func TestHistorySystemTable(t *testing.T) {
+func runHistorySystemTable(t *testing.T) {
 	harness := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"explain",                       // not supported
 		"select message from dolt_log",  // doltgres setup has extra commits
@@ -1927,7 +1927,7 @@ func TestJoinStats(t *testing.T) {
 	denginetest.RunJoinStatsTests(t, h)
 }
 
-func TestStatisticIndexes(t *testing.T) {
+func runStatisticIndexes(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
 	enginetest.TestStatisticIndexFilters(t, h)
@@ -2058,7 +2058,7 @@ func TestSchemaOverridesWithAdaptiveEncoding(t *testing.T) {
 	denginetest.RunSchemaOverridesTest(t, harness)
 }
 
-func TestJsonAdaptiveEncoding(t *testing.T) {
+func runJsonAdaptiveEncoding(t *testing.T) {
 	adaptiveEncoding := typeinfo.UseAdaptiveEncoding
 	defer func() { typeinfo.UseAdaptiveEncoding = adaptiveEncoding }()
 	typeinfo.UseAdaptiveEncoding = true
@@ -2194,7 +2194,7 @@ func TestLegacyDeleteScripts(t *testing.T) {
 	denginetest.RunLegacyDeleteScripts(t, harness)
 }
 
-func TestLegacyDropTableScripts(t *testing.T) {
+func runLegacyDropTableScripts(t *testing.T) {
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunLegacyDropTableScripts(t, harness)
 }
@@ -2211,7 +2211,7 @@ func TestLegacyInsertScripts(t *testing.T) {
 	denginetest.RunLegacyInsertScripts(t, harness)
 }
 
-func TestLegacyJoinScripts(t *testing.T) {
+func runLegacyJoinScripts(t *testing.T) {
 	harness := newDoltgresServerHarness(t)
 	denginetest.RunLegacyJoinScripts(t, harness)
 }
@@ -2234,7 +2234,7 @@ func TestLegacySelectScripts(t *testing.T) {
 	denginetest.RunLegacySelectScripts(t, harness)
 }
 
-func TestLegacyUpdateScripts(t *testing.T) {
+func runLegacyUpdateScripts(t *testing.T) {
 	harness := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		// postgres strict typing rejects MySQL coercions: is_married is BIGINT (MySQL boolean-as-int
 		// convention), and postgres's ASSIGNMENT_CAST rejects assigning a boolean literal to it.
@@ -2302,3 +2302,39 @@ func TestVectorIndexes(t *testing.T) {
 func TestVectorType(t *testing.T) {
 	t.Skip("MySQL-dialect vector tests")
 }
+
+func TestVersionedQueries(t *testing.T) { runEngineTargetPair(t, runVersionedQueries) }
+func TestColumnAliases(t *testing.T)    { runEngineTargetPair(t, runColumnAliases) }
+func TestOrderByGroupBy(t *testing.T)   { runEngineTargetPair(t, runOrderByGroupBy) }
+func TestInsertDuplicateKeyKeyless(t *testing.T) {
+	runEngineTargetPair(t, runInsertDuplicateKeyKeyless)
+}
+func TestUpdate(t *testing.T)                  { runEngineTargetPair(t, runUpdate) }
+func TestDeleteFromErrors(t *testing.T)        { runEngineTargetPair(t, runDeleteFromErrors) }
+func TestAggregationScripts(t *testing.T)      { runEngineTargetPair(t, runAggregationScripts) }
+func TestAutoIncrementScripts(t *testing.T)    { runEngineTargetPair(t, runAutoIncrementScripts) }
+func TestConversionsScripts(t *testing.T)      { runEngineTargetPair(t, runConversionsScripts) }
+func TestExpressionsScripts(t *testing.T)      { runEngineTargetPair(t, runExpressionsScripts) }
+func TestNameResolutionScripts(t *testing.T)   { runEngineTargetPair(t, runNameResolutionScripts) }
+func TestNumericScripts(t *testing.T)          { runEngineTargetPair(t, runNumericScripts) }
+func TestOrderingScripts(t *testing.T)         { runEngineTargetPair(t, runOrderingScripts) }
+func TestSetOperationsScripts(t *testing.T)    { runEngineTargetPair(t, runSetOperationsScripts) }
+func TestSubqueriesScripts(t *testing.T)       { runEngineTargetPair(t, runSubqueriesScripts) }
+func TestTransactionsScripts(t *testing.T)     { runEngineTargetPair(t, runTransactionsScripts) }
+func TestTupleComparisonsScripts(t *testing.T) { runEngineTargetPair(t, runTupleComparisonsScripts) }
+func TestIndexes(t *testing.T)                 { runEngineTargetPair(t, runIndexes) }
+func TestForeignKeys(t *testing.T)             { runEngineTargetPair(t, runForeignKeys) }
+func TestViews(t *testing.T)                   { runEngineTargetPair(t, runViews) }
+func TestWindowFunctions(t *testing.T)         { runEngineTargetPair(t, runWindowFunctions) }
+func TestWindowRangeFrames(t *testing.T)       { runEngineTargetPair(t, runWindowRangeFrames) }
+func TestNamedWindows(t *testing.T)            { runEngineTargetPair(t, runNamedWindows) }
+func TestColumnDefaults(t *testing.T)          { runEngineTargetPair(t, runColumnDefaults) }
+func TestAlterTable(t *testing.T)              { runEngineTargetPair(t, runAlterTable) }
+func TestJsonScripts(t *testing.T)             { runEngineTargetPair(t, runJsonScripts) }
+func TestShowCreateTable(t *testing.T)         { runEngineTargetPair(t, runShowCreateTable) }
+func TestHistorySystemTable(t *testing.T)      { runEngineTargetPair(t, runHistorySystemTable) }
+func TestStatisticIndexes(t *testing.T)        { runEngineTargetPair(t, runStatisticIndexes) }
+func TestJsonAdaptiveEncoding(t *testing.T)    { runEngineTargetPair(t, runJsonAdaptiveEncoding) }
+func TestLegacyDropTableScripts(t *testing.T)  { runEngineTargetPair(t, runLegacyDropTableScripts) }
+func TestLegacyJoinScripts(t *testing.T)       { runEngineTargetPair(t, runLegacyJoinScripts) }
+func TestLegacyUpdateScripts(t *testing.T)     { runEngineTargetPair(t, runLegacyUpdateScripts) }

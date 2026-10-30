@@ -240,6 +240,11 @@ var ValuesStatementTests = []ScriptTest{
 		Name: "VALUES with aggregate functions",
 		Assertions: []ScriptTestAssertion{
 			{
+				Postgres: &ScriptTestAssertion{
+					Expected: []sql.Row{{Numeric("2.5000000000000000")}},
+					Query:    `SELECT AVG(n) FROM (VALUES(1),(2),(3),(4)) v(n);`,
+				},
+
 				// AVG on mixed types
 				Query:    `SELECT AVG(n) FROM (VALUES(1),(2),(3),(4)) v(n);`,
 				Expected: []sql.Row{{Numeric("2.5")}},
@@ -346,6 +351,11 @@ var ValuesStatementTests = []ScriptTest{
 		Name: "VALUES type mismatch errors",
 		Assertions: []ScriptTestAssertion{
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "22P02",
+					Query:           `SELECT * FROM (VALUES(1),('text'),(3)) v(n);`,
+				},
+
 				// Integer and unknown('text'): FindCommonType resolves to int4 (the non-unknown type),
 				// then the I/O cast from 'text' to int4 fails at execution time. This matches PostgreSQL behavior:
 				// psql returns "invalid input syntax for type integer: "text""

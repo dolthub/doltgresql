@@ -178,6 +178,11 @@ func TestSQLStateCodes(t *testing.T) {
 			Name: "class 3D undefined database",
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "0A000",
+						Query:           "SELECT * FROM no_such_db.public.tbl",
+					},
+
 					Query:           "SELECT * FROM no_such_db.public.tbl",
 					ExpectedErr:     "database not found",
 					ExpectedErrCode: "3D000",

@@ -251,6 +251,11 @@ func TestMultidimensionalArrays(t *testing.T) {
 					ExpectedErr: "cannot accumulate empty arrays",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErr: "cannot accumulate arrays of different dimensionality",
+						Query:       "SELECT ARRAY(SELECT v FROM agg ORDER BY pk);",
+					},
+
 					Query:       "SELECT ARRAY(SELECT v FROM agg);",
 					ExpectedErr: "cannot accumulate arrays of different dimensionality",
 				},

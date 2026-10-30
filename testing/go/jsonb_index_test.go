@@ -119,6 +119,16 @@ var jsonbExpectedOutput = []sql.Row{
 // It also inserts all values into an indexed JSONB column and verifies that
 // ORDER BY returns them in exactly the same order.
 func TestJsonBPairwiseLessThan(t *testing.T) {
+	runTargetPair(t, func(t *testing.T, native bool) {
+		if native {
+			testNativeJSONBPairwise(t)
+		} else {
+			testDoltJSONBPairwise(t)
+		}
+	})
+}
+
+func testDoltJSONBPairwise(t *testing.T) {
 	// 39 pairwise < assertions
 	assertions := make([]ScriptTestAssertion, 0, len(jsonbLexicalOrder))
 	for i := 0; i < len(jsonbLexicalOrder)-1; i++ {
@@ -283,4 +293,24 @@ func TestJsonBIndexSortConsistency(t *testing.T) {
 			},
 		},
 	})
+}
+
+func testNativeJSONBPairwise(t *testing.T) {
+	// Native JSON has no ordering operator class. JSONB orders scalar kinds as
+	// null, string, number, boolean, followed by nonempty arrays and objects.
+	ordered := []string{`null`, `"a"`, `"b"`, `-1`, `0`, `1`, `false`, `true`, `[null]`, `[1]`, `[1, 2]`, `{}`, `{"a": 1}`, `{"a": 2}`, `{"a": 1, "b": 2}`}
+	var values []string
+	var assertions []ScriptTestAssertion
+	var rows []sql.Row
+	for i, v := range ordered {
+		values = append(values, "('"+v+"')")
+		rows = append(rows, sql.Row{v})
+		if i > 0 {
+			assertions = append(assertions, ScriptTestAssertion{Query: "SELECT '" + ordered[i-1] + "'::jsonb < '" + v + "'::jsonb", Expected: []sql.Row{{"t"}}})
+		}
+	}
+	assertions = append(assertions, ScriptTestAssertion{Query: "SELECT val::text FROM jorder ORDER BY jorder.val", Expected: rows})
+	RunScripts(t, []ScriptTest{{Name: "native JSONB ordering and indexed storage", SetUpScript: []string{
+		"CREATE TABLE jorder(val jsonb NOT NULL)", "CREATE INDEX jorder_val_idx ON jorder(val)", "INSERT INTO jorder VALUES " + strings.Join(values, ","),
+	}, Assertions: assertions}})
 }

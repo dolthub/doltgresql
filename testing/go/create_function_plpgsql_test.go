@@ -1546,7 +1546,7 @@ $$ LANGUAGE plpgsql;`,
 					SkipResultsCheck: true,
 				},
 				{
-					Query:    "SELECT length(commit_hash) IN (32, 64) FROM dolt_log LIMIT 1",
+					Query:    "SELECT commit_hash ~ '^[0-9a-v]{32}$' FROM dolt_log LIMIT 1",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -1570,7 +1570,7 @@ $$ LANGUAGE plpgsql;`,
 					SkipResultsCheck: true,
 				},
 				{
-					Query:    "SELECT length(commit_hash) IN (32, 64) FROM dolt_log LIMIT 1",
+					Query:    "SELECT commit_hash ~ '^[0-9a-v]{32}$' FROM dolt_log LIMIT 1",
 					Expected: []sql.Row{{"t"}},
 				},
 				{
@@ -1617,8 +1617,6 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -1639,8 +1637,6 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'another func')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT interpreted_merging(55);",
@@ -1661,8 +1657,6 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'updated table')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT interpreted_merging('abcde');",
@@ -1681,7 +1675,7 @@ $$ LANGUAGE plpgsql;`,
 					Expected: []sql.Row{{"t"}},
 
 					// Explicit native representation / SQL semantics; execute the statement once.
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT hash ~ '^[0-9a-f]{64}$', conflicts FROM dolt_merge('other');", Expected: []sql.Row{{"t", int64(0)}}},
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT hash ~ '^[0-9a-v]{32}$', conflicts FROM dolt_merge('other');", Expected: []sql.Row{{"t", int64(0)}}},
 				},
 				{
 					Query:    "SELECT interpreted_merging('abcdef');",

@@ -223,8 +223,6 @@ func TestDoltBranch(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT DOLT_BRANCH('original');",
@@ -241,8 +239,6 @@ func TestDoltBranch(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT DOLT_BRANCH('-c', 'main', 'copy');",
@@ -494,6 +490,10 @@ func TestDoltCherryPick(t *testing.T) {
 				{ // This returns a hash, so we need to take the consistent substring portion for testing
 					Query:    `SELECT substring(DOLT_CHERRY_PICK('main')::text, 34);`,
 					Expected: []sql.Row{{",0,0,0)"}},
+					PostgresFork: &ScriptTestAssertion{
+						Query:    "SELECT DOLT_CHERRY_PICK('main')::text ~ '^[(][0-9a-v]{32},0,0,0[)]$';",
+						Expected: []sql.Row{{"t"}},
+					},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -748,8 +748,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -796,8 +794,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -848,8 +844,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -874,8 +868,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-a', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-a', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -893,8 +885,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:       "SELECT DOLT_COMMIT('-m', 'should_error');",
@@ -907,8 +897,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('--allow-empty', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('--allow-empty', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -966,7 +954,7 @@ func TestDoltCommitTrackedTables(t *testing.T) {
 }
 
 func TestDoltConflictsResolve(t *testing.T) {
-	RunScripts(t, []ScriptTest{
+	runConflictCounterparts(t, []ScriptTest{
 		{
 			Name:        "Simple conflicts resolve all using --ours",
 			SetUpScript: simpleConflictResolveSetupScript,
@@ -1528,6 +1516,9 @@ func TestDoltDiffStat(t *testing.T) {
 				{
 					Query:    "SELECT COUNT(*) FROM DOLT_DIFF_STAT('main', 'original');",
 					Expected: []sql.Row{{15}},
+					// Twelve tables and two routines changed; shared sequence
+					// allocation is not a branch-local definition change.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{14}}},
 				},
 				{
 					Query:    "SELECT table_name FROM DOLT_DIFF_STAT('main', 'original', 't_simple');",
@@ -1649,6 +1640,9 @@ func TestDoltDiffSummary(t *testing.T) {
 				{
 					Query:    "SELECT COUNT(*) FROM DOLT_DIFF_SUMMARY('main', 'original');",
 					Expected: []sql.Row{{15}},
+					// Twelve tables and two routines changed; shared sequence
+					// allocation is not a branch-local definition change.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{14}}},
 				},
 				{
 					Query:    "SELECT from_table_name FROM DOLT_DIFF_SUMMARY('main', 'original', 't_simple');",
@@ -1707,8 +1701,9 @@ func TestDoltDiffSummary(t *testing.T) {
 					Expected: []sql.Row{{"public.f_default()"}},
 				},
 				{
-					Query:    "SELECT from_table_name FROM DOLT_DIFF_SUMMARY('main', 'original', 't_serial_pk_seq');",
-					Expected: []sql.Row{{"public.t_serial_pk_seq"}},
+					Query:        "SELECT from_table_name FROM DOLT_DIFF_SUMMARY('main', 'original', 't_serial_pk_seq');",
+					Expected:     []sql.Row{{"public.t_serial_pk_seq"}},
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{}},
 				},
 			},
 		},
@@ -1847,10 +1842,14 @@ func TestDoltLog(t *testing.T) {
 				{
 					Query:    "SELECT COUNT(*) FROM DOLT_LOG('main');",
 					Expected: []sql.Row{{4}},
+					// The fork deliberately has no extra CREATE DATABASE commit.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{3}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM DOLT_LOG('original');",
 					Expected: []sql.Row{{3}},
+					// The fork deliberately has no extra CREATE DATABASE commit.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{2}}},
 				},
 			},
 		},
@@ -2286,7 +2285,7 @@ func TestDoltQueryDiff(t *testing.T) {
 
 // TestDoltReset includes a multitude of items to ensure that we're able to reset all item types.
 func TestDoltReset(t *testing.T) {
-	RunScripts(t, []ScriptTest{
+	runResetCounterparts(t, []ScriptTest{
 		{
 			Name: "Hard",
 			SetUpScript: []string{
@@ -2452,6 +2451,10 @@ func TestDoltRevert(t *testing.T) {
 					// This returns a hash, so we need to take the consistent substring portion for testing
 					Query:    `SELECT substring(DOLT_REVERT('HEAD')::text, 34);`,
 					Expected: []sql.Row{{",0,0,0)"}},
+					PostgresFork: &ScriptTestAssertion{
+						Query:    "SELECT DOLT_REVERT('HEAD')::text ~ '^[(][0-9a-v]{32},0,0,0[)]$';",
+						Expected: []sql.Row{{"t"}},
+					},
 				},
 				{
 					Query:    `SELECT * FROM t_simple;`,
@@ -3539,4 +3542,39 @@ func TestDoltFunctionSmokeTests(t *testing.T) {
 			},
 		},
 	})
+}
+
+// Native version-control commands commit at statement boundaries. Preserve the
+// conflict-resolution assertions while removing Dolt's implicit-commit BEGIN.
+func runConflictCounterparts(t *testing.T, scripts []ScriptTest) {
+	for i, original := range scripts {
+		native := original
+		native.Assertions = nil
+		for _, a := range original.Assertions {
+			if a.Query == "BEGIN;" {
+				continue
+			}
+			if a.Query == "SELECT DOLT_MERGE('other', '--no-ff');" {
+				// No commit is published on conflict; the native OUT hash is NULL.
+				a.Expected = []sql.Row{{[]any{nil, int64(0), int64(1), "conflicts found"}}}
+			}
+			native.Assertions = append(native.Assertions, a)
+		}
+		scripts[i].Postgres = &native
+	}
+	RunScripts(t, scripts)
+}
+
+func runResetCounterparts(t *testing.T, scripts []ScriptTest) {
+	for i, original := range scripts {
+		if original.Name != "Hard" {
+			continue
+		}
+		native := original
+		// Create the ancestor explicitly rather than depending on CREATE DATABASE
+		// making an extra initialization commit.
+		native.SetUpScript = append([]string{"SELECT dolt_commit('--allow-empty', '-m', 'reset fixture base')"}, original.SetUpScript...)
+		scripts[i].Postgres = &native
+	}
+	RunScripts(t, scripts)
 }
