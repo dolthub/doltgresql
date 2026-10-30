@@ -2288,3 +2288,129 @@ func TestImplicitForeignKeyRegressionCleanup(t *testing.T) {
 		})
 	}
 }
+
+func TestForeignKeyIntegerWidening(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "widen parent and child while preserving enforcement",
+		SetUpScript: []string{
+			`CREATE TABLE parent (id INT PRIMARY KEY)`,
+			`CREATE TABLE child (id INT REFERENCES parent ON UPDATE CASCADE ON DELETE CASCADE)`,
+			`INSERT INTO parent VALUES (1)`,
+			`INSERT INTO child VALUES (1)`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: `ALTER TABLE parent ALTER COLUMN id TYPE BIGINT`},
+			{Query: `SELECT * FROM parent`, Expected: []sql.Row{{int64(1)}}},
+			{Query: `INSERT INTO child VALUES (99)`, ExpectedErr: `Foreign key violation`},
+			{Query: `UPDATE parent SET id = 2 WHERE id = 1`},
+			{Query: `SELECT * FROM child`, Expected: []sql.Row{{2}}},
+			{Query: `ALTER TABLE child ALTER COLUMN id TYPE BIGINT`},
+			{Query: `INSERT INTO parent VALUES (2147483648)`},
+			{Query: `INSERT INTO child VALUES (2147483648)`},
+			{Query: `SELECT * FROM child ORDER BY id`, Expected: []sql.Row{{int64(2)}, {int64(2147483648)}}},
+			{Query: `ALTER TABLE parent ALTER COLUMN id TYPE INT`, ExpectedErr: `unable to change type`},
+			{Query: `DELETE FROM parent WHERE id = 2147483648`},
+			{Query: `SELECT * FROM child`, Expected: []sql.Row{{int64(2)}}},
+		},
+	}})
+}
+
+func TestForeignKeySerialWidening(t *testing.T) {
+	for _, tc := range []struct{ from, to string }{
+		{"SMALLSERIAL", "INT"},
+		{"SMALLSERIAL", "BIGINT"},
+		{"SERIAL", "BIGINT"},
+	} {
+		RunScripts(t, []ScriptTest{{
+			Name: tc.from + " to " + tc.to,
+			SetUpScript: []string{
+				`CREATE TABLE parent (id ` + tc.from + ` PRIMARY KEY)`,
+				`CREATE TABLE child (id INT REFERENCES parent ON DELETE CASCADE)`,
+				`INSERT INTO parent DEFAULT VALUES`,
+				`INSERT INTO child VALUES (1)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `ALTER TABLE parent ALTER COLUMN id TYPE ` + tc.to},
+				{Query: `SELECT id::bigint FROM parent`, Expected: []sql.Row{{int64(1)}}},
+				{Query: `INSERT INTO parent DEFAULT VALUES`},
+				{Query: `SELECT id::bigint FROM parent ORDER BY id`, Expected: []sql.Row{{int64(1)}, {int64(2)}}},
+				{Query: `INSERT INTO child VALUES (2)`},
+				{Query: `INSERT INTO child VALUES (99)`, ExpectedErr: `Foreign key violation`},
+				{Query: `DELETE FROM parent WHERE id = 1`},
+				{Query: `SELECT * FROM child`, Expected: []sql.Row{{2}}},
+			},
+		}})
+	}
+}
+
+func TestForeignKeyWideningRewrite(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "qualified composite keys with multiple alterations",
+			SetUpScript: []string{
+				`CREATE SCHEMA fk_widen`,
+				`CREATE TABLE public.parent (a SMALLINT, b SMALLINT, PRIMARY KEY (a, b))`,
+				`CREATE TABLE public.child (a SMALLINT, b SMALLINT, FOREIGN KEY (a, b) REFERENCES public.parent)`,
+				`INSERT INTO public.parent VALUES (9, 8)`,
+				`INSERT INTO public.child VALUES (9, 8)`,
+				`CREATE TABLE fk_widen.parent (a SMALLINT, b SMALLINT, PRIMARY KEY (a, b))`,
+				`CREATE TABLE fk_widen.child (a SMALLINT, b SMALLINT, FOREIGN KEY (a, b) REFERENCES fk_widen.parent)`,
+				`INSERT INTO fk_widen.parent VALUES (1, 2)`,
+				`INSERT INTO fk_widen.child VALUES (1, 2)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `ALTER TABLE fk_widen.parent ALTER COLUMN a TYPE INT, ALTER COLUMN b TYPE TEXT`, ExpectedErr: `unable to change type`},
+				{Query: `SELECT pg_typeof(a), pg_typeof(b) FROM fk_widen.parent`, Expected: []sql.Row{{"smallint", "smallint"}}},
+				{Query: `ALTER TABLE fk_widen.parent ALTER COLUMN a TYPE INT, ALTER COLUMN b TYPE BIGINT`},
+				{Query: `SELECT pg_typeof(a), pg_typeof(b) FROM fk_widen.parent`, Expected: []sql.Row{{"integer", "bigint"}}},
+				{Query: `SELECT * FROM fk_widen.child`, Expected: []sql.Row{{int16(1), int16(2)}}},
+				{Query: `INSERT INTO fk_widen.child VALUES (9, 2)`, ExpectedErr: `Foreign key violation`},
+				{Query: `SET search_path TO fk_widen, public`},
+				{Query: `ALTER TABLE child ALTER COLUMN a TYPE INT, ALTER COLUMN a TYPE INT, ALTER COLUMN a TYPE BIGINT`},
+				{Query: `SELECT pg_typeof(a), a::bigint, b FROM fk_widen.child`, Expected: []sql.Row{{"bigint", int64(1), int16(2)}}},
+				{Query: `SELECT pg_typeof(a), pg_typeof(b), a, b FROM public.parent`, Expected: []sql.Row{{"smallint", "smallint", int16(9), int16(8)}}},
+				{Query: `SELECT pg_typeof(a), pg_typeof(b), a, b FROM public.child`, Expected: []sql.Row{{"smallint", "smallint", int16(9), int16(8)}}},
+				{Query: `INSERT INTO fk_widen.child VALUES (9, 2)`, ExpectedErr: `Foreign key violation`},
+			},
+		},
+		{
+			Name: "composite keys indexes defaults and rollback",
+			SetUpScript: []string{
+				`CREATE TABLE parent (id SMALLINT, other INT, PRIMARY KEY (id, other))`,
+				`CREATE TABLE child (id SMALLINT DEFAULT 1, other INT, FOREIGN KEY (id, other) REFERENCES parent ON UPDATE CASCADE)`,
+				`CREATE UNIQUE INDEX child_key ON child (id, other)`,
+				`INSERT INTO parent VALUES (1, 2)`,
+				`INSERT INTO child (other) VALUES (2)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `BEGIN`},
+				{Query: `ALTER TABLE parent ALTER COLUMN id TYPE BIGINT`},
+				{Query: `ROLLBACK`},
+				{Query: `SELECT pg_typeof(id) FROM parent`, Expected: []sql.Row{{"smallint"}}},
+				{Query: `ALTER TABLE parent ALTER COLUMN id TYPE BIGINT`},
+				{Query: `ALTER TABLE child ALTER COLUMN id TYPE INT`},
+				{Query: `INSERT INTO child VALUES (1, 2)`, ExpectedErr: `duplicate unique key`},
+				{Query: `INSERT INTO child VALUES (99, 2)`, ExpectedErr: `Foreign key violation`},
+				{Query: `INSERT INTO parent VALUES (1, 3)`},
+				{Query: `INSERT INTO child (other) VALUES (3)`},
+				{Query: `UPDATE parent SET id = 7 WHERE other = 2`},
+				{Query: `SELECT * FROM child ORDER BY other`, Expected: []sql.Row{{7, 2}, {1, 3}}},
+				{Query: `ALTER TABLE child ALTER COLUMN id TYPE BIGINT USING id + 1`, ExpectedErr: `unable to change type`},
+				{Query: `SELECT * FROM child ORDER BY other`, Expected: []sql.Row{{7, 2}, {1, 3}}},
+			},
+		},
+		{
+			Name: "self reference and nulls",
+			SetUpScript: []string{
+				`CREATE TABLE self_ref (id SMALLINT PRIMARY KEY, parent_id SMALLINT REFERENCES self_ref ON UPDATE CASCADE)`,
+				`INSERT INTO self_ref VALUES (1, NULL), (2, 1)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `ALTER TABLE self_ref ALTER COLUMN id TYPE INT`},
+				{Query: `ALTER TABLE self_ref ALTER COLUMN parent_id TYPE BIGINT`},
+				{Query: `SELECT id, parent_id FROM self_ref ORDER BY id`, Expected: []sql.Row{{1, nil}, {2, int64(1)}}},
+				{Query: `INSERT INTO self_ref VALUES (4, 99)`, ExpectedErr: `Foreign key violation`},
+			},
+		},
+	})
+}

@@ -28,6 +28,35 @@ import (
 func ReplaceNode(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, scope *plan.Scope, selector analyzer.RuleSelector, qFlags *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	// TODO: need to add the majority of other DDL operations here
 	switch node := node.(type) {
+	case *plan.Block:
+		// Multi-action ALTER TABLE statements are represented as a block.
+		if node.Pref != nil {
+			return node, transform.SameTree, nil
+		}
+		children := append([]sql.Node(nil), node.Children()...)
+		changed := false
+		for i, child := range children {
+			replacement, identity, err := ReplaceNode(ctx, a, child, scope, selector, qFlags)
+			if err != nil {
+				return nil, transform.SameTree, err
+			}
+			children[i] = replacement
+			changed = changed || identity == transform.NewTree
+		}
+		if !changed {
+			return node, transform.SameTree, nil
+		}
+		replacement, err := node.WithChildren(ctx, children...)
+		return replacement, transform.NewTree, err
+	case *plan.ModifyColumn:
+		widening, err := pgnodes.NewForeignKeyIntegerWidening(ctx, node, a.Catalog.DbProvider)
+		if err != nil {
+			return nil, transform.SameTree, err
+		}
+		if widening != nil {
+			return widening, transform.NewTree, nil
+		}
+		return node, transform.SameTree, nil
 	case *plan.DropTable:
 		return pgnodes.NewDropTable(node), transform.NewTree, nil
 	default:
