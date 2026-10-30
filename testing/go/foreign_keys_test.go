@@ -973,6 +973,8 @@ func TestForeignKeys(t *testing.T) {
 			},
 			{
 				Name: "ON DELETE ... SET DEFAULT",
+				// PostgreSQL forbids defaults that reference another column.
+				Skip: testTarget(t) == targetPostgresFork,
 				SetUpScript: []string{
 					"CREATE TABLE public.hn_stories (title text NOT NULL, website_url text);",
 					"CREATE TABLE public.websites (url text primary key, title text);",
@@ -1007,6 +1009,8 @@ func TestForeignKeys(t *testing.T) {
 			},
 			{
 				Name: "ON UPDATE ... SET DEFAULT",
+				// PostgreSQL forbids defaults that reference another column.
+				Skip: testTarget(t) == targetPostgresFork,
 				SetUpScript: []string{
 					"CREATE TABLE public.hn_stories (title text NOT NULL, website_url text);",
 					"CREATE TABLE public.websites (url text primary key, title text);",
