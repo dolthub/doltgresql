@@ -1520,5 +1520,44 @@ ORDER BY 1,2;`,
 				},
 			},
 		},
+		{
+			Name: "dropped sequences keep their values on other branches (issue 3690)",
+			SetUpScript: []string{
+				"CREATE SEQUENCE s;",
+				"SELECT setval('s', 100);",
+				"SELECT dolt_commit('-Am', 'initial');",
+				"SELECT dolt_branch('other');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT dolt_checkout('other');",
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
+				},
+				{
+					Query:    "SELECT nextval('s');",
+					Expected: []sql.Row{{101}},
+				},
+				{
+					Query:    "SELECT dolt_checkout('main');",
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
+				},
+				{
+					Query:    "SELECT nextval('s');",
+					Expected: []sql.Row{{102}},
+				},
+				{
+					Query:    "DROP SEQUENCE s;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT dolt_checkout('other');",
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
+				},
+				{
+					Query:    "SELECT nextval('s');",
+					Expected: []sql.Row{{102}},
+				},
+			},
+		},
 	})
 }
