@@ -7328,12 +7328,23 @@ func TestSetReturningFunctions(t *testing.T) {
 				},
 				Assertions: []ScriptTestAssertion{
 					{
+						Postgres: &ScriptTestAssertion{
+							Expected:         []sql.Row{},
+							ExpectedColNames: []string{"relid"},
+							Query:            `SELECT * FROM pg_partition_ancestors('anc_test'::regclass);`,
+						},
+
 						// Partitioning is not supported, so a relation's only ancestor is itself
 						Query:            `SELECT * FROM pg_partition_ancestors('anc_test'::regclass);`,
 						Expected:         []sql.Row{{"anc_test"}},
 						ExpectedColNames: []string{"relid"},
 					},
 					{
+						Postgres: &ScriptTestAssertion{
+							Expected: []sql.Row{},
+							Query:    `SELECT * FROM pg_partition_ancestors('anc_test'::regclass) WITH ORDINALITY AS a(relid, depth);`,
+						},
+
 						Query:    `SELECT * FROM pg_partition_ancestors('anc_test'::regclass) WITH ORDINALITY AS a(relid, depth);`,
 						Expected: []sql.Row{{"anc_test", 1}},
 					},
@@ -7348,6 +7359,15 @@ func TestSetReturningFunctions(t *testing.T) {
 						Expected: []sql.Row{},
 					},
 					{
+						Postgres: &ScriptTestAssertion{
+							Expected: []sql.Row{},
+							Query: `SELECT conrelid = 'anc_child'::pg_catalog.regclass AS sametable,
+       conname, pg_catalog.pg_get_constraintdef(oid, true) AS condef, conrelid::pg_catalog.regclass::text AS ontable
+FROM pg_catalog.pg_constraint, pg_catalog.pg_partition_ancestors('anc_child'::regclass)
+WHERE conrelid = relid AND contype = 'f' AND conparentid = 0
+ORDER BY sametable DESC, conname;`,
+						},
+
 						// The foreign-key listing query issued by psql's \d command
 						Query: `SELECT conrelid = 'anc_child'::pg_catalog.regclass AS sametable,
        conname, pg_catalog.pg_get_constraintdef(oid, true) AS condef, conrelid::pg_catalog.regclass::text AS ontable

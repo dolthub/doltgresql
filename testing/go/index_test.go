@@ -39,6 +39,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM test WHERE v1 = 2 ORDER BY pk;",
+					},
+
 					Query: "explain SELECT * FROM test WHERE v1 = 2 ORDER BY pk;",
 					Expected: []sql.Row{
 						{"Sort(test.pk ASC)"},
@@ -57,6 +62,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM test WHERE v1 > 2 ORDER BY pk;",
+					},
+
 					Query: "explain SELECT * FROM test WHERE v1 > 2 ORDER BY pk;",
 					Expected: []sql.Row{
 						{"Sort(test.pk ASC)"},
@@ -73,6 +83,11 @@ func TestBasicIndexing(t *testing.T) {
 						{14, 4}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM test WHERE (v1 > 3 OR v1 < 2) AND v1 <> 5 ORDER BY pk;",
+					},
+
 					Query: "explain SELECT * FROM test WHERE (v1 > 3 OR v1 < 2) AND v1 <> 5 ORDER BY pk;",
 					Expected: []sql.Row{
 						{"Sort(test.pk ASC)"},
@@ -90,6 +105,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM test WHERE v1 = 2 OR v1 = 4 ORDER BY pk;",
+					},
+
 					Query: "explain SELECT * FROM test WHERE v1 = 2 OR v1 = 4 ORDER BY pk;",
 					Expected: []sql.Row{
 						{"Sort(test.pk ASC)"},
@@ -107,6 +127,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM test WHERE v1 IN (2, 4) ORDER BY pk;",
+					},
+
 					Query: "explain SELECT * FROM test WHERE v1 IN (2, 4) ORDER BY pk;",
 					Expected: []sql.Row{
 						{"Sort(test.pk ASC)"},
@@ -125,6 +150,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM test WHERE v1 NOT IN (2, 4) ORDER BY pk;",
+					},
+
 					Query: "explain SELECT * FROM test WHERE v1 NOT IN (2, 4) ORDER BY pk;",
 					Expected: []sql.Row{
 						{"Sort(test.pk ASC)"},
@@ -142,6 +172,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM test WHERE v1 >= 4 ORDER BY pk;",
+					},
+
 					Query: "explain SELECT * FROM test WHERE v1 >= 4 ORDER BY pk;",
 					Expected: []sql.Row{
 						{"Sort(test.pk ASC)"},
@@ -193,6 +228,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM test WHERE v1 > 't' OR v1 < 'f' ORDER BY pk;",
+					},
+
 					Query: "explain SELECT * FROM test WHERE v1 > 't' OR v1 < 'f' ORDER BY pk;",
 					Expected: []sql.Row{
 						{"Sort(test.pk ASC)"},
@@ -269,6 +309,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM test WHERE v1 = 2 AND v2 = 22 ORDER BY pk;",
+					},
+
 					Query: "explain SELECT * FROM test WHERE v1 = 2 AND v2 = 22 ORDER BY pk;",
 					Expected: []sql.Row{
 						{"Sort(test.pk ASC)"},
@@ -279,12 +324,24 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{
+							{12, 2, 22, 2, 22},
+						},
+						Query: "select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
+					},
+
 					Query: "select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
 					Expected: []sql.Row{
 						{12, 2, 22, 2, 22},
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test", "jointable"},
+						Query:                 "EXPLAIN (FORMAT JSON) select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
+					},
+
 					Query: "explain select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
 					Expected: []sql.Row{
 						{"InnerJoin"},
@@ -307,6 +364,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test", "jointable"},
+						Query:                 "EXPLAIN (FORMAT JSON) select * from test join jointable on test.v1 = jointable.v3 and test.v2 = jointable.v4 order by 1",
+					},
+
 					Query: "explain select * from test join jointable on test.v1 = jointable.v3 and test.v2 = jointable.v4 order by 1",
 					Expected: []sql.Row{
 						{"InnerJoin"},
@@ -394,12 +456,25 @@ func TestBasicIndexing(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{
+							{12, 2, 22, 2, 22},
+						},
+						Query: "select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
+					},
+
 					Query: "select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
 					Expected: []sql.Row{
 						{12, 2, 22, 2, 22},
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test", "jointable"},
+						Query:                 "EXPLAIN (FORMAT JSON) select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
+						Skip:                  true,
+					},
+
 					// TODO: Unskip once matched filter expressions are removed from filter nodes
 					//  https://github.com/dolthub/dolt/issues/11231
 					Skip:  true,
@@ -419,12 +494,24 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{
+							{12, 2, 22, 2, 22},
+						},
+						Query: "select * from test join jointable on test.v1 = jointable.v3 and test.v2 = jointable.v4 order by 1",
+					},
+
 					Query: "select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = jointable.v4 order by 1",
 					Expected: []sql.Row{
 						{12, 2, 22, 2, 22},
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test", "jointable"},
+						Query:                 "EXPLAIN (FORMAT JSON) select * from test join jointable on test.v1 = jointable.v3 and test.v2 = jointable.v4 order by 1",
+					},
+
 					Query: "explain select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = jointable.v4 order by 1",
 					Expected: []sql.Row{
 						{"Project"},
@@ -454,16 +541,33 @@ func TestBasicIndexing(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{},
+						Query:    "select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
+					},
+
 					Query:    "select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{
+							{11, 1, 21, 1, 21},
+						},
+						Query: "select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 21 order by 1",
+					},
+
 					Query: "select /*+ lookup_join(jointable, test) */ HINT * from test join jointable on test.v1 = jointable.v3 and test.v2 = 21 order by 1",
 					Expected: []sql.Row{
 						{11, 1, 21, 1, 21},
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test", "jointable"},
+						Query:                 "EXPLAIN (FORMAT JSON) select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
+					},
+
 					Query: "explain select * from test join jointable on test.v1 = jointable.v3 and test.v2 = 22 order by 1",
 					Expected: []sql.Row{
 						{"InnerJoin"},
@@ -492,6 +596,7 @@ func TestBasicIndexing(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{Query: "select * from test join (select * from jointable) sq on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1", Expected: []sql.Row{{11, 1, 21, 1, 21}}},
 					Query: "select /*+ lookup_join(sq, test) */ HINT * from test join " +
 						"(select * from jointable) sq " +
 						"on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1",
@@ -500,6 +605,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test", "jointable"},
+						Query:                 "EXPLAIN (FORMAT JSON) select * from test join (select * from jointable) sq on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1",
+					},
+
 					Query: "explain select * from test join (select * from jointable) sq on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1",
 					Expected: []sql.Row{
 						{"InnerJoin"},
@@ -515,6 +625,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test", "jointable"},
+						Query:                 "EXPLAIN (FORMAT JSON) select * from test join (select * from jointable) sq on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1",
+					},
+
 					Query: "explain select /*+ lookup_join(sq, test) */ HINT * from test join (select * from jointable) sq on test.v1 = sq.v3 and test.v2 = sq.v4 order by 1",
 					Expected: []sql.Row{
 						{"Project"},
@@ -675,6 +790,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM test WHERE v1 IN (2, '3', 4) ORDER BY v1;",
+					},
+
 					Query: "explain SELECT * FROM test WHERE v1 IN (2, '3', 4) ORDER BY v1;",
 					Expected: []sql.Row{
 						{"IndexedTableAccess(test)"},
@@ -1095,14 +1215,29 @@ func TestBasicIndexing(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42704",
+						Query:           "CREATE INDEX v1_idx ON test(v1 varchar_pattern_ops) WITH (storage_opt1 = foo) TABLESPACE tablespace_name;",
+					},
+
 					// ignored warning-generating unsupported options
 					Query: "CREATE INDEX v1_idx ON test(v1 varchar_pattern_ops) WITH (storage_opt1 = foo) TABLESPACE tablespace_name;",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{},
+						Query:    "CREATE INDEX v1_idx2 ON test using hash (v1);",
+					},
+
 					Query:       "CREATE INDEX v1_idx2 ON test using hash (v1);",
 					ExpectedErr: "not yet supported",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{},
+						Query:    "CREATE INDEX v1_include_idx ON test(v1) INCLUDE (pk);",
+					},
+
 					Query:       "CREATE INDEX v1_idx2 ON test(v1) INCLUDE (pk);",
 					ExpectedErr: "not yet supported",
 				},
@@ -1327,6 +1462,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"test"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM test WHERE v1 BETWEEN 3 AND 5 OR v1 BETWEEN 7 AND 9 order by 1;",
+					},
+
 					Query: "explain SELECT * FROM test WHERE v1 BETWEEN 3 AND 5 OR v1 BETWEEN 7 AND 9 order by 1;",
 					Expected: []sql.Row{
 						{"Sort(test.pk ASC)"},
@@ -1457,10 +1597,20 @@ func TestBasicIndexing(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42704",
+						Query:           "DROP INDEX v1_idx;",
+					},
+
 					Query:       "DROP INDEX v1_idx;",
 					ExpectedErr: "unable to find index",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42704",
+						Query:           "DROP INDEX no_such_index;",
+					},
+
 					Query:       "DROP INDEX no_such_index;",
 					ExpectedErr: "unable to find index",
 				},
@@ -1496,6 +1646,11 @@ func TestBasicIndexing(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"t"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM t WHERE v1 = 20;",
+					},
+
 					Query: "EXPLAIN SELECT * FROM t WHERE v1 = 20;",
 					Expected: []sql.Row{
 						{"IndexedTableAccess(t)"},
@@ -1509,6 +1664,11 @@ func TestBasicIndexing(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"t"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM t WHERE v1 = 20;",
+					},
+
 					Query: "EXPLAIN SELECT * FROM t WHERE v1 = 20;",
 					Expected: []sql.Row{
 						{"Filter"},
@@ -1528,6 +1688,11 @@ func TestBasicIndexing(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42704",
+						Query:           `DROP INDEX "IDX_MIXED";`,
+					},
+
 					Query:    `DROP INDEX "IDX_MIXED";`,
 					Expected: []sql.Row{},
 				},
@@ -1550,6 +1715,11 @@ func TestBasicIndexing(t *testing.T) {
 					Expected: []sql.Row{{"v1_renamed_idx"}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"t"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM t WHERE v1 = 20;",
+					},
+
 					// The renamed index is still used in query plans
 					Query: "EXPLAIN SELECT * FROM t WHERE v1 = 20;",
 					Expected: []sql.Row{
@@ -1597,6 +1767,11 @@ func TestBasicIndexing(t *testing.T) {
 					ExpectedErr: `relation "v1_renamed_idx" does not exist`,
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42P01",
+						Query:           "ALTER INDEX public.v1_renamed_idx RENAME TO another_name;",
+					},
+
 					// A schema that doesn't contain the index errors
 					Query:       "ALTER INDEX public.v1_renamed_idx RENAME TO another_name;",
 					ExpectedErr: `relation "v1_renamed_idx" does not exist`,
@@ -1689,6 +1864,11 @@ func TestBasicIndexing(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"user_id", "(is_active = true)", "t"}},
+						Query:    "SELECT pg_get_indexdef(indexrelid,1,true), pg_get_expr(indpred,indrelid), indisunique FROM pg_index WHERE indexrelid='idx_one_active_session_per_user'::regclass",
+					},
+
 					Query:    "SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_one_active_session_per_user';",
 					Expected: []sql.Row{{"CREATE UNIQUE INDEX idx_one_active_session_per_user ON public.user_sessions USING btree (user_id) WHERE (user_sessions.is_active = true)"}},
 				},
@@ -1754,10 +1934,20 @@ func TestBasicIndexing(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"a", "(a > 1)", "f"}},
+						Query:    "SELECT pg_get_indexdef(indexrelid,1,true), pg_get_expr(indpred,indrelid), indisunique FROM pg_index WHERE indexrelid='idx_partial'::regclass",
+					},
+
 					Query:    "SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_partial';",
 					Expected: []sql.Row{{"CREATE INDEX idx_partial ON public.t USING btree (a) WHERE (t.a > 1)"}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"t"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM t WHERE a > 1;",
+					},
+
 					Query: "EXPLAIN SELECT * FROM t WHERE a > 1;",
 					Expected: []sql.Row{
 						{"IndexedTableAccess(t)"},
@@ -1767,6 +1957,11 @@ func TestBasicIndexing(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"t"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM t WHERE a > 0;",
+					},
+
 					Query: "EXPLAIN SELECT * FROM t WHERE a > 0;",
 					Expected: []sql.Row{
 						{"Filter"},
@@ -1894,6 +2089,11 @@ func TestBasicIndexing(t *testing.T) {
 					Expected: []sql.Row{{"t1_a_idx"}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"t2_a_idx"}},
+						Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't2' AND indexname <> 't2_pkey' ORDER BY indexname;",
+					},
+
 					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't2' AND indexname <> 't2_pkey' ORDER BY indexname;",
 					Expected: []sql.Row{{"t2_a_key"}},
 				},
@@ -2180,6 +2380,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"dt"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM dt ORDER BY i2 DESC;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM dt ORDER BY i2 DESC;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2195,6 +2400,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{3}, {4}, {1}, {2}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"dt"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM dt ORDER BY i2;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM dt ORDER BY i2;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2243,6 +2453,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{2}, {4}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"dt"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM dt WHERE t >= 'b' ORDER BY t DESC;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM dt WHERE t >= 'b' ORDER BY t DESC;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2290,6 +2505,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{4}, {1}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"dt"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM dt WHERE ts < '2024-01-03' ORDER BY ts DESC;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM dt WHERE ts < '2024-01-03' ORDER BY ts DESC;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2325,6 +2545,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{3}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"dt"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM dt WHERE u > '00000000-0000-0000-0000-000000000001' ORDER BY u DESC;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM dt WHERE u > '00000000-0000-0000-0000-000000000001' ORDER BY u DESC;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2344,6 +2569,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{4}, {1}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"dt"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM dt ORDER BY t DESC NULLS LAST;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM dt ORDER BY t DESC NULLS LAST;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2396,6 +2626,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"mo"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM mo ORDER BY a DESC, b;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM mo ORDER BY a DESC, b;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2412,6 +2647,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{4}, {7}, {5}, {3}, {6}, {1}, {2}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"mo"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM mo ORDER BY a, b DESC;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM mo ORDER BY a, b DESC;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2427,6 +2667,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{2}, {1}, {6}, {3}, {5}, {7}, {4}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"mo"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM mo ORDER BY a DESC, b DESC;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM mo ORDER BY a DESC, b DESC;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2442,6 +2687,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{7}, {4}, {5}, {6}, {3}, {2}, {1}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"mo"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM mo ORDER BY a, b;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM mo ORDER BY a, b;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2458,6 +2708,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{1}, {2}, {3}, {6}, {5}, {4}, {7}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"mo"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM mo ORDER BY a DESC NULLS LAST, c NULLS FIRST;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM mo ORDER BY a DESC NULLS LAST, c NULLS FIRST;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2473,6 +2728,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{5}, {3}, {6}, {1}, {2}, {7}, {4}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"mo"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM mo ORDER BY a NULLS FIRST, c DESC NULLS LAST;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM mo ORDER BY a NULLS FIRST, c DESC NULLS LAST;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2497,6 +2757,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{3}, {6}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"mo"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM mo WHERE a = 1 AND b > 1;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM mo WHERE a = 1 AND b > 1;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2516,6 +2781,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{5}, {6}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"mo"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM mo WHERE a < 3 ORDER BY a DESC, b;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM mo WHERE a < 3 ORDER BY a DESC, b;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2548,6 +2818,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{5}, {1}, {2}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"mo"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM mo WHERE a = 1 AND b IS NULL;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM mo WHERE a = 1 AND b IS NULL;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2608,6 +2883,11 @@ func TestIndexColumnOptions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"fl"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM fl WHERE f4 = 'NaN';",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM fl WHERE f4 = 'NaN';",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2623,6 +2903,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{2}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"fl"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM fl WHERE f8 = 'NaN';",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM fl WHERE f8 = 'NaN';",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2658,6 +2943,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{3}, {2}, {5}, {1}, {7}, {4}, {6}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"fl"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM fl ORDER BY f8;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM fl ORDER BY f8;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2738,6 +3028,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Query: "UPDATE ud SET a = 9 WHERE pk = 1;",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"ud"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM ud WHERE a IS NOT NULL ORDER BY a DESC;",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM ud WHERE a IS NOT NULL ORDER BY a DESC;",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2801,6 +3096,11 @@ func TestIndexColumnOptions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"kl"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT a, b FROM kl ORDER BY a DESC, b DESC;",
+					},
+
 					Query: "EXPLAIN SELECT a, b FROM kl ORDER BY a DESC, b DESC;",
 					Expected: []sql.Row{
 						{"IndexedTableAccess(kl)"},
@@ -2814,6 +3114,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{nil, 5}, {2, nil}, {2, 1}, {1, 2}, {1, 1}, {1, 1}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"kl"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT a, b FROM kl ORDER BY a, b;",
+					},
+
 					Query: "EXPLAIN SELECT a, b FROM kl ORDER BY a, b;",
 					Expected: []sql.Row{
 						{"IndexedTableAccess(kl)"},
@@ -2891,6 +3196,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					Expected: []sql.Row{{"3 15027"}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"ex"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT id FROM ex WHERE name LIKE 'C%';",
+					},
+
 					Query: "EXPLAIN SELECT id FROM ex WHERE name LIKE 'C%';",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2923,6 +3233,11 @@ func TestIndexColumnOptions(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"like_idx"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM like_idx WHERE t LIKE 'ab%';",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM like_idx WHERE t LIKE 'ab%';",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2936,6 +3251,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"like_idx"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM like_idx WHERE v LIKE 'ab%';",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM like_idx WHERE v LIKE 'ab%';",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2949,6 +3269,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"like_idx"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM like_idx WHERE t LIKE 'ab%' OR t LIKE 'b%';",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM like_idx WHERE t LIKE 'ab%' OR t LIKE 'b%';",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2961,6 +3286,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"like_idx"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM like_idx WHERE t LIKE '%bc';",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM like_idx WHERE t LIKE '%bc';",
 					Expected: []sql.Row{
 						{"Project"},
@@ -2973,6 +3303,11 @@ func TestIndexColumnOptions(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"like_idx"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT pk FROM like_idx WHERE t NOT LIKE 'ab%';",
+					},
+
 					Query: "EXPLAIN SELECT pk FROM like_idx WHERE t NOT LIKE 'ab%';",
 					Expected: []sql.Row{
 						{"Project"},

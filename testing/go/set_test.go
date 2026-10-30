@@ -15,13 +15,21 @@
 package _go
 
 import (
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
 func TestSetStatements(t *testing.T) {
-	RunScripts(t, setStmts)
+	scripts := append([]ScriptTest(nil), setStmts...)
+	for i := range scripts {
+		if native := nativeSettingCounterpart(scripts[i]); native != nil {
+			scripts[i].Postgres = native
+		}
+	}
+	RunScripts(t, scripts)
 }
 
 // setStmts test on simple cases on setting and showing the config parameters.
@@ -76,6 +84,7 @@ var setStmts = []ScriptTest{
 			{
 				Query:    "SHOW timezone",
 				Expected: []sql.Row{{"+00:00:00"}},
+				Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"00:00:00"}}},
 			},
 			{
 				Query:    "SET TIME ZONE DEFAULT;",
@@ -10788,6 +10797,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "set myvar.var_value to (select 'a')",
+				Postgres: &ScriptTestAssertion{Query: "SELECT set_config('myvar.var_value', (SELECT 'a'), false)", Expected: []sql.Row{{"a"}}},
 				Expected: []sql.Row{},
 			},
 			{
@@ -10796,6 +10806,7 @@ var setStmts = []ScriptTest{
 			},
 			{
 				Query:    "set myvar.val2 to (select current_setting('myvar.var_value'))",
+				Postgres: &ScriptTestAssertion{Query: "SELECT set_config('myvar.val2', (SELECT current_setting('myvar.var_value')), false)", Expected: []sql.Row{{"a"}}},
 				Expected: []sql.Row{},
 			},
 			{
@@ -10804,4 +10815,106 @@ var setStmts = []ScriptTest{
 			},
 		},
 	},
+}
+
+// Defaults depend on server version, startup options, OS and build capabilities.
+// Capture the initial setting to test RESET, while retaining explicit expectations
+// for successful changes and errors. Never derive a setter's expected value from
+// that setter's result.
+func nativeSettingCounterpart(original ScriptTest) *ScriptTest {
+	if special := nativeSpecialSetting(original.Name); special != nil {
+		return special
+	}
+	match := regexp.MustCompile(`^set '([a-z_]+)' configuration variable$`).FindStringSubmatch(original.Name)
+	if match == nil {
+		return nil
+	}
+	name := match[1]
+	script := original
+	script.Postgres = nil
+	script.SetUpScript = append(append([]string(nil), original.SetUpScript...), "SELECT set_config('compat.initial', current_setting('"+name+"'), false)")
+	script.Assertions = nil
+	atDefault := true
+	compression := false
+	for _, a := range original.Assertions {
+		q := a.Query
+		if a.Postgres != nil {
+			replacement := *a.Postgres
+			if replacement.Query == "" {
+				replacement.Query = q
+			}
+			a = replacement
+		}
+		a.Postgres = nil
+		a.PostgresFork = nil
+		upper := strings.ToUpper(q)
+		reads := strings.HasPrefix(upper, "SHOW ") || strings.HasPrefix(upper, "SELECT CURRENT_SETTING(")
+		if reads && atDefault {
+			a.Query = "SELECT current_setting('" + name + "')=current_setting('compat.initial')"
+			a.Expected = []sql.Row{{"t"}}
+		}
+		if strings.HasPrefix(upper, "SET ") {
+			if a.ExpectedErr == "" && a.ExpectedErrCode == "" {
+				atDefault = strings.HasSuffix(upper, "DEFAULT") || strings.HasSuffix(upper, "DEFAULT;")
+			}
+			if strings.Contains(q, "'en_US'") {
+				a.Query = strings.ReplaceAll(q, "'en_US'", "'C'")
+			}
+			compression = strings.Contains(q, "'lz4'")
+			if compression {
+				a.Query = "SELECT set_config('" + name + "', CASE WHEN 'lz4'=ANY(enumvals) THEN 'lz4' ELSE 'pglz' END, false) FROM pg_settings WHERE name='" + name + "'"
+				a.SkipResultsCheck = true
+			}
+		}
+		if reads && !atDefault && strings.HasPrefix(name, "lc_") {
+			a.Expected = []sql.Row{{"C"}}
+		}
+		if reads && !atDefault && compression {
+			a.Query = "SELECT current_setting('" + name + "')=CASE WHEN 'lz4'=ANY(enumvals) THEN 'lz4' ELSE 'pglz' END FROM pg_settings WHERE name='" + name + "'"
+			a.Expected = []sql.Row{{"t"}}
+		}
+		if reads && !atDefault && (name == "tcp_keepalives_idle" || name == "tcp_keepalives_interval") {
+			a.Expected = []sql.Row{{"1"}}
+		}
+		if reads && !atDefault && name == "tcp_user_timeout" {
+			a.Expected = []sql.Row{{"100000"}}
+		}
+		script.Assertions = append(script.Assertions, a)
+	}
+	return &script
+}
+
+// PostgreSQL has removed several legacy GUCs and gives transaction-local SET
+// and SET SEED semantics distinct from Doltgres's session variables.
+func nativeSpecialSetting(name string) *ScriptTest {
+	var assertions []ScriptTestAssertion
+	switch name {
+	case "set 'db_user_namespace' configuration variable", "set 'old_snapshot_threshold' configuration variable", "set 'trace_recovery_messages' configuration variable":
+		setting := strings.Split(name, "'")[1]
+		assertions = []ScriptTestAssertion{{Query: "SHOW " + setting, ExpectedErrCode: "42704"}, {Query: "SET " + setting + " TO DEFAULT", ExpectedErrCode: "42704"}}
+	case "set 'transaction_isolation' configuration variable":
+		assertions = []ScriptTestAssertion{
+			{Query: "BEGIN", Expected: []sql.Row{}},
+			{Query: "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE", Expected: []sql.Row{}},
+			{Query: "SHOW transaction_isolation", Expected: []sql.Row{{"serializable"}}},
+			{Query: "ROLLBACK", Expected: []sql.Row{}},
+			{Query: "SELECT current_setting('transaction_isolation')=current_setting('default_transaction_isolation')", Expected: []sql.Row{{"t"}}},
+		}
+	case "set 'seq_page_cost' configuration variable":
+		assertions = []ScriptTestAssertion{{Query: "SET seq_page_cost TO 2", Expected: []sql.Row{}}, {Query: "SHOW seq_page_cost", Expected: []sql.Row{{"2"}}}, {Query: "SET seq_page_cost TO -1", ExpectedErrCode: "22023"}}
+	case "set 'timezone_abbreviations' configuration variable":
+		assertions = []ScriptTestAssertion{{Query: "SET timezone_abbreviations TO ''", ExpectedErrCode: "22023"}, {Query: "SET timezone_abbreviations TO 'Default'", Expected: []sql.Row{}}, {Query: "SHOW timezone_abbreviations", Expected: []sql.Row{{"Default"}}}}
+	case "special case SEED":
+		assertions = []ScriptTestAssertion{
+			{Query: "SELECT set_config('compat.geqo_seed', current_setting('geqo_seed'), false)", SkipResultsCheck: true},
+			{Query: "SET SEED TO 1", Expected: []sql.Row{}},
+			{Query: "SELECT set_config('compat.first_random', random()::text, false)", SkipResultsCheck: true},
+			{Query: "SET SEED TO 1", Expected: []sql.Row{}},
+			{Query: "SELECT random()=current_setting('compat.first_random')::float8", Expected: []sql.Row{{"t"}}},
+			{Query: "SELECT current_setting('geqo_seed')=current_setting('compat.geqo_seed')", Expected: []sql.Row{{"t"}}},
+		}
+	default:
+		return nil
+	}
+	return &ScriptTest{Name: name, Assertions: assertions}
 }

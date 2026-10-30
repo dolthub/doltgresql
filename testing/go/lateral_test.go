@@ -176,19 +176,42 @@ func TestImplicitLateralJoin(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{},
+						Query:    "SELECT relid FROM pg_partition_ancestors('t4');",
+					},
+
 					Query:    "SELECT relid FROM pg_partition_ancestors('t4');",
 					Expected: []sql.Row{{"t4"}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{},
+						Query:    "SELECT relid FROM t4, pg_partition_ancestors('t4');",
+					},
+
 					// The same column resolved through an implicit lateral join, unqualified and qualified
 					Query:    "SELECT relid FROM t4, pg_partition_ancestors('t4');",
 					Expected: []sql.Row{{"t4"}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{},
+						Query:    "SELECT pg_partition_ancestors.relid FROM t4, pg_catalog.pg_partition_ancestors('t4');",
+					},
+
 					Query:    "SELECT pg_partition_ancestors.relid FROM t4, pg_catalog.pg_partition_ancestors('t4');",
 					Expected: []sql.Row{{"t4"}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{},
+						Query: `SELECT conrelid = 't4'::pg_catalog.regclass AS sametable, conname
+  FROM pg_catalog.pg_constraint, pg_catalog.pg_partition_ancestors('t4')
+ WHERE conrelid = relid AND contype = 'f' AND conparentid = 0
+ORDER BY sametable DESC, conname;`,
+					},
+
 					// The psql \d foreign-key listing query shape: the function's column referenced in WHERE
 					Query: `SELECT conrelid = 't4'::pg_catalog.regclass AS sametable, conname
   FROM pg_catalog.pg_constraint, pg_catalog.pg_partition_ancestors('t4')

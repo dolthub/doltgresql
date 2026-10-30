@@ -177,6 +177,11 @@ func TestMerge(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "23505",
+						Query:           "INSERT INTO t1 VALUES (100, 2)",
+					},
+
 					// make sure the unique constraint is still there
 					Query:       "INSERT INTO t1 VALUES (100, 2)",
 					ExpectedErr: "unique key",

@@ -694,6 +694,11 @@ func TestSequences(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42P01",
+						Query:           "SELECT nextval('test_pk_seq');",
+					},
+
 					Query:       "SELECT nextval('test_pk_seq');",
 					ExpectedErr: `sequence "test_pk_seq" does not exist`,
 				},

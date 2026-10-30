@@ -54,6 +54,11 @@ func TestGettingStartedGuide(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"t"}},
+						Query:    "select (dolt_commit('-m', 'Created initial schema')::text ~ '^[0-9a-f]{64}$');",
+					},
+
 					Query:    "select length(dolt_commit('-m', 'Created initial schema')::text);",
 					Expected: []sql.Row{{32}},
 				},
@@ -71,6 +76,11 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{1}},
+						Query:    "SELECT count(*) FROM dolt.log WHERE message='Created initial schema'",
+					},
+
 					Query:    "select count(*) from dolt.log;",
 					Expected: []sql.Row{{3}},
 				},
@@ -123,6 +133,11 @@ func TestGettingStartedGuide(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"t"}},
+						Query:    "select (dolt_commit('-am', 'Populated tables with data')::text ~ '^[0-9a-f]{64}$');",
+					},
+
 					Query:    "select length(dolt_commit('-am', 'Populated tables with data')::text);",
 					Expected: []sql.Row{{32}},
 				},
@@ -131,6 +146,11 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"Created initial schema"}, {"Populated tables with data"}},
+						Query:    "SELECT message FROM dolt.log WHERE message IN ('Created initial schema','Populated tables with data') ORDER BY message",
+					},
+
 					Query: "select message from dolt.log;",
 					Expected: []sql.Row{
 						{"Populated tables with data"},
@@ -194,6 +214,11 @@ func TestGettingStartedGuide(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"t"}},
+						Query:    "select (dolt_commit('-am', 'Modifications on a branch')::text ~ '^[0-9a-f]{64}$');",
+					},
+
 					Query:    "select length(dolt_commit('-am', 'Modifications on a branch')::text);",
 					Expected: []sql.Row{{32}},
 				},

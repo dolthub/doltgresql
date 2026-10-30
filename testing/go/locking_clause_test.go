@@ -34,6 +34,7 @@ func TestLockingClauses(t *testing.T) {
 				{
 					Query:       "SELECT 1 FOR UPDATE",
 					ExpectedErr: "locking clauses are not yet supported",
+					Postgres:    &ScriptTestAssertion{Expected: []sql.Row{{1}}},
 				},
 			},
 		},

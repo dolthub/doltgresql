@@ -4801,14 +4801,34 @@ var enumTypeTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				Postgres: &ScriptTestAssertion{
+					Expected: []sql.Row{},
+					Query:    `DROP TYPE mood, empty_enum;`,
+				},
+
 				Query:       `DROP TYPE mood, empty_enum;`,
 				ExpectedErr: `dropping multiple types in DROP TYPE is not yet supported`,
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "42704",
+					Query:           `DROP TYPE empty_enum;`,
+				},
+
 				Query:    `DROP TYPE empty_enum;`,
 				Expected: []sql.Row{},
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42704",
+						Query:           `DROP TYPE empty_enum;`,
+					},
+
+					ExpectedErrCode: "42704",
+					Query:           `DROP TYPE empty_enum;`,
+				},
+
 				Query:       `DROP TYPE empty_enum;`,
 				ExpectedErr: `type "empty_enum" does not exist`,
 			},
@@ -4817,6 +4837,11 @@ var enumTypeTests = []ScriptTest{
 				Expected: []sql.Row{},
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "42704",
+					Query:           `DROP TYPE _mood;`,
+				},
+
 				Query:       `DROP TYPE _mood;`,
 				ExpectedErr: `cannot drop type mood[] because type mood requires it`,
 			},
@@ -4954,6 +4979,12 @@ func TestCompositeTypes(t *testing.T) {
 			Name: "composite type as subquery alias",
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected:         []sql.Row{{"session_stats", `{"Active":1,"Idle":0,"Total":1}`}},
+						ExpectedColNames: []string{"chart_name", "chart_data"},
+						Query:            "SELECT 'session_stats' AS chart_name,\n       \t\t\t\t\t\tpg_catalog.Row_to_json(t) AS chart_data FROM (\n\t\t\t\t\t\t\tSELECT\n\t\t\t\t\t\t\t\t (\n\t\t\t\t\t\t\t\t\tSELECT Count(*)\n\t\t\t\t\t\t\t\t\tFROM   pg_catalog.pg_stat_activity WHERE pid=pg_backend_pid()) AS \"Total\",\n\t\t\t\t\t\t\t\t (\n\t\t\t\t\t\t\t\t\tSELECT Count(*)\n\t\t\t\t\t\t\t\t\tFROM   pg_catalog.pg_stat_activity\n\t\t\t\t\t\t\t\t\tWHERE pid=pg_backend_pid() AND state='active') AS \"Active\",\n\t\t\t\t\t\t\t\t (\n\t\t\t\t\t\t\t\t\tSELECT Count(*)\n\t\t\t\t\t\t\t\t\tFROM   pg_catalog.pg_stat_activity\n                            \t\tWHERE pid=pg_backend_pid() AND state='idle') AS \"Idle\" ) t;",
+					},
+
 					Query: `SELECT 'session_stats' AS chart_name,
        						pg_catalog.Row_to_json(t) AS chart_data FROM (
 							SELECT

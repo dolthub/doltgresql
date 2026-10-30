@@ -235,6 +235,7 @@ func TestBeginIsolationLevel(t *testing.T) {
 				},
 				{
 					Query:    "INSERT INTO test VALUES (1)",
+					Postgres: &ScriptTestAssertion{ExpectedErrCode: "25006"},
 					Expected: []sql.Row{},
 				},
 				{
@@ -243,6 +244,7 @@ func TestBeginIsolationLevel(t *testing.T) {
 				},
 				{
 					Query:    "SELECT * FROM test",
+					Postgres: &ScriptTestAssertion{Expected: []sql.Row{}},
 					Expected: []sql.Row{{1}},
 				},
 			},
@@ -270,6 +272,11 @@ func TestBeginIsolationLevel(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "25006",
+						Query:           "INSERT INTO test_rollback VALUES (1)",
+					},
+
 					Query:       "INSERT INTO test_rollback VALUES (1)",
 					ExpectedErr: "READ ONLY",
 				},
@@ -348,6 +355,11 @@ func TestSessionStateAfterQueryError(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42883",
+						Query:           "SELECT doesnotexist()",
+					},
+
 					Query:       "SELECT doesnotexist()",
 					ExpectedErr: "'doesnotexist' not found",
 				},

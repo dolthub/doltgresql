@@ -28,7 +28,11 @@ func TestPreparedStatements(t *testing.T) {
 }
 
 func TestPreparedPgCatalog(t *testing.T) {
-	RunScripts(t, pgCatalogTests)
+	scripts := append([]ScriptTest(nil), pgCatalogTests...)
+	for i := range scripts {
+		scripts[i].Postgres = &ScriptTest{SetUpScript: scripts[i].SetUpScript, Assertions: nativePreparedCatalog[scripts[i].Name]}
+	}
+	RunScripts(t, scripts)
 }
 
 var preparedStatementTests = []ScriptTest{
@@ -67,11 +71,23 @@ var preparedStatementTests = []ScriptTest{
 				Expected: []sql.Row{{"t"}},
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					BindVars: []any{1},
+					Expected: []sql.Row{{"information_schema"}},
+					Query:    "SELECT nspname FROM pg_namespace WHERE nspname IN ('information_schema','pg_catalog','public') ORDER BY nspname LIMIT $1",
+				},
+
 				Query:    "SELECT nspname FROM pg_namespace LIMIT $1;",
 				BindVars: []any{1},
 				Expected: []sql.Row{{"dolt"}},
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					BindVars: []any{1},
+					Expected: []sql.Row{{"pg_catalog"}, {"public"}},
+					Query:    "SELECT nspname FROM pg_namespace WHERE nspname IN ('information_schema','pg_catalog','public') ORDER BY nspname OFFSET $1",
+				},
+
 				Query:    "SELECT nspname FROM pg_namespace OFFSET $1;",
 				BindVars: []any{1},
 				Expected: []sql.Row{
@@ -1207,6 +1223,12 @@ var preparedStatementTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				Postgres: &ScriptTestAssertion{
+					BindVars: []any{"test_view"},
+					Expected: []sql.Row{{" SELECT name\n   FROM test;"}},
+					Query:    `select pg_get_viewdef($1::regclass);`,
+				},
+
 				Query:    `select pg_get_viewdef($1::regclass);`,
 				BindVars: []any{"test_view"},
 				Expected: []sql.Row{{"SELECT name FROM test"}},
@@ -1341,6 +1363,12 @@ var preparedStatementTests = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				Postgres: &ScriptTestAssertion{
+					BindVars:        []any{1},
+					ExpectedErrCode: "42883",
+					Query:           "SELECT * FROM text_test where fullname = $1 and id = $1",
+				},
+
 				Query:       "SELECT * FROM text_test where fullname = $1 and id = $1",
 				BindVars:    []any{1},
 				ExpectedErr: "parameter v1 is used for incompatible types: text and integer",
@@ -1545,4 +1573,24 @@ func RunScriptN(t *testing.T, script ScriptTest, n int) {
 			runScript(t, ctx, ScriptTest{Assertions: script.Assertions}, conn, true)
 		})
 	}
+}
+
+// Verify identities and catalog relationships without assuming a server's OID allocation.
+var nativePreparedCatalog = map[string][]ScriptTestAssertion{
+	"pg_namespace": {
+		{Query: "SELECT oid=$1::text::regnamespace, nspname, nspowner=(SELECT oid FROM pg_roles WHERE rolname=current_user), nspacl FROM pg_namespace WHERE nspname=$1", BindVars: []any{"testschema"}, Expected: []sql.Row{{"t", "testschema", "t", nil}}},
+		{Query: "SELECT nspname FROM pg_namespace WHERE oid=$1::text::regnamespace", BindVars: []any{"testschema"}, Expected: []sql.Row{{"testschema"}}},
+	},
+	"pg_tables": {
+		{Query: "SELECT schemaname, tablename, tableowner=current_user, hasindexes, hasrules, hastriggers, rowsecurity FROM pg_tables WHERE tablename=$1", BindVars: []any{"testing"}, Expected: []sql.Row{{"public", "testing", "t", "t", "f", "f", "f"}}},
+		{Query: "SELECT tablename FROM pg_tables WHERE schemaname=$1 AND tablename IN ('pg_class','pg_type') ORDER BY tablename", BindVars: []any{"pg_catalog"}, Expected: []sql.Row{{"pg_class"}, {"pg_type"}}},
+	},
+	"pg_class": {
+		{Query: "SELECT DISTINCT relnamespace=$1::text::regnamespace FROM pg_class c JOIN pg_namespace n ON c.relnamespace=n.oid WHERE n.nspname=$1", BindVars: []any{"testschema"}, Expected: []sql.Row{{"t"}}},
+		{Query: "SELECT c.oid='testschema.testtable'::regclass, pg_get_expr(c.relpartbound,c.oid), pg_get_partkeydef(c.oid) FROM pg_class c WHERE c.relnamespace=$1::text::regnamespace AND c.relkind='r'", BindVars: []any{"testschema"}, Expected: []sql.Row{{"t", nil, nil}}},
+		{Query: "SELECT c.oid='testschema.testtable'::regclass, d.description, pg_get_expr(c.relpartbound,c.oid), pg_get_partkeydef(c.oid) FROM pg_class c LEFT JOIN pg_description d ON d.objoid=c.oid AND d.objsubid=0 AND d.classoid='pg_class'::regclass WHERE c.relnamespace=$1::text::regnamespace AND c.relkind='r'", BindVars: []any{"testschema"}, Expected: []sql.Row{{"t", nil, nil, nil}}},
+		{Query: "SELECT d.description FROM pg_description d WHERE d.classoid='pg_class'::regclass AND d.objoid='testschema.testtable'::regclass", Expected: []sql.Row{}},
+		{Query: "SELECT relname, pg_total_relation_size(oid)>=pg_relation_size(oid), pg_relation_size(oid)>=0 FROM pg_class WHERE relnamespace=$1::text::regnamespace AND relkind IN ('r','i') ORDER BY relname", BindVars: []any{"testschema"}, Expected: []sql.Row{{"testtable", "t", "t"}, {"testtable_pkey", "t", "t"}}},
+		{Query: "SELECT c.relname, a.attrelid=$1::regclass, a.attname, a.atttypid::regtype::text, pg_get_expr(ad.adbin,ad.adrelid), col_description(a.attrelid,a.attnum) FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid LEFT JOIN pg_attrdef ad ON ad.adrelid=a.attrelid AND ad.adnum=a.attnum WHERE a.attrelid=$1::regclass AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum", BindVars: []any{"testschema.testtable"}, Expected: []sql.Row{{"testtable", "t", "id", "integer", nil, nil}, {"testtable", "t", "v1", "text", nil, nil}}},
+	},
 }

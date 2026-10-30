@@ -356,6 +356,11 @@ func TestDropTableCascade(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42P01",
+						Query:           `SELECT nextval('test_pk_seq');`,
+					},
+
 					// The sequence backing the SERIAL column was dropped along with the table
 					Query:       `SELECT nextval('test_pk_seq');`,
 					ExpectedErr: "does not exist",
@@ -492,6 +497,11 @@ func TestDropTableCascade(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42883",
+						Query:           `SELECT dependent_func(NULL);`,
+					},
+
 					Query:       `SELECT dependent_func(NULL);`,
 					ExpectedErr: "not found",
 				},

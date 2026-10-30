@@ -424,6 +424,11 @@ var SchemaTests = []ScriptTest{
 		Name: "create schema invalid names",
 		Assertions: []ScriptTestAssertion{
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "42601",
+					Query:           `create schema ""`,
+				},
+
 				Query:       `create schema ""`,
 				ExpectedErr: "cannot be empty",
 			},
@@ -441,6 +446,11 @@ var SchemaTests = []ScriptTest{
 				Query: "create schema mySchema",
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "42P06",
+					Query:           "create schema MYSCHEMA",
+				},
+
 				Query:       "create schema MYSCHEMA",
 				ExpectedErr: "can't create schema myschema; schema exists",
 			},
@@ -543,6 +553,11 @@ var SchemaTests = []ScriptTest{
 				Query: "CREATE TABLE mySchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "3F000",
+					Query:           "CREATE TABLE otherSchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
+				},
+
 				Query:       "CREATE TABLE otherSchema.test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
 				ExpectedErr: "database schema not found",
 			},

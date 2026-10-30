@@ -22,6 +22,15 @@ func TestSubqueries(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{
+							{1, 2},
+							{2, 2},
+							{3, 2},
+						},
+						Query: "SELECT *, (SELECT id from test where id = 2) FROM test order by test.id;",
+					},
+
 					Query: `SELECT *, (SELECT id from test where id = 2) FROM test order by id;`,
 					Expected: []sql.Row{
 						{1, 2},
@@ -30,6 +39,15 @@ func TestSubqueries(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{
+							{1, 1},
+							{2, 2},
+							{3, 3},
+						},
+						Query: "SELECT *, (SELECT id from test t2 where t2.id = test.id) FROM test order by test.id;",
+					},
+
 					Query: `SELECT *, (SELECT id from test t2 where t2.id = test.id) FROM test order by id;`,
 					Expected: []sql.Row{
 						{1, 1},
@@ -142,6 +160,11 @@ func TestSubqueries(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42601",
+						Query:           `SELECT ARRAY(SELECT id, id FROM test order by 1);`,
+					},
+
 					Query:       `SELECT ARRAY(SELECT id, id FROM test order by 1);`,
 					ExpectedErr: "only a single column subquery is supported",
 				},
@@ -280,6 +303,11 @@ func TestExistSubquery(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"a", "b"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM a WHERE EXISTS (SELECT 1 FROM b WHERE a.x = b.x);",
+					},
+
 					Query: `EXPLAIN SELECT * FROM a WHERE EXISTS (SELECT 1 FROM b WHERE a.x = b.x);`,
 					Expected: []sql.Row{
 						{"SemiJoin"},
@@ -299,6 +327,11 @@ func TestExistSubquery(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedPlanRelations: []string{"a", "b"},
+						Query:                 "EXPLAIN (FORMAT JSON) SELECT * FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE a.x = b.x);",
+					},
+
 					Query: `EXPLAIN SELECT * FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE a.x = b.x);`,
 					Expected: []sql.Row{
 						{"Project"},

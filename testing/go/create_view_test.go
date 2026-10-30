@@ -384,26 +384,52 @@ var createViewStmts = []ScriptTest{
 		},
 		Assertions: []ScriptTestAssertion{
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "42P17",
+					Query:           "SELECT * FROM cyc_v2;",
+				},
+
 				Query:           "SELECT * FROM cyc_v2;",
 				ExpectedErr:     "`cyc_v2` contains view recursion",
 				ExpectedErrCode: "42P17",
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "42P17",
+					Query:           "SELECT * FROM cyc_v3;",
+				},
+
 				Query:           "SELECT * FROM cyc_v3;",
 				ExpectedErr:     "`cyc_v3` contains view recursion",
 				ExpectedErrCode: "42P17",
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "42P17",
+					Query:           "SELECT * FROM (SELECT * FROM cyc_v3) sq;",
+				},
+
 				Query:           "SELECT * FROM (SELECT * FROM cyc_v3) sq;",
 				ExpectedErr:     "`cyc_v3` contains view recursion",
 				ExpectedErrCode: "42P17",
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "42P17",
+					Query:           "SELECT * FROM cyc_self;",
+				},
+
 				Query:           "SELECT * FROM cyc_self;",
 				ExpectedErr:     "`cyc_self` contains view recursion",
 				ExpectedErrCode: "42P17",
 			},
 			{
+				Postgres: &ScriptTestAssertion{
+					ExpectedErrCode: "42P17",
+					Query:           "SELECT * FROM cyc_v2;",
+					Skip:            true,
+				},
+
 				Skip:            true, // TODO: view recursion returns GMS' error message instead of Postgres'
 				Query:           "SELECT * FROM cyc_v2;",
 				ExpectedErr:     `infinite recursion detected in rules for relation "cyc_v2"`,

@@ -647,6 +647,11 @@ END; $$;`,
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{nil}},
+						Query:    `SELECT f_unassigned_whole();`,
+					},
+
 					Query:       `SELECT f_unassigned_whole();`,
 					ExpectedErr: `record "r" is not assigned yet`,
 				},

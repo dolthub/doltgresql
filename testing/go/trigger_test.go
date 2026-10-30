@@ -1392,11 +1392,22 @@ func TestTriggerWholeRecordReference(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected:        []sql.Row{},
+						ExpectedNotices: []ExpectedNotice{{Severity: "NOTICE", Message: `row: (1,"a,b""c",t)`}},
+						Query:           `INSERT INTO test VALUES (1, 'a,b"c', true);`,
+					},
+
 					Query:           `INSERT INTO test VALUES (1, 'a,b"c', true);`,
 					Expected:        []sql.Row{},
 					ExpectedNotices: []ExpectedNotice{{Severity: "NOTICE", Message: `row: (1,"a,b\"c",t)`}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{`(1,"a,b""c",t)`}},
+						Query:    "SELECT t FROM log ORDER BY id;",
+					},
+
 					Query:    "SELECT t FROM log ORDER BY id;",
 					Expected: []sql.Row{{`(1,"a,b\"c",t)`}},
 				},
@@ -1554,6 +1565,11 @@ func TestTriggerWholeRecordReference(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{nil, `{"pk": 1, "v1": "hi"}`}, {`{"pk": 1, "v1": "hi"}`, nil}},
+						Query:    "SELECT o, n FROM log ORDER BY id;",
+					},
+
 					// TODO: PostgreSQL leaves OLD unassigned for an INSERT and NEW for a DELETE, so
 					//  neither yields an object of NULL fields there. Triggers here give both records
 					//  the table's shape whatever the operation; see TriggerCall.

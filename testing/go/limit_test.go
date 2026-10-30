@@ -30,15 +30,31 @@ func TestLimitOffset(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{1, 1}, {2, 2}},
+						Query:    "SELECT * FROM t ORDER BY i LIMIT 2",
+					},
+
 					Query:    `SELECT * FROM t LIMIT 2`,
 					Expected: []sql.Row{{1, 1}, {2, 2}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						BindVars: []interface{}{int64(2)},
+						Expected: []sql.Row{{1, 1}, {2, 2}},
+						Query:    "SELECT * FROM t ORDER BY i LIMIT $1",
+					},
+
 					Query:    `SELECT * FROM t LIMIT $1`,
 					BindVars: []interface{}{int64(2)},
 					Expected: []sql.Row{{1, 1}, {2, 2}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{3, 3}, {4, 4}},
+						Query:    "SELECT * FROM t ORDER BY i LIMIT 2 OFFSET 2",
+					},
+
 					Query:    `SELECT * FROM t LIMIT 2 OFFSET 2`,
 					Expected: []sql.Row{{3, 3}, {4, 4}},
 				},

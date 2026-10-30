@@ -102,6 +102,10 @@ func TestInsert(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Query: "INSERT INTO mytable (ID, naME) VALUES (1, 'hello') ON CONFLICT (id) DO UPDATE set name = concat('new', mytable.name)",
+					},
+
 					Query: "INSERT INTO mytable (ID, naME) VALUES (1, 'hello') ON CONFLICT (id) DO UPDATE set name = concat('new', name)",
 				},
 				{
@@ -116,14 +120,29 @@ func TestInsert(t *testing.T) {
 					SkipResultsCheck: true,
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Query:            "INSERT INTO t2 (id, c1, c2) VALUES (1, 'hello', 'world') ON CONFLICT (id) DO UPDATE SET c1 = 'conflict', c2 = t2.c1",
+						SkipResultsCheck: true,
+					},
+
 					Query:            "INSERT INTO t2 (id, c1, c2) VALUES (1, 'hello', 'world') ON CONFLICT (id) DO UPDATE SET c1 = 'conflict', c2 = c1",
 					SkipResultsCheck: true,
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Query:            "INSERT INTO t2 (id, c1, c2) VALUES (2, 'hello', 'world') ON CONFLICT (id) DO UPDATE SET c2 = t2.c1",
+						SkipResultsCheck: true,
+					},
+
 					Query:            "INSERT INTO t2 (id, c1, c2) VALUES (2, 'hello', 'world') ON CONFLICT (id) DO UPDATE SET c2 = c1",
 					SkipResultsCheck: true,
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{1, "conflict", "hello"}, {2, "world", "world"}},
+						Query:    "SELECT * FROM t2 order by id",
+					},
+
 					Query: "SELECT * FROM t2 order by id",
 					Expected: []sql.Row{
 						{1, "conflict", "conflict"},
@@ -588,6 +607,11 @@ ON CONFLICT (id) do update set c1 = $4`,
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42703",
+						Query:           "INSERT INTO t (j) VALUES (5), (6), (7) RETURNING i, doesnotexist",
+					},
+
 					Query:       "INSERT INTO t (j) VALUES (5), (6), (7) RETURNING i, doesnotexist",
 					ExpectedErr: "could not be found",
 				},

@@ -104,11 +104,21 @@ func TestXmlFunctions(t *testing.T) {
 					Expected: []sql.Row{{nil, nil, nil}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "10608",
+						Query:           "SELECT xpath('', '<a>x</a>'::xml);",
+					},
+
 					Query:           "SELECT xpath('', '<a>x</a>'::xml);",
 					ExpectedErr:     "empty XPath expression",
 					ExpectedErrCode: "22000",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "10608",
+						Query:           "SELECT xpath('/a[', '<a>x</a>'::xml);",
+					},
+
 					Query:           "SELECT xpath('/a[', '<a>x</a>'::xml);",
 					ExpectedErr:     "invalid XPath expression",
 					ExpectedErrCode: "XX000",
@@ -176,6 +186,11 @@ func TestXmlFunctions(t *testing.T) {
 					ExpectedErrCode: "2200M",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "10608",
+						Query:           "SELECT xpath_exists('/a[', '<a/>'::xml);",
+					},
+
 					Query:           "SELECT xpath_exists('/a[', '<a/>'::xml);",
 					ExpectedErr:     "invalid XPath expression",
 					ExpectedErrCode: "XX000",
@@ -414,6 +429,11 @@ func TestXmlFunctions(t *testing.T) {
 					ExpectedColNames: []string{"xmlforest"},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{nil, "<a>1</a><a>2</a>", "<a>a&lt;b</a>", "<A_x0020_b>1</A_x0020_b>"}},
+						Query:    `SELECT xmlforest(NULL AS c), xmlforest(1 AS a, 2 AS a), xmlforest('a<b' AS a), xmlforest(1 AS "A b");`,
+					},
+
 					Query:    `SELECT xmlforest(NULL AS c), xmlforest(1 AS a, 2 AS a), xmlforest('a<b' AS a), xmlforest(1 AS "A b");`,
 					Expected: []sql.Row{{"", "<a>1</a><a>2</a>", "<a>a&lt;b</a>", "<A_x0020_b>1</A_x0020_b>"}},
 				},
@@ -458,11 +478,21 @@ func TestXmlFunctions(t *testing.T) {
 					ExpectedErrCode: "2200T",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "2200T",
+						Query:           "SELECT xmlpi(NAME xml, 'x');",
+					},
+
 					Query:           "SELECT xmlpi(NAME xml, 'x');",
 					ExpectedErr:     "invalid XML processing instruction",
 					ExpectedErrCode: "42601",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "2200T",
+						Query:           `SELECT xmlpi(NAME "xMl");`,
+					},
+
 					Query:           `SELECT xmlpi(NAME "xMl");`,
 					ExpectedErr:     "invalid XML processing instruction",
 					ExpectedErrCode: "42601",
@@ -521,6 +551,11 @@ func TestXmlFunctions(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "10608",
+						Query:           "SELECT xmlexists('' PASSING '<a/>');",
+					},
+
 					Query:           "SELECT xmlexists('' PASSING '<a/>');",
 					ExpectedErr:     "empty XPath expression",
 					ExpectedErrCode: "22000",
@@ -869,11 +904,21 @@ func TestXmlFunctions(t *testing.T) {
 					ExpectedErrCode: "2200M",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "10608",
+						Query:           "SELECT * FROM XMLTABLE('/r/[' PASSING '<r/>' COLUMNS id int PATH '@id');",
+					},
+
 					Query:           "SELECT * FROM XMLTABLE('/r/[' PASSING '<r/>' COLUMNS id int PATH '@id');",
 					ExpectedErr:     "invalid XPath expression",
 					ExpectedErrCode: "42601",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "10608",
+						Query:           "SELECT * FROM XMLTABLE('/r' PASSING '<r/>' COLUMNS id int PATH '@[');",
+					},
+
 					Query:           "SELECT * FROM XMLTABLE('/r' PASSING '<r/>' COLUMNS id int PATH '@[');",
 					ExpectedErr:     "invalid XPath expression",
 					ExpectedErrCode: "22000",
@@ -889,6 +934,11 @@ func TestXmlFunctions(t *testing.T) {
 					ExpectedErrCode: "22004",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "10608",
+						Query:           "SELECT * FROM XMLTABLE('' PASSING '<r/>' COLUMNS n xml PATH '.');",
+					},
+
 					Query:           "SELECT * FROM XMLTABLE('' PASSING '<r/>' COLUMNS n xml PATH '.');",
 					ExpectedErr:     "row path filter must not be empty string",
 					ExpectedErrCode: "22000",
@@ -944,6 +994,11 @@ func TestXmlFunctions(t *testing.T) {
 					ExpectedErrCode: "22004",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "10608",
+						Query:           "SELECT * FROM XMLTABLE('/r' PASSING '<r/>' COLUMNS n text PATH '');",
+					},
+
 					Query:           "SELECT * FROM XMLTABLE('/r' PASSING '<r/>' COLUMNS n text PATH '');",
 					ExpectedErr:     "column path filter must not be empty string",
 					ExpectedErrCode: "22000",

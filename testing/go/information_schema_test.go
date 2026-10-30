@@ -428,6 +428,13 @@ func TestInfoSchemaColumns(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{
+							{"information_schema"}, {"pg_catalog"}, {"public"},
+						},
+						Query: "SELECT DISTINCT table_schema FROM information_schema.columns WHERE table_schema <> 'dolt' ORDER BY table_schema;",
+					},
+
 					Query: `SELECT DISTINCT table_schema FROM information_schema.columns ORDER BY table_schema;`,
 					Expected: []sql.Row{
 						{"information_schema"}, {"pg_catalog"}, {"public"},
@@ -475,6 +482,13 @@ func TestInfoSchemaColumns(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{
+							{"information_schema"}, {"pg_catalog"}, {"public"}, {"test_schema"},
+						},
+						Query: "SELECT DISTINCT table_schema FROM information_schema.columns WHERE table_schema <> 'dolt' order by table_schema;",
+					},
+
 					Query: `SELECT DISTINCT table_schema FROM information_schema.columns order by table_schema;`,
 					Expected: []sql.Row{
 						{"information_schema"}, {"pg_catalog"}, {"public"}, {"test_schema"},
@@ -716,6 +730,11 @@ func TestInfoSchemaSchemata(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"newdb", "information_schema"}, {"newdb", "pg_catalog"}, {"newdb", "public"}, {"newdb", "test_schema"}},
+						Query:    "SELECT catalog_name, schema_name FROM information_schema.schemata WHERE schema_name IN ('information_schema','pg_catalog','public','test_schema') ORDER BY schema_name",
+					},
+
 					Query: `SELECT catalog_name, schema_name FROM information_schema.schemata order by schema_name;`,
 					Expected: []sql.Row{
 						{"newdb", "dolt"},
@@ -726,6 +745,11 @@ func TestInfoSchemaSchemata(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"newdb", "information_schema", "t", nil, nil, nil, nil}, {"newdb", "pg_catalog", "t", nil, nil, nil, nil}, {"newdb", "public", "t", nil, nil, nil, nil}, {"newdb", "test_schema", "t", nil, nil, nil, nil}},
+						Query:    "SELECT catalog_name, schema_name, schema_owner=CASE WHEN schema_name='public' THEN 'pg_database_owner' ELSE current_user END, default_character_set_catalog, default_character_set_schema, default_character_set_name, sql_path FROM information_schema.schemata WHERE schema_name IN ('information_schema','pg_catalog','public','test_schema') ORDER BY schema_name",
+					},
+
 					Query: `SELECT * FROM information_schema.schemata order by schema_name;`,
 					Expected: []sql.Row{
 						{"newdb", "dolt", "", nil, nil, nil, nil},
@@ -861,7 +885,8 @@ func TestInfoSchemaViews(t *testing.T) {
 					},
 
 					// Native information_schema includes system views and exposes real view columns/definitions.
-					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"information_schema"}, {"pg_catalog"}, {"public"}}},
+					Postgres: &ScriptTestAssertion{Query: "SELECT DISTINCT table_schema FROM information_schema.views WHERE table_schema <> 'dolt' ORDER BY table_schema;",
+						Expected: []sql.Row{{"information_schema"}, {"pg_catalog"}, {"public"}}},
 				},
 				{
 					Query: `SELECT table_catalog, table_schema FROM information_schema.views group by table_catalog, table_schema order by table_schema;`,
@@ -870,7 +895,7 @@ func TestInfoSchemaViews(t *testing.T) {
 					},
 
 					// Native information_schema includes system views and exposes real view columns/definitions.
-					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"postgres", "information_schema"}, {"postgres", "pg_catalog"}, {"postgres", "public"}}},
+					Postgres: &ScriptTestAssertion{Query: "SELECT table_catalog, table_schema FROM information_schema.views WHERE table_schema <> 'dolt' GROUP BY table_catalog, table_schema ORDER BY table_schema", Expected: []sql.Row{{"postgres", "information_schema"}, {"postgres", "pg_catalog"}, {"postgres", "public"}}},
 				},
 				{
 					Query: `SELECT table_catalog, table_schema, table_name FROM information_schema.views WHERE table_schema='public';`,
@@ -902,7 +927,8 @@ func TestInfoSchemaViews(t *testing.T) {
 					},
 
 					// Native information_schema includes system views and exposes real view columns/definitions.
-					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"information_schema"}, {"pg_catalog"}, {"public"}, {"test_schema"}}},
+					Postgres: &ScriptTestAssertion{Query: "SELECT DISTINCT table_schema FROM information_schema.views WHERE table_schema <> 'dolt' ORDER BY table_schema;",
+						Expected: []sql.Row{{"information_schema"}, {"pg_catalog"}, {"public"}, {"test_schema"}}},
 				},
 				{
 					Query: `SELECT table_catalog, table_schema FROM information_schema.views group by table_catalog, table_schema order by table_schema;`,
@@ -912,7 +938,7 @@ func TestInfoSchemaViews(t *testing.T) {
 					},
 
 					// Native information_schema includes system views and exposes real view columns/definitions.
-					Postgres: &ScriptTestAssertion{Expected: []sql.Row{{"postgres", "information_schema"}, {"postgres", "pg_catalog"}, {"postgres", "public"}, {"postgres", "test_schema"}}},
+					Postgres: &ScriptTestAssertion{Query: "SELECT table_catalog, table_schema FROM information_schema.views WHERE table_schema <> 'dolt' GROUP BY table_catalog, table_schema ORDER BY table_schema", Expected: []sql.Row{{"postgres", "information_schema"}, {"postgres", "pg_catalog"}, {"postgres", "public"}, {"postgres", "test_schema"}}},
 				},
 				{
 					Query: `SELECT table_catalog, table_schema, table_name FROM information_schema.views WHERE table_schema='test_schema';`,

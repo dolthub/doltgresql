@@ -63,10 +63,20 @@ $$ LANGUAGE plpgsql;`,
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42883",
+						Query:           "SELECT func1();",
+					},
+
 					Query:       "SELECT func1();",
 					ExpectedErr: "not found",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42883",
+						Query:           "SELECT func2(99);",
+					},
+
 					Query:       "SELECT func2(99);",
 					ExpectedErr: "not found",
 				},
@@ -150,6 +160,11 @@ $$ LANGUAGE plpgsql;`,
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42883",
+						Query:           "SELECT func1();",
+					},
+
 					Query:       "SELECT func1();",
 					ExpectedErr: "not found",
 				},
@@ -158,6 +173,11 @@ $$ LANGUAGE plpgsql;`,
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42883",
+						Query:           "SELECT func2('w00t');",
+					},
+
 					Query:       "SELECT func2('w00t');",
 					ExpectedErr: "not found",
 				},
@@ -193,6 +213,11 @@ $$ LANGUAGE plpgsql;`},
 					ExpectedErr: "is not unique",
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42725",
+						Query:           "DROP FUNCTION func3;",
+					},
+
 					Query:    "DROP FUNCTION func3;",
 					Expected: []sql.Row{},
 				},
@@ -254,6 +279,7 @@ $$ LANGUAGE plpgsql;`,
 					ExpectedErr: "does not exist",
 				},
 				{
+
 					Query:    "SELECT func2(42);",
 					Expected: []sql.Row{{"func2(INT)"}},
 				},
@@ -262,6 +288,11 @@ $$ LANGUAGE plpgsql;`,
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42883",
+						Query:           "SELECT func2(42);",
+					},
+
 					Query:       "SELECT func2(42);",
 					ExpectedErr: "not found",
 				},
