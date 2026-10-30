@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -389,7 +390,8 @@ func TestForeignKeys(t *testing.T) {
 						Query: "insert into child values (2, 1)",
 					},
 					{
-						Query:           "insert into child values (2, 2)",
+						// Use a new primary key so this tests only the foreign key.
+						Query:           "insert into child values (3, 2)",
 						ExpectedErrCode: "23503",
 					},
 					{
@@ -2203,4 +2205,127 @@ func TestBranchForeignKeyCatalog(t *testing.T) {
 			},
 		},
 	})
+}
+
+// Exercise operator-input coercion and cross-type index bounds independently of
+// Dolt's coercion rules. Both native targets must agree with PostgreSQL.
+func TestPostgresForeignKeyCoercions(t *testing.T) {
+	if testTarget(t) != targetPostgres && testTarget(t) != targetPostgresFork {
+		t.Skip("native PostgreSQL cross-type foreign key semantics")
+	}
+	cases := []struct{ name, parent, child, one, two, missing string }{
+		{
+			name:    "integer to double",
+			parent:  "double precision",
+			child:   "integer",
+			one:     "1",
+			two:     "2",
+			missing: "3",
+		},
+		{
+			name:    "bigint to numeric",
+			parent:  "numeric",
+			child:   "bigint",
+			one:     "1",
+			two:     "2",
+			missing: "3",
+		},
+		{
+			name:    "double to real",
+			parent:  "real",
+			child:   "double precision",
+			one:     "1",
+			two:     "2",
+			missing: "1.1",
+		},
+		{
+			name:    "real to double",
+			parent:  "double precision",
+			child:   "real",
+			one:     "1",
+			two:     "2",
+			missing: "3",
+		},
+		{
+			name:    "date to timestamp",
+			parent:  "timestamp",
+			child:   "date",
+			one:     "'2020-01-01'",
+			two:     "'2020-01-02'",
+			missing: "'2020-01-03'",
+		},
+		{
+			name:    "timestamp to date",
+			parent:  "date",
+			child:   "timestamp",
+			one:     "'2020-01-01'",
+			two:     "'2020-01-02'",
+			missing: "'2020-01-01 00:00:01'",
+		},
+		{
+			name:    "timestamp to timestamptz",
+			parent:  "timestamptz",
+			child:   "timestamp",
+			one:     "'2020-01-01'",
+			two:     "'2020-01-02'",
+			missing: "'2020-01-03'",
+		},
+		{
+			name:    "timestamptz to timestamp",
+			parent:  "timestamp",
+			child:   "timestamptz",
+			one:     "'2020-01-01'",
+			two:     "'2020-01-02'",
+			missing: "'2020-01-03'",
+		},
+		{
+			name:    "date to timestamptz",
+			parent:  "timestamptz",
+			child:   "date",
+			one:     "'2020-01-01'",
+			two:     "'2020-01-02'",
+			missing: "'2020-01-03'",
+		},
+		{
+			name:    "timestamptz to date",
+			parent:  "date",
+			child:   "timestamptz",
+			one:     "'2020-01-01'",
+			two:     "'2020-01-02'",
+			missing: "'2020-01-01 00:00:01'",
+		},
+		{
+			name:    "varchar to text",
+			parent:  "text",
+			child:   "varchar",
+			one:     "'one'",
+			two:     "'two'",
+			missing: "'missing'",
+		},
+	}
+	for _, c := range cases {
+		RunScripts(t, []ScriptTest{{
+			Name: c.name,
+			SetUpScript: []string{
+				"SET TIME ZONE 'America/New_York'",
+				"SET enable_seqscan=off",
+				fmt.Sprintf("CREATE TABLE parent(k %s PRIMARY KEY)", c.parent),
+				fmt.Sprintf("CREATE TABLE child(k %s REFERENCES parent(k) ON UPDATE CASCADE)", c.child),
+				"CREATE INDEX child_key ON child(k)",
+				fmt.Sprintf("INSERT INTO parent VALUES (%s)", c.one),
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: fmt.Sprintf("INSERT INTO child VALUES (%s)", c.one)},
+				{Query: "SELECT count(*) FROM child", Expected: []sql.Row{{1}}},
+				{Query: fmt.Sprintf("INSERT INTO child VALUES (%s)", c.missing), ExpectedErrCode: "23503"},
+				{Query: "DELETE FROM parent", ExpectedErrCode: "23503"},
+				{Query: fmt.Sprintf("UPDATE parent SET k=%s", c.two)},
+				{Query: fmt.Sprintf("SELECT count(*) FROM child WHERE k=%s", c.two), Expected: []sql.Row{{1}}},
+				{Query: fmt.Sprintf("UPDATE child SET k=%s", c.one), ExpectedErrCode: "23503"},
+				{Query: "DELETE FROM child"},
+				{Query: "DELETE FROM parent"},
+				{Query: "SELECT count(*) FROM parent", Expected: []sql.Row{{0}}},
+			},
+		}})
+	}
 }
