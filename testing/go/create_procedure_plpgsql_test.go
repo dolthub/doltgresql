@@ -200,8 +200,6 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -223,8 +221,6 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'updated func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'updated func')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "CALL interpreted_branch(56);",
@@ -287,8 +283,6 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -310,8 +304,6 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'another func')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'another func')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT dolt_checkout('main')",
@@ -337,8 +329,6 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'updated table')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'updated table')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT length(dolt_merge('other')::text) = 57;",
@@ -372,8 +362,6 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -390,8 +378,6 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -414,8 +400,6 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,

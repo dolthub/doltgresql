@@ -223,8 +223,6 @@ func TestDoltBranch(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT DOLT_BRANCH('original');",
@@ -241,8 +239,6 @@ func TestDoltBranch(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT DOLT_BRANCH('-c', 'main', 'copy');",
@@ -495,7 +491,7 @@ func TestDoltCherryPick(t *testing.T) {
 					Query:    `SELECT substring(DOLT_CHERRY_PICK('main')::text, 34);`,
 					Expected: []sql.Row{{",0,0,0)"}},
 					PostgresFork: &ScriptTestAssertion{
-						Query:    "SELECT DOLT_CHERRY_PICK('main')::text ~ '^[(][0-9a-f]{64},0,0,0[)]$';",
+						Query:    "SELECT DOLT_CHERRY_PICK('main')::text ~ '^[(][0-9a-v]{32},0,0,0[)]$';",
 						Expected: []sql.Row{{"t"}},
 					},
 				},
@@ -752,8 +748,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -800,8 +794,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -852,8 +844,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -878,8 +868,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-a', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-a', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
@@ -897,8 +885,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:       "SELECT DOLT_COMMIT('-m', 'should_error');",
@@ -911,8 +897,6 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT length(DOLT_COMMIT('--allow-empty', '-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(DOLT_COMMIT('--allow-empty', '-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 			},
 		},
@@ -2468,7 +2452,7 @@ func TestDoltRevert(t *testing.T) {
 					Query:    `SELECT substring(DOLT_REVERT('HEAD')::text, 34);`,
 					Expected: []sql.Row{{",0,0,0)"}},
 					PostgresFork: &ScriptTestAssertion{
-						Query:    "SELECT DOLT_REVERT('HEAD')::text ~ '^[(][0-9a-f]{64},0,0,0[)]$';",
+						Query:    "SELECT DOLT_REVERT('HEAD')::text ~ '^[(][0-9a-v]{32},0,0,0[)]$';",
 						Expected: []sql.Row{{"t"}},
 					},
 				},

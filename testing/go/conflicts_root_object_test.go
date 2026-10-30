@@ -39,8 +39,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -63,8 +61,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -97,8 +93,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -154,8 +148,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -178,8 +170,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -208,8 +198,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -269,8 +257,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -293,8 +279,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -323,8 +307,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -387,8 +369,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -411,8 +391,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -441,8 +419,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -505,8 +481,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -533,8 +507,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -567,8 +539,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -632,8 +602,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -650,8 +618,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -668,8 +634,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -717,8 +681,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -735,8 +697,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -753,8 +713,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -804,8 +762,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -822,8 +778,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -840,8 +794,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -891,8 +843,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -909,8 +859,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -927,8 +875,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -975,8 +921,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -993,8 +937,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -1011,8 +953,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -1060,8 +1000,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -1078,8 +1016,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -1096,8 +1032,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -1147,8 +1081,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -1169,8 +1101,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -1191,8 +1121,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,
@@ -1249,8 +1177,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('-b', 'other')`,
@@ -1271,8 +1197,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'other')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'other')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    `SELECT dolt_checkout('main')`,
@@ -1293,8 +1217,6 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query: `SELECT dolt_merge('other');`,

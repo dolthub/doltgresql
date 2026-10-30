@@ -1049,8 +1049,6 @@ func TestSequences(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-m', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT dolt_branch('other');",
@@ -1068,7 +1066,7 @@ func TestSequences(t *testing.T) {
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('--allow-empty', '-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('--allow-empty', '-m', 'next')::text) = 32;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT nextval('test');",
@@ -1157,8 +1155,6 @@ func TestSequences(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-Am', 'initial')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-Am', 'initial')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT dolt_branch('other');",
@@ -1171,8 +1167,6 @@ func TestSequences(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-am', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-am', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT dolt_checkout('other');",
@@ -1185,8 +1179,6 @@ func TestSequences(t *testing.T) {
 				{
 					Query:    "SELECT length(dolt_commit('-am', 'next2')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
-
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-am', 'next2')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT dolt_checkout('main');",

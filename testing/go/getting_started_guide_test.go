@@ -56,7 +56,7 @@ func TestGettingStartedGuide(t *testing.T) {
 				{
 					Postgres: &ScriptTestAssertion{
 						Expected: []sql.Row{{"t"}},
-						Query:    "select (dolt_commit('-m', 'Created initial schema')::text ~ '^[0-9a-f]{64}$');",
+						Query:    "select (dolt_commit('-m', 'Created initial schema')::text ~ '^[0-9a-v]{32}$');",
 					},
 
 					Query:    "select length(dolt_commit('-m', 'Created initial schema')::text);",
@@ -135,7 +135,7 @@ func TestGettingStartedGuide(t *testing.T) {
 				{
 					Postgres: &ScriptTestAssertion{
 						Expected: []sql.Row{{"t"}},
-						Query:    "select (dolt_commit('-am', 'Populated tables with data')::text ~ '^[0-9a-f]{64}$');",
+						Query:    "select (dolt_commit('-am', 'Populated tables with data')::text ~ '^[0-9a-v]{32}$');",
 					},
 
 					Query:    "select length(dolt_commit('-am', 'Populated tables with data')::text);",
@@ -216,7 +216,7 @@ func TestGettingStartedGuide(t *testing.T) {
 				{
 					Postgres: &ScriptTestAssertion{
 						Expected: []sql.Row{{"t"}},
-						Query:    "select (dolt_commit('-am', 'Modifications on a branch')::text ~ '^[0-9a-f]{64}$');",
+						Query:    "select (dolt_commit('-am', 'Modifications on a branch')::text ~ '^[0-9a-v]{32}$');",
 					},
 
 					Query:    "select length(dolt_commit('-am', 'Modifications on a branch')::text);",
