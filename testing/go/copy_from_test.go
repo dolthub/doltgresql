@@ -48,10 +48,13 @@ func (s fatalCopyMessage) runStep(r *messageFlowRunner) {
 	require.Empty(r.t, r.pending)
 	if s.extended {
 		r.send(&pgproto3.Parse{Query: "COPY test3 FROM STDIN"})
+		r.send(&pgproto3.Flush{})
 		require.IsType(r.t, &pgproto3.ParseComplete{}, r.receiveNext())
 		r.send(&pgproto3.Bind{})
+		r.send(&pgproto3.Flush{})
 		require.IsType(r.t, &pgproto3.BindComplete{}, r.receiveNext())
 		r.send(&pgproto3.Execute{})
+		r.send(&pgproto3.Flush{})
 	} else {
 		r.send(&pgproto3.Query{String: "COPY test3 FROM STDIN"})
 	}
@@ -63,7 +66,15 @@ func (s fatalCopyMessage) runStep(r *messageFlowRunner) {
 	require.True(r.t, ok, "expected ERROR response first")
 	require.Equal(r.t, "ERROR", first.Severity)
 	require.Equal(r.t, "08P01", first.Code)
-	require.Equal(r.t, "unexpected message during COPY from stdin", first.Message)
+	runTargetPair(r.t, func(t *testing.T, native bool) {
+		if native {
+			encoded, err := s.unexpected.Encode(nil)
+			require.NoError(t, err)
+			require.Equal(t, fmt.Sprintf("unexpected message type 0x%02X during COPY from stdin", encoded[0]), first.Message)
+		} else {
+			require.Equal(t, "unexpected message during COPY from stdin", first.Message)
+		}
+	})
 	second, ok := r.receiveNext().(*pgproto3.ErrorResponse)
 	require.True(r.t, ok, "expected FATAL response second")
 	require.Equal(r.t, "FATAL", second.Severity)
@@ -83,10 +94,13 @@ func (s extendedCopy) describe() string {
 func (s extendedCopy) runStep(r *messageFlowRunner) {
 	require.Empty(r.t, r.pending)
 	r.send(&pgproto3.Parse{Query: s.query})
+	r.send(&pgproto3.Flush{})
 	require.IsType(r.t, &pgproto3.ParseComplete{}, r.receiveNext())
 	r.send(&pgproto3.Bind{})
+	r.send(&pgproto3.Flush{})
 	require.IsType(r.t, &pgproto3.BindComplete{}, r.receiveNext())
 	r.send(&pgproto3.Execute{})
+	r.send(&pgproto3.Flush{})
 	require.IsType(r.t, &pgproto3.CopyInResponse{}, r.receiveNext())
 	for _, message := range s.input.BeforeData {
 		r.send(message)
@@ -99,6 +113,7 @@ func (s extendedCopy) runStep(r *messageFlowRunner) {
 	} else {
 		r.send(&pgproto3.CopyFail{Message: s.input.FailMessage})
 	}
+	r.send(&pgproto3.Flush{})
 	result := r.receiveNext()
 	if s.expectedErr != "" {
 		errResponse, ok := result.(*pgproto3.ErrorResponse)

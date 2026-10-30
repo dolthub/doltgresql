@@ -33,8 +33,8 @@ func TestExternalPostgresIsolation(t *testing.T) {
 		for i := 0; i < 2; i++ {
 			ctx, conn, controller := CreateServer(t, "isolated")
 			var count int
-			require.NoError(t, conn.Default.QueryRow(ctx, "SELECT count(*) FROM pg_dolt_ref").Scan(&count))
-			require.Zero(t, count)
+			require.NoError(t, conn.Default.QueryRow(ctx, "SELECT count(*) FROM pg_class WHERE relname='reused'").Scan(&count))
+			require.Zero(t, count) // Prior server data must not leak; initial branch refs are intentional.
 			_, err := conn.Exec(ctx, "CREATE TABLE reused (id int PRIMARY KEY)")
 			require.NoError(t, err)
 			_, err = conn.Exec(ctx, "INSERT INTO reused VALUES (1)")
