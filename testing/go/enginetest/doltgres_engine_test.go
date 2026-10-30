@@ -2001,8 +2001,23 @@ func TestDoltVerifyConstraints(t *testing.T) {
 }
 
 func TestDoltStorageFormat(t *testing.T) {
-	h := newDoltgresServerHarness(t)
-	denginetest.RunDoltStorageFormatTests(t, h)
+	if os.Getenv("DOLTGRES_TEST_TARGET") == "postgres" {
+		t.Skip("stock PostgreSQL has no Dolt storage interface")
+	}
+	runEngineTargetPair(t, func(t *testing.T) {
+		h := newDoltgresServerHarness(t)
+		if os.Getenv("DOLTGRES_TEST_TARGET") == "postgres-fork" {
+			defer h.Close()
+			enginetest.TestScript(t, h, queries.ScriptTest{
+				Name: "native storage format identifies its own serialization",
+				Assertions: []queries.ScriptTestAssertion{
+					{Query: "SELECT dolt_storage_format()", Expected: []sql.Row{{"PROLLY ( DGPTR001 )"}}},
+				},
+			})
+			return
+		}
+		denginetest.RunDoltStorageFormatTests(t, h)
+	})
 }
 
 func TestThreeWayMergeWithSchemaChangeScripts(t *testing.T) {
