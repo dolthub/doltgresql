@@ -754,6 +754,11 @@ func TestSequences(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						ExpectedErrCode: "42P01",
+						Query:           "CREATE TABLE myschema.test (pk INTEGER DEFAULT (nextval('seq1')), v1 INTEGER);",
+					},
+
 					Query:    "CREATE TABLE myschema.test (pk INTEGER DEFAULT (nextval('seq1')), v1 INTEGER);",
 					Expected: []sql.Row{},
 				},
@@ -799,13 +804,23 @@ func TestSequences(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"some_sequence", "bigint", 1, 1, int64(9223372036854775807), 1, 1, "f"}, {"another_sequence", "bigint", 1, 3, int64(9223372036854775807), 1, 1, "t"}},
+						Query:    "SELECT seqrelid::regclass::text, seqtypid::regtype::text, seqstart, seqincrement, seqmax, seqmin, seqcache, seqcycle FROM pg_catalog.pg_sequence ORDER BY seqincrement, seqrelid::regclass::text",
+					},
+
 					Query: "SELECT * FROM pg_catalog.pg_sequence ORDER BY seqrelid;",
 					Expected: []sql.Row{
 						{2795592127, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
 						{3473123643, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
 					},
 				},
-				{ // Different cases but non-quoted, so it works
+				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"some_sequence", "bigint", 1, 1, int64(9223372036854775807), 1, 1, "f"}, {"another_sequence", "bigint", 1, 3, int64(9223372036854775807), 1, 1, "t"}},
+						Query:    "SELECT seqrelid::regclass::text, seqtypid::regtype::text, seqstart, seqincrement, seqmax, seqmin, seqcache, seqcycle FROM pg_catalog.pg_sequence ORDER BY seqincrement, seqrelid::regclass::text",
+					},
+					// Different cases but non-quoted, so it works
 					Query: "SELECT * FROM PG_catalog.pg_SEQUENCE ORDER BY seqrelid;",
 					Expected: []sql.Row{
 						{2795592127, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
@@ -813,12 +828,22 @@ func TestSequences(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"some_sequence", "bigint", 1, 1, int64(9223372036854775807), 1, 1, "f"}},
+						Query:    "SELECT seqrelid::regclass::text, seqtypid::regtype::text, seqstart, seqincrement, seqmax, seqmin, seqcache, seqcycle FROM pg_catalog.pg_sequence WHERE seqrelid = 'some_sequence'::regclass;",
+					},
+
 					Query: "SELECT * FROM pg_catalog.pg_sequence WHERE seqrelid = 'some_sequence'::regclass;",
 					Expected: []sql.Row{
 						{2795592127, 20, 1, 1, 9223372036854775807, 1, 1, "f"},
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"another_sequence", "bigint", 1, 3, int64(9223372036854775807), 1, 1, "t"}},
+						Query:    "SELECT seqrelid::regclass::text, seqtypid::regtype::text, seqstart, seqincrement, seqmax, seqmin, seqcache, seqcycle FROM pg_catalog.pg_sequence WHERE seqrelid = 'another_sequence'::regclass;",
+					},
+
 					Query: "SELECT * FROM pg_catalog.pg_sequence WHERE seqrelid = 'another_sequence'::regclass;",
 					Expected: []sql.Row{
 						{3473123643, 20, 1, 3, 9223372036854775807, 1, 1, "t"},
@@ -856,6 +881,11 @@ func TestSequences(t *testing.T) {
 					},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"test_pk_seq", "integer", 1, 1, 2147483647, 1, 1, "f"}},
+						Query:    "SELECT seqrelid::regclass::text, seqtypid::regtype::text, seqstart, seqincrement, seqmax, seqmin, seqcache, seqcycle FROM pg_catalog.pg_sequence",
+					},
+
 					Query: "SELECT * FROM pg_catalog.pg_sequence;",
 					Expected: []sql.Row{
 						{3822699147, 23, 1, 1, 2147483647, 1, 1, "f"},
@@ -1038,7 +1068,7 @@ func TestSequences(t *testing.T) {
 					Query:    "SELECT length(dolt_commit('-m', 'next')::text) = 32;",
 					Expected: []sql.Row{{"t"}},
 
-					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
+					PostgresFork: &ScriptTestAssertion{Query: "SELECT length(dolt_commit('--allow-empty', '-m', 'next')::text) = 64;", Expected: []sql.Row{{"t"}}},
 				},
 				{
 					Query:    "SELECT nextval('test');",
@@ -1202,6 +1232,11 @@ func TestSequences(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{"call", "id", 1, nil}, {"call", "user", 1, 1}, {"user", "id", 1, nil}},
+						Query:    "SELECT table_name,column_name,ordinal_position,position_in_unique_constraint FROM information_schema.key_column_usage WHERE table_schema='public' AND table_name IN ('call','user') ORDER BY table_name,column_name",
+					},
+
 					Query: "SELECT * FROM information_schema.key_column_usage where constraint_schema <> 'pg_catalog';",
 					Expected: []sql.Row{
 						{"postgres", "public", "PRIMARY", "postgres", "public", "call", "id", 1, nil, nil, nil, nil},
@@ -1428,6 +1463,8 @@ ORDER BY 1,2;`,
 				{
 					Query:       "SELECT nextval('test');",
 					ExpectedErr: "unable to advance sequence state, possibly due to having incompatible state on different branches",
+					// Distinct definitions use distinct shared allocators in the fork.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{-1}}},
 				},
 			},
 		},

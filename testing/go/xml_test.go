@@ -697,6 +697,11 @@ func TestXmlFunctions(t *testing.T) {
 					Expected: []sql.Row{{"<a/>"}, {"<a/><b/>"}},
 				},
 				{
+					Postgres: &ScriptTestAssertion{
+						Expected: []sql.Row{{`<d id="1"/><d id="2"/><d id="3"/>`, `<r><i n="a">1</i><i n="b">2</i></r><r/>`}},
+						Query:    "SELECT xmlagg(xmlelement(NAME d, xmlattributes(id)) ORDER BY id), xmlagg(doc ORDER BY id) FROM docs;",
+					},
+
 					Query:    "SELECT xmlagg(xmlelement(NAME d, xmlattributes(id))), xmlagg(doc) FROM docs;",
 					Expected: []sql.Row{{`<d id="1"/><d id="2"/><d id="3"/>`, `<r><i n="a">1</i><i n="b">2</i></r><r/>`}},
 				},
