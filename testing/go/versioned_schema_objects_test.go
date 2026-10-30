@@ -47,3 +47,29 @@ func TestPostgresForkVersionedSchemaObjects(t *testing.T) {
 		},
 	}})
 }
+
+func TestPostgresForkSchemaObjectWorkspace(t *testing.T) {
+	if testTarget(t) != targetPostgresFork {
+		t.Skip("native aggregate, operator and cast versioning")
+	}
+	RunScripts(t, []ScriptTest{{
+		Name: "stage schema objects by the identities reported in status",
+		SetUpScript: []string{
+			"CREATE TYPE source AS (v int)", "CREATE TYPE target AS (v int)",
+			"CREATE FUNCTION cv(source) RETURNS target LANGUAGE sql IMMUTABLE AS 'SELECT ROW(($1).v)::target'",
+			"SELECT dolt_commit('-Am','base')",
+			"CREATE AGGREGATE total(int) (SFUNC=int4pl, STYPE=int4, INITCOND='0')",
+			"CREATE OPERATOR === (LEFTARG=int4, RIGHTARG=int4, FUNCTION=int4eq)",
+			"CREATE CAST (source AS target) WITH FUNCTION cv(source)",
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: "SELECT count(*) FROM dolt_status WHERE NOT staged", Expected: []sql.Row{{3}}},
+			{Query: "SELECT dolt_add('public.total(int)','public.===(pg_catalog.int4,pg_catalog.int4)','(public.source AS public.target)')", Expected: []sql.Row{{0}}},
+			{Query: "SELECT count(*) FROM dolt_status WHERE staged", Expected: []sql.Row{{3}}},
+			{Query: "SELECT dolt_commit('-m','schema objects')", SkipResultsCheck: true},
+			{Query: "SELECT count(*) FROM dolt_diff_summary('HEAD~1','HEAD')", Expected: []sql.Row{{3}}},
+			{Query: "SELECT count(*) FROM dolt_diff_stat('HEAD~1','HEAD')", Expected: []sql.Row{{3}}},
+			{Query: "SELECT count(*) FROM dolt_status", Expected: []sql.Row{{0}}},
+		},
+	}})
+}
