@@ -3,8 +3,9 @@
 package _go
 
 import (
-	"github.com/dolthub/go-mysql-server/sql"
 	"testing"
+
+	"github.com/dolthub/go-mysql-server/sql"
 )
 
 // Native DDL compatibility is checked by TestCreateAggregate, TestCreateOperator
@@ -33,14 +34,14 @@ func TestPostgresForkVersionedSchemaObjects(t *testing.T) {
 			{Query: "SELECT count(*) FROM pg_proc WHERE proname='total'", Expected: []sql.Row{{int64(0)}}},
 			{Query: "SELECT count(*) FROM pg_operator WHERE oprname='==='", Expected: []sql.Row{{int64(0)}}},
 			{Query: "SELECT conflicts FROM dolt_merge('feature')", Expected: []sql.Row{{int64(0)}}},
-			{Query: "SELECT n, 4 === 4, (ROW(7)::source::target).v FROM summary", Expected: []sql.Row{{6, true, 8}}},
+			{Query: "SELECT n, 4 === 4, (ROW(7)::source::target).v FROM summary", Expected: []sql.Row{{6, "t", 8}}},
 			{Query: "PREPARE branch_operator AS SELECT 4 === 4", Expected: []sql.Row{}},
-			{Query: "EXECUTE branch_operator", Expected: []sql.Row{{true}}},
+			{Query: "EXECUTE branch_operator", Expected: []sql.Row{{"t"}}},
 			{Query: "SELECT status FROM dolt_checkout('feature')", Expected: []sql.Row{{int64(0)}}},
 			{Query: "CREATE OR REPLACE FUNCTION eq_int(int,int) RETURNS boolean LANGUAGE sql IMMUTABLE AS 'SELECT $1<>$2'", Expected: []sql.Row{}},
-			{Query: "EXECUTE branch_operator", Expected: []sql.Row{{false}}},
+			{Query: "EXECUTE branch_operator", Expected: []sql.Row{{"f"}}},
 			{Query: "SELECT status FROM dolt_checkout('main')", Expected: []sql.Row{{int64(0)}}},
-			{Query: "EXECUTE branch_operator", Expected: []sql.Row{{true}}},
+			{Query: "EXECUTE branch_operator", Expected: []sql.Row{{"t"}}},
 			{Query: "DROP FUNCTION eq_int(int,int)", ExpectedErrCode: "2BP01"},
 			{Query: "DROP AGGREGATE total(int)", ExpectedErrCode: "2BP01"},
 		},
