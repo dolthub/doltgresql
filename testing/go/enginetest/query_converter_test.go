@@ -199,7 +199,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		colList := make(tree.NameList, len(stmt.Columns))
 		updateExprs := make(tree.UpdateExprs, len(stmt.Columns))
 		for i, col := range stmt.Columns {
-			name := tree.Name(col.String())
+			name := tree.Name(engineIdentifier(col.String()))
 			colList[i] = name
 			updateExprs[i] = &tree.UpdateExpr{
 				Names: tree.NameList{name},
@@ -228,7 +228,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		if len(stmt.Columns) > 0 {
 			colList = make(tree.NameList, len(stmt.Columns))
 			for i, col := range stmt.Columns {
-				colList[i] = tree.Name(col.String())
+				colList[i] = tree.Name(engineIdentifier(col.String()))
 			}
 		}
 
@@ -256,7 +256,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 		if len(stmt.Columns) > 0 {
 			colList = make(tree.NameList, len(stmt.Columns))
 			for i, col := range stmt.Columns {
-				colList[i] = tree.Name(col.String())
+				colList[i] = tree.Name(engineIdentifier(col.String()))
 			}
 		}
 
@@ -299,7 +299,7 @@ func transformInsert(stmt *sqlparser.Insert) ([]string, bool) {
 func translateTableName(table sqlparser.TableName) *tree.TableName {
 	if table.DbQualifier.IsEmpty() {
 		// Unqualified: just the table name; let the formatter omit the prefix.
-		return tree.NewUnqualifiedTableName(tree.Name(table.Name.String()))
+		return tree.NewUnqualifiedTableName(tree.Name(engineIdentifier(table.Name.String())))
 	}
 	if isWellKnownSchema(table.DbQualifier.String()) {
 		// `schema.tbl` in postgres terms — encode the qualifier as the schema,
@@ -308,14 +308,14 @@ func translateTableName(table sqlparser.TableName) *tree.TableName {
 		tn := tree.MakeTableNameWithSchema(
 			"",
 			tree.Name(table.DbQualifier.String()),
-			tree.Name(table.Name.String()),
+			tree.Name(engineIdentifier(table.Name.String())),
 		)
 		return &tn
 	}
 	tn := tree.MakeTableNameWithSchema(
 		tree.Name(table.DbQualifier.String()),
 		"public",
-		tree.Name(table.Name.String()),
+		tree.Name(engineIdentifier(table.Name.String())),
 	)
 	return &tn
 }
@@ -928,7 +928,7 @@ func convertColumnAlter(statement *sqlparser.DDL) ([]string, bool) {
 			Table: tableName,
 			Cmds: []tree.AlterTableCmd{
 				&tree.AlterTableAlterColumnType{
-					Column: tree.Name(col.Name.String()),
+					Column: tree.Name(engineIdentifier(col.Name.String())),
 					ToType: newType,
 				},
 			},
@@ -937,11 +937,11 @@ func convertColumnAlter(statement *sqlparser.DDL) ([]string, bool) {
 
 		if col.Type.NotNull {
 			alter.Cmds = []tree.AlterTableCmd{
-				&tree.AlterTableSetNotNull{Column: tree.Name(col.Name.String())},
+				&tree.AlterTableSetNotNull{Column: tree.Name(engineIdentifier(col.Name.String()))},
 			}
 		} else {
 			alter.Cmds = []tree.AlterTableCmd{
-				&tree.AlterTableDropNotNull{Column: tree.Name(col.Name.String())},
+				&tree.AlterTableDropNotNull{Column: tree.Name(engineIdentifier(col.Name.String()))},
 			}
 		}
 		stmts = append(stmts, formatNodeWithUnqualifiedTableNames(&alter).String())
@@ -951,7 +951,7 @@ func convertColumnAlter(statement *sqlparser.DDL) ([]string, bool) {
 			alter.Cmds = []tree.AlterTableCmd{
 				&tree.AlterTableRenameColumn{
 					Column:  tree.Name(statement.Column.String()),
-					NewName: tree.Name(col.Name.String()),
+					NewName: tree.Name(engineIdentifier(col.Name.String())),
 				},
 			}
 			stmts = append(stmts, formatNodeWithUnqualifiedTableNames(&alter).String())
@@ -1037,6 +1037,9 @@ func convertIndexAlter(statement *sqlparser.DDL) ([]string, bool) {
 	case "drop":
 		tableName := translateTableName(statement.Table)
 		indexName := statement.IndexSpec.ToName.String()
+		if nativePostgresEngine() && statement.IndexSpec.Type != "primary" {
+			return []string{"DROP INDEX " + AutoQuoteIdent(strings.ToLower(indexName))}, true
+		}
 		if statement.IndexSpec.Type == "primary" {
 			indexName = "PRIMARY"
 		}
@@ -1139,7 +1142,7 @@ func transformSelect(stmt *sqlparser.Select) ([]string, bool) {
 }
 
 func shouldRewriteSelect(stmt *sqlparser.Select) bool {
-	return containsUserVars(stmt) ||
+	return nativePostgresEngine() || containsUserVars(stmt) ||
 		containsBinaryConversion(stmt) ||
 		containsQualifiedTableName(stmt)
 }
@@ -1255,6 +1258,30 @@ func formatNode(node sqlparser.SQLNode) string {
 
 func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode) {
 	switch node := node.(type) {
+	case *sqlparser.FuncExpr:
+		if nativePostgresEngine() {
+			switch strings.ToLower(node.Name.String()) {
+			case "ifnull":
+				buf.Myprintf("coalesce(%v)", node.Exprs)
+				return
+			case "if":
+				if len(node.Exprs) == 3 {
+					buf.Myprintf("CASE WHEN %v THEN %v ELSE %v END", node.Exprs[0], node.Exprs[1], node.Exprs[2])
+					return
+				}
+			case "uuid":
+				if len(node.Exprs) == 0 {
+					buf.WriteString("gen_random_uuid()")
+					return
+				}
+			case "curdate":
+				if len(node.Exprs) == 0 {
+					buf.WriteString("CURRENT_DATE")
+					return
+				}
+			}
+		}
+		node.Format(buf)
 	case sqlparser.ColIdent:
 		// MySQL `@var` and `@@var` references map to postgres' current_setting().
 		// All other identifiers go through tree.AutoQuoteIdent so that names
@@ -1272,7 +1299,7 @@ func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode)
 	case sqlparser.TableIdent:
 		// Same auto-quoting story as ColIdent; vitess' formatID would
 		// otherwise wrap special-character identifiers in backticks.
-		buf.WriteString(AutoQuoteIdent(node.String()))
+		buf.WriteString(AutoQuoteIdent(engineIdentifier(node.String())))
 	case sqlparser.TableName:
 		// MySQL `db.tbl` → postgres `db.public.tbl`. MySQL has no schema
 		// concept, so we insert `public` (postgres' default schema) between
@@ -1304,7 +1331,7 @@ func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode)
 		if node.Operator == "binary " {
 			buf.Myprintf("%v::text::bytea", node.Expr)
 		} else {
-			buf.Myprintf("%v", node)
+			node.Format(buf)
 		}
 	case *sqlparser.Limit:
 		if node == nil {
@@ -1339,7 +1366,7 @@ func columnDefFromMySQL(col *sqlparser.ColumnDefinition, sequenceName string) *t
 	}
 
 	return &tree.ColumnTableDef{
-		Name:      tree.Name(col.Name.String()),
+		Name:      tree.Name(engineIdentifier(col.Name.String())),
 		Type:      convertTypeDef(col.Type),
 		Collation: "", // TODO
 		Nullable: struct {
@@ -1398,7 +1425,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 			for i, col := range index.Fields {
 				colName := col.Column.String()
 				indexFields[i] = tree.IndexElem{
-					Column: tree.Name(colName),
+					Column: tree.Name(engineIdentifier(colName)),
 				}
 			}
 
@@ -1501,10 +1528,10 @@ func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefi
 
 	var fromCols, toCols tree.NameList
 	for _, col := range c.Source {
-		fromCols = append(fromCols, tree.Name(col.String()))
+		fromCols = append(fromCols, tree.Name(engineIdentifier(col.String())))
 	}
 	for _, col := range c.ReferencedColumns {
-		toCols = append(toCols, tree.Name(col.String()))
+		toCols = append(toCols, tree.Name(engineIdentifier(col.String())))
 	}
 
 	onDelete := translateRefAction(c.OnDelete)
@@ -1672,6 +1699,13 @@ func convertTypeDef(columnType sqlparser.ColumnType) tree.ResolvableTypeReferenc
 			},
 		}
 	case "blob", "binary", "varbinary", "tinyblob", "mediumblob", "longblob":
+		if nativePostgresEngine() {
+			typ, err := tree.NewUnresolvedObjectName(1, [3]string{"bytea"}, 0)
+			if err != nil {
+				panic(err)
+			}
+			return typ
+		}
 		return &types.T{
 			InternalType: types.InternalType{
 				Family: types.BytesFamily,
@@ -2573,4 +2607,24 @@ func AutoQuoteIdent(name string) string {
 	ctx := tree.NewFmtCtx(tree.FmtSimple)
 	ctx.FormatNode(&n)
 	return ctx.CloseAndGetString()
+}
+
+func TestNativeEngineTypeAndIndexConversion(t *testing.T) {
+	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
+	require.Equal(t, []string{"CREATE TABLE t (v bytea NULL)"}, convertQuery("CREATE TABLE t (v BLOB)"))
+	require.Equal(t, []string{"DROP INDEX idx"}, convertQuery("ALTER TABLE t DROP INDEX idx"))
+	require.Equal(t, []string{"select coalesce(null, 2), CASE WHEN true THEN 1 ELSE 0 END"}, convertQuery("SELECT IFNULL(NULL, 2), IF(true, 1, 0)"))
+	require.Equal(t, []string{"CREATE TABLE mixed (parentid INTEGER NULL)"}, convertQuery("CREATE TABLE Mixed (parentId INT)"))
+}
+
+func TestNativeUnaryFormatting(t *testing.T) {
+	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
+	require.Equal(t, []string{"select -col0, +col1 from tab0"}, convertQuery("SELECT -col0, +col1 FROM tab0"))
+}
+
+func engineIdentifier(name string) string {
+	if nativePostgresEngine() {
+		return strings.ToLower(name)
+	}
+	return name
 }
