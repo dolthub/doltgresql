@@ -202,13 +202,9 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 	if err != nil {
 		return nil, err
 	}
-	ws, err := sess.WorkingSet(ctx, sess.GetCurrentDatabase())
-	if err != nil {
-		return nil, err
-	}
 	seqState := c.sequence.SequenceState
 	seqName := doltdb.TableName{Name: c.sequence.Id.SequenceName(), Schema: c.sequence.Id.SchemaName()}
-	_, err = sequenceTracker.Set(ctx, seqName, c.sequence, ws.Ref(), seqState)
+	err = sequenceTracker.AddNewRelation(ctx, seqName, seqState)
 	if err != nil {
 		return nil, err
 	}
