@@ -5,7 +5,7 @@ replay and non-server unit tests; does not use a feature allowlist.
 """
 import argparse,concurrent.futures,hashlib,json,os,pathlib,re,signal,subprocess,threading,time
 SRC=pathlib.Path(__file__).resolve().parents[2]
-UNIT_NAMES={'TestParserBehaviors','TestLegacyJsonBRoundTrip','TestLegacyJsonBReserialization','TestScriptErrorDetail','TestJsonbOutCallableWithAnyWrapper','TestJsonOutCallableWithAnyWrapper','TestJsonbSerializeWithAnyWrapper','TestDropRoleCleansPersistedAuthorizationReferences','TestExternalServerCleanup','TestExternalPostgresReadiness','TestTargetExpectationSelection','TestTargetFlowStepSelection'}
+UNIT_NAMES={'TestPlanNodeFragments','TestParserBehaviors','TestLegacyJsonBRoundTrip','TestLegacyJsonBReserialization','TestScriptErrorDetail','TestJsonbOutCallableWithAnyWrapper','TestJsonOutCallableWithAnyWrapper','TestJsonbSerializeWithAnyWrapper','TestDropRoleCleansPersistedAuthorizationReferences','TestExternalServerCleanup','TestExternalPostgresReadiness','TestTargetExpectationSelection','TestTargetFlowStepSelection'}
 PACKAGES={'go':('testing/go','go.test'),'enginetest':('testing/go/enginetest','engine.test'),'extensions':('testing/go/extensions','extensions.test')}
 LOCK=threading.Lock()
 
