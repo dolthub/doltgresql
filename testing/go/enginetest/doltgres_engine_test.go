@@ -1805,9 +1805,18 @@ func TestPatchTableFunction(t *testing.T) {
 }
 
 func TestLogTableFunction(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunLogTableFunctionTests(t, harness)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres log group remains disabled")
+	}
+	for _, original := range denginetest.LogTableFunctionScriptTests {
+		t.Run(original.Name, func(t *testing.T) {
+			h := newDoltgresServerHarness(t)
+			defer h.Close()
+			h.Setup(setup.MydbData)
+			h.SkipSetupCommit()
+			enginetest.TestScript(t, h, nativeLogScript(original))
+		})
+	}
 }
 
 func TestDoltReflog(t *testing.T) {
