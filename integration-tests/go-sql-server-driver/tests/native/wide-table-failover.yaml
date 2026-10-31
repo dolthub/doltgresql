@@ -57,6 +57,9 @@ tests:
           - '10'
           - t00
           - z
+  - action:
+      kind: wait_for_replay
+      server: server2
   - 'on': server2
     database: repo1
     retry_attempts: 100

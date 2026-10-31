@@ -58,3 +58,18 @@ func TestNativeTypeDiversity(t *testing.T) {
 	t.Parallel()
 	RunNativeTestsFile(t, "tests/native/type-diversity.yaml")
 }
+
+func TestNativeClusterRootObjects(t *testing.T) {
+	t.Parallel()
+	RunNativeTestsFile(t, "tests/native/cluster-root-objects.yaml")
+}
+
+func TestNativeClusterAuthReplication(t *testing.T) {
+	t.Parallel()
+	RunNativeTestsFile(t, "tests/native/cluster-auth-replication.yaml")
+}
+
+func TestNativeClusterReadOnly(t *testing.T) {
+	t.Parallel()
+	RunNativeTestsFile(t, "tests/native/cluster-read-only.yaml")
+}

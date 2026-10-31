@@ -1,0 +1,85 @@
+# Native translation of sql-server-cluster-read-only.yaml; see nativedef.go and tests/native/cluster.yaml.
+parallel: true
+tests:
+- name: users and grants cannot be run on standby
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    queries:
+    - exec: CREATE USER "brian" WITH PASSWORD 'brianspassword'
+      error_match: cannot execute .* in a read-only transaction
+    - exec: GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "aaron"
+      error_match: cannot execute .* in a read-only transaction
+- name: create database cannot be run on standby
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    queries:
+    - exec: CREATE DATABASE my_db
+      error_match: cannot execute .* in a read-only transaction
+- name: drop database cannot be run on standby
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: CREATE TABLE vals (i INT PRIMARY KEY)
+    - exec: INSERT INTO vals VALUES (0),(1),(2),(3),(4)
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    queries:
+    - exec: DROP DATABASE repo1
+      error_match: cannot execute .* in a read-only transaction
+- name: when a server becomes primary it accepts writes
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - action:
+      kind: promote
+      server: server2
+  - action:
+      kind: demote
+      server: server1
+      follows: server2
+  - 'on': server2
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server2
+    database: repo1
+    queries:
+    - exec: CREATE TABLE vals (i INT PRIMARY KEY)
+    - exec: INSERT INTO vals VALUES (0),(1),(2),(3),(4)
+  - action:
+      kind: wait_for_replay
+      server: server1
+  - 'on': server1
+    database: repo1
+    queries:
+    - query: SELECT COUNT(*) as count FROM vals
+      result:
+        columns:
+        - count
+        rows:
+        - - '5'

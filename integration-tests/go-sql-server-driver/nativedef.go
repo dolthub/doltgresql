@@ -298,6 +298,7 @@ func (c *nativeCluster) configure(server *nativeServer, extra []string, primary 
 			"max_wal_senders = 10",
 			"hot_standby = on",
 			"wal_log_hints = on",
+			"wal_keep_size = '256MB'", // a former primary rewinds from its own WAL
 			"max_connections = 50",
 			"dynamic_shared_memory_type = mmap",
 			fmt.Sprintf("default_table_access_method = '%s'", am),
@@ -387,6 +388,9 @@ func (c *nativeCluster) demote(server, upstream *nativeServer) {
 
 	c.run("pg_rewind", "--target-pgdata="+server.dir,
 		fmt.Sprintf("--source-server=host=127.0.0.1 port=%d user=postgres dbname=postgres", upstream.port))
+
+	// pg_rewind copies the source's configuration files, its port among them.
+	c.configure(server, nil, false)
 	require.NoError(c.t, os.WriteFile(filepath.Join(server.dir, "standby.signal"), nil, 0600))
 	appendFile(c.t, filepath.Join(server.dir, "postgresql.auto.conf"),
 		fmt.Sprintf("primary_conninfo = 'host=127.0.0.1 port=%d user=postgres'\n", upstream.port))

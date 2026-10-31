@@ -24,6 +24,9 @@ tests:
     - exec: INSERT INTO large_vals VALUES (3, REPEAT('textrow3-', 1667), REPEAT('blobrow3-', 2778)::bytea)
     - exec: INSERT INTO large_vals VALUES (4, REPEAT('textrow4-', 1667), REPEAT('blobrow4-', 2778)::bytea)
     - exec: INSERT INTO large_vals VALUES (5, REPEAT('textrow5-', 1667), REPEAT('blobrow5-', 2778)::bytea)
+  - action:
+      kind: wait_for_replay
+      server: server2
   - 'on': server2
     database: repo1
     retry_attempts: 100
