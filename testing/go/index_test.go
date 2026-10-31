@@ -23,7 +23,7 @@ import (
 )
 
 func TestBasicIndexing(t *testing.T) {
-	RunScripts(t, []ScriptTest{
+	RunScripts(t, indexCounterparts([]ScriptTest{
 		{
 			Name: "Covering Index",
 			SetUpScript: []string{
@@ -2179,11 +2179,11 @@ func TestBasicIndexing(t *testing.T) {
 				},
 			},
 		},
-	})
+	}))
 }
 
 func TestIndexColumnOptions(t *testing.T) {
-	RunScripts(t, []ScriptTest{
+	RunScripts(t, indexCounterparts([]ScriptTest{
 		{
 			Name: "operator classes and descending columns", // https://github.com/dolthub/doltgresql/issues/3229
 			SetUpScript: []string{
@@ -3561,5 +3561,5 @@ func TestIndexColumnOptions(t *testing.T) {
 				},
 			},
 		},
-	})
+	}))
 }
