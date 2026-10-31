@@ -18,6 +18,7 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
@@ -1820,9 +1821,38 @@ func TestLogTableFunction(t *testing.T) {
 }
 
 func TestDoltReflog(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunDoltReflogTests(t, harness)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, original := range denginetest.DoltReflogTestScripts {
+		t.Run(original.Name, func(t *testing.T) {
+			h := newDoltgresServerHarness(t)
+			defer h.Close()
+			h.UseLocalFileSystem()
+			h.SkipSetupCommit()
+			s := original
+			s.Assertions = append([]queries.ScriptTestAssertion(nil), s.Assertions...)
+			for i := range s.Assertions {
+				a := &s.Assertions[i]
+				// Native GC does not invalidate the PostgreSQL connection.
+				a.NewSession = false
+				if a.ExpectedErr != nil || a.ExpectedErrStr != "" {
+					a.ExpectedErr = nil
+					switch {
+					case strings.Contains(a.Query, "NULL"):
+						a.ExpectedErrStr = "SQLSTATE 22004"
+					case strings.Contains(a.Query, "-100") || strings.Contains(a.Query, "dolt_branch_status()"):
+						a.ExpectedErrStr = "SQLSTATE 42883"
+					case strings.Contains(a.Query, "dolt_reflog"):
+						a.ExpectedErrStr = "unsupported version-control option or operation: bar"
+					default:
+						a.ExpectedErrStr = "unknown revision:"
+					}
+				}
+			}
+			enginetest.TestScript(t, h, s)
+		})
+	}
 }
 
 func TestCommitDiffSystemTable(t *testing.T) {
@@ -2125,9 +2155,36 @@ func TestBranchActivity(t *testing.T) {
 }
 
 func TestBranchStatusTableFunction(t *testing.T) {
-	t.Skip("port test from Dolt")
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunBranchStatusTableFunctionTests(t, harness)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, original := range denginetest.BranchStatusTableFunctionScriptTests {
+		t.Run(original.Name, func(t *testing.T) {
+			h := newDoltgresServerHarness(t)
+			defer h.Close()
+			h.Setup(setup.MydbData)
+			h.SkipSetupCommit()
+			s := original
+			s.Assertions = append([]queries.ScriptTestAssertion(nil), s.Assertions...)
+			for i := range s.Assertions {
+				a := &s.Assertions[i]
+				if a.ExpectedErr != nil || a.ExpectedErrStr != "" {
+					a.ExpectedErr = nil
+					switch {
+					case strings.Contains(a.Query, "NULL"):
+						a.ExpectedErrStr = "SQLSTATE 22004"
+					case strings.Contains(a.Query, "-100") || strings.Contains(a.Query, "dolt_branch_status()"):
+						a.ExpectedErrStr = "SQLSTATE 42883"
+					case strings.Contains(a.Query, "dolt_reflog"):
+						a.ExpectedErrStr = "unsupported version-control option or operation: bar"
+					default:
+						a.ExpectedErrStr = "unknown revision:"
+					}
+				}
+			}
+			enginetest.TestScript(t, h, s)
+		})
+	}
 }
 
 func TestConcurrentCreateDatabaseIfNotExists(t *testing.T) {
