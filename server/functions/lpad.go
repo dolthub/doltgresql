@@ -61,15 +61,17 @@ var lpad_text_int32_text = framework.Function3{
 		fillTarget := length.(int32) - int32(len(runes))
 		fillRunes := []rune(fillStr)
 		var result []rune
-		if fillTarget > 0 {
-			if len(fillRunes) > 0 {
-				for int32(len(result)) < fillTarget {
-					result = append(result, fillRunes...)
-				}
+		if fillTarget > 0 && len(fillRunes) > 0 {
+			for int32(len(result)) < fillTarget {
+				result = append(result, fillRunes...)
 			}
 			result = result[:fillTarget]
 		}
 		result = append(result, runes...)
-		return string(result[:length.(int32)]), nil
+		// With an empty fill string nothing is padded, so the result may be shorter than the requested length
+		if int32(len(result)) > length.(int32) {
+			result = result[:length.(int32)]
+		}
+		return string(result), nil
 	},
 }

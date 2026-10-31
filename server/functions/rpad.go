@@ -64,6 +64,10 @@ var rpad_text_int32_text = framework.Function3{
 				runes = append(runes, fillRunes...)
 			}
 		}
-		return string(runes[:length.(int32)]), nil
+		// With an empty fill string nothing is padded, so the result may be shorter than the requested length
+		if int32(len(runes)) > length.(int32) {
+			runes = runes[:length.(int32)]
+		}
+		return string(runes), nil
 	},
 }
