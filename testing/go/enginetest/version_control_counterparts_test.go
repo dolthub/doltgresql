@@ -1,0 +1,88 @@
+// Copyright 2026 Dolthub, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package enginetest
+
+import (
+	"fmt"
+	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
+	"github.com/dolthub/go-mysql-server/enginetest/queries"
+	"github.com/dolthub/go-mysql-server/sql"
+	"strings"
+)
+
+func nativeViewAsOf() queries.ScriptTest {
+	s := denginetest.ViewsWithAsOfScriptTest
+	s.SetUpScript = append([]string(nil), s.SetUpScript...)
+	s.Assertions = append([]queries.ScriptTestAssertion(nil), s.Assertions...)
+	var setup []string
+	for _, q := range s.SetUpScript {
+		if strings.HasPrefix(q, "CREATE VIEW") {
+			continue
+		}
+		if strings.Contains(q, "'cm5'") {
+			q = "CALL dolt_commit('--allow-empty','-am','cm5')"
+		}
+		setup = append(setup, q)
+		if strings.HasPrefix(q, "CREATE TABLE t2") {
+			// PostgreSQL requires explicit UNION coercion. Version the view when its
+			// dependencies first exist, so historical reads resolve that definition.
+			setup = append(setup, "CREATE VIEW v1 AS SELECT pk, c0::text AS c0 FROM t1 UNION SELECT pk, vc::text FROM t2")
+		}
+	}
+	s.SetUpScript = setup
+	for i := range s.Assertions {
+		a := &s.Assertions[i]
+		if a.ExpectedErrStr != "" {
+			a.ExpectedErrStr = "does not exist in revision"
+		}
+		if a.Query == "select * from v1 as of HEAD" {
+			a.Query = "select * from v1 as of 'HEAD'"
+		}
+		if strings.Contains(a.Query, "HEAD.ASDF") {
+			a.Query = "select * from v1 as of 'HEAD.ASDF'"
+			a.ExpectedErrStr = "unknown revision"
+		}
+	}
+	return s
+}
+
+func nativeDescribeAsOf() queries.ScriptTest {
+	s := denginetest.DescribeTableAsOfScriptTest
+	s.SetUpScript = nil
+	for _, q := range denginetest.DescribeTableAsOfScriptTest.SetUpScript {
+		if strings.HasPrefix(q, "set @") {
+			continue
+		}
+		if strings.HasPrefix(q, "call dolt_commit_hash_out(") {
+			q = "CALL dolt_commit(" + q[strings.Index(q, ",")+1:]
+		}
+		s.SetUpScript = append(s.SetUpScript, q)
+	}
+	s.Assertions = []queries.ScriptTestAssertion{{Query: "SELECT * FROM a AS OF 'HEAD~3'", ExpectedErr: sql.ErrTableNotFound}}
+	for _, r := range []struct {
+		revision string
+		rows     []sql.Row
+	}{
+		{revision: "HEAD~2", rows: []sql.Row{{"pk", "integer", true}, {"c1", "integer", false}}},
+		{revision: "HEAD~1", rows: []sql.Row{{"pk", "integer", true}, {"c1", "integer", false}, {"c2", "character varying(20)", false}}},
+		{revision: "HEAD", rows: []sql.Row{{"pk", "integer", true}, {"c2", "character varying(20)", false}}},
+	} {
+		s.Assertions = append(s.Assertions, queries.ScriptTestAssertion{
+			Query:    fmt.Sprintf("SELECT a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull FROM pg_attribute AS OF '%s' a JOIN pg_class AS OF '%s' c ON c.oid=a.attrelid WHERE c.relname='a' AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum", r.revision, r.revision),
+			Expected: r.rows,
+		})
+	}
+	return s
+}
