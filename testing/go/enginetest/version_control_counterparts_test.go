@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest"
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	"os"
 	"strings"
 	"testing"
@@ -396,7 +397,11 @@ func nativeCherryPickScript(s queries.ScriptTest) queries.ScriptTest {
 			}
 		}
 		q := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(a.Query)), ";")
-		if q == "select * from dolt_status" {
+		if q == "insert into generated_foo values (2)" {
+			// PostgreSQL exposes the affected-row command tag for this INSERT.
+			a.Expected = []sql.Row{{types.NewOkResult(1)}}
+		}
+		if q == "select * from dolt_status" || q == "select * from dolt_status_ignored" {
 			rows := make([]sql.Row, len(a.Expected))
 			for j, row := range a.Expected {
 				rows[j] = append(sql.Row(nil), row...)
