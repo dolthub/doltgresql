@@ -5741,6 +5741,28 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
+			Name:        "left and right count characters",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT left('héllo', 2), right('héllo', 2)`,
+					Expected: []sql.Row{{"hé", "lo"}},
+				},
+				{
+					Query:    `SELECT left('héllo', -2), right('héllo', -2)`,
+					Expected: []sql.Row{{"hél", "llo"}},
+				},
+				{
+					Query:    `SELECT left('日本語', 1), right('日本語', 1)`,
+					Expected: []sql.Row{{"日", "語"}},
+				},
+				{
+					Query:    `SELECT left('héllo', 10), right('héllo', 10), left('héllo', -10), right('héllo', -10)`,
+					Expected: []sql.Row{{"héllo", "héllo", "", ""}},
+				},
+			},
+		},
+		{
 			Name:        "substring with integer arg",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
