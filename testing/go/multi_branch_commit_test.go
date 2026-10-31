@@ -331,6 +331,7 @@ func TestMultiBranchExplicitCommit(t *testing.T) {
 			}
 			exec("BEGIN")
 			exec(`INSERT INTO "postgres/main".public.explicit_rows VALUES(1)`)
+			exec("SAVEPOINT retained")
 			exec(`INSERT INTO "postgres/b1".public.explicit_rows VALUES(2)`)
 			count(other, "main", false, 0)
 			count(other, "b1", false, 0)
