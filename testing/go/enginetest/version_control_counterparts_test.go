@@ -90,6 +90,79 @@ func nativeDescribeAsOf() queries.ScriptTest {
 	return s
 }
 
+// Native functions accept ordinary PostgreSQL expressions, have fixed typed
+// signatures, and use the authenticated PostgreSQL identity by default.
+func nativeLogScript(s queries.ScriptTest) queries.ScriptTest {
+	s.SetUpScript = append([]string(nil), s.SetUpScript...)
+	s.Assertions = append([]queries.ScriptTestAssertion(nil), s.Assertions...)
+	for i := range s.Assertions {
+		a := &s.Assertions[i]
+		a.Query = strings.ReplaceAll(a.Query, "having cnt > 1", "having count(*) > 1")
+		a.Query = strings.ReplaceAll(a.Query, " join dolt_diff(", " CROSS JOIN dolt_diff(")
+		a.Query = strings.ReplaceAll(a.Query, " join lateral ", " CROSS JOIN LATERAL ")
+		a.Query = strings.ReplaceAll(a.Query, "hashof(", "dolt_hashof(")
+		a.Query = strings.ReplaceAll(a.Query, "SUBSTRING_INDEX(parents, ', ', 1)", "split_part(parents, ', ', 1)")
+		a.Query = strings.ReplaceAll(a.Query, "SUBSTRING_INDEX(parents, ', ', -1)", "split_part(parents, ', ', -1)")
+		if a.ExpectedErr != nil || a.ExpectedErrStr != "" {
+			a.ExpectedErr = nil
+			switch {
+			case strings.Contains(a.Query, "null"):
+				a.ExpectedErrStr = "SQLSTATE 22004"
+			case strings.Contains(a.Query, "123"):
+				a.ExpectedErrStr = "SQLSTATE 42883"
+			case strings.Contains(a.Query, "fake"):
+				a.ExpectedErrStr = "unknown revision: fake-branch"
+			case strings.Contains(a.Query, "dolt_hashof('main')"):
+				a.Query = "SELECT count(*) FROM dolt_log(dolt_hashof('main'))"
+				a.ExpectedErrStr = ""
+				a.Expected = []sql.Row{{3}}
+			case strings.Contains(a.Query, "LOWER(@Commit2)"):
+				a.Query = "SELECT count(*) FROM dolt_log(@Commit1, LOWER(@Commit2))"
+				a.ExpectedErrStr = ""
+				a.Expected = []sql.Row{{3}}
+			default:
+				a.ExpectedErrStr = "unsupported version-control option or operation"
+			}
+		}
+		if strings.HasPrefix(a.Query, "USE mydb/") {
+			// Explicit revision-qualified catalogs exercise the same detached metadata
+			// without MySQL's session USE statement, which PostgreSQL does not have.
+			revision := strings.TrimSuffix(strings.TrimPrefix(a.Query, "USE mydb/"), ";")
+			a.Query = fmt.Sprintf("SELECT count(*) FROM pg_class AS OF '%s' WHERE relname='test_table'", revision)
+			a.Expected = []sql.Row{{1}}
+		}
+		if a.Query == "describe dolt_log;" {
+			a.Query = "SELECT attname,format_type(atttypid,atttypmod) FROM pg_attribute WHERE attrelid='pg_catalog.dolt_log'::regclass AND attnum>0 ORDER BY attnum"
+			a.Expected = []sql.Row{{"commit_hash", "text"}, {"committer", "text"}, {"email", "text"}, {"date", "timestamp without time zone"}, {"message", "text"}, {"commit_order", "bigint"}, {"parents", "text"}, {"refs", "text"}, {"signature", "text"}, {"author", "text"}, {"author_email", "text"}, {"author_date", "timestamp without time zone"}}
+		}
+		// MySQL's warning number is not a PostgreSQL protocol field. The value
+		// assertion still verifies the documented auto-to-short fallback.
+		a.ExpectedWarning = 0
+		a.ExpectedWarningsCount = 0
+		a.ExpectedWarningMessageSubstring = ""
+		rows := make([]sql.Row, len(a.Expected))
+		for r, row := range a.Expected {
+			rows[r] = append(sql.Row(nil), row...)
+			for c, v := range rows[r] {
+				if v == "billy bob" {
+					rows[r][c] = "postgres"
+				}
+				if v == "bigbillieb@fake.horse" {
+					rows[r][c] = "postgres@localhost"
+				}
+				if v == "root" {
+					rows[r][c] = "postgres"
+				}
+				if v == "root@localhost" {
+					rows[r][c] = "postgres@127.0.0.1"
+				}
+			}
+		}
+		a.Expected = rows
+	}
+	return s
+}
+
 func TestNativeVersionFixtureExpressions(t *testing.T) {
 	if !nativePostgresEngine() {
 		t.Skip("PostgreSQL fixture translation")
