@@ -75,6 +75,10 @@ func transformAST(query string) ([]string, bool) {
 		}
 	case *sqlparser.Set:
 		return transformSet(stmt)
+	case *sqlparser.Show:
+		if nativePostgresEngine() && strings.EqualFold(stmt.Type, "tables") {
+			return nativeShowTables(stmt)
+		}
 	case *sqlparser.Select:
 		return transformSelect(stmt)
 	case *sqlparser.Insert:
@@ -1177,6 +1181,39 @@ func convertIndexAlter(statement *sqlparser.DDL) ([]string, bool) {
 
 // transformSelect converts a MySQL SELECT statement to a postgres-compatible SELECT statement.
 // This is a very broad surface area, so we do this very selectively
+// SHOW TABLES is a catalog query on native PostgreSQL. Preserve revision
+// qualifiers so historical scripts exercise the branch-aware catalog provider.
+func nativeShowTables(stmt *sqlparser.Show) ([]string, bool) {
+	class, namespace := "pg_catalog.pg_class", "pg_catalog.pg_namespace"
+	predicate := "n.nspname = current_schema()"
+	var revision, pattern string
+	if opt := stmt.ShowTablesOpt; opt != nil {
+		if opt.DbName != "" {
+			class = AutoQuoteIdent(opt.DbName) + "." + class
+			namespace = AutoQuoteIdent(opt.DbName) + "." + namespace
+		}
+		if opt.SchemaName != "" {
+			predicate = "n.nspname = '" + strings.ReplaceAll(opt.SchemaName, "'", "''") + "'"
+		}
+		if opt.AsOf != nil {
+			revision = " AS OF " + formatNode(opt.AsOf)
+		}
+		if opt.Filter != nil {
+			if opt.Filter.Filter != nil {
+				return nil, false
+			}
+			pattern = " AND c.relname LIKE '" + strings.ReplaceAll(opt.Filter.Like, "'", "''") + "'"
+		}
+	}
+	columns := "c.relname::text"
+	if stmt.Full {
+		columns += ", CASE WHEN c.relkind IN ('v','m') THEN 'VIEW' ELSE 'BASE TABLE' END"
+	}
+	query := "SELECT " + columns + " FROM " + class + revision + " c JOIN " + namespace + revision +
+		" n ON n.oid=c.relnamespace WHERE " + predicate + " AND c.relkind IN ('r','p','v','m','f')" + pattern + " ORDER BY c.relname"
+	return []string{query}, true
+}
+
 func transformSelect(stmt *sqlparser.Select) ([]string, bool) {
 	if !shouldRewriteSelect(stmt) {
 		return nil, false
@@ -1316,6 +1353,11 @@ func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode)
 	case *sqlparser.FuncExpr:
 		if nativePostgresEngine() {
 			switch strings.ToLower(node.Name.String()) {
+			case "database":
+				if len(node.Exprs) == 0 {
+					buf.WriteString("current_database()")
+					return
+				}
 			case "sleep":
 				buf.Myprintf("(SELECT 0 FROM pg_sleep(%v))", node.Exprs)
 				return
@@ -2736,4 +2778,14 @@ func TestNativeNamedForeignKeyConversion(t *testing.T) {
 	queries = convertQuery("CREATE TABLE child (parent_id int, CONSTRAINT child_parent FOREIGN KEY (parent_id) REFERENCES parent(id))")
 	require.Len(t, queries, 2)
 	require.Contains(t, queries[1], "CONSTRAINT child_parent FOREIGN KEY")
+}
+
+func TestNativeCatalogQueryConversion(t *testing.T) {
+	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
+	require.Equal(t, []string{"select current_database()"}, convertQuery("SELECT DATABASE()"))
+	q := convertQuery("SHOW TABLES AS OF 'HEAD~1' LIKE 't%'")
+	require.Len(t, q, 1)
+	require.Contains(t, q[0], "pg_class AS OF 'HEAD~1'")
+	require.Contains(t, q[0], "pg_namespace AS OF 'HEAD~1'")
+	require.Contains(t, q[0], "c.relname LIKE 't%'")
 }

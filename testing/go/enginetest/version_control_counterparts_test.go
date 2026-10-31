@@ -20,6 +20,7 @@ import (
 	"github.com/dolthub/go-mysql-server/enginetest"
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/sql"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -188,6 +189,39 @@ func TestNativeVersionFixtureExpressions(t *testing.T) {
 			{Query: "SELECT SLEEP(0)", Expected: []sql.Row{{0}}},
 			{Query: "SELECT a.id,b.id FROM newRenamedTable a JOIN newRenamedTable b", Expected: []sql.Row{{1, 1}}},
 			{Query: "SELECT '2020-01-02 03:04:05+00'::timestamptz", Expected: []sql.Row{{time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)}}},
+		},
+	})
+}
+
+func TestNativeCatalogFixtureQueries(t *testing.T) {
+	if !nativePostgresEngine() {
+		t.Skip("PostgreSQL catalog counterparts")
+	}
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestScript(t, h, queries.ScriptTest{
+		Name:        "native catalog listing and database identity",
+		SetUpScript: []string{"CREATE TABLE fixture_table(id int PRIMARY KEY)", "CREATE VIEW fixture_view AS SELECT id FROM fixture_table"},
+		Assertions: []queries.ScriptTestAssertion{
+			{Query: "SHOW TABLES LIKE 'fixture_%'", Expected: []sql.Row{{"fixture_table"}, {"fixture_view"}}},
+			{Query: "SHOW FULL TABLES LIKE 'fixture_%'", Expected: []sql.Row{{"fixture_table", "BASE TABLE"}, {"fixture_view", "VIEW"}}},
+			{Query: "SELECT DATABASE()=current_database()", Expected: []sql.Row{{true}}},
+		},
+	})
+}
+
+func TestNativeHistoricalCatalogListing(t *testing.T) {
+	if os.Getenv("DOLTGRES_TEST_TARGET") != "postgres-fork" {
+		t.Skip("fork revision catalogs")
+	}
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestScript(t, h, queries.ScriptTest{
+		Name:        "historical SHOW TABLES counterpart",
+		SetUpScript: []string{"CREATE TABLE history_fixture(id int PRIMARY KEY)", "CALL dolt_commit('-Am','table exists')", "DROP TABLE history_fixture", "CALL dolt_commit('-Am','table removed')"},
+		Assertions: []queries.ScriptTestAssertion{
+			{Query: "SHOW TABLES AS OF 'HEAD~1' LIKE 'history_%'", Expected: []sql.Row{{"history_fixture"}}},
+			{Query: "SHOW TABLES LIKE 'history_%'", Expected: []sql.Row{}},
 		},
 	})
 }
