@@ -24,7 +24,7 @@ import (
 // optionally mixed with plain column references. These tests cover postgres specific features
 // that are not used in the shared enginetests for functional indexes.
 func TestFunctionalIndexMultiExpr(t *testing.T) {
-	RunScripts(t, []ScriptTest{
+	RunScripts(t, indexCounterparts([]ScriptTest{
 		{
 			Name: "mixed expressions and a plain column, filtering across all key parts",
 			SetUpScript: []string{
@@ -100,7 +100,8 @@ func TestFunctionalIndexMultiExpr(t *testing.T) {
 			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query: "EXPLAIN SELECT pk FROM t WHERE c1 * 10 = 10 AND c2 > 15;",
+					Query:    "EXPLAIN SELECT pk FROM t WHERE c1 * 10 = 10 AND c2 > 15;",
+					Postgres: &ScriptTestAssertion{Query: "EXPLAIN (FORMAT JSON) SELECT pk FROM t WHERE c1 * 10 = 10 AND c2 > 15;", ExpectedPlanRelations: []string{"t"}},
 					Expected: []sql.Row{
 						{"Project"},
 						{" ├─ columns: [t.pk]"},
@@ -181,5 +182,5 @@ func TestFunctionalIndexMultiExpr(t *testing.T) {
 				},
 			},
 		},
-	})
+	}))
 }

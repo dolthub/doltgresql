@@ -536,7 +536,11 @@ func convertValue(val sqlparser.Expr) tree.Expr {
 }
 
 func convertFuncExpr(val *sqlparser.FuncExpr) tree.Expr {
-	fnName := tree.NewUnresolvedName(val.Name.String())
+	name := val.Name.String()
+	if nativePostgresEngine() && strings.EqualFold(name, "uuid") {
+		name = "gen_random_uuid"
+	}
+	fnName := tree.NewUnresolvedName(name)
 	exprs := make(tree.Exprs, len(val.Exprs))
 
 	for i, expr := range val.Exprs {
@@ -2627,4 +2631,11 @@ func engineIdentifier(name string) string {
 		return strings.ToLower(name)
 	}
 	return name
+}
+
+func TestNativeIndexDefaultConversion(t *testing.T) {
+	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
+	translated := strings.Join(convertQuery("create table xy (x int, z varchar(36) default(uuid()), key(z))"), ";")
+	require.Contains(t, translated, "gen_random_uuid()")
+	require.NotContains(t, translated, "DEFAULT uuid()")
 }

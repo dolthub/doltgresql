@@ -881,14 +881,18 @@ func runIndexes(t *testing.T) {
 
 	h.Setup(setup.MydbData)
 	for _, script := range queries.IndexQueries {
-		enginetest.TestScript(t, h, script)
+		enginetest.TestScript(t, h, nativeIndexScript(script))
 	}
 }
 
 func TestIndexedExpressions(t *testing.T) {
-	harness := newDoltgresServerHarness(t)
-	defer harness.Close()
-	enginetest.TestIndexedExpressions(t, harness)
+	runEngineTargetPair(t, func(t *testing.T) {
+		harness := newDoltgresServerHarness(t)
+		defer harness.Close()
+		for _, script := range queries.IndexedExpressionsScriptTests {
+			enginetest.TestScript(t, harness, nativeIndexScript(script))
+		}
+	})
 }
 
 func TestIndexPrefix(t *testing.T) {
@@ -1930,7 +1934,9 @@ func TestJoinStats(t *testing.T) {
 func runStatisticIndexes(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
-	enginetest.TestStatisticIndexFilters(t, h)
+	for _, script := range queries.StatsIndexTests {
+		enginetest.TestScript(t, h, nativeIndexScript(script))
+	}
 }
 
 func TestCharsetCollationEngine(t *testing.T) {

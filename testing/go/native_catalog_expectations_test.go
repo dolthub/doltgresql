@@ -37,7 +37,7 @@ func nativeNamespaceIndexScripts() []ScriptTest {
 		{Query: "SELECT nspname FROM pg_namespace WHERE nspname IN ('a_schema','z_schema') ORDER BY nspname DESC LIMIT 1", Expected: []sql.Row{{"z_schema"}}},
 		{Query: "SELECT nspname FROM pg_namespace WHERE nspname='absent_schema'", Expected: []sql.Row{}},
 		{Query: "SELECT count(*)=count(DISTINCT oid) FROM pg_namespace", Expected: []sql.Row{{"t"}}},
-		{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT nspname FROM pg_namespace WHERE oid='public'::regnamespace", ExpectedPlanRelations: []string{"pg_namespace"}},
-		{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT oid FROM pg_namespace WHERE nspname='testschema2'", ExpectedPlanRelations: []string{"pg_namespace"}},
+		{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT nspname FROM pg_namespace WHERE oid='public'::regnamespace", ExpectedPlanRelations: []string{"pg_namespace"}, PostgresFork: &ScriptTestAssertion{ExpectedCatalogScanAliases: []string{"pg_namespace"}}},
+		{Query: "EXPLAIN (FORMAT JSON, COSTS OFF) SELECT oid FROM pg_namespace WHERE nspname='testschema2'", ExpectedPlanRelations: []string{"pg_namespace"}, PostgresFork: &ScriptTestAssertion{ExpectedCatalogScanAliases: []string{"pg_namespace"}}},
 	}}}
 }
