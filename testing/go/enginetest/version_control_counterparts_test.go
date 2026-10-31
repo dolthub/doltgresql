@@ -310,3 +310,79 @@ func TestNativeHistoricalCatalogListing(t *testing.T) {
 		},
 	})
 }
+
+func nativeCherryPickScript(s queries.ScriptTest) queries.ScriptTest {
+	s.SetUpScript = append([]string(nil), s.SetUpScript...)
+	for i, q := range s.SetUpScript {
+		q = strings.ReplaceAll(q, "DROP PRIMARY KEY, ADD PRIMARY KEY", "DROP CONSTRAINT t_pkey, ADD PRIMARY KEY")
+		q = strings.ReplaceAll(q, "('generated_*', 1)", "('generated_*', true)")
+		s.SetUpScript[i] = q
+	}
+	s.Assertions = append([]queries.ScriptTestAssertion(nil), s.Assertions...)
+	if s.Name == "error cases: different primary keys" {
+		// The native schema publisher can apply this empty-table primary-key
+		// change. Verify the new key and its enforcement instead of copying
+		// Dolt's unsupported-operation error.
+		s.Assertions[0].ExpectedErrStr = ""
+		s.Assertions[0].SkipResultsCheck = true
+		s.Assertions = append(s.Assertions,
+			queries.ScriptTestAssertion{Query: "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid='t'::regclass AND contype='p'", Expected: []sql.Row{{"PRIMARY KEY (pk, v)"}}},
+			queries.ScriptTestAssertion{Query: "INSERT INTO t VALUES (1,'one'),(1,'two')", SkipResultsCheck: true},
+			queries.ScriptTestAssertion{Query: "SELECT count(*) FROM t", Expected: []sql.Row{{2}}},
+			queries.ScriptTestAssertion{Query: "INSERT INTO t VALUES (1,'one')", ExpectedErrStr: "SQLSTATE 23505"},
+		)
+	}
+
+	for i := range s.Assertions {
+		a := &s.Assertions[i]
+		if a.ExpectedErrStr == "error: There is no cherry-pick merge to continue" {
+			a.ExpectedErrStr = "no cherry-pick to continue"
+		}
+		if strings.Contains(a.ExpectedErrStr, "mutually exclusive") {
+			a.ExpectedErrStr = "--continue and --abort are mutually exclusive"
+		}
+		rows := make([]sql.Row, len(a.Expected))
+		for r, row := range a.Expected {
+			rows[r] = append(sql.Row(nil), row...)
+			for c, v := range rows[r] {
+				if v == "root" {
+					rows[r][c] = "postgres"
+				}
+				if v == "root@localhost" {
+					rows[r][c] = "postgres@127.0.0.1"
+				}
+			}
+		}
+		a.Expected = rows
+		if a.ExpectedErrStr == "target commit not found" {
+			a.ExpectedErrStr = "revision does not name a visible commit object"
+		}
+		if a.ExpectedErrStr == "error: There is no cherry-pick merge to abort" {
+			a.ExpectedErrStr = "no cherry-pick to abort"
+		}
+		if strings.EqualFold(a.Query, "SHOW CREATE TABLE test;") {
+			// Check the native definition, including the primary key, instead of
+			// comparing MySQL's SHOW CREATE formatting and storage-engine clauses.
+			a.Query = "SELECT a.attname,format_type(a.atttypid,a.atttypmod),a.attnotnull,EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conrelid=a.attrelid AND c.contype='p' AND a.attnum=ANY(c.conkey)) FROM pg_attribute a WHERE a.attrelid='test'::regclass AND a.attnum>0 AND NOT a.attisdropped ORDER BY a.attnum"
+			a.Expected = []sql.Row{{"pk", "integer", true, true}}
+			if strings.Contains(s.Name, "ADD COLUMN") {
+				a.Expected = append(a.Expected, sql.Row{"v", "character varying(100)", false, false})
+			}
+			if strings.Contains(s.Name, "RENAME COLUMN") {
+				a.Expected = append(a.Expected, sql.Row{"v2", "character varying(100)", false, false})
+			}
+		}
+		q := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(a.Query)), ";")
+		if q == "select * from dolt_status" {
+			rows := make([]sql.Row, len(a.Expected))
+			for j, row := range a.Expected {
+				rows[j] = append(sql.Row(nil), row...)
+				if name, ok := rows[j][0].(string); ok && !strings.Contains(name, ".") {
+					rows[j][0] = "public." + name
+				}
+			}
+			a.Expected = rows
+		}
+	}
+	return s
+}
