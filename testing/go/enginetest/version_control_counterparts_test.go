@@ -414,3 +414,63 @@ func nativeCherryPickScript(s queries.ScriptTest) queries.ScriptTest {
 	}
 	return s
 }
+
+// Native reverts preserve conflicts without aborting the SQL statement, just
+// like native merge/cherry-pick. Original Dolt expectations remain unchanged.
+func nativeRevertScript(s queries.ScriptTest) queries.ScriptTest {
+	s = nativeCherryPickScript(s)
+	for i, q := range s.SetUpScript {
+		q = strings.ReplaceAll(q, "('ignored_*', 1)", "('ignored_*', true)")
+		q = strings.ReplaceAll(q, "('dont_*', 1)", "('dont_*', true)")
+		q = strings.ReplaceAll(q, "tableA", "tablea")
+		s.SetUpScript[i] = q
+	}
+	countQueries := 0
+	for i := range s.Assertions {
+		a := &s.Assertions[i]
+		a.Query = strings.ReplaceAll(a.Query, "tableA", "tablea")
+		q := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(a.Query)), ";")
+		if s.Name == "dolt_revert() with @@autocommit=1 returns error on conflicts and leaves repo clean" {
+			if strings.HasPrefix(q, "call dolt_revert") {
+				a.ExpectedErrStr = ""
+				a.Expected = []sql.Row{{"", 1, 0, 0}}
+			}
+			if q == "select `table` from dolt_conflicts" {
+				a.Expected = []sql.Row{{"test"}}
+			}
+		}
+		if strings.Contains(a.ExpectedErrStr, "no revert in progress") || strings.Contains(a.ExpectedErrStr, "There is no revert") {
+			if strings.Contains(q, "--abort") {
+				a.ExpectedErrStr = "no revert to abort"
+			} else {
+				a.ExpectedErrStr = "no revert to continue"
+			}
+		}
+		if strings.Contains(a.ExpectedErrStr, "local changes would be overwritten") {
+			if strings.Contains(s.Name, "staged changes") {
+				a.ExpectedErrStr = "cannot revert with uncommitted changes"
+			} else {
+				a.ExpectedErrStr = "local changes would be overwritten by revert"
+			}
+		}
+		if a.ExpectedErrStr == "table not found: dont_track" {
+			a.ExpectedErrStr = "SQLSTATE 42P01"
+		}
+		if q == "select count(*) from dolt_log" {
+			// Count only this fixture's commits, independently of init history.
+			a.Query = `SELECT count(*) FROM dolt_log WHERE message = ANY (ARRAY['seed table','insert row 4','insert row 5','Revert "insert row 4"','Revert "insert row 5"']::text[])`
+			a.Expected = []sql.Row{{3 + 2*countQueries}}
+			countQueries++
+		}
+	}
+	if strings.Contains(s.Name, "--abort rejects other dirty working sets") {
+		// Revert is a standalone native command. Verify failure atomicity
+		// inside an explicit transaction using PostgreSQL savepoint recovery.
+		n := len(s.SetUpScript)
+		s.SetUpScript = append(s.SetUpScript[:n-1], "BEGIN", s.SetUpScript[n-1], "SAVEPOINT before_abort")
+		s.Assertions[0].ExpectedErrStr = "SQLSTATE 25001"
+		a := queries.ScriptTestAssertion{Query: "ROLLBACK TO SAVEPOINT before_abort", SkipResultsCheck: true}
+		s.Assertions = append(s.Assertions[:1], append([]queries.ScriptTestAssertion{a}, s.Assertions[1:]...)...)
+	}
+	return s
+}
