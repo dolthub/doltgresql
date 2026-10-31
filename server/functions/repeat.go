@@ -39,6 +39,11 @@ var repeat_text_int32 = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		return strings.Repeat(strStr, int(num.(int32))), nil
+		// PostgreSQL returns an empty string for a negative count, whereas strings.Repeat panics
+		count := num.(int32)
+		if count < 0 {
+			return "", nil
+		}
+		return strings.Repeat(strStr, int(count)), nil
 	},
 }
