@@ -1772,15 +1772,25 @@ func runHistorySystemTable(t *testing.T) {
 }
 
 func TestUnscopedDiffSystemTable(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunUnscopedDiffSystemTableTests(t, h)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, script := range denginetest.UnscopedDiffSystemTableScriptTests {
+		h := newDoltgresServerHarness(t)
+		enginetest.TestScript(t, h, nativeHistoryDiffScript(script, false))
+		h.Close()
+	}
 }
 
 func TestColumnDiffSystemTable(t *testing.T) {
-	t.Skip()
-	h := newDoltgresServerHarness(t)
-	denginetest.RunColumnDiffSystemTableTests(t, h)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, script := range denginetest.ColumnDiffSystemTableScriptTests {
+		h := newDoltgresServerHarness(t)
+		enginetest.TestScript(t, h, nativeHistoryDiffScript(script, true))
+		h.Close()
+	}
 }
 
 func TestStatBranchTests(t *testing.T) {

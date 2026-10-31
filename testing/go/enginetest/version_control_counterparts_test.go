@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -471,6 +472,113 @@ func nativeRevertScript(s queries.ScriptTest) queries.ScriptTest {
 		s.Assertions[0].ExpectedErrStr = "SQLSTATE 25001"
 		a := queries.ScriptTestAssertion{Query: "ROLLBACK TO SAVEPOINT before_abort", SkipResultsCheck: true}
 		s.Assertions = append(s.Assertions[:1], append([]queries.ScriptTestAssertion{a}, s.Assertions[1:]...)...)
+	}
+	return s
+}
+
+func nativeHistoryDiffScript(s queries.ScriptTest, columns bool) queries.ScriptTest {
+	s.SetUpScript = append([]string(nil), s.SetUpScript...)
+	s.Assertions = append([]queries.ScriptTestAssertion(nil), s.Assertions...)
+	names := []string{"regularTable", "droppedTable", "renamedEmptyTable", "newRenamedEmptyTable", "addedTable", "modifiedTable", "renamedTable", "newRenamedTable", "x", "x1", "x2", "y", "z", "t"}
+	fold := func(q string) string {
+		for _, name := range names {
+			if name != strings.ToLower(name) {
+				q = strings.ReplaceAll(q, name, strings.ToLower(name))
+			}
+		}
+		return q
+	}
+	for i, q := range s.SetUpScript {
+		s.SetUpScript[i] = strings.ReplaceAll(fold(q), "drop primary key", "DROP CONSTRAINT t_pkey")
+	}
+	for i := range s.Assertions {
+		a := &s.Assertions[i]
+		a.Query = fold(a.Query)
+		a.Query = strings.ReplaceAll(a.Query, "'root'", "'postgres'")
+		if strings.Contains(strings.ToLower(a.Query), "table_name") {
+			for _, name := range names {
+				a.Query = strings.ReplaceAll(a.Query, "'"+strings.ToLower(name)+"'", "'public."+strings.ToLower(name)+"'")
+			}
+		}
+		var rows []sql.Row
+		for _, original := range a.Expected {
+			row := append(sql.Row(nil), original...)
+			for j, value := range row {
+				for _, name := range names {
+					if value == name {
+						row[j] = "public." + strings.ToLower(name)
+						break
+					}
+				}
+			}
+			rows = append(rows, row)
+			if !columns && s.Name == "working set changes" && len(row) > 1 && row[1] == "public.newrenamedemptytable" {
+				// A rename contributes a dropped old name as well as an added new name.
+				old := append(sql.Row(nil), row...)
+				old[1] = "public.renamedemptytable"
+				rows = append(rows, old)
+			}
+		}
+		a.Expected = rows
+		if !columns && s.Name == "working set changes" && strings.Contains(strings.ToLower(a.Query), "count(*)") && len(a.Expected) == 1 && a.Expected[0][0] == 7 {
+			a.Expected = []sql.Row{{8}}
+		}
+		if !columns && s.Name == "renamed table" {
+			switch i {
+			case 0:
+				a.Expected = []sql.Row{{7}}
+			case 3:
+				a.Expected = []sql.Row{{"public.x", true, true}, {"public.x1", true, true}}
+			case 4:
+				a.Expected = []sql.Row{{"public.x1", true, true}, {"public.x2", true, true}}
+			}
+		}
+		if columns {
+			// Canonical schemas pair columns by name, without Dolt column tags.
+			switch s.Name {
+			case "table changes - commit history", "table changes - working set":
+				if i == 2 {
+					if strings.HasSuffix(s.Name, "working set") {
+						a.Expected = []sql.Row{{"STAGED", "public.renamedtable", "a", "added"}, {"STAGED", "public.renamedtable", "b", "added"}, {"WORKING", "public.renamedtable", "a", "removed"}, {"WORKING", "public.renamedtable", "b", "removed"}, {"WORKING", "public.newrenamedtable", "a", "added"}, {"WORKING", "public.newrenamedtable", "b", "added"}}
+					} else {
+						a.Expected = []sql.Row{{"public.renamedtable", "a", "added"}, {"public.renamedtable", "b", "added"}, {"public.renamedtable", "a", "removed"}, {"public.renamedtable", "b", "removed"}, {"public.newrenamedtable", "a", "added"}, {"public.newrenamedtable", "b", "added"}}
+					}
+				}
+			case "drop column, then rename column with same type to same name - commit history":
+				if i == 0 {
+					a.Expected = []sql.Row{{7}}
+				}
+				if i == 3 {
+					a.Expected = []sql.Row{{"public.t", "pk", "modified"}, {"public.t", "c1", "added"}, {"public.t", "c2", "removed"}}
+				}
+			case "drop column, then rename column with same type to same name - working set":
+				if i == 2 {
+					a.Expected = []sql.Row{{"public.t", "pk", "modified"}, {"public.t", "c1", "modified"}, {"public.t", "c2", "removed"}}
+				}
+			case "multiple column renames - commit history":
+				if i == 0 {
+					a.Expected = []sql.Row{{8}}
+				}
+				if i == 2 {
+					a.Expected = []sql.Row{{"public.t", "pk", "modified"}, {"public.t", "c2", "added"}, {"public.t", "c1", "removed"}}
+				}
+			}
+			if strings.HasPrefix(s.Name, "column drop and recreate with different type") && strings.HasSuffix(s.Name, "working set") {
+				if i == 0 {
+					a.Expected = []sql.Row{{4}}
+				}
+				if i == 2 {
+					a.Expected = []sql.Row{{"public.t", "pk", "modified"}, {"public.t", "c", "modified"}}
+				}
+			}
+		}
+		if !columns && strings.Contains(strings.ToLower(a.Query), "order by table_name") {
+			index := 0
+			if len(a.Expected) > 0 && (a.Expected[0][0] == "WORKING" || a.Expected[0][0] == "STAGED") {
+				index = 1
+			}
+			sort.SliceStable(a.Expected, func(i, j int) bool { return fmt.Sprint(a.Expected[i][index]) < fmt.Sprint(a.Expected[j][index]) })
+		}
 	}
 	return s
 }
