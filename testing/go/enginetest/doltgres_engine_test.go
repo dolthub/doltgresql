@@ -1562,10 +1562,12 @@ func TestBrokenDdlScripts(t *testing.T) {
 }
 
 func TestDescribeTableAsOf(t *testing.T) {
-	t.Skip()
+	if !nativePostgresEngine() {
+		t.Skip("native counterpart audit; original Doltgres group remains disabled")
+	}
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
-	enginetest.TestScript(t, h, denginetest.DescribeTableAsOfScriptTest)
+	enginetest.TestScript(t, h, nativeDescribeAsOf())
 }
 
 func runShowCreateTable(t *testing.T) {
@@ -1581,10 +1583,12 @@ func runShowCreateTable(t *testing.T) {
 }
 
 func TestViewsWithAsOf(t *testing.T) {
-	t.Skip()
+	if !nativePostgresEngine() {
+		t.Skip("native counterpart audit; original Doltgres group remains disabled")
+	}
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
-	enginetest.TestScript(t, h, denginetest.ViewsWithAsOfScriptTest)
+	enginetest.TestScript(t, h, nativeViewAsOf())
 }
 
 func TestDoltMerge(t *testing.T) {

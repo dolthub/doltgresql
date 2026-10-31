@@ -35,6 +35,35 @@ func transformAST(query string) ([]string, bool) {
 	}
 
 	switch stmt := stmt.(type) {
+	case *sqlparser.Call:
+		if nativePostgresEngine() && stmt.AsOf == nil && stmt.ProcName.Qualifier.IsEmpty() && strings.HasPrefix(strings.ToLower(stmt.ProcName.Name.String()), "dolt_") {
+			name := strings.ToLower(stmt.ProcName.Name.String())
+			params := stmt.Params
+			var variable string
+			if name == "dolt_commit_hash_out" {
+				if len(params) < 1 {
+					return nil, false
+				}
+				v, ok := params[0].(*sqlparser.ColName)
+				if !ok || !strings.HasPrefix(v.Name.String(), "@") {
+					return nil, false
+				}
+				variable = strings.ToLower(strings.TrimPrefix(v.Name.String(), "@"))
+				params = params[1:]
+				name = "dolt_commit"
+			}
+			args := make([]string, len(params))
+			for i, p := range params {
+				args[i] = formatNode(p)
+			}
+			result := []string{"SELECT * FROM " + name + "(" + strings.Join(args, ", ") + ")"}
+			if variable != "" {
+				// Commit must finish as its own statement before reading HEAD. The
+				// original helper only captures this session's newly created hash.
+				result = append(result, "SELECT set_config('doltgres_enginetest."+strings.ReplaceAll(variable, "'", "''")+"',dolt_hashof('HEAD'),false)")
+			}
+			return result, true
+		}
 	case *sqlparser.DDL:
 		switch stmt.Action {
 		case "create":
@@ -2660,4 +2689,10 @@ func TestNativeDescendingIndexConversion(t *testing.T) {
 		require.Contains(t, strings.Join(convertQuery(query), ";"), "a DESC, b ASC", query)
 	}
 	require.Equal(t, []string{"ALTER INDEX ab RENAME TO ba"}, convertQuery("ALTER TABLE t RENAME INDEX ab TO ba"))
+}
+
+func TestNativeCommitHashOutConversion(t *testing.T) {
+	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
+	require.Equal(t, []string{"SELECT * FROM dolt_commit('-am', 'creating table')", "SELECT set_config('doltgres_enginetest.commit1',dolt_hashof('HEAD'),false)"}, convertQuery("CALL dolt_commit_hash_out(@Commit1,'-am','creating table')"))
+	require.Equal(t, []string{"SELECT * FROM dolt_branch('saved', current_setting('doltgres_enginetest.Commit1'))"}, convertQuery("CALL dolt_branch('saved',@Commit1)"))
 }
