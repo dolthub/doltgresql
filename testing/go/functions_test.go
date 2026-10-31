@@ -5460,6 +5460,36 @@ func TestDateAndTimeFunction(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3714
+			Name: "timestamp/timestamptz minus timestamp/timestamptz justifies hours into days",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT timestamp '2024-01-04 15:00' - timestamp '2024-01-01 09:00';`,
+					Expected: []sql.Row{{"3 days 06:00:00"}},
+				},
+				{
+					Query:    `SELECT EXTRACT(DAY FROM timestamp '2024-01-04 15:00' - timestamp '2024-01-01 09:00');`,
+					Expected: []sql.Row{{Numeric("3")}},
+				},
+				{
+					Query:    `SELECT DATE_PART('day', timestamp '2024-01-04 15:00' - timestamp '2024-01-01 09:00');`,
+					Expected: []sql.Row{{float64(3)}},
+				},
+				{
+					Query:    `SELECT timestamp '2024-01-01 09:00' - timestamp '2024-01-04 15:00';`,
+					Expected: []sql.Row{{"-3 days -06:00:00"}},
+				},
+				{
+					Query:    `SELECT timestamp '2024-01-01 15:00' - timestamp '2024-01-01 09:00';`,
+					Expected: []sql.Row{{"06:00:00"}},
+				},
+				{
+					Query:    `SELECT timestamptz '2024-01-04 15:00+00' - timestamptz '2024-01-01 09:00+00';`,
+					Expected: []sql.Row{{"3 days 06:00:00"}},
+				},
+			},
+		},
+		{
 			// https://github.com/dolthub/doltgresql/pull/3162#discussion_r3825271782
 			Name: "timestamp/timestamptz plus/minus interval preserves sub-second precision",
 			Assertions: []ScriptTestAssertion{

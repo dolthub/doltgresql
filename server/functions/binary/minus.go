@@ -320,9 +320,8 @@ var timestamptz_mi = framework.Function2{
 		ts1 := val1.(time.Time)
 		ts2 := val2.(time.Time)
 
-		// Calculate the difference and return as interval
-		diff := ts1.Sub(ts2)
-		return duration.MakeDuration(diff.Nanoseconds(), 0, 0), nil
+		// Calculate the difference and return as interval, justifying whole 24-hour periods into days as PostgreSQL does
+		return justifyHoursToDays(ts1.Sub(ts2)), nil
 	},
 }
 
@@ -351,9 +350,8 @@ var timestamp_mi = framework.Function2{
 		ts1 := val1.(time.Time)
 		ts2 := val2.(time.Time)
 
-		// Calculate the difference and return as interval
-		diff := ts1.Sub(ts2)
-		return duration.MakeDuration(diff.Nanoseconds(), 0, 0), nil
+		// Calculate the difference and return as interval, justifying whole 24-hour periods into days as PostgreSQL does
+		return justifyHoursToDays(ts1.Sub(ts2)), nil
 	},
 }
 
@@ -426,4 +424,11 @@ func minusOverflow(val1 int64, val2 int64) (any, error) {
 		}
 	}
 	return val1 - val2, nil
+}
+
+// justifyHoursToDays converts a time difference into an interval, moving whole 24-hour periods into the days field
+// (the equivalent of PostgreSQL's justify_hours). The sign of the difference is kept on both fields.
+func justifyHoursToDays(diff time.Duration) duration.Duration {
+	days := diff / (24 * time.Hour)
+	return duration.MakeDuration((diff - days*24*time.Hour).Nanoseconds(), int64(days), 0)
 }
