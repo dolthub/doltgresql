@@ -1964,9 +1964,14 @@ func TestTypesOverWire(t *testing.T) {
 }
 
 func TestDoltCherryPick(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunDoltCherryPickTests(t, harness)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, script := range denginetest.DoltCherryPickTests {
+		h := newDoltgresServerHarness(t)
+		enginetest.TestScript(t, h, nativeCherryPickScript(script))
+		h.Close()
+	}
 }
 
 func TestDoltCommit(t *testing.T) {
