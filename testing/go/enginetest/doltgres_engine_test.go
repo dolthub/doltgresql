@@ -1934,7 +1934,9 @@ func TestJoinStats(t *testing.T) {
 func runStatisticIndexes(t *testing.T) {
 	h := newDoltgresServerHarness(t)
 	defer h.Close()
-	enginetest.TestStatisticIndexFilters(t, h)
+	for _, script := range queries.StatsIndexTests {
+		enginetest.TestScript(t, h, nativeIndexScript(script))
+	}
 }
 
 func TestCharsetCollationEngine(t *testing.T) {

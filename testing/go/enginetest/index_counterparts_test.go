@@ -47,6 +47,10 @@ func nativeIndexScript(script queries.ScriptTest) queries.ScriptTest {
 		}
 	}
 	switch script.Name {
+	case "choose range over full prefix match":
+		// PostgreSQL gathers its own statistics; Dolt histogram injection is not an oracle for its planner.
+		script.SetUpScript = append(script.SetUpScript[:2], "ANALYZE xy", "SET enable_seqscan=off")
+		script.Assertions = append(script.Assertions, queries.ScriptTestAssertion{Query: "SELECT x FROM xy WHERE x > 1 AND y=1 AND w='a'", Expected: []sql.Row{{2}}})
 	case "DDL: RENAME COLUMN blocked by functional index dependency":
 		script.Assertions = append(script.Assertions, queries.ScriptTestAssertion{Query: "SELECT pk FROM test WHERE c1_new*10=1000", Expected: []sql.Row{{1}}}, queries.ScriptTestAssertion{Query: "SELECT pg_get_indexdef('idx1'::regclass,1,true)", Expected: []sql.Row{{"(c1_new * 10)"}}})
 	case "DDL: DROP COLUMN blocked by functional index dependency", "multiple expressions: DROP COLUMN blocked by dependency for every column referenced by an expression":
