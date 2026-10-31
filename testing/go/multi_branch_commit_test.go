@@ -518,3 +518,30 @@ func TestMultiBranchPartialStaging(t *testing.T) {
 	rows.Close()
 	require.Equal(t, byte('I'), c.PgConn().TxStatus())
 }
+
+func TestExplicitCommitResultErrorRecovery(t *testing.T) {
+	if testTarget(t) != targetPostgresFork {
+		t.Skip("native commit result error cleanup")
+	}
+	ctx, conn, controller := CreateServer(t, "postgres")
+	defer func() { conn.Close(ctx); controller.Stop(); require.NoError(t, controller.WaitForStop()) }()
+	c := conn.Default
+	exec := func(q string) { t.Helper(); _, err := c.Exec(ctx, q); require.NoError(t, err, q) }
+	exec("CREATE TABLE result_rows(id int PRIMARY KEY)")
+	exec("SELECT dolt_commit('-Am','base')")
+	exec("SET dolt_transaction_commit=1")
+	exec("BEGIN")
+	exec("INSERT INTO result_rows VALUES(1)")
+	exec("SAVEPOINT result_failure")
+	_, err := c.Exec(ctx, "SELECT dolt_commit('-Am','bad result')::integer")
+	require.Error(t, err)
+	exec("ROLLBACK TO result_failure")
+	require.Equal(t, byte('T'), c.PgConn().TxStatus())
+	exec("INSERT INTO result_rows VALUES(2)")
+	exec("COMMIT")
+	var n int
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM result_rows AS OF 'HEAD'").Scan(&n))
+	require.Equal(t, 2, n)
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM dolt_log WHERE message='bad result'").Scan(&n))
+	require.Equal(t, 0, n)
+}
