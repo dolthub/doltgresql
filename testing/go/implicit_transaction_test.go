@@ -1162,6 +1162,8 @@ type Close struct {
 type Execute struct {
 	// Portal is the name of the portal to execute; empty means the unnamed portal.
 	Portal string
+	// MaxRows is the protocol fetch limit; zero requests the complete result.
+	MaxRows uint32
 	// Tag is the expected CommandComplete tag. An empty string skips the tag check.
 	Tag string
 	// Rows are the expected rows, in text (wire) format, with NULL values rendered as "NULL". Nil means the
@@ -1548,7 +1550,7 @@ func (s Close) runStep(r *messageFlowRunner) {
 
 // runStep implements FlowStep.
 func (s Execute) runStep(r *messageFlowRunner) {
-	r.send(&pgproto3.Execute{Portal: s.Portal})
+	r.send(&pgproto3.Execute{Portal: s.Portal, MaxRows: s.MaxRows})
 	r.pending = append(r.pending, pendingFlowStep{idx: r.stepIdx, step: s})
 }
 
