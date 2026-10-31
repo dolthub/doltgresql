@@ -14,6 +14,8 @@
 
 package functions
 
+import pgtypes "github.com/dolthub/doltgresql/server/types"
+
 // initTypeFunctions initializes all functions related to types in this package.
 func initTypeFunctions() {
 	initAny()
@@ -83,6 +85,7 @@ func initInformationSchemaFunctions() {
 
 // Init initializes all functions in this package.
 func Init() {
+	pgtypes.ValueToJSON = ValueToJsonRaw
 	initTypeFunctions()
 	initInformationSchemaFunctions()
 	initAbs()

@@ -77,7 +77,7 @@ type cascadeView struct {
 // path. Column-level dependencies are not tracked, so a view is only dropped when a dropped relation appears in its
 // definition by name.
 func cascadeDropViews(ctx *sql.Context, runner sql.StatementRunner, allDeletedTables []doltdb.TableName) error {
-	views, viewExists, err := loadDatabaseViews(ctx, nil)
+	views, viewExists, err := loadDatabaseViews(ctx, nil, nil)
 	if err != nil || len(views) == 0 {
 		return err
 	}
@@ -119,24 +119,56 @@ func cascadeDropViews(ctx *sql.Context, runner sql.StatementRunner, allDeletedTa
 			continue
 		}
 		// TODO: issue a notice that the view is being dropped ("drop cascades to view ...")
-		dropStmt := fmt.Sprintf(`DROP VIEW %s.%s;`, quoteIdentifier(view.schema), quoteIdentifier(view.name))
-		if err = runStatement(ctx, runner, dropStmt); err != nil {
+		dropStmt := fmt.Sprintf(`DROP VIEW %s.%s;`, QuoteIdentifier(view.schema), QuoteIdentifier(view.name))
+		if err = RunStatement(ctx, runner, dropStmt); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// DependentViewExists returns whether any view other than the given relations references one of them, resolving each
+// view's references the way cascadeDropViews does.
+func DependentViewExists(ctx *sql.Context, relations []doltdb.TableName) (bool, error) {
+	views, viewExists, err := loadDatabaseViews(ctx, nil, nil)
+	if err != nil || len(views) == 0 {
+		return false, err
+	}
+	_, root, err := core.GetRootFromContext(ctx)
+	if err != nil {
+		return false, err
+	}
+	searchPath, err := settings.GetCurrentSchemas(ctx)
+	if err != nil {
+		return false, err
+	}
+	given := make(map[relationKey]struct{}, len(relations))
+	for _, relation := range relations {
+		given[newRelationKey(relation.Schema, relation.Name)] = struct{}{}
+	}
+	for _, view := range views {
+		if _, ok := given[newRelationKey(view.schema, view.name)]; ok {
+			continue
+		}
+		dependent, err := viewDependsOnClosure(ctx, root, view, given, searchPath, viewExists)
+		if err != nil || dependent {
+			return dependent, err
+		}
+	}
+	return false, nil
+}
+
 // WalkViewExpressions walks every expression within the definition of every view in the current database using the
-// given visitor.
-func WalkViewExpressions(ctx *sql.Context, visitor tree.Visitor) error {
-	_, _, err := loadDatabaseViews(ctx, visitor)
+// given visitor, except for the views that `skip` reports.
+func WalkViewExpressions(ctx *sql.Context, visitor tree.Visitor, skip func(schemaName string, viewName string) bool) error {
+	_, _, err := loadDatabaseViews(ctx, visitor, skip)
 	return err
 }
 
 // loadDatabaseViews returns all views in the current database with their parsed table references, along with a set of
-// the views' relation keys for name resolution. When `visitor` is set, it also visits every expression in each view.
-func loadDatabaseViews(ctx *sql.Context, visitor tree.Visitor) ([]*cascadeView, map[relationKey]struct{}, error) {
+// the views' relation keys for name resolution. When `visitor` is set, it also visits every expression in each view
+// that `skip` does not report.
+func loadDatabaseViews(ctx *sql.Context, visitor tree.Visitor, skip func(schemaName string, viewName string) bool) ([]*cascadeView, map[relationKey]struct{}, error) {
 	db, err := core.GetSqlDatabaseFromContext(ctx, "")
 	if err != nil {
 		return nil, nil, err
@@ -173,7 +205,9 @@ func loadDatabaseViews(ctx *sql.Context, visitor tree.Visitor) ([]*cascadeView, 
 				continue
 			}
 			collector := newTableRefCollector()
-			collector.visitor = visitor
+			if skip == nil || !skip(schema.SchemaName(), def.Name) {
+				collector.visitor = visitor
+			}
 			collector.collectSelect(createView.AsSource)
 			views = append(views, &cascadeView{
 				schema: schema.SchemaName(),
@@ -354,8 +388,8 @@ func cascadeDropDependentColumns(ctx *sql.Context, runner sql.StatementRunner, a
 	for _, depCol := range dependentColumns {
 		// TODO: issue a notice that the column is being dropped ("drop cascades to column ... of table ...")
 		alterStmt := fmt.Sprintf(`ALTER TABLE %s DROP COLUMN %s;`,
-			quotedQualifiedName(depCol.table), quoteIdentifier(depCol.column))
-		if err = runStatement(ctx, runner, alterStmt); err != nil {
+			quotedQualifiedName(depCol.table), QuoteIdentifier(depCol.column))
+		if err = RunStatement(ctx, runner, alterStmt); err != nil {
 			return err
 		}
 	}
@@ -381,9 +415,9 @@ func tableNameInSet(name doltdb.TableName, set []doltdb.TableName) bool {
 	return false
 }
 
-// runStatement runs the given statement on the given runner, draining and discarding any returned rows. The statement
+// RunStatement runs the given statement on the given runner, draining and discarding any returned rows. The statement
 // runs as though it were interpreted, since it's a new statement running inside the original one.
-func runStatement(ctx *sql.Context, runner sql.StatementRunner, statement string) error {
+func RunStatement(ctx *sql.Context, runner sql.StatementRunner, statement string) error {
 	_, err := sql.RunInterpreted(ctx, func(subCtx *sql.Context) (struct{}, error) {
 		_, rowIter, _, err := runner.QueryWithBindings(subCtx, statement, nil, nil, nil)
 		if err != nil {
@@ -395,8 +429,8 @@ func runStatement(ctx *sql.Context, runner sql.StatementRunner, statement string
 	return err
 }
 
-// quoteIdentifier returns the given identifier in its quoted form.
-func quoteIdentifier(name string) string {
+// QuoteIdentifier returns the given identifier in its quoted form.
+func QuoteIdentifier(name string) string {
 	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
 }
 
@@ -404,9 +438,9 @@ func quoteIdentifier(name string) string {
 // returned unqualified.
 func quotedQualifiedName(name doltdb.TableName) string {
 	if len(name.Schema) == 0 {
-		return quoteIdentifier(name.Name)
+		return QuoteIdentifier(name.Name)
 	}
-	return quoteIdentifier(name.Schema) + "." + quoteIdentifier(name.Name)
+	return QuoteIdentifier(name.Schema) + "." + QuoteIdentifier(name.Name)
 }
 
 // tableRefCollector collects the table names referenced by a view definition. Common table expression names are

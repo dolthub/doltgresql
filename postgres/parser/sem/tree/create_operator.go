@@ -82,6 +82,8 @@ func (node *CreateOperatorOption) Format(ctx *FmtCtx) {
 // OperatorSymbol returns the operator's symbol.
 func OperatorSymbol(op Operator) string {
 	switch op := op.(type) {
+	case CustomOperator:
+		return string(op)
 	case UnaryOperator:
 		return op.String()
 	case BinaryOperator:
@@ -91,6 +93,14 @@ func OperatorSymbol(op Operator) string {
 	}
 	return ""
 }
+
+// CustomOperator is the symbol of an operator that has no dedicated token in the grammar.
+type CustomOperator string
+
+var _ Operator = CustomOperator("")
+
+// operator implements the interface Operator.
+func (CustomOperator) operator() {}
 
 // CreateOperatorOptionType represents the type of a CREATE OPERATOR option.
 type CreateOperatorOptionType int

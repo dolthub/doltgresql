@@ -229,7 +229,11 @@ func (c *CompiledFunction) OutParametersSchema() sql.Schema {
 	if outParams := c.overload.Function().GetOutParameters(); len(outParams) > 0 {
 		return outParams
 	}
-	return compositeReturnSchema(c.overload.Function().GetReturn())
+	returnType := c.overload.Function().GetReturn()
+	if returnType.IsPolymorphicType() && len(c.callResolved) > 0 {
+		returnType = c.callResolved[len(c.callResolved)-1]
+	}
+	return compositeReturnSchema(returnType)
 }
 
 // compositeReturnSchema returns one column per field of |returnType| when it is a composite type. A function declared
@@ -574,14 +578,21 @@ func (c *CompiledFunction) callFunction(ctx *sql.Context, args []any) (interface
 	case InterpretedFunction:
 		return plpgsql.Call(ctx, f, c.runner, c.callResolved, args)
 	case ExtensionFunction:
-		extFunc, err := extensions.GetFunction(f.ExtensionName, f.ExtensionSymbol)
-		if err != nil {
-			return nil, err
-		}
+		var err error
 		for i, arg := range args {
 			if args[i], err = sql.UnwrapAny(ctx, arg); err != nil {
 				return nil, err
 			}
+		}
+		if queryFunc, ok := extensions.GetQueryFunction(f.ExtensionName, f.ExtensionSymbol); ok {
+			return queryFunc(ctx, c.runner, args...)
+		}
+		if typedFunc, ok := extensions.GetTypedFunction(f.ExtensionName, f.ExtensionSymbol); ok {
+			return typedFunc(ctx, c.callResolved, args...)
+		}
+		extFunc, err := extensions.GetFunction(f.ExtensionName, f.ExtensionSymbol)
+		if err != nil {
+			return nil, err
 		}
 		return extFunc(ctx, args...)
 	case SQLFunction:
@@ -759,7 +770,7 @@ func (c *CompiledFunction) WithChildren(ctx *sql.Context, children ...sql.Expres
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	nc := newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner)
+	nc := newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.overloads.overloadsForParams(len(children)), c.IsOperator, c.runner)
 	nc.distinctWindow = c.distinctWindow
 	if nc.distinctWindow != nil {
 		if err := nc.distinctWindowError(); err != nil {
@@ -1240,34 +1251,29 @@ func getTypeIfRowType(isSRF bool, t *pgtypes.DoltgresType) *pgtypes.DoltgresType
 }
 
 // ResolveDefaultValues adds missing arguments if there is any using the default value set on the parameter.
-// It checks if it's a valid SQL function that has fewer arguments than defined parameters.
+// It checks if it's a valid SQL or extension function that has fewer arguments than defined parameters.
 func (c *CompiledFunction) ResolveDefaultValues(ctx *sql.Context, getDefExpr func(defExpr string) (sql.Expression, error)) error {
 	if !c.overload.Valid() {
 		return nil
 	}
-	sqlFunc, ok := c.overload.params.function.(SQLFunction)
+	allParams, allTypes, ok := defaultableParams(c.overload.params.function)
 	if !ok {
 		return nil
 	}
 
 	argCount := len(c.Arguments)
-	routineInputArgCount := sqlFunc.GetExpectedParameterCount()
+	routineInputArgCount := c.overload.params.function.GetExpectedParameterCount()
 	if argCount < routineInputArgCount {
 		castsColl, err := core.GetCastsCollectionFromContext(ctx, "")
 		if err != nil {
 			return err
 		}
 		inParamIdx := 0
-		for i, param := range sqlFunc.AllParams {
+		for i, param := range allParams {
 			if param.Mode == procedures2.ParameterMode_OUT {
 				continue
 			}
-			if inParamIdx < argCount {
-				if exprTypeId := c.Arguments[inParamIdx].Type(ctx).(*pgtypes.DoltgresType).ID; exprTypeId != pgtypes.Unknown.ID && sqlFunc.AllTypes[i].ID != exprTypeId {
-					// if non-matching type, then skip appending defaults
-					break
-				}
-			} else if param.Default != "" {
+			if inParamIdx >= argCount && param.Default != "" {
 				// only if there is default, then append
 				cdv, err := getDefExpr(param.Default)
 				if err != nil {
@@ -1281,11 +1287,12 @@ func (c *CompiledFunction) ResolveDefaultValues(ctx *sql.Context, getDefExpr fun
 					// null type
 					dt = pgtypes.Unknown
 				}
-				implicitCast, err = castsColl.GetImplicitCast(ctx, dt, sqlFunc.AllTypes[i])
+				implicitCast, err = castsColl.GetImplicitCast(ctx, dt, allTypes[i])
 				if err != nil {
 					return err
 				}
 				c.overload.casts = append(c.overload.casts, implicitCast)
+				c.originalTypes = append(c.originalTypes, dt)
 			}
 			inParamIdx += 1
 		}

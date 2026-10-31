@@ -24,6 +24,8 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/triggers"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/extensions"
+	"github.com/dolthub/doltgresql/server/extensions/extdef"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
@@ -85,10 +87,11 @@ func (te *TriggerExecution) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder
 		return sourceIter, nil
 	}
 	trigFuncs := make([]framework.InterpretedFunction, len(te.Triggers))
+	extensionTrigs := make([]extdef.TriggerFunction, len(te.Triggers))
 	whens := make([]framework.InterpretedFunction, len(te.Triggers))
 	trigVars := make([]map[string]any, len(te.Triggers))
 	for i, trig := range te.Triggers {
-		trigFuncs[i], err = te.loadTriggerFunction(ctx, trig)
+		trigFuncs[i], extensionTrigs[i], err = te.loadTriggerFunction(ctx, trig)
 		if err != nil {
 			return nil, err
 		}
@@ -104,15 +107,16 @@ func (te *TriggerExecution) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder
 	}
 
 	return &triggerExecutionIter{
-		functions: trigFuncs,
-		whens:     whens,
-		split:     te.Split,
-		treturn:   te.Return,
-		runner:    te.Runner.Runner,
-		sch:       te.Sch,
-		source:    sourceIter,
-		trigVars:  trigVars,
-		timing:    te.Timing,
+		functions:  trigFuncs,
+		extensions: extensionTrigs,
+		whens:      whens,
+		split:      te.Split,
+		treturn:    te.Return,
+		runner:     te.Runner.Runner,
+		sch:        te.Sch,
+		source:     sourceIter,
+		trigVars:   trigVars,
+		timing:     te.Timing,
 	}, nil
 }
 
@@ -147,16 +151,23 @@ func (te *TriggerExecution) WithExpressions(ctx *sql.Context, expressions ...sql
 }
 
 // loadTriggerFunction loads the given trigger's framework.InterpretedFunction.
-func (te *TriggerExecution) loadTriggerFunction(ctx *sql.Context, trigger triggers.Trigger) (framework.InterpretedFunction, error) {
+func (te *TriggerExecution) loadTriggerFunction(ctx *sql.Context, trigger triggers.Trigger) (framework.InterpretedFunction, extdef.TriggerFunction, error) {
 	function, err := loadFunction(ctx, nil, trigger.Function)
 	if err != nil {
-		return framework.InterpretedFunction{}, err
+		return framework.InterpretedFunction{}, nil, err
 	}
 	if !function.ID.IsValid() {
-		return framework.InterpretedFunction{}, errors.Errorf("function %s() does not exist", trigger.Function.FunctionName())
+		return framework.InterpretedFunction{}, nil, errors.Errorf("function %s() does not exist", trigger.Function.FunctionName())
 	}
 	if function.ReturnType != pgtypes.Trigger.ID {
-		return framework.InterpretedFunction{}, errors.Errorf(`function %s must return type trigger`, function.ID.FunctionName())
+		return framework.InterpretedFunction{}, nil, errors.Errorf(`function %s must return type trigger`, function.ID.FunctionName())
+	}
+	var extensionTrigger extdef.TriggerFunction
+	if function.ExtensionName != "" {
+		var ok bool
+		if extensionTrigger, ok = extensions.GetTriggerFunction(function.ExtensionName, function.ExtensionSymbol); !ok {
+			return framework.InterpretedFunction{}, nil, errors.Errorf(`function %s cannot be fired by a trigger`, function.ID.FunctionName())
+		}
 	}
 	return framework.InterpretedFunction{
 		ID:                 function.ID,
@@ -166,7 +177,7 @@ func (te *TriggerExecution) loadTriggerFunction(ctx *sql.Context, trigger trigge
 		Strict:             function.Strict,
 		SRF:                false,
 		Statements:         function.Operations,
-	}, nil
+	}, extensionTrigger, nil
 }
 
 // triggerVariables returns the values of the special variables that the given trigger's function sees.
@@ -206,15 +217,16 @@ func triggerVariables(trigger triggers.Trigger, tgOp string) map[string]any {
 
 // triggerExecutionIter is the iterator for TriggerExecution.
 type triggerExecutionIter struct {
-	functions []framework.InterpretedFunction
-	whens     []framework.InterpretedFunction
-	split     TriggerExecutionRowHandling
-	treturn   TriggerExecutionRowHandling
-	runner    sql.StatementRunner
-	sch       sql.Schema
-	source    sql.RowIter
-	trigVars  []map[string]any
-	timing    triggers.TriggerTiming
+	functions  []framework.InterpretedFunction
+	extensions []extdef.TriggerFunction
+	whens      []framework.InterpretedFunction
+	split      TriggerExecutionRowHandling
+	treturn    TriggerExecutionRowHandling
+	runner     sql.StatementRunner
+	sch        sql.Schema
+	source     sql.RowIter
+	trigVars   []map[string]any
+	timing     triggers.TriggerTiming
 }
 
 var _ sql.RowIter = (*triggerExecutionIter)(nil)
@@ -260,7 +272,12 @@ func (t *triggerExecutionIter) Next(ctx *sql.Context) (sql.Row, error) {
 			}
 		}
 
-		returnedValue, err := plpgsql.TriggerCall(ctx, function, t.runner, t.sch, oldRow, newRow, t.trigVars[funcIdx])
+		var returnedValue any
+		if t.extensions[funcIdx] != nil {
+			returnedValue, err = t.extensions[funcIdx](ctx, t.sch, oldRow, newRow, t.trigVars[funcIdx])
+		} else {
+			returnedValue, err = plpgsql.TriggerCall(ctx, function, t.runner, t.sch, oldRow, newRow, t.trigVars[funcIdx])
+		}
 		if err != nil {
 			return nil, err
 		}

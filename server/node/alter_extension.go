@@ -28,6 +28,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
+	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/extensions"
 )
 
@@ -36,9 +37,11 @@ import (
 type AlterExtension struct {
 	Name    string
 	Version string
+	Runner  pgexprs.StatementRunner
 }
 
 var _ sql.ExecSourceRel = (*AlterExtension)(nil)
+var _ sql.Expressioner = (*AlterExtension)(nil)
 var _ vitess.Injectable = (*AlterExtension)(nil)
 
 // NewAlterExtension returns a new *AlterExtension.
@@ -52,6 +55,11 @@ func NewAlterExtension(name string, version string) *AlterExtension {
 // Children implements the interface sql.ExecSourceRel.
 func (c *AlterExtension) Children() []sql.Node {
 	return nil
+}
+
+// Expressions implements the interface sql.Expressioner.
+func (c *AlterExtension) Expressions() []sql.Expression {
+	return []sql.Expression{c.Runner}
 }
 
 // IsReadOnly implements the interface sql.ExecSourceRel.
@@ -86,7 +94,7 @@ func (c *AlterExtension) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		return nil, pgerror.Newf(pgcode.InvalidParameterValue, `extension "%s" has no update path from version "%s" to version "%s"`,
 			c.Name, installed.Version, c.Version)
 	}
-	if err = extensions.UpdateObjects(ctx, ext, installed.Namespace.SchemaName()); err != nil {
+	if err = extensions.UpdateObjects(ctx, c.Runner.Runner, ext, installed.Namespace.SchemaName()); err != nil {
 		return nil, err
 	}
 	if installed.Version == version {
@@ -127,4 +135,14 @@ func (c *AlterExtension) WithResolvedChildren(ctx context.Context, children []an
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}
 	return c, nil
+}
+
+// WithExpressions implements the interface sql.Expressioner.
+func (c *AlterExtension) WithExpressions(ctx *sql.Context, expressions ...sql.Expression) (sql.Node, error) {
+	if len(expressions) != 1 {
+		return nil, sql.ErrInvalidChildrenNumber.New(c, len(expressions), 1)
+	}
+	newC := *c
+	newC.Runner = expressions[0].(pgexprs.StatementRunner)
+	return &newC, nil
 }

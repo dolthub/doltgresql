@@ -26,6 +26,7 @@ import (
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/procedures"
 	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 )
 
@@ -51,6 +52,8 @@ type Function struct {
 	Operations         []plpgsql.InterpreterOperation // Only used when this is a plpgsql language
 	SQLDefinition      string                         // Only used when this is a sql language
 	SetOf              bool
+	Window             bool            // Whether this is a window function, which may only be called with an OVER clause
+	Volatility         tree.Volatility // Only used when this is an extension function
 }
 
 var _ objinterface.Collection = (*Collection)(nil)
@@ -87,6 +90,16 @@ func (pgf *Collection) GetFunctionOverloads(ctx context.Context, funcID id.Funct
 		funcs[i] = pgf.accessCache[overload]
 	}
 	return funcs, nil
+}
+
+// HasWindowName returns whether a window function with the given name exists in any schema.
+func (pgf *Collection) HasWindowName(ctx context.Context, name string) bool {
+	for _, f := range pgf.accessCache {
+		if f.Window && f.ID.FunctionName() == name {
+			return true
+		}
+	}
+	return false
 }
 
 // HasFunction returns whether the function is present.
