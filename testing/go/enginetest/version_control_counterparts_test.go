@@ -224,6 +224,29 @@ func nativeDiffMetadataScript(s queries.ScriptTest, nameColumns int) queries.Scr
 		s.SetUpScript[i] = q
 	}
 	s.Assertions = append([]queries.ScriptTestAssertion(nil), s.Assertions...)
+	// Intentional fork contract: names identify canonical members. Do not
+	// carry Dolt's history-dependent column-fingerprint rename heuristic.
+	if s.Name == "renamed table" {
+		for i := range s.Assertions {
+			a := &s.Assertions[i]
+			oldName := strings.Contains(a.Query, "'t1'")
+			newName := strings.Contains(a.Query, "'t2'")
+			if nameColumns == 2 {
+				a.Expected = nil
+				if !newName {
+					a.Expected = append(a.Expected, sql.Row{"t1", "", "dropped", true, true})
+				}
+				if !oldName {
+					a.Expected = append(a.Expected, sql.Row{"", "t2", "added", true, true})
+				}
+			} else if oldName {
+				a.Expected = []sql.Row{{"t1", 0, 0, 1, 0, 0, 2, 0, 1, 0, 2, 0}}
+			} else {
+				a.Expected = []sql.Row{{"t2", 0, 2, 0, 0, 4, 0, 0, 0, 2, 0, 4}}
+			}
+		}
+	}
+
 	for i := range s.Assertions {
 		a := &s.Assertions[i]
 		// In this fixture Commit5 is HEAD; Commit3 is exactly HEAD~2.
