@@ -1,0 +1,59 @@
+# Native translation of sql-server-large-json-replication.yaml; see nativedef.go and tests/native/cluster.yaml.
+parallel: true
+tests:
+- name: large json values replicate to standby
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: |
+        CREATE TABLE large_json (
+          id  BIGINT PRIMARY KEY,
+          doc JSON
+        )
+    - exec: INSERT INTO large_json VALUES (1, json_build_object('id', 1, 'payload', REPEAT('abcde', 2200)))
+    - exec: INSERT INTO large_json VALUES (2, json_build_object('id', 2, 'payload', REPEAT('fghij', 2200)))
+    - exec: INSERT INTO large_json VALUES (3, json_build_object('id', 3, 'payload', REPEAT('klmno', 2200)))
+    - exec: INSERT INTO large_json VALUES (4, json_build_object('id', 4, 'items', json_build_array(REPEAT('x',3700), REPEAT('y',3700), REPEAT('z',3700))))
+    - exec: INSERT INTO large_json VALUES (5, json_build_object('id', 5, 'nested', json_build_object('a', REPEAT('p',5500), 'b', REPEAT('q',5500))))
+    - query: SELECT COUNT(*) AS count FROM large_json WHERE LENGTH(doc::text) > 11000
+      result:
+        columns:
+        - count
+        rows:
+        - - '5'
+    - query: SELECT doc->>'id' AS id FROM large_json WHERE id = 3
+      result:
+        columns:
+        - id
+        rows:
+        - - '3'
+  - 'on': server2
+    database: repo1
+    retry_attempts: 100
+    queries:
+    - query: SELECT COUNT(*) AS count FROM large_json
+      result:
+        columns:
+        - count
+        rows:
+        - - '5'
+    - query: SELECT COUNT(*) AS count FROM large_json WHERE LENGTH(doc::text) > 11000
+      result:
+        columns:
+        - count
+        rows:
+        - - '5'
+    - query: SELECT doc->>'id' AS id FROM large_json WHERE id = 3
+      result:
+        columns:
+        - id
+        rows:
+        - - '3'
