@@ -126,6 +126,14 @@ func TestMultiBranchAutomaticCommit(t *testing.T) {
 // Derived from Dolt's concurrent multi-branch insert tests. PostgreSQL may
 // choose a deadlock victim; retry that entire transaction, never one branch.
 func TestMultiBranchConcurrentCommit(t *testing.T) {
+	testMultiBranchConcurrentCommit(t, false)
+}
+
+func TestMultiBranchExplicitConcurrentCommit(t *testing.T) {
+	testMultiBranchConcurrentCommit(t, true)
+}
+
+func testMultiBranchConcurrentCommit(t *testing.T, explicit bool) {
 	if testTarget(t) != targetPostgresFork {
 		t.Skip("native PostgreSQL transaction integration")
 	}
@@ -170,7 +178,11 @@ func TestMultiBranchConcurrentCommit(t *testing.T) {
 					<-start
 				}
 				if err == nil {
-					_, err = db.Exec(ctx, "COMMIT")
+					query := "COMMIT"
+					if explicit {
+						query = "SELECT * FROM dolt_commit_all('-Am','concurrent')"
+					}
+					_, err = db.Exec(ctx, query)
 				}
 				if err == nil {
 					done <- nil
@@ -284,4 +296,224 @@ func TestMultiBranchPendingMerge(t *testing.T) {
 			{Query: "SELECT dolt_commit('-Am','unresolved')", ExpectedErr: "unresolved merge conflicts"},
 		},
 	}})
+}
+
+func TestMultiBranchExplicitCommit(t *testing.T) {
+	if testTarget(t) != targetPostgresFork {
+		t.Skip("native explicit transaction commit integration")
+	}
+	for _, fn := range []string{"dolt_commit", "dolt_commit_all"} {
+		t.Run(fn, func(t *testing.T) {
+			ctx, conn, controller := CreateServer(t, "postgres")
+			defer func() { conn.Close(ctx); controller.Stop(); require.NoError(t, controller.WaitForStop()) }()
+			c := conn.Default
+			exec := func(q string) { t.Helper(); _, err := c.Exec(ctx, q); require.NoError(t, err, q) }
+			other, err := pgx.ConnectConfig(ctx, c.Config().Copy())
+			require.NoError(t, err)
+			defer other.Close(ctx)
+			count := func(db *pgx.Conn, branch string, head bool, want int) {
+				t.Helper()
+				q := fmt.Sprintf(`SELECT count(*) FROM "postgres/%s".public.explicit_rows`, branch)
+				if head {
+					q += " AS OF 'HEAD'"
+				}
+				var got int
+				require.NoError(t, db.QueryRow(ctx, q).Scan(&got))
+				require.Equal(t, want, got, q)
+			}
+			exec("CREATE TABLE explicit_rows(id int PRIMARY KEY)")
+			exec("SELECT dolt_commit('-Am','base')")
+			exec("SELECT dolt_branch('b1')")
+			exec("SELECT dolt_branch('b2')")
+			exec("SELECT dolt_checkout('b2')")
+			if fn == "dolt_commit" {
+				exec("SET dolt_multi_branch_commit=1")
+			}
+			exec("BEGIN")
+			exec(`INSERT INTO "postgres/main".public.explicit_rows VALUES(1)`)
+			exec(`INSERT INTO "postgres/b1".public.explicit_rows VALUES(2)`)
+			count(other, "main", false, 0)
+			count(other, "b1", false, 0)
+			rows, err := c.Query(ctx, "SELECT * FROM "+fn+"('-Am','both')")
+			require.NoError(t, err)
+			var names, hashes []string
+			for rows.Next() {
+				var name, hash string
+				if fn == "dolt_commit_all" {
+					require.NoError(t, rows.Scan(&name, &hash))
+					names = append(names, name)
+				} else {
+					require.NoError(t, rows.Scan(&hash))
+				}
+				hashes = append(hashes, hash)
+			}
+			require.NoError(t, rows.Err())
+			rows.Close()
+			require.Len(t, hashes, 2)
+			if fn == "dolt_commit_all" {
+				require.Equal(t, []string{"b1", "main"}, names)
+			}
+			for _, h := range hashes {
+				require.Len(t, h, 32)
+			}
+			require.Equal(t, byte('I'), c.PgConn().TxStatus())
+			for _, b := range []string{"main", "b1"} {
+				count(other, b, false, 1)
+				count(other, b, true, 1)
+			}
+			count(other, "b2", true, 0)
+			// An error in a later branch must roll back an earlier ref publication.
+			exec("SELECT dolt_checkout('main')")
+			exec("BEGIN")
+			exec(`INSERT INTO "postgres/b1".public.explicit_rows VALUES(3)`)
+			exec("INSERT INTO explicit_rows VALUES(4)")
+			exec("DELETE FROM explicit_rows WHERE id=4")
+			_, err = c.Exec(ctx, "SELECT * FROM "+fn+"('-Am','must rollback')")
+			require.ErrorContains(t, err, "nothing to commit")
+			exec("ROLLBACK")
+			for _, b := range []string{"main", "b1"} {
+				count(other, b, false, 1)
+				count(other, b, true, 1)
+			}
+			// --skip-empty omits unchanged branches but still commits the SQL transaction.
+			exec("BEGIN")
+			exec(`INSERT INTO "postgres/b1".public.explicit_rows VALUES(5)`)
+			exec("INSERT INTO explicit_rows VALUES(6)")
+			exec("DELETE FROM explicit_rows WHERE id=6")
+			rows, err = c.Query(ctx, "SELECT * FROM "+fn+"('-Am','skip unchanged','--skip-empty')")
+			require.NoError(t, err)
+			got := 0
+			for rows.Next() {
+				got++
+			}
+			require.NoError(t, rows.Err())
+			rows.Close()
+			require.Equal(t, 1, got)
+			require.Equal(t, byte('I'), c.PgConn().TxStatus())
+			count(other, "main", true, 1)
+			count(other, "b1", true, 2)
+			// Native simple-query batches also end at the explicit commit function.
+			_, err = c.Exec(ctx, `BEGIN; INSERT INTO explicit_rows VALUES(7); SELECT * FROM `+fn+`('-Am','simple'); SELECT 1/0`, pgx.QueryExecModeSimpleProtocol)
+			require.Error(t, err)
+			exec("ROLLBACK")
+			count(other, "main", true, 2)
+		})
+	}
+}
+
+func TestExplicitCommitDeferredTriggers(t *testing.T) {
+	if testTarget(t) != targetPostgresFork {
+		t.Skip("native deferred-trigger commit integration")
+	}
+	ctx, conn, controller := CreateServer(t, "postgres")
+	defer func() { conn.Close(ctx); controller.Stop(); require.NoError(t, controller.WaitForStop()) }()
+	c := conn.Default
+	exec := func(q string) { t.Helper(); _, err := c.Exec(ctx, q); require.NoError(t, err, q) }
+	exec("CREATE TABLE deferred_source(id int PRIMARY KEY)")
+	exec("CREATE TABLE deferred_sink(id int PRIMARY KEY)")
+	exec("CREATE FUNCTION deferred_copy() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN INSERT INTO deferred_sink VALUES(NEW.id); RETURN NEW; END $$")
+	exec("CREATE CONSTRAINT TRIGGER deferred_copy AFTER INSERT ON deferred_source DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION deferred_copy()")
+	exec("SELECT dolt_commit('-Am','base')")
+	exec("BEGIN")
+	exec("INSERT INTO deferred_source VALUES(1)")
+	exec("SELECT dolt_commit('-Am','with trigger')")
+	require.Equal(t, byte('I'), c.PgConn().TxStatus())
+	var n int
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM deferred_sink AS OF 'HEAD'").Scan(&n))
+	require.Equal(t, 1, n)
+	exec("CREATE FUNCTION cursor_copy(n int) RETURNS int LANGUAGE plpgsql AS $$ BEGIN INSERT INTO deferred_sink VALUES(n); RETURN n; END $$")
+	exec("BEGIN")
+	exec("DECLARE pending_cursor CURSOR WITH HOLD FOR SELECT cursor_copy(n) FROM generate_series(2,3) n")
+	exec("SELECT dolt_commit('-Am','held cursor writes')")
+	require.Equal(t, byte('I'), c.PgConn().TxStatus())
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM deferred_sink AS OF 'HEAD'").Scan(&n))
+	require.Equal(t, 3, n)
+	rows, err := c.Query(ctx, "FETCH ALL FROM pending_cursor")
+	require.NoError(t, err)
+	values := []int{}
+	for rows.Next() {
+		var v int
+		require.NoError(t, rows.Scan(&v))
+		values = append(values, v)
+	}
+	require.NoError(t, rows.Err())
+	rows.Close()
+	require.Equal(t, []int{2, 3}, values)
+	exec("CLOSE pending_cursor")
+	exec("CREATE TABLE deferred_fk(id int REFERENCES deferred_source DEFERRABLE INITIALLY DEFERRED)")
+	exec("SELECT dolt_commit('-Am','constraint')")
+	exec("BEGIN")
+	exec("INSERT INTO deferred_fk VALUES(99)")
+	_, err = c.Exec(ctx, "SELECT dolt_commit('-Am','bad constraint')")
+	require.ErrorContains(t, err, "foreign key")
+	exec("ROLLBACK")
+	require.NoError(t, c.QueryRow(ctx, "SELECT count(*) FROM dolt_log WHERE message='bad constraint'").Scan(&n))
+	require.Equal(t, 0, n)
+}
+
+func TestMultiBranchCommitProtocol(t *testing.T) {
+	if testTarget(t) != targetPostgresFork {
+		t.Skip("native commit function protocol integration")
+	}
+	RunMessageFlowTests(t, []MessageFlowTest{{
+		Name:        "explicit commit publishes before Sync and completes its result",
+		SetUpScript: []string{"CREATE TABLE protocol_rows(id int PRIMARY KEY)", "SELECT dolt_commit('-Am','base')", "SELECT dolt_branch('b1')"},
+		Steps: []FlowStep{
+			SimpleQuery{Query: `BEGIN; INSERT INTO protocol_rows VALUES(1); INSERT INTO "postgres/b1".public.protocol_rows VALUES(2)`, Expected: []StatementResult{{Tag: "BEGIN"}, {Tag: "INSERT 0 1"}, {Tag: "INSERT 0 1"}}, ExpectedReadyStatus: 'T'},
+			Parse{Name: "commit_all", Query: "SELECT branch FROM dolt_commit_all('-Am','wire')"},
+			Bind{PreparedStatement: "commit_all", Portal: "commit_result"},
+			Execute{Portal: "commit_result", MaxRows: 1, Tag: "SELECT 2", Rows: [][]string{{"b1"}, {"main"}}},
+			Flush{},
+			QueryOnOtherConnection{Query: `SELECT count(*) FROM "postgres/b1".public.protocol_rows AS OF 'HEAD'`, Expected: [][]string{{"1"}}},
+			QueryOnOtherConnection{Query: "SELECT count(*) FROM protocol_rows AS OF 'HEAD'", Expected: [][]string{{"1"}}},
+			Sync{ExpectedReadyStatus: 'I'},
+		},
+	}})
+}
+
+func TestMultiBranchPartialStaging(t *testing.T) {
+	if testTarget(t) != targetPostgresFork {
+		t.Skip("native multi-branch staging")
+	}
+	ctx, conn, controller := CreateServer(t, "postgres")
+	defer func() { conn.Close(ctx); controller.Stop(); require.NoError(t, controller.WaitForStop()) }()
+	c := conn.Default
+	exec := func(q string) { t.Helper(); _, err := c.Exec(ctx, q); require.NoError(t, err, q) }
+	exec("CREATE TABLE staged_rows(id int PRIMARY KEY)")
+	exec("SELECT dolt_commit('-Am','base')")
+	exec("SELECT dolt_branch('b1')")
+	exec("INSERT INTO staged_rows VALUES(1)")
+	exec("SELECT dolt_add('-A')")
+	exec("SELECT dolt_checkout('b1')")
+	exec("INSERT INTO staged_rows VALUES(2)")
+	exec("SELECT dolt_add('-A')")
+	exec("SELECT dolt_checkout('main')")
+	exec("BEGIN")
+	exec("INSERT INTO staged_rows VALUES(3)")
+	exec(`INSERT INTO "postgres/b1".public.staged_rows VALUES(4)`)
+	exec("SET LOCAL dolt_transaction_commit=1")
+	exec("SET LOCAL dolt_multi_branch_commit=1")
+	exec("SELECT * FROM dolt_commit_all('-m','staged only')")
+	require.Equal(t, byte('I'), c.PgConn().TxStatus())
+	for _, b := range []string{"main", "b1"} {
+		var n int
+		require.NoError(t, c.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM "postgres/%s".public.staged_rows`, b)).Scan(&n))
+		require.Equal(t, 2, n)
+		require.NoError(t, c.QueryRow(ctx, fmt.Sprintf(`SELECT count(*) FROM "postgres/%s".public.staged_rows AS OF 'HEAD'`, b)).Scan(&n))
+		require.Equal(t, 1, n)
+	}
+	exec("BEGIN")
+	exec("INSERT INTO staged_rows VALUES(5)")
+	exec(`INSERT INTO "postgres/b1".public.staged_rows VALUES(6)`)
+	_, err := c.Exec(ctx, "SELECT dolt_commit('-Am','disabled')")
+	require.ErrorContains(t, err, "multiple dirty branches")
+	exec("ROLLBACK")
+	// Empty all-branch commits use the selected branch, and skip-empty returns no rows.
+	exec("SELECT dolt_commit_all('--allow-empty','-m','empty selected')")
+	rows, err := c.Query(ctx, "SELECT * FROM dolt_commit_all('--skip-empty','-m','skip')")
+	require.NoError(t, err)
+	require.False(t, rows.Next())
+	require.NoError(t, rows.Err())
+	rows.Close()
+	require.Equal(t, byte('I'), c.PgConn().TxStatus())
 }

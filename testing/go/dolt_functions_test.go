@@ -893,6 +893,9 @@ func TestDoltCommit(t *testing.T) {
 				{
 					Query:    "SELECT DOLT_COMMIT('--skip-empty', '-m', 'should_error');",
 					Expected: []sql.Row{{nil}},
+					// Native dolt_commit is set-returning for multi-branch commits.
+					// Dolt returns no commit rows; its scalar Doltgres adapter yields NULL.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{}},
 				},
 				{
 					Query:    "SELECT length(DOLT_COMMIT('--allow-empty', '-m', 'initial')::text) = 32;",
