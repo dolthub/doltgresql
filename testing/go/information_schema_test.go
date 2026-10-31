@@ -10,7 +10,22 @@ import (
 )
 
 func TestInfoSchemaRevisionDb(t *testing.T) {
-	RunScripts(t, InfoSchemaRevisionDbScripts)
+	scripts := append([]ScriptTest(nil), InfoSchemaRevisionDbScripts...)
+	// PostgreSQL has no USE statement. Query the same immutable tag catalogs
+	// through revision-qualified names, without changing the session branch.
+	scripts[1].Postgres = &ScriptTest{
+		SetUpScript: scripts[1].SetUpScript,
+		Assertions: []ScriptTestAssertion{
+			{Query: "SELECT active_branch()", Expected: []sql.Row{{"main"}}},
+			{Query: "SELECT column_name FROM information_schema.columns WHERE table_catalog='postgres' AND table_name='t' ORDER BY 1", Expected: []sql.Row{{"a"}, {"b"}}},
+			{Query: `SELECT column_name FROM "postgres/t2".information_schema.columns WHERE table_catalog='postgres' AND table_name='t' ORDER BY 1`, Expected: []sql.Row{{"a"}, {"b"}, {"c"}}},
+			{Query: `SELECT column_name FROM "postgres/t3".information_schema.columns WHERE table_catalog='postgres' AND table_name='t' ORDER BY 1`, Expected: []sql.Row{{"a"}, {"b"}, {"d"}}},
+			{Query: `SELECT x.column_name,y.column_name FROM "postgres/t2".information_schema.columns x JOIN "postgres/t3".information_schema.columns y USING(table_name,ordinal_position) WHERE x.table_name='t' AND x.ordinal_position=3`, Expected: []sql.Row{{"c", "d"}}},
+			{Query: "SELECT active_branch()", Expected: []sql.Row{{"main"}}},
+			{Query: "SELECT column_name FROM information_schema.columns WHERE table_catalog='postgres' AND table_name='t' ORDER BY 1", Expected: []sql.Row{{"a"}, {"b"}}},
+		},
+	}
+	RunScripts(t, scripts)
 }
 
 var InfoSchemaRevisionDbScripts = []ScriptTest{
