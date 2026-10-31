@@ -1011,7 +1011,7 @@ func convertConstraintAlter(statement *sqlparser.DDL) ([]string, bool) {
 		tableName := *translateTableName(statement.Table)
 		switch d := c.Details.(type) {
 		case *sqlparser.ForeignKeyDefinition:
-			return []string{createForeignKeyStatement(tableName, d)}, true
+			return []string{createForeignKeyStatement(tableName, d, c.Name)}, true
 		case *sqlparser.CheckConstraintDefinition:
 			return []string{createCheckConstraintStatement(tableName, d)}, true
 		default:
@@ -1543,10 +1543,10 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	}
 
 	// convert constraints into separate statements as well
-	for _, c := range stmt.TableSpec.Constraints {
-		switch c := c.Details.(type) {
+	for _, constraint := range stmt.TableSpec.Constraints {
+		switch c := constraint.Details.(type) {
 		case *sqlparser.ForeignKeyDefinition:
-			queries = append(queries, createForeignKeyStatement(createTable.Table, c))
+			queries = append(queries, createForeignKeyStatement(createTable.Table, c, constraint.Name))
 		case *sqlparser.CheckConstraintDefinition:
 			queries = append(queries, createCheckConstraintStatement(createTable.Table, c))
 		default:
@@ -1577,7 +1577,7 @@ func createCheckConstraintStatement(table tree.TableName, c *sqlparser.CheckCons
 	return ctx.String()
 }
 
-func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefinition) string {
+func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefinition, constraintName string) string {
 	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Table(), "", ""}, 0)
 	if err != nil {
 		panic(err)
@@ -1600,6 +1600,7 @@ func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefi
 
 	alter.Cmds = append(alter.Cmds, &tree.AlterTableAddConstraint{
 		ConstraintDef: &tree.ForeignKeyConstraintTableDef{
+			Name:     tree.Name(engineIdentifier(constraintName)),
 			FromCols: fromCols,
 			Table:    *translateTableName(c.ReferencedTable),
 			ToCols:   toCols,
@@ -2725,4 +2726,14 @@ func TestNativeVersionVariableConversion(t *testing.T) {
 func TestNativeVersionRenameConversion(t *testing.T) {
 	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
 	require.Equal(t, []string{"ALTER TABLE renamedtable RENAME TO newrenamedtable"}, convertQuery("RENAME TABLE renamedTable TO newRenamedTable"))
+}
+
+func TestNativeNamedForeignKeyConversion(t *testing.T) {
+	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
+	queries := convertQuery("ALTER TABLE child ADD CONSTRAINT child_parent FOREIGN KEY (parent_id) REFERENCES parent(id)")
+	require.Len(t, queries, 1)
+	require.Contains(t, queries[0], "CONSTRAINT child_parent FOREIGN KEY")
+	queries = convertQuery("CREATE TABLE child (parent_id int, CONSTRAINT child_parent FOREIGN KEY (parent_id) REFERENCES parent(id))")
+	require.Len(t, queries, 2)
+	require.Contains(t, queries[1], "CONSTRAINT child_parent FOREIGN KEY")
 }

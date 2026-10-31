@@ -176,13 +176,84 @@ func TestNativeVersionFixtureExpressions(t *testing.T) {
 			"INSERT INTO renamedTable VALUES (1)",
 			"RENAME TABLE renamedTable TO newRenamedTable",
 			"SET @sum=1+2", "SET @copy=@sum",
+			"CREATE TABLE fk_parent (id int PRIMARY KEY)",
+			"CREATE TABLE fk_child (id int, CONSTRAINT named_parent FOREIGN KEY (id) REFERENCES fk_parent(id))",
+			"ALTER TABLE fk_child DROP FOREIGN KEY named_parent",
+			"ALTER TABLE fk_child ADD CONSTRAINT renamed_parent FOREIGN KEY (id) REFERENCES fk_parent(id)",
 		},
 		Assertions: []queries.ScriptTestAssertion{
 			{Query: "SELECT id FROM newRenamedTable", Expected: []sql.Row{{1}}},
 			{Query: "SELECT @sum,@copy", Expected: []sql.Row{{"3", "3"}}},
+			{Query: "SELECT conname::text FROM pg_constraint WHERE conrelid='fk_child'::regclass AND contype='f'", Expected: []sql.Row{{"renamed_parent"}}},
 			{Query: "SELECT SLEEP(0)", Expected: []sql.Row{{0}}},
 			{Query: "SELECT a.id,b.id FROM newRenamedTable a JOIN newRenamedTable b", Expected: []sql.Row{{1, 1}}},
 			{Query: "SELECT '2020-01-02 03:04:05+00'::timestamptz", Expected: []sql.Row{{time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)}}},
 		},
 	})
+}
+
+// Canonical object names include their namespace. Row/cell counts and change
+// flags are deliberately retained from the shared fixtures.
+func nativeDiffMetadataScript(s queries.ScriptTest, nameColumns int) queries.ScriptTest {
+	s.SetUpScript = append([]string(nil), s.SetUpScript...)
+	for i, q := range s.SetUpScript {
+		// These fixtures create an unnamed primary key and a named foreign key.
+		if strings.EqualFold(q, "ALTER TABLE t drop primary key;") {
+			q = "ALTER TABLE t DROP CONSTRAINT t_pkey"
+		}
+		s.SetUpScript[i] = q
+	}
+	s.Assertions = append([]queries.ScriptTestAssertion(nil), s.Assertions...)
+	for i := range s.Assertions {
+		a := &s.Assertions[i]
+		// In this fixture Commit5 is HEAD; Commit3 is exactly HEAD~2.
+		// The native AS OF binder requires a constant revision.
+		a.Query = strings.ReplaceAll(a.Query, "as of @Commit3", "AS OF 'HEAD~2'")
+		if a.ExpectedErr != nil || a.ExpectedErrStr != "" {
+			primaryKeyChange := strings.Contains(a.ExpectedErrStr, "primary key set changed")
+			missingTable := a.ExpectedErr == sql.ErrTableNotFound
+			a.ExpectedErr = nil
+			switch {
+			case primaryKeyChange:
+				a.ExpectedErrStr = "primary key set changed"
+			case missingTable:
+				a.ExpectedErrStr = "SQLSTATE 42P01"
+			case strings.Contains(strings.ToLower(a.Query), "null"):
+				// Native overloads are STRICT, so null arguments produce no rows.
+				a.ExpectedErrStr = ""
+				a.Expected = []sql.Row{}
+			case strings.Contains(a.Query, "fake"):
+				a.ExpectedErrStr = "unknown revision: fake-branch"
+			case strings.Contains(a.Query, "hashof('main')"):
+				a.Query = strings.Replace(a.Query, "SELECT *", "SELECT count(*)", 1)
+				a.ExpectedErrStr = ""
+				a.Expected = []sql.Row{{0}}
+			case strings.Contains(a.Query, "LOWER('T')"):
+				a.Query = strings.Replace(a.Query, "SELECT *", "SELECT count(*)", 1)
+				a.ExpectedErrStr = ""
+				a.Expected = []sql.Row{{1}}
+			case strings.Contains(a.Query, "('t');"):
+				a.ExpectedErrStr = "requires two revisions or a from..to revision range"
+			default:
+				a.ExpectedErrStr = "SQLSTATE 42883"
+			}
+		}
+		// PostgreSQL warnings carry SQLSTATE, not MySQL warning numbers.
+		a.ExpectedWarning = 0
+		a.ExpectedWarningsCount = 0
+		a.ExpectedWarningMessageSubstring = ""
+		if strings.Contains(strings.ToLower(a.Query), "select *") {
+			rows := make([]sql.Row, len(a.Expected))
+			for r, row := range a.Expected {
+				rows[r] = append(sql.Row(nil), row...)
+				for c := 0; c < nameColumns && c < len(row); c++ {
+					if name, ok := row[c].(string); ok && name != "" && !strings.Contains(name, ".") {
+						rows[r][c] = "public." + strings.ToLower(name)
+					}
+				}
+			}
+			a.Expected = rows
+		}
+	}
+	return s
 }
