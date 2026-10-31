@@ -31,7 +31,7 @@ func TestProllyVersionCompatibility(t *testing.T) {
 			"CREATE TABLE t (pk int PRIMARY KEY)", "INSERT INTO t VALUES (1)", "SELECT dolt_commit('-Am','initial')",
 		}, Assertions: []ScriptTestAssertion{
 			{Query: "SELECT dolt_commit('-m','empty')", ExpectedErr: "nothing to commit"},
-			{Query: "SELECT dolt_commit('--skip-empty','-m','empty')", Expected: []sql.Row{{nil}}},
+			{Query: "SELECT dolt_commit('--skip-empty','-m','empty')", Expected: []sql.Row{{nil}}, PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{}}},
 			{Query: "SELECT hash FROM dolt_commit('--allow-empty','-m','allowed')", SkipResultsCheck: true},
 			{Query: "SELECT message FROM dolt_log() LIMIT 1", Expected: []sql.Row{{"allowed"}}},
 			{Query: "SELECT count(*) FROM dolt_diff_summary('HEAD~1','HEAD')", Expected: []sql.Row{{int64(0)}}},
