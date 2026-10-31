@@ -86,12 +86,12 @@ func nativeIndexScript(script queries.ScriptTest) queries.ScriptTest {
 	case "unique key violation prevents insert":
 		for i := range script.Assertions {
 			if strings.HasPrefix(strings.ToLower(script.Assertions[i].Query), "show create table") {
-				script.Assertions[i] = queries.ScriptTestAssertion{Query: `SELECT count(*) FROM pg_index WHERE indrelid='users'::regclass AND indisunique`, Expected: []sql.Row{{2}}}
+				script.Assertions[i] = queries.ScriptTestAssertion{Query: `SELECT indisprimary, pg_get_indexdef(indexrelid,1,true), CASE WHEN indnkeyatts=2 THEN pg_get_indexdef(indexrelid,2,true) END FROM pg_index WHERE indrelid='users'::regclass AND indisunique ORDER BY indisprimary DESC`, Expected: []sql.Row{{true, "id", nil}, {false, "namespace", "name"}}}
 			}
 		}
 	case "missing indexes":
 		for i := range script.Assertions {
-			script.Assertions[i].Query = strings.ReplaceAll(script.Assertions[i].Query, "BIN_TO_UUID(id)", "id")
+			script.Assertions[i].Query = strings.ReplaceAll(script.Assertions[i].Query, "BIN_TO_UUID(id)", "lower(id)")
 		}
 	}
 	return script
