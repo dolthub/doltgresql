@@ -500,7 +500,7 @@ func nativeHistoryDiffScript(s queries.ScriptTest, columns bool) queries.ScriptT
 				a.Query = strings.ReplaceAll(a.Query, "'"+strings.ToLower(name)+"'", "'public."+strings.ToLower(name)+"'")
 			}
 		}
-		var rows []sql.Row
+		rows := make([]sql.Row, 0, len(a.Expected))
 		for _, original := range a.Expected {
 			row := append(sql.Row(nil), original...)
 			for j, value := range row {
@@ -571,6 +571,17 @@ func nativeHistoryDiffScript(s queries.ScriptTest, columns bool) queries.ScriptT
 					a.Expected = []sql.Row{{"public.t", "pk", "modified"}, {"public.t", "c", "modified"}}
 				}
 			}
+		}
+		if columns && strings.Contains(strings.ToLower(a.Query), "order by commit_hash, table_name, column_name") {
+			sort.SliceStable(a.Expected, func(i, j int) bool {
+				for c := 0; c < 3; c++ {
+					left, right := fmt.Sprint(a.Expected[i][c]), fmt.Sprint(a.Expected[j][c])
+					if left != right {
+						return left < right
+					}
+				}
+				return false
+			})
 		}
 		if !columns && strings.Contains(strings.ToLower(a.Query), "order by table_name") {
 			index := 0
