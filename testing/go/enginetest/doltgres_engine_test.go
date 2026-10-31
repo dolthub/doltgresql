@@ -1639,6 +1639,14 @@ func TestDoltRebase(t *testing.T) {
 }
 
 func TestDoltRevert(t *testing.T) {
+	if nativePostgresEngine() {
+		for _, script := range denginetest.RevertScripts {
+			h := newDoltgresServerHarness(t)
+			enginetest.TestScript(t, h, nativeRevertScript(script))
+			h.Close()
+		}
+		return
+	}
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"dolt_revert() respects dolt_ignore",                     // ERROR: INSERT: non-Doltgres type found in destination: text
 		"dolt_revert() automatically resolves some conflicts",    // panic: interface conversion: sql.Type is types.VarCharType, not types.StringType
