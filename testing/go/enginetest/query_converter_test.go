@@ -362,7 +362,7 @@ func isWellKnownSchema(name string) bool {
 
 func TableNameToUnresolvedObjectName(table sqlparser.TableName) *tree.UnresolvedObjectName {
 	if table.DbQualifier.IsEmpty() {
-		name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Name.String(), "", ""}, 0)
+		name, err := tree.NewUnresolvedObjectName(1, [3]string{engineIdentifier(table.Name.String()), "", ""}, 0)
 		if err != nil {
 			panic(err)
 		}
@@ -370,7 +370,7 @@ func TableNameToUnresolvedObjectName(table sqlparser.TableName) *tree.Unresolved
 	}
 	// MySQL db.tbl → postgres db.public.tbl (3 parts).
 	name, err := tree.NewUnresolvedObjectName(3, [3]string{
-		table.Name.String(),
+		engineIdentifier(table.Name.String()),
 		"public",
 		table.DbQualifier.String(),
 	}, 0)
@@ -1284,7 +1284,13 @@ func transformSet(stmt *sqlparser.Set) ([]string, bool) {
 		if expr.Scope == sqlparser.GlobalStr {
 			queries = append(queries, fmt.Sprintf("SET GLOBAL %s = %s", expr.Name, expr.Expr))
 		} else if expr.Scope == "user" {
-			queries = append(queries, fmt.Sprintf("SET doltgres_enginetest.%s = %s", expr.Name, formatNode(expr.Expr)))
+			if nativePostgresEngine() {
+				buf := sqlparser.NewTrackedBuffer(PostgresNodeFormatter)
+				buf.Myprintf("%v", expr.Expr)
+				queries = append(queries, fmt.Sprintf("SELECT set_config('doltgres_enginetest.%s',(%s)::text,false)", strings.ReplaceAll(expr.Name.String(), "'", "''"), buf.String()))
+			} else {
+				queries = append(queries, fmt.Sprintf("SET doltgres_enginetest.%s = %s", expr.Name, formatNode(expr.Expr)))
+			}
 		} else {
 			queries = append(queries, fmt.Sprintf("SET %s = %s", expr.Name, expr.Expr))
 		}
@@ -1301,9 +1307,21 @@ func formatNode(node sqlparser.SQLNode) string {
 
 func PostgresNodeFormatter(buf *sqlparser.TrackedBuffer, node sqlparser.SQLNode) {
 	switch node := node.(type) {
+	case *sqlparser.JoinTableExpr:
+		if nativePostgresEngine() && node.Join == sqlparser.JoinStr && node.Condition.On == nil && len(node.Condition.Using) == 0 {
+			buf.Myprintf("%v CROSS JOIN %v", node.LeftExpr, node.RightExpr)
+			return
+		}
+		node.Format(buf)
 	case *sqlparser.FuncExpr:
 		if nativePostgresEngine() {
 			switch strings.ToLower(node.Name.String()) {
+			case "sleep":
+				buf.Myprintf("(SELECT 0 FROM pg_sleep(%v))", node.Exprs)
+				return
+			case "hashof":
+				buf.Myprintf("dolt_hashof(%v)", node.Exprs)
+				return
 			case "ifnull":
 				buf.Myprintf("coalesce(%v)", node.Exprs)
 				return
@@ -2695,4 +2713,16 @@ func TestNativeCommitHashOutConversion(t *testing.T) {
 	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
 	require.Equal(t, []string{"SELECT * FROM dolt_commit('-am', 'creating table')", "SELECT set_config('doltgres_enginetest.commit1',dolt_hashof('HEAD'),false)"}, convertQuery("CALL dolt_commit_hash_out(@Commit1,'-am','creating table')"))
 	require.Equal(t, []string{"SELECT * FROM dolt_branch('saved', current_setting('doltgres_enginetest.Commit1'))"}, convertQuery("CALL dolt_branch('saved',@Commit1)"))
+}
+
+func TestNativeVersionVariableConversion(t *testing.T) {
+	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
+	require.Equal(t, []string{"SELECT set_config('doltgres_enginetest.Commit0',(dolt_hashof('HEAD'))::text,false)"}, convertQuery("SET @Commit0=HashOf('HEAD')"))
+	require.Equal(t, []string{"SELECT set_config('doltgres_enginetest.copy',(current_setting('doltgres_enginetest.Commit0'))::text,false)"}, convertQuery("SET @copy=@Commit0"))
+	require.Equal(t, []string{"SELECT set_config('doltgres_enginetest.n',(1 + 2)::text,false)"}, convertQuery("SET @n=1+2"))
+}
+
+func TestNativeVersionRenameConversion(t *testing.T) {
+	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
+	require.Equal(t, []string{"ALTER TABLE renamedtable RENAME TO newrenamedtable"}, convertQuery("RENAME TABLE renamedTable TO newRenamedTable"))
 }
