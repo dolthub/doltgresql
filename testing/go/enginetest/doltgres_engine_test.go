@@ -529,7 +529,18 @@ func TestDeleteScripts(t *testing.T) {
 	enginetest.TestDeleteScripts(t, h)
 }
 
-func TestDescendingIndexesScripts(t *testing.T) {
+func TestDescendingIndexesScripts(t *testing.T) { runEngineTargetPair(t, runDescendingIndexesScripts) }
+
+func runDescendingIndexesScripts(t *testing.T) {
+	if nativePostgresEngine() {
+		h := newDoltgresServerHarness(t)
+		defer h.Close()
+		h.Setup(setup.MydbData)
+		for _, script := range queries.DescendingIndexesScriptTests {
+			enginetest.TestScript(t, h, descendingCounterpart(script))
+		}
+		return
+	}
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"descending index columns",                 // MySQL index prefix syntax (c(10) DESC)
 		"descending index lookups and ordering",    // MySQL NULLs-first ascending order

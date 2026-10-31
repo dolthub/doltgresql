@@ -1033,6 +1033,13 @@ func convertConstraintAlter(statement *sqlparser.DDL) ([]string, bool) {
 	}
 }
 
+func indexDirection(order string) tree.Direction {
+	if strings.EqualFold(order, "desc") {
+		return tree.Descending
+	}
+	return tree.Ascending
+}
+
 // convertIndexAlter handles ALTER TABLE ADD/DROP/RENAME INDEX clauses.
 // Postgres expresses CREATE INDEX as a top-level statement (not an ALTER TABLE
 // command), so we emit a CREATE INDEX statement when adding.
@@ -1105,7 +1112,7 @@ func convertIndexAlter(statement *sqlparser.DDL) ([]string, bool) {
 		for i, f := range statement.IndexSpec.Fields {
 			cols[i] = tree.IndexElem{
 				Column:    tree.Name(f.Column.String()),
-				Direction: tree.Ascending,
+				Direction: indexDirection(f.Order),
 			}
 		}
 		createIndex := tree.CreateIndex{
@@ -1122,6 +1129,9 @@ func convertIndexAlter(statement *sqlparser.DDL) ([]string, bool) {
 		tableName := translateTableName(statement.Table)
 		from := statement.IndexSpec.FromName.String()
 		to := statement.IndexSpec.ToName.String()
+		if nativePostgresEngine() {
+			return []string{"ALTER INDEX " + AutoQuoteIdent(strings.ToLower(from)) + " RENAME TO " + AutoQuoteIdent(strings.ToLower(to))}, true
+		}
 		renameIndex := tree.RenameIndex{
 			Index: &tree.TableIndexName{
 				Table: *tableName,
@@ -1475,7 +1485,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 			for i, col := range index.Fields {
 				createIndex.Columns[i] = tree.IndexElem{
 					Column:    tree.Name(col.Column.String()),
-					Direction: tree.Ascending,
+					Direction: indexDirection(col.Order),
 				}
 			}
 
@@ -2638,4 +2648,16 @@ func TestNativeIndexDefaultConversion(t *testing.T) {
 	translated := strings.Join(convertQuery("create table xy (x int, z varchar(36) default(uuid()), key(z))"), ";")
 	require.Contains(t, translated, "gen_random_uuid()")
 	require.NotContains(t, translated, "DEFAULT uuid()")
+}
+
+func TestNativeDescendingIndexConversion(t *testing.T) {
+	t.Setenv("DOLTGRES_TEST_SERVER_KIND", "postgres")
+	for _, query := range []string{
+		"CREATE TABLE t(a int,b int,INDEX ab(a DESC,b))",
+		"ALTER TABLE t ADD INDEX ab(a DESC,b)",
+		"CREATE INDEX ab ON t(a DESC,b)",
+	} {
+		require.Contains(t, strings.Join(convertQuery(query), ";"), "a DESC, b ASC", query)
+	}
+	require.Equal(t, []string{"ALTER INDEX ab RENAME TO ba"}, convertQuery("ALTER TABLE t RENAME INDEX ab TO ba"))
 }
