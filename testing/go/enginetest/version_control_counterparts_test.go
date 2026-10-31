@@ -17,9 +17,12 @@ package enginetest
 import (
 	"fmt"
 	denginetest "github.com/dolthub/dolt/go/libraries/doltcore/sqle/enginetest"
+	"github.com/dolthub/go-mysql-server/enginetest"
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
 	"github.com/dolthub/go-mysql-server/sql"
 	"strings"
+	"testing"
+	"time"
 )
 
 func nativeViewAsOf() queries.ScriptTest {
@@ -85,4 +88,28 @@ func nativeDescribeAsOf() queries.ScriptTest {
 		})
 	}
 	return s
+}
+
+func TestNativeVersionFixtureExpressions(t *testing.T) {
+	if !nativePostgresEngine() {
+		t.Skip("PostgreSQL fixture translation")
+	}
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	enginetest.TestScript(t, h, queries.ScriptTest{
+		Name: "computed user variables and folded table renames",
+		SetUpScript: []string{
+			"CREATE TABLE renamedTable (id int PRIMARY KEY)",
+			"INSERT INTO renamedTable VALUES (1)",
+			"RENAME TABLE renamedTable TO newRenamedTable",
+			"SET @sum=1+2", "SET @copy=@sum",
+		},
+		Assertions: []queries.ScriptTestAssertion{
+			{Query: "SELECT id FROM newRenamedTable", Expected: []sql.Row{{1}}},
+			{Query: "SELECT @sum,@copy", Expected: []sql.Row{{"3", "3"}}},
+			{Query: "SELECT SLEEP(0)", Expected: []sql.Row{{0}}},
+			{Query: "SELECT a.id,b.id FROM newRenamedTable a JOIN newRenamedTable b", Expected: []sql.Row{{1, 1}}},
+			{Query: "SELECT '2020-01-02 03:04:05+00'::timestamptz", Expected: []sql.Row{{time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)}}},
+		},
+	})
 }

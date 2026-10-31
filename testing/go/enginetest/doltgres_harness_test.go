@@ -1094,7 +1094,7 @@ func columns(rows pgx.Rows) (sql.Schema, []interface{}, error) {
 			colVal := gosql.NullInt64{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.Int64, Nullable: true})
-		case uint32(oid.T_timestamp), uint32(oid.T_time), uint32(oid.T_date):
+		case uint32(oid.T_timestamp), uint32(oid.T_timestamptz), uint32(oid.T_time), uint32(oid.T_date):
 			colVal := gosql.NullTime{}
 			columnVals = append(columnVals, &colVal)
 			schema = append(schema, &sql.Column{Name: field.Name, Type: gmstypes.Timestamp, Nullable: true})
