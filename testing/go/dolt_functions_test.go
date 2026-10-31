@@ -314,6 +314,29 @@ func TestDoltBranch(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "force creation and combined branch options",
+			SetUpScript: []string{
+				"CREATE TABLE branch_rows(id int PRIMARY KEY)",
+				"INSERT INTO branch_rows VALUES(1)",
+				"SELECT dolt_commit('-Am','base')",
+				"SELECT dolt_checkout('-b','side')",
+				"INSERT INTO branch_rows VALUES(2)",
+				"SELECT dolt_commit('-am','side')",
+				"INSERT INTO branch_rows VALUES(3)",
+				"SELECT dolt_checkout('main')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "SELECT dolt_branch('-f','side','HEAD')", Expected: []sql.Row{{int64(0)}}},
+				{Query: `SELECT id FROM "postgres/side".public.branch_rows ORDER BY id`, Expected: []sql.Row{{1}}},
+				{Query: "SELECT dolt_branch('copy')", Expected: []sql.Row{{int64(0)}}},
+				{Query: "SELECT dolt_branch('-cf','side','copy')", Expected: []sql.Row{{int64(0)}}},
+				{Query: "SELECT dolt_branch('-mf','copy','side')", Expected: []sql.Row{{int64(0)}}},
+				{Query: `SELECT id FROM "postgres/side".public.branch_rows ORDER BY id`, Expected: []sql.Row{{1}}},
+				{Query: "SELECT dolt_branch('-df','side')", Expected: []sql.Row{{int64(0)}}},
+				{Query: "SELECT name FROM dolt_branches", Expected: []sql.Row{{"main"}}},
+			},
+		},
 	})
 }
 
