@@ -1788,15 +1788,31 @@ func TestDiffTableFunction(t *testing.T) {
 }
 
 func TestDiffStatTableFunction(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunDiffStatTableFunctionTests(t, harness)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, original := range denginetest.DiffStatTableFunctionScriptTests {
+		t.Run(original.Name, func(t *testing.T) {
+			h := newDoltgresServerHarness(t)
+			defer h.Close()
+			h.Setup(setup.MydbData)
+			enginetest.TestScript(t, h, nativeDiffMetadataScript(original, 1))
+		})
+	}
 }
 
 func TestDiffSummaryTableFunction(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunDiffSummaryTableFunctionTests(t, harness)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, original := range denginetest.DiffSummaryTableFunctionScriptTests {
+		t.Run(original.Name, func(t *testing.T) {
+			h := newDoltgresServerHarness(t)
+			defer h.Close()
+			h.Setup(setup.MydbData)
+			enginetest.TestScript(t, h, nativeDiffMetadataScript(original, 2))
+		})
+	}
 }
 
 func TestPatchTableFunction(t *testing.T) {

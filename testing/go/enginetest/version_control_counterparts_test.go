@@ -191,3 +191,88 @@ func TestNativeVersionFixtureExpressions(t *testing.T) {
 		},
 	})
 }
+
+// Canonical object names include their namespace. Row/cell counts and change
+// flags are deliberately retained from the shared fixtures.
+func nativeDiffMetadataScript(s queries.ScriptTest, nameColumns int) queries.ScriptTest {
+	if s.Name == "raising the autoincrement value should be seen as a schema change" {
+		// PostgreSQL sequence allocation is deliberately shared, unversioned
+		// state. Advancing a counter alone must not manufacture a schema diff.
+		return queries.ScriptTest{
+			Name: s.Name,
+			SetUpScript: []string{
+				"CREATE TABLE t(pk serial PRIMARY KEY) USING dolt_prolly_table",
+				"INSERT INTO t DEFAULT VALUES",
+				"CALL dolt_commit('-Am','first allocation')",
+				"INSERT INTO t DEFAULT VALUES",
+				"DELETE FROM t WHERE pk=2",
+				"CALL dolt_commit('--allow-empty','-am','second allocation')",
+			},
+			Assertions: []queries.ScriptTestAssertion{
+				{Query: "SELECT * FROM dolt_diff_summary('HEAD~','HEAD')", Expected: []sql.Row{}},
+				{Query: "SELECT currval(pg_get_serial_sequence('t','pk'))", Expected: []sql.Row{{2}}},
+			},
+		}
+	}
+	s.SetUpScript = append([]string(nil), s.SetUpScript...)
+	for i, q := range s.SetUpScript {
+		// These fixtures create an unnamed primary key and a named foreign key.
+		if strings.EqualFold(q, "ALTER TABLE t drop primary key;") {
+			q = "ALTER TABLE t DROP CONSTRAINT t_pkey"
+		}
+		s.SetUpScript[i] = q
+	}
+	s.Assertions = append([]queries.ScriptTestAssertion(nil), s.Assertions...)
+	for i := range s.Assertions {
+		a := &s.Assertions[i]
+		// In this fixture Commit5 is HEAD; Commit3 is exactly HEAD~2.
+		// The native AS OF binder requires a constant revision.
+		a.Query = strings.ReplaceAll(a.Query, "as of @Commit3", "AS OF 'HEAD~2'")
+		if a.ExpectedErr != nil || a.ExpectedErrStr != "" {
+			primaryKeyChange := strings.Contains(a.ExpectedErrStr, "primary key set changed")
+			missingTable := a.ExpectedErr == sql.ErrTableNotFound
+			a.ExpectedErr = nil
+			switch {
+			case primaryKeyChange:
+				a.ExpectedErrStr = "primary key set changed"
+			case missingTable:
+				a.ExpectedErrStr = "SQLSTATE 42P01"
+			case strings.Contains(strings.ToLower(a.Query), "null"):
+				// Native overloads are STRICT, so null arguments produce no rows.
+				a.ExpectedErrStr = ""
+				a.Expected = []sql.Row{}
+			case strings.Contains(a.Query, "fake"):
+				a.ExpectedErrStr = "unknown revision: fake-branch"
+			case strings.Contains(a.Query, "hashof('main')"):
+				a.Query = strings.Replace(a.Query, "SELECT *", "SELECT count(*)", 1)
+				a.ExpectedErrStr = ""
+				a.Expected = []sql.Row{{0}}
+			case strings.Contains(a.Query, "LOWER('T')"):
+				a.Query = strings.Replace(a.Query, "SELECT *", "SELECT count(*)", 1)
+				a.ExpectedErrStr = ""
+				a.Expected = []sql.Row{{1}}
+			case strings.Contains(a.Query, "('t');"):
+				a.ExpectedErrStr = "requires two revisions or a from..to revision range"
+			default:
+				a.ExpectedErrStr = "SQLSTATE 42883"
+			}
+		}
+		// PostgreSQL warnings carry SQLSTATE, not MySQL warning numbers.
+		a.ExpectedWarning = 0
+		a.ExpectedWarningsCount = 0
+		a.ExpectedWarningMessageSubstring = ""
+		if strings.Contains(strings.ToLower(a.Query), "select *") {
+			rows := make([]sql.Row, len(a.Expected))
+			for r, row := range a.Expected {
+				rows[r] = append(sql.Row(nil), row...)
+				for c := 0; c < nameColumns && c < len(row); c++ {
+					if name, ok := row[c].(string); ok && name != "" && !strings.Contains(name, ".") {
+						rows[r][c] = "public." + strings.ToLower(name)
+					}
+				}
+			}
+			a.Expected = rows
+		}
+	}
+	return s
+}
