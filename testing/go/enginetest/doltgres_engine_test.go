@@ -1914,9 +1914,17 @@ func TestDoltDatabaseCollationDiffs(t *testing.T) {
 }
 
 func TestQueryDiff(t *testing.T) {
-	t.Skip()
-	harness := newDoltgresServerHarness(t)
-	denginetest.RunQueryDiffTests(t, harness)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, original := range denginetest.QueryDiffTableScriptTests {
+		t.Run(original.Name, func(t *testing.T) {
+			h := newDoltgresServerHarness(t)
+			defer h.Close()
+			h.Setup(setup.MydbData)
+			enginetest.TestScript(t, h, nativeQueryDiffScript(original))
+		})
+	}
 }
 
 func TestSystemTableIndexes(t *testing.T) {
