@@ -5484,7 +5484,7 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
 				},
 				{
-					Query:       `SELECT date '2024-03-15' - interval '1000000000 years';`,
+					Query:       `SELECT date '2024-03-15' - interval '1000000 years';`,
 					ExpectedErr: "timestamp out of range",
 				},
 			},
