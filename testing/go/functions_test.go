@@ -4833,6 +4833,52 @@ func TestDateAndTimeFunction(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3703
+			Name:        "timestamptz at time zone text converts to the zone's local time",
+			SetUpScript: []string{`SET TIME ZONE 'UTC'`},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '2024-03-05 10:00:00+00'::TIMESTAMPTZ AT TIME ZONE 'Asia/Kolkata';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-05 10:00:00+00'::TIMESTAMPTZ AT TIME ZONE 'America/New_York';`,
+					Expected: []sql.Row{{"2024-03-05 05:00:00"}},
+				},
+				{
+					// daylight saving time
+					Query:    `SELECT '2024-07-05 10:00:00+00'::TIMESTAMPTZ AT TIME ZONE 'America/New_York';`,
+					Expected: []sql.Row{{"2024-07-05 06:00:00"}},
+				},
+				{
+					Query:    `SELECT timezone('Asia/Kolkata', '2024-03-05 10:00:00+00'::TIMESTAMPTZ);`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-05 10:00:00+00'::TIMESTAMPTZ AT TIME ZONE 'MSK';`,
+					Expected: []sql.Row{{"2024-03-05 13:00:00"}},
+				},
+				{
+					// numeric offsets follow the POSIX convention, where positive is west of UTC
+					Query:    `SELECT '2024-03-05 10:00:00+00'::TIMESTAMPTZ AT TIME ZONE '+05:30';`,
+					Expected: []sql.Row{{"2024-03-05 04:30:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-05 10:00:00+00'::TIMESTAMPTZ AT TIME ZONE '-05:30';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-05 10:00:00+00'::TIMESTAMPTZ AT TIME ZONE INTERVAL '05:30';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					// converting to a zone's local time and back gives the original instant
+					Query:    `SELECT ('2024-03-05 10:00:00+00'::TIMESTAMPTZ AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata';`,
+					Expected: []sql.Row{{"2024-03-05 10:00:00+00"}},
+				},
+			},
+		},
+		{
 			Name: "date_part",
 			Assertions: []ScriptTestAssertion{
 				{

@@ -69,7 +69,8 @@ var timezone_text_timestamptz = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		return timeVal.UTC().Add(time.Duration(-int64(newOffset) * NanosPerSec)), nil
+		// newOffset is positive east of UTC, so the local time in that zone is UTC plus the offset
+		return timeVal.UTC().Add(time.Duration(int64(newOffset) * NanosPerSec)), nil
 	},
 }
 
