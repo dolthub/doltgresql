@@ -73,3 +73,8 @@ func TestNativeClusterReadOnly(t *testing.T) {
 	t.Parallel()
 	RunNativeTestsFile(t, "tests/native/cluster-read-only.yaml")
 }
+
+func TestNativeClusterFailover(t *testing.T) {
+	t.Parallel()
+	RunNativeTestsFile(t, "tests/native/cluster-failover.yaml")
+}

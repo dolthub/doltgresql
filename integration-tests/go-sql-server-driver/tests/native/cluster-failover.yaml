@@ -1,0 +1,457 @@
+# More of the semantics of tests/sql-server-cluster.yaml, run against the
+# Postgres fork with prolly storage and Postgres's own replication. See
+# nativedef.go, and tests/native/cluster.yaml for the translation notes.
+#
+# Further translation:
+#   * dolt_cluster_role is pg_is_in_recovery(), and dolt_cluster_role_epoch the
+#     timeline, both of which persist across restarts as Dolt persists them.
+#   * Two primaries at different epochs settle on the newer one. Natively,
+#     servers made by separate initdb runs cannot replicate, so the newer
+#     primary is a standby promoted while the old primary kept writing; the
+#     old primary rejoins it, rewound (pg_rewind), and its own writes since the
+#     split are discarded.
+#   * dolt_cluster_status's last_update heartbeat is pg_stat_wal_receiver's
+#     last_msg_receipt_time on the standby.
+#   * read_only follows the role as transaction_read_only.
+parallel: true
+tests:
+- name: persisted role and epoch take precedence over bootstrap values
+  servers:
+  - name: server1
+    databases: [repo1]
+  - name: server2
+    follows: server1
+  steps:
+  - action: {kind: stop, server: server1}
+  - action: {kind: promote, server: server2}
+  - action: {kind: restart, server: server2}
+  - on: server2
+    queries:
+    - query: "select case when pg_is_in_recovery() then 'standby' else 'primary' end as role, timeline_id from pg_control_checkpoint()"
+      result:
+        columns: ["role","timeline_id"]
+        rows: [["primary","2"]]
+  - action: {kind: demote, server: server1, follows: server2}
+  - action: {kind: restart, server: server1}
+  - on: server1
+    queries:
+    - query: "select case when pg_is_in_recovery() then 'standby' else 'primary' end as role"
+      result:
+        columns: ["role"]
+        rows: [["standby"]]
+    - query: "select received_tli from pg_stat_wal_receiver"
+      result:
+        columns: ["received_tli"]
+        rows: [["2"]]
+      retry_attempts: 100
+- name: a newer primary comes up, old primary becomes a standby has its state overwritten
+  servers:
+  - name: server1
+    databases: [repo1, repo2]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (1),(2),(3),(4),(5)"
+  - action: {kind: wait_for_replay, server: server2}
+  - action: {kind: promote, server: server2}
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "insert into vals values (6),(7),(8),(9),(10)"
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["10"]]
+  - on: server2
+    database: repo1
+    queries:
+    - exec: "insert into vals values (100)"
+  - action: {kind: demote, server: server1, follows: server2}
+  - action: {kind: wait_for_replay, server: server1}
+  - on: server1
+    database: repo1
+    queries:
+    - query: "select pg_is_in_recovery(), count(*), max(i) from vals"
+      result:
+        columns: ["pg_is_in_recovery","count","max"]
+        rows: [["true","6","100"]]
+- name: an older primary comes up, becomes a standby and does not overwrite newer primary
+  servers:
+  - name: server1
+    databases: [repo1, repo2]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (1),(2),(3),(4),(5)"
+  - action: {kind: wait_for_replay, server: server2}
+  - action: {kind: promote, server: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - exec: "insert into vals values (6),(7),(8),(9),(10)"
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "delete from vals"
+  - action: {kind: demote, server: server1, follows: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select pg_is_in_recovery(), count(*) from vals"
+      result:
+        columns: ["pg_is_in_recovery","count"]
+        rows: [["false","10"]]
+  - action: {kind: wait_for_replay, server: server1}
+  - on: server1
+    database: repo1
+    queries:
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["10"]]
+- name: last_updated heartbeats
+  # The standby reports to its primary every wal_receiver_status_interval,
+  # whether or not there is WAL to send: the primary sees it heartbeat.
+  servers:
+  - name: server1
+    databases: [repo1]
+    config: ["wal_receiver_status_interval = 1"]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    queries:
+    - query: "select extract(epoch from (now() - reply_time)) < 5 as within_threshold from pg_stat_replication"
+      result:
+        columns: ["within_threshold"]
+        rows: [["true"]]
+      retry_attempts: 100
+    - query: "select pg_sleep(5)::text"
+      result:
+        columns: ["pg_sleep"]
+        rows: [[""]]
+    - query: "select extract(epoch from (now() - reply_time)) < 5 as within_threshold from pg_stat_replication"
+      result:
+        columns: ["within_threshold"]
+        rows: [["true"]]
+- name: call dolt checkout
+  servers:
+  - name: server1
+    databases: [repo1]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+    - exec: "select dolt_commit('-Am', 'vals')"
+    - exec: "select dolt_branch('-c', 'main', 'new_branch_name')"
+  - on: server1
+    database: repo1
+    queries:
+    - query: "select dolt_checkout('new_branch_name')"
+      result:
+        columns: ["dolt_checkout"]
+        rows: [["(0,\"Switched to branch 'new_branch_name'\")"]]
+  - action: {kind: wait_for_replay, server: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select dolt_checkout('new_branch_name')"
+      result:
+        columns: ["dolt_checkout"]
+        rows: [["(0,\"Switched to branch 'new_branch_name'\")"]]
+    - query: "select active_branch(), count(*) from vals"
+      result:
+        columns: ["active_branch","count"]
+        rows: [["new_branch_name","0"]]
+- name: savepoints work on cluster replicated databases
+  servers:
+  - name: server1
+    databases: [repo1]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (id int primary key, val int)"
+    - exec: "begin"
+    - exec: "savepoint before_values_inserted"
+    - exec: "insert into vals values (1,1)"
+    - exec: "insert into vals values (2,2)"
+    - exec: "insert into vals values (3,3)"
+    - exec: "insert into vals values (4,4)"
+    - exec: "rollback to savepoint before_values_inserted"
+    - exec: "insert into vals values (5,5)"
+    - exec: "commit"
+  - action: {kind: wait_for_replay, server: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select * from vals order by id asc"
+      result:
+        columns: ["id","val"]
+        rows: [["5","5"]]
+- name: dropped database is no longer present on replica
+  servers:
+  - name: server1
+    databases: [repo1, repo2]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    database: repo2
+    queries:
+    - exec: "create table vals (i int primary key)"
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+    - exec: "drop database repo2"
+    - exec: "insert into vals values (0),(1),(2),(3),(4)"
+    - query: "select datname from pg_database where datname not like 'template%' order by datname"
+      result:
+        columns: ["datname"]
+        rows: [["postgres"],["repo1"]]
+  - action: {kind: wait_for_replay, server: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select datname from pg_database where datname not like 'template%' order by datname"
+      result:
+        columns: ["datname"]
+        rows: [["postgres"],["repo1"]]
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: dropped database recreated quiesces to expected state
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    queries:
+    - exec: "create database repo1"
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (a int)"
+  - on: server1
+    queries:
+    - exec: "drop database repo1"
+    - exec: "create database repo1"
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (b int)"
+  - on: server1
+    queries:
+    - exec: "drop database repo1"
+  - action: {kind: wait_for_replay, server: server2}
+  - on: server2
+    queries:
+    - query: "select datname from pg_database where datname not like 'template%' order by datname"
+      result:
+        columns: ["datname"]
+        rows: [["postgres"]]
+  - on: server1
+    queries:
+    - exec: "create database repo1"
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (d int)"
+  - action: {kind: wait_for_replay, server: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select d from vals"
+      result:
+        columns: ["d"]
+        rows: []
+- name: auto_increment maintained across failover
+  servers:
+  - name: server1
+    databases: [repo1]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (id serial primary key, v text)"
+    - exec: "insert into vals (v) values ('a'),('b'),('c')"
+  - action: {kind: switchover, server: server1, to: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - exec: "insert into vals (v) values ('d')"
+    - query: "select count(*), count(distinct id), min(id) from vals"
+      result:
+        columns: ["count","count","min"]
+        rows: [["4","4","1"]]
+    - query: "select (select id from vals where v = 'd') > 3 as fresh"
+      result:
+        columns: ["fresh"]
+        rows: [["true"]]
+- name: read_only system variable reflects cluster role
+  servers:
+  - name: server1
+    databases: [repo1]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    queries:
+    - query: "show transaction_read_only"
+      result:
+        columns: ["transaction_read_only"]
+        rows: [["off"]]
+  - on: server2
+    queries:
+    - query: "show transaction_read_only"
+      result:
+        columns: ["transaction_read_only"]
+        rows: [["on"]]
+  - action: {kind: switchover, server: server1, to: server2}
+  - on: server1
+    queries:
+    - query: "show transaction_read_only"
+      result:
+        columns: ["transaction_read_only"]
+        rows: [["on"]]
+  - on: server2
+    queries:
+    - query: "show transaction_read_only"
+      result:
+        columns: ["transaction_read_only"]
+        rows: [["off"]]
+- name: postgres default database replicates, is read only on a standby, and survives failover
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    queries:
+    - exec: "create table vals (id serial primary key, v int)"
+    - exec: "insert into vals (v) values (1),(2),(3)"
+    - exec: "select dolt_commit('-Am', 'in postgres')"
+  - action: {kind: wait_for_replay, server: server2}
+  - on: server2
+    queries:
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["3"]]
+    - exec: "insert into vals (v) values (4)"
+      error_match: "cannot execute INSERT in a read-only transaction"
+    - query: "select message from dolt_log order by date desc limit 1"
+      result:
+        columns: ["message"]
+        rows: [["in postgres"]]
+  - action: {kind: switchover, server: server1, to: server2}
+  - on: server2
+    queries:
+    - exec: "insert into vals (v) values (4)"
+    - query: "select count(*), max(id) > 3 as fresh from vals"
+      result:
+        columns: ["count","fresh"]
+        rows: [["4","true"]]
+  - action: {kind: wait_for_replay, server: server1}
+  - on: server1
+    queries:
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["4"]]
+    - query: "select status from pg_stat_wal_receiver"
+      result:
+        columns: ["status"]
+        rows: [["streaming"]]
+      retry_attempts: 100
+- name: dolt_cluster_ack_writes_timeout_secs behavior
+  # Synchronous replication: with remote_apply, a commit returns once the
+  # standby has applied it, so writes are at once visible there, with no wait.
+  servers:
+  - name: server1
+    databases: [repo1]
+  - name: server2
+    follows: server1
+  steps:
+  # Synchronous once the standby is up: setup's own commits would otherwise wait for it.
+  - on: server1
+    queries:
+    - exec: "alter system set synchronous_standby_names = '*'"
+    - exec: "alter system set synchronous_commit = remote_apply"
+    - exec: "select pg_reload_conf()"
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select tablename from pg_tables where schemaname = 'public'"
+      result:
+        columns: ["tablename"]
+        rows: [["vals"]]
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "insert into vals values (0),(1),(2),(3),(4)"
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+  - action: {kind: restart, server: server1}
+  - action: {kind: restart, server: server2}
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "insert into vals values (10),(11),(12),(13),(14)"
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["10"]]
+  # Branch creation and deletion also wait on replication.
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "select dolt_branch('new_branch')"
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select count(*) from dolt_branches"
+      result:
+        columns: ["count"]
+        rows: [["2"]]
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "select dolt_branch('-d', 'new_branch')"
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select count(*) from dolt_branches"
+      result:
+        columns: ["count"]
+        rows: [["1"]]
