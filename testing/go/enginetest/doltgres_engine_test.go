@@ -2312,10 +2312,16 @@ func TestDoltRm(t *testing.T) {
 }
 
 func TestDoltStash(t *testing.T) {
-	t.Skip("port test from Dolt")
-	harness := newDoltgresServerHarness(t)
-	defer harness.Close()
-	denginetest.RunDoltStashSystemTableTests(t, harness)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, original := range denginetest.DoltStashTests {
+		t.Run(original.Name, func(t *testing.T) {
+			h := newDoltgresServerHarness(t)
+			defer h.Close()
+			enginetest.TestScript(t, h, nativeStashScript(original))
+		})
+	}
 }
 
 func TestDoltTestsSystemTable(t *testing.T) {

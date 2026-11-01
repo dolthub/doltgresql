@@ -2628,7 +2628,7 @@ func TestDoltStash(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "Push and pop all untracked",
-			Skip: true, // TODO: errors with "dolt_procedures: unsupported type int", which seems like the Doltgres->Dolt layer is erroring
+			Skip: testTarget(t) != targetPostgresFork, // Doltgres procedure type limitation; run on the native fork.
 			SetUpScript: []string{
 				"CREATE TABLE t_simple (pk INT4 PRIMARY KEY);",
 				"CREATE TABLE t_composite (pk1 INT2, pk2 INT8, PRIMARY KEY(pk1, pk2));",
@@ -2679,11 +2679,15 @@ func TestDoltStash(t *testing.T) {
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
 					Expected: []sql.Row{{16}},
 				},
+				{
+					Query:        "SELECT (SELECT sum(pk) FROM t_simple), (SELECT sum(v1)::bigint FROM t_trigger), (SELECT sum(v1)::bigint FROM t_default_func), (SELECT sum(v2)::bigint FROM t_generated)",
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{6, 45, 66, 13000}}},
+				},
 			},
 		},
 		{
 			Name: "Push and pop tracked",
-			Skip: true, // TODO: errors with "dolt_procedures: unsupported type int", which seems like the Doltgres->Dolt layer is erroring
+			Skip: testTarget(t) != targetPostgresFork, // Doltgres procedure type limitation; run on the native fork.
 			SetUpScript: []string{
 				"CREATE TABLE t_simple (pk INT4 PRIMARY KEY);",
 				"CREATE TABLE t_composite (pk1 INT2, pk2 INT8, PRIMARY KEY(pk1, pk2));",
@@ -2720,6 +2724,8 @@ func TestDoltStash(t *testing.T) {
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
 					Expected: []sql.Row{{15}},
+					// Shared sequence allocation does not modify its versioned definition.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{14}}},
 				},
 				{
 					Query:    "SELECT DOLT_STASH('push', 'dgstash');",
@@ -2736,6 +2742,12 @@ func TestDoltStash(t *testing.T) {
 				{
 					Query:    "SELECT COUNT(*) FROM dolt_status;",
 					Expected: []sql.Row{{15}},
+					// Shared sequence allocation does not modify its versioned definition.
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{14}}},
+				},
+				{
+					Query:        "SELECT (SELECT sum(pk) FROM t_simple), (SELECT sum(v1)::bigint FROM t_trigger), (SELECT sum(v1)::bigint FROM t_default_func), (SELECT sum(v2)::bigint FROM t_generated)",
+					PostgresFork: &ScriptTestAssertion{Expected: []sql.Row{{6, 495, 68, 13000}}},
 				},
 			},
 		},

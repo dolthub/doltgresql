@@ -651,3 +651,17 @@ func nativeRemoveScript(s queries.ScriptTest) queries.ScriptTest {
 	}
 	return s
 }
+
+func nativeStashScript(s queries.ScriptTest) queries.ScriptTest {
+	s = nativeRemoveScript(s)
+	for i := range s.Assertions {
+		a := &s.Assertions[i]
+		if strings.HasPrefix(a.ExpectedErrStr, "error: Your local changes") {
+			a.ExpectedErrStr = "stash entry is kept"
+		}
+		if strings.HasPrefix(a.ExpectedErrStr, "merge aborted: schema conflict") {
+			a.ExpectedErrStr = "merge aborted: schema conflict"
+		}
+	}
+	return s
+}
