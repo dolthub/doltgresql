@@ -2331,10 +2331,23 @@ func TestDoltStash(t *testing.T) {
 }
 
 func TestDoltTestsSystemTable(t *testing.T) {
-	t.Skip("port test from Dolt")
-	harness := newDoltgresServerHarness(t)
-	defer harness.Close()
-	denginetest.RunDoltTestsTableTests(t, harness)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, original := range denginetest.DoltTestTableScripts {
+		t.Run(original.Name, func(t *testing.T) {
+			h := newDoltgresServerHarness(t)
+			defer h.Close()
+			enginetest.TestScript(t, h, nativeStoredTestScript(original))
+		})
+	}
+	for _, script := range nativeStoredTestValidation() {
+		t.Run(script.Name, func(t *testing.T) {
+			h := newDoltgresServerHarness(t)
+			defer h.Close()
+			enginetest.TestScript(t, h, script)
+		})
+	}
 }
 
 func TestDoltUserPrivileges(t *testing.T) {
