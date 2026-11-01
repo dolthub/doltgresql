@@ -22,6 +22,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -589,6 +590,41 @@ func nativeHistoryDiffScript(s queries.ScriptTest, columns bool) queries.ScriptT
 				index = 1
 			}
 			sort.SliceStable(a.Expected, func(i, j int) bool { return fmt.Sprint(a.Expected[i][index]) < fmt.Sprint(a.Expected[j][index]) })
+		}
+	}
+	return s
+}
+
+func nativeQueryDiffScript(s queries.ScriptTest) queries.ScriptTest {
+	s.Assertions = append([]queries.ScriptTestAssertion(nil), s.Assertions...)
+	args := regexp.MustCompile(`(?i)^select \* from dolt_query_diff\('([^']*)', '([^']*)'\);?$`)
+	for i := range s.Assertions {
+		a := &s.Assertions[i]
+		if strings.Contains(a.ExpectedErrStr, "syntax error at position") {
+			a.ExpectedErrStr = "SQLSTATE 42601"
+		}
+		if a.ExpectedErrStr == "table not found: missingtable" {
+			a.ExpectedErrStr = "SQLSTATE 42P01"
+		}
+		if match := args.FindStringSubmatch(a.Query); match != nil && strings.Contains(a.Query, "as of") {
+			left, right := match[1], match[2]
+			for _, revision := range []string{"head", "other"} {
+				left = strings.ReplaceAll(left, "as of "+revision, "as of '"+revision+"'")
+				right = strings.ReplaceAll(right, "as of "+revision, "as of '"+revision+"'")
+			}
+			// Native dollar literals keep the inner SQL and its AS OF literals
+			// intact instead of sending them through MySQL string quoting.
+			a.Query = fmt.Sprintf("SELECT * FROM dolt_query_diff($left$%s$left$::text,$right$%s$right$::text)", left, right)
+		}
+		if strings.Contains(s.Name, "dolt_diff_summary") {
+			rows := make([]sql.Row, len(a.Expected))
+			for j, row := range a.Expected {
+				rows[j] = append(sql.Row(nil), row...)
+				if name, ok := rows[j][0].(string); ok {
+					rows[j][0] = "public." + name
+				}
+			}
+			a.Expected = rows
 		}
 	}
 	return s
