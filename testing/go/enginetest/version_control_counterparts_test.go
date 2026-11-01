@@ -679,3 +679,85 @@ func nativeQueryCatalogScript(s queries.ScriptTest) queries.ScriptTest {
 	}
 	return s
 }
+
+// Stored SQL executes inside the server, so the outer harness converter cannot
+// translate it. Translate fixture contents and expected query strings together.
+func nativeStoredSQL(query string) string {
+	if query == "select * from dolt_log; show tables;" {
+		return "select * from dolt_log; " + nativeStoredSQL("show tables;")
+	}
+	if !strings.HasPrefix(strings.ToLower(query), "show tables") {
+		return query
+	}
+	converted := convertQuery(query)
+	result := strings.Join(converted, ";")
+	// Dolt's default SHOW TABLES hides reserved metadata tables.
+	result = strings.Replace(result, " ORDER BY c.relname", " AND NOT starts_with(c.relname,'dolt_') ORDER BY c.relname", 1)
+	if strings.HasSuffix(query, ";") {
+		result += ";"
+	}
+	return result
+}
+
+func nativeStoredTestScript(s queries.ScriptTest) queries.ScriptTest {
+	s = nativeRemoveScript(s)
+	s.SetUpScript = append([]string(nil), s.SetUpScript...)
+	literal := regexp.MustCompile(`'(?:[^']|'')*'`)
+	for i, statement := range s.SetUpScript {
+		if strings.HasPrefix(statement, "REPLACE INTO dolt_tests ") {
+			statement = strings.Replace(statement, "REPLACE INTO", "INSERT INTO", 1) +
+				" ON CONFLICT (test_name) DO UPDATE SET test_group=excluded.test_group,test_query=excluded.test_query,assertion_type=excluded.assertion_type,assertion_comparator=excluded.assertion_comparator,assertion_value=excluded.assertion_value"
+		}
+		s.SetUpScript[i] = literal.ReplaceAllStringFunc(statement, func(value string) string {
+			decoded := strings.ReplaceAll(value[1:len(value)-1], "''", "'")
+			return "'" + strings.ReplaceAll(nativeStoredSQL(decoded), "'", "''") + "'"
+		})
+	}
+	for i := range s.Assertions {
+		a := &s.Assertions[i]
+		a.Expected = append([]sql.Row(nil), a.Expected...)
+		for j, row := range a.Expected {
+			a.Expected[j] = append(sql.Row(nil), row...)
+			for k, value := range row {
+				if text, ok := value.(string); ok {
+					if text == "query error: table not found: invalid" {
+						text = "Query error: relation invalid does not exist on branch main"
+					}
+					a.Expected[j][k] = nativeStoredSQL(text)
+				}
+			}
+		}
+	}
+	return s
+}
+
+// Mirrors Dolt's unexported validation cases, using PostgreSQL's SQLSTATE.
+func nativeStoredTestValidation() []queries.ScriptTest {
+	type validation struct {
+		assertion, comparator string
+		invalid               bool
+	}
+	var cases []validation
+	for _, comparator := range []string{"==", "!=", "<", ">", "<=", ">="} {
+		cases = append(cases, validation{assertion: "expected_rows", comparator: comparator})
+	}
+	for _, assertion := range []string{"expected_columns", "expected_single_value"} {
+		cases = append(cases, validation{assertion: assertion, comparator: "=="})
+	}
+	for _, assertion := range []string{"row_count", "expected_row", "EXPECTED_ROWS", "count", "", "expected_rows_count"} {
+		cases = append(cases, validation{assertion: assertion, comparator: "==", invalid: true})
+	}
+	for _, comparator := range []string{"=", "===", "eq", "!==", "LIKE", ""} {
+		cases = append(cases, validation{assertion: "expected_rows", comparator: comparator, invalid: true})
+	}
+	cases = append(cases, validation{assertion: "row_count", comparator: "=", invalid: true}, validation{assertion: "count", comparator: "eq", invalid: true})
+	var scripts []queries.ScriptTest
+	for i, tc := range cases {
+		a := queries.ScriptTestAssertion{Query: fmt.Sprintf("INSERT INTO dolt_tests VALUES ('test_%d','grp','SELECT 1','%s','%s','0')", i, tc.assertion, tc.comparator)}
+		if tc.invalid {
+			a.ExpectedErrStr = "SQLSTATE 23514"
+		}
+		scripts = append(scripts, queries.ScriptTest{Name: fmt.Sprintf("validation %q %q", tc.assertion, tc.comparator), Assertions: []queries.ScriptTestAssertion{a}})
+	}
+	return scripts
+}
