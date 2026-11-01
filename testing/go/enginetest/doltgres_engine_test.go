@@ -2282,10 +2282,33 @@ func TestDoltQueryCatalogSystemTable(t *testing.T) {
 }
 
 func TestDoltRm(t *testing.T) {
-	t.Skip("port test from Dolt")
-	harness := newDoltgresServerHarness(t)
-	defer harness.Close()
-	denginetest.RunDoltRmTests(t, harness)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, original := range denginetest.DoltRmTests {
+		t.Run(original.Name, func(t *testing.T) {
+			h := newDoltgresServerHarness(t)
+			defer h.Close()
+			enginetest.TestScript(t, h, nativeRemoveScript(original))
+		})
+	}
+	t.Run("read-only transaction", func(t *testing.T) {
+		h := newDoltgresServerHarness(t)
+		defer h.Close()
+		enginetest.TestScript(t, h, queries.ScriptTest{
+			Name: "read-only table removal",
+			SetUpScript: []string{
+				"CREATE TABLE t (id int PRIMARY KEY)",
+				"CALL dolt_commit('-Am','base')",
+			},
+			Assertions: []queries.ScriptTestAssertion{
+				{Query: "SET default_transaction_read_only=on"},
+				{Query: "CALL dolt_rm('t')", ExpectedErrStr: "SQLSTATE 25006"},
+				{Query: "SET default_transaction_read_only=off"},
+				{Query: "SELECT count(*) FROM t", Expected: []sql.Row{{0}}},
+			},
+		})
+	})
 }
 
 func TestDoltStash(t *testing.T) {
