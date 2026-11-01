@@ -629,3 +629,25 @@ func nativeQueryDiffScript(s queries.ScriptTest) queries.ScriptTest {
 	}
 	return s
 }
+
+// Native diagnostics and qualified names; removal semantics remain unchanged.
+func nativeRemoveScript(s queries.ScriptTest) queries.ScriptTest {
+	s.Assertions = append([]queries.ScriptTestAssertion(nil), s.Assertions...)
+	for i := range s.Assertions {
+		a := &s.Assertions[i]
+		if strings.HasPrefix(a.ExpectedErrStr, "table not found:") {
+			a.ExpectedErrStr = "SQLSTATE 42P01"
+		}
+		if strings.HasPrefix(a.ExpectedErrStr, "unable to remove `parent`") {
+			a.ExpectedErrStr = "SQLSTATE 2BP01"
+		}
+		if strings.Contains(strings.ToLower(a.Query), "from dolt_status") {
+			a.Expected = append([]sql.Row(nil), a.Expected...)
+			for j, row := range a.Expected {
+				a.Expected[j] = append(sql.Row(nil), row...)
+				a.Expected[j][0] = "public." + row[0].(string)
+			}
+		}
+	}
+	return s
+}
