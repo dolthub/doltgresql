@@ -665,3 +665,17 @@ func nativeStashScript(s queries.ScriptTest) queries.ScriptTest {
 	}
 	return s
 }
+
+func nativeQueryCatalogScript(s queries.ScriptTest) queries.ScriptTest {
+	s = nativeRemoveScript(s)
+	s.SetUpScript = append([]string(nil), s.SetUpScript...)
+	for i, statement := range s.SetUpScript {
+		if strings.HasPrefix(statement, "REPLACE INTO dolt_query_catalog ") {
+			// This fixture replaces one primary-key row with no other unique
+			// constraints: native upsert has the same resulting catalog rows.
+			s.SetUpScript[i] = strings.Replace(statement, "REPLACE INTO", "INSERT INTO", 1) +
+				" ON CONFLICT (id) DO UPDATE SET display_order=excluded.display_order,name=excluded.name,query=excluded.query,description=excluded.description"
+		}
+	}
+	return s
+}

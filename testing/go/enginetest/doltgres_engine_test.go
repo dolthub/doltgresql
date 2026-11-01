@@ -2275,10 +2275,16 @@ func TestDoltPreviewMergeConflicts(t *testing.T) {
 }
 
 func TestDoltQueryCatalogSystemTable(t *testing.T) {
-	t.Skip("port test from Dolt")
-	harness := newDoltgresServerHarness(t)
-	defer harness.Close()
-	denginetest.RunDoltQueryCatalogTests(t, harness)
+	if !nativePostgresEngine() {
+		t.Skip("original Doltgres group remains disabled")
+	}
+	for _, original := range denginetest.DoltQueryCatalogScripts {
+		t.Run(original.Name, func(t *testing.T) {
+			h := newDoltgresServerHarness(t)
+			defer h.Close()
+			enginetest.TestScript(t, h, nativeQueryCatalogScript(original))
+		})
+	}
 }
 
 func TestDoltRm(t *testing.T) {
