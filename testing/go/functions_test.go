@@ -5460,6 +5460,36 @@ func TestDateAndTimeFunction(t *testing.T) {
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3705
+			Name: "date minus interval uses calendar months and years",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT date '2024-03-15' - interval '1 month';`,
+					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT date '2024-03-31' - interval '1 month';`,
+					Expected: []sql.Row{{"2024-02-29 00:00:00"}},
+				},
+				{
+					Query:    `SELECT date '2024-02-29' - interval '1 year';`,
+					Expected: []sql.Row{{"2023-02-28 00:00:00"}},
+				},
+				{
+					Query:    `SELECT date '2024-03-15' - interval '1 month 2 days 3 hours';`,
+					Expected: []sql.Row{{"2024-02-12 21:00:00"}},
+				},
+				{
+					Query:    `SELECT date '2024-03-15' + interval '-1 month';`,
+					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
+				},
+				{
+					Query:       `SELECT date '2024-03-15' - interval '1000000000 years';`,
+					ExpectedErr: "timestamp out of range",
+				},
+			},
+		},
+		{
 			// https://github.com/dolthub/doltgresql/pull/3162#discussion_r3825271782
 			Name: "timestamp/timestamptz plus/minus interval preserves sub-second precision",
 			Assertions: []ScriptTestAssertion{
