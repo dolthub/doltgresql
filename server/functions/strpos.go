@@ -16,6 +16,7 @@ package functions
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/dolthub/go-mysql-server/sql"
 
@@ -47,6 +48,6 @@ var strpos_varchar = framework.Function2{
 		if idx == -1 {
 			return int32(0), nil
 		}
-		return int32(idx + 1), nil
+		return int32(utf8.RuneCountInString(strStr[:idx]) + 1), nil
 	},
 }
