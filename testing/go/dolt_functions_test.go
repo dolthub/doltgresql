@@ -1419,6 +1419,124 @@ func TestDoltDiff(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Tables of the same name in different schemas",
+			SetUpScript: []string{
+				"CREATE SCHEMA a;",
+				"CREATE TABLE t (id INT PRIMARY KEY, v INT);",
+				"CREATE TABLE a.t (id INT PRIMARY KEY, v INT);",
+				"INSERT INTO t VALUES (1, 0);",
+				"INSERT INTO a.t VALUES (1, 0);",
+				"SELECT dolt_commit('-Am', 'base');",
+				"UPDATE a.t SET v = 5;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_stat('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "UPDATE t SET v = 6;",
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{{0, 6}},
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 'public.t');",
+					Expected: []sql.Row{{0, 6}},
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 'a.t');",
+					Expected: []sql.Row{{0, 5}},
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff_t WHERE to_commit = 'WORKING';",
+					Expected: []sql.Row{{0, 6}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{{"public.t", "public.t", "modified", "t", "f"}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 'public.t');",
+					Expected: []sql.Row{{"public.t", "public.t", "modified", "t", "f"}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 'a.t');",
+					Expected: []sql.Row{{"a.t", "a.t", "modified", "t", "f"}},
+				},
+				{
+					Query:    "SELECT table_name, rows_modified FROM dolt_diff_stat('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{{"public.t", 1}},
+				},
+				{
+					Query:    "SELECT table_name, rows_modified FROM dolt_diff_stat('HEAD', 'WORKING', 'public.t');",
+					Expected: []sql.Row{{"public.t", 1}},
+				},
+				{
+					Query:    "SELECT table_name, rows_modified FROM dolt_diff_stat('HEAD', 'WORKING', 'a.t');",
+					Expected: []sql.Row{{"a.t", 1}},
+				},
+				{
+					Query:    "SELECT table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{{"public.t", "data", "UPDATE \"t\" SET \"v\"=6 WHERE \"id\"=1;"}},
+				},
+				{
+					Query:    "SELECT table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 'public.t');",
+					Expected: []sql.Row{{"public.t", "data", "UPDATE \"t\" SET \"v\"=6 WHERE \"id\"=1;"}},
+				},
+				{
+					Query:    "SELECT table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 'a.t');",
+					Expected: []sql.Row{{"a.t", "data", "UPDATE \"t\" SET \"v\"=5 WHERE \"id\"=1;"}},
+				},
+				{
+					Query: "SET search_path = a, public;",
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{{0, 5}},
+				},
+				{
+					Query:           "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 'b.t');",
+					ExpectedErr:     "table not found",
+					ExpectedErrCode: "42P01",
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 'A.T');",
+					Expected: []sql.Row{{0, 5}},
+				},
+				{
+					Query: "CREATE TABLE public.\"x.y\" (id INT PRIMARY KEY);",
+				},
+				{
+					Query: "INSERT INTO public.\"x.y\" VALUES (1);",
+				},
+				{
+					Query:    "SELECT diff_type, to_id FROM dolt_diff('HEAD', 'WORKING', 'x.y');",
+					Expected: []sql.Row{{"added", 1}},
+				},
+				{
+					Query: "CREATE SEQUENCE public.s1;",
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 'public.s1');",
+					Expected: []sql.Row{{"", "public.s1", "added", "t", "t"}},
+				},
+			},
+		},
 	})
 }
 
