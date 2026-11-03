@@ -318,6 +318,31 @@ func TestAggregateFunctions(t *testing.T) {
 					},
 				},
 				{
+					// an integer constant in an aggregate's ORDER BY is a constant, not a column ordinal
+					Query: `SELECT array_agg(pk ORDER BY 1) FROM t1;`,
+					Expected: []sql.Row{
+						{"{1,2,3}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(pk ORDER BY 1, pk DESC) FROM t1;`,
+					Expected: []sql.Row{
+						{"{3,2,1}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(v ORDER BY 'x', pk DESC) FROM t1;`,
+					Expected: []sql.Row{
+						{"{c,b,a}"},
+					},
+				},
+				{
+					Query: `SELECT string_agg(v, ',' ORDER BY 1, pk DESC) FROM t1;`,
+					Expected: []sql.Row{
+						{"c,b,a"},
+					},
+				},
+				{
 					Skip:  true, // Higher-level arrays don't work because they panic during output
 					Query: `SELECT array_agg(f) FROM t1;`,
 					Expected: []sql.Row{

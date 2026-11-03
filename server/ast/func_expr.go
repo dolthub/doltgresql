@@ -94,7 +94,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 
 		var orderBy vitess.OrderBy
 		if len(node.OrderBy) > 0 {
-			orderBy, err = nodeOrderBy(ctx, node.OrderBy)
+			orderBy, err = nodeAggregateOrderBy(ctx, node.OrderBy)
 			if err != nil {
 				return nil, err
 			}
@@ -110,7 +110,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 	case "array_agg":
 		var orderBy vitess.OrderBy
 		if len(node.OrderBy) > 0 {
-			orderBy, err = nodeOrderBy(ctx, node.OrderBy)
+			orderBy, err = nodeAggregateOrderBy(ctx, node.OrderBy)
 			if err != nil {
 				return nil, err
 			}

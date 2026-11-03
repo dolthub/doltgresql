@@ -31,29 +31,7 @@ func nodeOrderBy(ctx *Context, node tree.OrderBy) (vitess.OrderBy, error) {
 	}
 	orderBys := make([]*vitess.Order, len(node))
 	for i := range node {
-		if node[i].OrderType != tree.OrderByColumn {
-			return nil, errors.Errorf("ORDER BY type is not yet supported")
-		}
-		direction := vitess.AscScr
-		nullsOrder := vitess.NullsLastStr
-		switch node[i].Direction {
-		case tree.DefaultDirection, tree.Ascending:
-		case tree.Descending:
-			direction = vitess.DescScr
-			nullsOrder = vitess.NullsFirstStr
-		default:
-			return nil, errors.Errorf("unknown ORDER BY sorting direction")
-		}
-		switch node[i].NullsOrder {
-		case tree.DefaultNullsOrder:
-		case tree.NullsFirst:
-			nullsOrder = vitess.NullsFirstStr
-		case tree.NullsLast:
-			nullsOrder = vitess.NullsLastStr
-		default:
-			return nil, errors.Errorf("unknown NULL ordering in ORDER BY")
-		}
-		expr, err := nodeExpr(ctx, node[i].Expr)
+		order, err := nodeOrder(ctx, node[i])
 		if err != nil {
 			return nil, err
 		}
@@ -61,16 +39,73 @@ func nodeOrderBy(ctx *Context, node tree.OrderBy) (vitess.OrderBy, error) {
 		// In addition, there is the requirement that columns in the order by also need to be referenced somewhere in
 		// the query, which is not a requirement for Postgres. Whenever we add that functionality, we also need to
 		// remove the dependency on vitess.SQLVal. For now, we'll just convert our literals to a vitess.SQLVal.
-		if injectedExpr, ok := expr.(vitess.InjectedExpr); ok {
-			if literal, ok := injectedExpr.Expression.(*expression.Literal); ok {
-				expr = pgexprs.ToVitessLiteral(literal)
-			}
+		if literal, ok := orderLiteral(order); ok {
+			order.Expr = pgexprs.ToVitessLiteral(literal)
 		}
-		orderBys[i] = &vitess.Order{
-			Expr:       expr,
-			Direction:  direction,
-			NullsOrder: nullsOrder,
-		}
+		orderBys[i] = order
 	}
 	return orderBys, nil
+}
+
+// nodeAggregateOrderBy handles the *tree.OrderBy of an aggregate function call, such as `array_agg(x ORDER BY y)`.
+// Unlike a query's ORDER BY, a literal here is a constant sort key rather than a column ordinal, so it never affects
+// the order and is dropped. GMS would otherwise interpret an integer literal as an ordinal.
+func nodeAggregateOrderBy(ctx *Context, node tree.OrderBy) (vitess.OrderBy, error) {
+	var orderBys vitess.OrderBy
+	for i := range node {
+		order, err := nodeOrder(ctx, node[i])
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := orderLiteral(order); ok {
+			continue
+		}
+		orderBys = append(orderBys, order)
+	}
+	return orderBys, nil
+}
+
+// nodeOrder handles *tree.Order nodes.
+func nodeOrder(ctx *Context, node *tree.Order) (*vitess.Order, error) {
+	if node.OrderType != tree.OrderByColumn {
+		return nil, errors.Errorf("ORDER BY type is not yet supported")
+	}
+	direction := vitess.AscScr
+	nullsOrder := vitess.NullsLastStr
+	switch node.Direction {
+	case tree.DefaultDirection, tree.Ascending:
+	case tree.Descending:
+		direction = vitess.DescScr
+		nullsOrder = vitess.NullsFirstStr
+	default:
+		return nil, errors.Errorf("unknown ORDER BY sorting direction")
+	}
+	switch node.NullsOrder {
+	case tree.DefaultNullsOrder:
+	case tree.NullsFirst:
+		nullsOrder = vitess.NullsFirstStr
+	case tree.NullsLast:
+		nullsOrder = vitess.NullsLastStr
+	default:
+		return nil, errors.Errorf("unknown NULL ordering in ORDER BY")
+	}
+	expr, err := nodeExpr(ctx, node.Expr)
+	if err != nil {
+		return nil, err
+	}
+	return &vitess.Order{
+		Expr:       expr,
+		Direction:  direction,
+		NullsOrder: nullsOrder,
+	}, nil
+}
+
+// orderLiteral returns the literal that the given order sorts by, if it sorts by a literal.
+func orderLiteral(order *vitess.Order) (*expression.Literal, bool) {
+	if injectedExpr, ok := order.Expr.(vitess.InjectedExpr); ok {
+		if literal, ok := injectedExpr.Expression.(*expression.Literal); ok {
+			return literal, true
+		}
+	}
+	return nil, false
 }
