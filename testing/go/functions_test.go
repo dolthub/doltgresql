@@ -4830,6 +4830,34 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Query:    `select '2011-03-27 02:00:00'::timestamp at time zone 'MSK';`,
 					Expected: []sql.Row{{"2011-03-26 15:30:00-06:30"}},
 				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone 'Asia/Kolkata';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone 'America/New_York';`,
+					Expected: []sql.Row{{"2024-03-05 05:00:00"}},
+				},
+				{
+					Query:    `select '2024-07-01 10:00:00+00'::timestamptz at time zone 'America/New_York';`,
+					Expected: []sql.Row{{"2024-07-01 06:00:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone interval '05:30';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone '+05:30';`,
+					Expected: []sql.Row{{"2024-03-05 04:30:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone '-05:30';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `select timezone('Asia/Kolkata', timestamp with time zone '2001-02-16 20:38:40.12-05');`,
+					Expected: []sql.Row{{"2001-02-17 07:08:40.12"}},
+				},
 			},
 		},
 		{
