@@ -5634,6 +5634,27 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
+			Name: "strpos",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT strpos('hello', 'l'), strpos('hello', 'z'), strpos('hello', '');`,
+					Expected: []sql.Row{{int32(3), int32(0), int32(1)}},
+				},
+				{
+					Query:    `SELECT strpos('héllo', 'l'), strpos('日本語テキスト', 'テ'), strpos('日本語', '語');`,
+					Expected: []sql.Row{{int32(3), int32(4), int32(3)}},
+				},
+				{
+					Query:    `SELECT position('l' IN 'héllo'), position('テ' IN '日本語テキスト'), position('x' IN '日本語');`,
+					Expected: []sql.Row{{int32(3), int32(4), int32(0)}},
+				},
+				{
+					Query:    `SELECT substr('héllo', strpos('héllo', 'l'));`,
+					Expected: []sql.Row{{"llo"}},
+				},
+			},
+		},
+		{
 			Name: "starts_with invalid arguments",
 			Assertions: []ScriptTestAssertion{
 				{
