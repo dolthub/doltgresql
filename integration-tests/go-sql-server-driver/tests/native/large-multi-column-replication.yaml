@@ -1,0 +1,78 @@
+# Native translation of sql-server-large-multi-column-replication.yaml; see nativedef.go and tests/native/cluster.yaml.
+parallel: true
+tests:
+- name: row with multiple large columns replicates correctly
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: |
+        CREATE TABLE multi_large (
+          id        BIGINT PRIMARY KEY,
+          txt       TEXT,
+          blob_data BYTEA,
+          doc       JSON,
+          note      TEXT
+        )
+    - exec: |
+        INSERT INTO multi_large VALUES (
+          1,
+          REPEAT('textcol-row1-', 1154),
+          convert_to(REPEAT('blobcol-row1-', 1924), 'UTF8'),
+          json_build_object('row', 1, 'data', REPEAT('jsoncol-row1-', 847)),
+          REPEAT('note-col-row1-', 357)
+        )
+    - exec: |
+        INSERT INTO multi_large VALUES (
+          2,
+          REPEAT('textcol-row2-', 1154),
+          convert_to(REPEAT('blobcol-row2-', 1924), 'UTF8'),
+          json_build_object('row', 2, 'data', REPEAT('jsoncol-row2-', 847)),
+          REPEAT('note-col-row2-', 357)
+        )
+    - exec: |
+        INSERT INTO multi_large VALUES (
+          3,
+          REPEAT('textcol-row3-', 1154),
+          convert_to(REPEAT('blobcol-row3-', 1924), 'UTF8'),
+          json_build_object('row', 3, 'data', REPEAT('jsoncol-row3-', 847)),
+          REPEAT('note-col-row3-', 357)
+        )
+    - query: SELECT COUNT(*) AS count FROM multi_large WHERE LENGTH(txt) > 10000 AND LENGTH(blob_data) > 20000
+      result:
+        columns:
+        - count
+        rows:
+        - - '3'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    retry_attempts: 100
+    queries:
+    - query: SELECT COUNT(*) AS count FROM multi_large
+      result:
+        columns:
+        - count
+        rows:
+        - - '3'
+    - query: SELECT COUNT(*) AS count FROM multi_large WHERE LENGTH(txt) > 10000 AND LENGTH(blob_data) > 20000 AND LENGTH(doc::text) > 11000 AND LENGTH(note) > 4000
+      result:
+        columns:
+        - count
+        rows:
+        - - '3'
+    - query: SELECT doc->>'row' AS row FROM multi_large WHERE id = 2
+      result:
+        columns:
+        - row
+        rows:
+        - - '2'

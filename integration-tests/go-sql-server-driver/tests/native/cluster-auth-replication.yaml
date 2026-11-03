@@ -1,0 +1,354 @@
+# Native translation of sql-server-cluster-auth-replication.yaml; see nativedef.go and tests/native/cluster.yaml.
+parallel: true
+tests:
+- name: role and privileges replicate to standby
+  skip: "GRANT and REVOKE on versioned objects await the fork's ownership and ACL design"
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: create database repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: create table vals (i int primary key)
+    - exec: insert into vals values (0),(1),(2)
+    - exec: create user reader password 'readerpass'
+    - exec: grant select on vals to reader
+  - 'on': server1
+    database: repo1
+    queries:
+    - query: select i from vals order by i
+      result:
+        columns:
+        - i
+        rows:
+        - - '0'
+        - - '1'
+        - - '2'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    queries:
+    - query: select count(*) as count from pg_roles where rolname = 'reader'
+      result:
+        columns:
+        - count
+        rows:
+        - - '1'
+      retry_attempts: 100
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    retry_attempts: 5
+    queries:
+    - query: select i from vals order by i
+      result:
+        columns:
+        - i
+        rows:
+        - - '0'
+        - - '1'
+        - - '2'
+- name: revoked privileges replicate to standby
+  skip: "GRANT and REVOKE on versioned objects await the fork's ownership and ACL design"
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: create database repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: create table t1 (i int primary key)
+    - exec: create table t2 (i int primary key)
+    - exec: insert into t1 values (1)
+    - exec: insert into t2 values (2)
+    - exec: create user revokee password 'revokeepass'
+    - exec: grant select on t1 to revokee
+    - exec: grant select on t2 to revokee
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    retry_attempts: 5
+    queries:
+    - query: select i from t1
+      result:
+        columns:
+        - i
+        rows:
+        - - '1'
+    - query: select i from t2
+      result:
+        columns:
+        - i
+        rows:
+        - - '2'
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: revoke select on t2 from revokee
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - query: select i from t1
+      result:
+        columns:
+        - i
+        rows:
+        - - '1'
+    - query: select i from t2
+      error_match: permission denied for table t2
+      retry_attempts: 100
+- name: role membership replicates to standby
+  skip: "GRANT and REVOKE on versioned objects await the fork's ownership and ACL design"
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: create database repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: create table vals (i int primary key)
+    - exec: insert into vals values (0),(1),(2)
+    - exec: create role readers
+    - exec: grant select on vals to readers
+    - exec: create user member password 'memberpass'
+    - exec: grant readers to member
+  - 'on': server1
+    database: repo1
+    queries:
+    - query: select i from vals order by i
+      result:
+        columns:
+        - i
+        rows:
+        - - '0'
+        - - '1'
+        - - '2'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    queries:
+    - query: select count(*) as count from pg_roles where rolname in ('readers', 'member')
+      result:
+        columns:
+        - count
+        rows:
+        - - '2'
+      retry_attempts: 100
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    retry_attempts: 5
+    queries:
+    - query: select i from vals order by i
+      result:
+        columns:
+        - i
+        rows:
+        - - '0'
+        - - '1'
+        - - '2'
+- name: password changes replicate to standby
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: create user pwuser password 'firstpass'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    queries:
+    - query: select count(*) as count from pg_roles where rolname = 'pwuser'
+      result:
+        columns:
+        - count
+        rows:
+        - - '1'
+      retry_attempts: 100
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    retry_attempts: 5
+    queries:
+    - query: select 1 as one
+      result:
+        columns:
+        - one
+        rows:
+        - - '1'
+  - 'on': server1
+    queries:
+    - exec: alter role pwuser password 'secondpass'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    retry_attempts: 5
+    queries:
+    - query: select 1 as one
+      result:
+        columns:
+        - one
+        rows:
+        - - '1'
+- name: dropping a role removes inherited privileges on standby
+  skip: "GRANT and REVOKE on versioned objects await the fork's ownership and ACL design"
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: create database repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: create table vals (i int primary key)
+    - exec: insert into vals values (1)
+    - exec: create function routine_vals() returns integer as $$ begin return 1; end; $$ language plpgsql
+    - exec: revoke execute on function routine_vals() from public
+    - exec: create role doomed
+    - exec: create user member password 'memberpass'
+    - exec: grant select on vals to doomed
+    - exec: grant execute on function routine_vals() to doomed
+    - exec: grant doomed to member
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    retry_attempts: 100
+    queries:
+    - query: select i from vals
+      result:
+        columns:
+        - i
+        rows:
+        - - '1'
+    - query: select routine_vals() as routine_value
+      result:
+        columns:
+        - routine_value
+        rows:
+        - - '1'
+  - 'on': server1
+    queries:
+    - exec: drop role doomed
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    queries:
+    - query: select count(*) as count from pg_roles where rolname = 'doomed'
+      result:
+        columns:
+        - count
+        rows:
+        - - '0'
+      retry_attempts: 100
+    - query: select count(*) as count from pg_roles where rolname = 'member'
+      result:
+        columns:
+        - count
+        rows:
+        - - '1'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - query: select i from vals
+      error_match: permission denied for table vals
+      retry_attempts: 100
+    - query: select routine_vals()
+      error_match: permission denied
+      retry_attempts: 100
+- name: roles and privileges usable after failover
+  skip: "GRANT and REVOKE on versioned objects await the fork's ownership and ACL design"
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: create database repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: create table vals (i int primary key)
+    - exec: insert into vals values (0),(1)
+    - exec: create user writer password 'writerpass'
+    - exec: grant select, insert on vals to writer
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: insert into vals values (2)
+    - query: select i from vals order by i
+      result:
+        columns:
+        - i
+        rows:
+        - - '0'
+        - - '1'
+        - - '2'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - action:
+      kind: switchover
+      server: server1
+      to: server2
+  - 'on': server2
+    database: repo1
+    retry_attempts: 5
+    queries:
+    - query: select i from vals order by i
+      result:
+        columns:
+        - i
+        rows:
+        - - '0'
+        - - '1'
+        - - '2'
+    - exec: insert into vals values (3),(4)
+    - query: select i from vals order by i
+      result:
+        columns:
+        - i
+        rows:
+        - - '0'
+        - - '1'
+        - - '2'
+        - - '3'
+        - - '4'

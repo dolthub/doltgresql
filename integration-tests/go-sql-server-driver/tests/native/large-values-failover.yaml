@@ -1,0 +1,60 @@
+# Native translation of sql-server-large-values-failover.yaml; see nativedef.go and tests/native/cluster.yaml.
+parallel: true
+tests:
+- name: large values survive failover to new primary
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: |
+        CREATE TABLE large_vals (
+          id       BIGINT PRIMARY KEY,
+          txt      TEXT,
+          blob_col BYTEA
+        )
+    - exec: INSERT INTO large_vals VALUES (1, REPEAT('textrow1-', 1667), REPEAT('blobrow1-', 2778)::bytea)
+    - exec: INSERT INTO large_vals VALUES (2, REPEAT('textrow2-', 1667), REPEAT('blobrow2-', 2778)::bytea)
+    - exec: INSERT INTO large_vals VALUES (3, REPEAT('textrow3-', 1667), REPEAT('blobrow3-', 2778)::bytea)
+    - exec: INSERT INTO large_vals VALUES (4, REPEAT('textrow4-', 1667), REPEAT('blobrow4-', 2778)::bytea)
+    - exec: INSERT INTO large_vals VALUES (5, REPEAT('textrow5-', 1667), REPEAT('blobrow5-', 2778)::bytea)
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    retry_attempts: 100
+    queries:
+    - query: SELECT COUNT(*) AS count FROM large_vals WHERE LENGTH(txt) > 10000 AND LENGTH(blob_col) > 20000
+      result:
+        columns:
+        - count
+        rows:
+        - - '5'
+  - action:
+      kind: switchover
+      server: server1
+      to: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - query: SELECT COUNT(*) AS count FROM large_vals
+      result:
+        columns:
+        - count
+        rows:
+        - - '5'
+    - exec: INSERT INTO large_vals VALUES (6, REPEAT('textrow6-', 1667), REPEAT('blobrow6-', 2778)::bytea)
+    - exec: INSERT INTO large_vals VALUES (7, REPEAT('textrow7-', 1667), REPEAT('blobrow7-', 2778)::bytea)
+    - query: SELECT COUNT(*) AS count FROM large_vals WHERE LENGTH(txt) > 10000 AND LENGTH(blob_col) > 20000
+      result:
+        columns:
+        - count
+        rows:
+        - - '7'

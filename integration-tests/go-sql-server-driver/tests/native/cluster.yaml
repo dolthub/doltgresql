@@ -1,0 +1,242 @@
+# The semantics of tests/sql-server-cluster.yaml, run against the Postgres fork
+# with prolly storage and Postgres's own replication. See nativedef.go.
+#
+# Translation from the Doltgres cluster tests:
+#   * A server with bootstrap_role: standby is a hot standby copied from its
+#     primary with pg_basebackup (`follows:`), streaming its WAL.
+#   * dolt_assume_cluster_role('primary', n) on a standby is a `promote`
+#     action (pg_promote). Moving the primary role between two servers
+#     (assume standby on one, then primary on the other) is a `switchover`.
+#   * The cluster epoch is the server's timeline, which each promotion
+#     advances.
+#   * dolt_cluster_status's replication state is pg_stat_replication on the
+#     primary and pg_stat_wal_receiver on the standby.
+#   * "repo1 is read-only" is Postgres's "cannot execute ... in a read-only
+#     transaction".
+#   * `use repo1` is a connection to database repo1.
+parallel: true
+tests:
+- name: primary comes up and replicates to standby
+  servers:
+  - name: server1
+    databases: [repo1, repo2]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (1),(2),(3),(4),(5)"
+  - action: {kind: restart, server: server1}
+  - on: server1
+    queries:
+    - query: "select application_name is not null as connected, state from pg_stat_replication"
+      result:
+        columns: ["connected","state"]
+        rows: [["true","streaming"]]
+      retry_attempts: 100
+  - action: {kind: wait_for_replay, server: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: booted standby server is read only
+  servers:
+  - name: server1
+    databases: [repo1]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server2
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+      error_match: "cannot execute CREATE TABLE in a read-only transaction"
+- name: booted primary server is read write
+  servers:
+  - name: server1
+    databases: [repo1]
+  steps:
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+    - query: "select pg_is_in_recovery()"
+      result:
+        columns: ["pg_is_in_recovery"]
+        rows: [["false"]]
+- name: standby server takes primary epoch
+  servers:
+  - name: server1
+    databases: [repo1]
+  - name: server2
+    follows: server1
+  - name: server3
+    follows: server1
+  steps:
+  - on: server2
+    queries:
+    - query: "select timeline_id from pg_control_checkpoint()"
+      result:
+        columns: ["timeline_id"]
+        rows: [["1"]]
+  - action: {kind: promote, server: server2}
+  - on: server2
+    queries:
+    - query: "select timeline_id, pg_is_in_recovery() from pg_control_checkpoint()"
+      result:
+        columns: ["timeline_id","pg_is_in_recovery"]
+        rows: [["2","false"]]
+      retry_attempts: 100
+  - action: {kind: demote, server: server3, follows: server2}
+  - on: server3
+    queries:
+    - query: "select received_tli from pg_stat_wal_receiver"
+      result:
+        columns: ["received_tli"]
+        rows: [["2"]]
+      retry_attempts: 100
+- name: standby transitioned to primary becomes read write
+  servers:
+  - name: server1
+    databases: [repo1]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server2
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+      error_match: "cannot execute CREATE TABLE in a read-only transaction"
+  - action: {kind: stop, server: server1}
+  - action: {kind: promote, server: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["0"]]
+- name: primary transitioned to standby becomes read only
+  servers:
+  - name: server1
+    databases: [repo1]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (1),(2),(3),(4),(5)"
+  - action: {kind: switchover, server: server1, to: server2}
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "insert into vals values (6),(7),(8),(9),(10)"
+      error_match: "cannot execute INSERT in a read-only transaction"
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+- name: create new database, primary replicates to standby, fails over, new primary replicates to standby, fails over, new primary has all writes
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    queries:
+    - exec: "create database repo1"
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key)"
+    - exec: "insert into vals values (0),(1),(2),(3),(4)"
+  - action: {kind: switchover, server: server1, to: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["5"]]
+    - exec: "insert into vals values (5),(6),(7),(8),(9)"
+  - action: {kind: switchover, server: server2, to: server1}
+  - on: server1
+    database: repo1
+    queries:
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["10"]]
+    - exec: "insert into vals values (10),(11),(12),(13),(14)"
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["15"]]
+  - action: {kind: wait_for_replay, server: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select count(*) from vals"
+      result:
+        columns: ["count"]
+        rows: [["15"]]
+- name: version control history replicates and survives failover
+  servers:
+  - name: server1
+    databases: [repo1]
+  - name: server2
+    follows: server1
+  steps:
+  - on: server1
+    database: repo1
+    queries:
+    - exec: "create table vals (i int primary key, v text)"
+    - exec: "insert into vals values (1, 'one'), (2, 'two')"
+    - exec: "select dolt_commit('-Am', 'first')"
+    - exec: "select dolt_branch('feature')"
+    - exec: "update vals set v = 'uno' where i = 1"
+    - exec: "select dolt_commit('-am', 'second')"
+  - action: {kind: wait_for_replay, server: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - query: "select message from dolt_log order by date desc limit 2"
+      result:
+        columns: ["message"]
+        rows: [["second"],["first"]]
+    - query: "select name from dolt_branches order by name"
+      result:
+        columns: ["name"]
+        rows: [["feature"],["main"]]
+    - query: "select v from vals as of 'HEAD~1' where i = 1"
+      result:
+        columns: ["v"]
+        rows: [["one"]]
+    - query: "select dolt_commit('--allow-empty', '-m', 'on a standby')"
+      error_match: "read-only"
+  - action: {kind: switchover, server: server1, to: server2}
+  - on: server2
+    database: repo1
+    queries:
+    - exec: "insert into vals values (3, 'three')"
+    - exec: "select dolt_commit('-am', 'third')"
+    - query: "select count(*) from dolt_log"
+      result:
+        columns: ["count"]
+        rows: [["4"]]
+  - action: {kind: wait_for_replay, server: server1}
+  - on: server1
+    database: repo1
+    queries:
+    - query: "select message from dolt_log order by date desc limit 1"
+      result:
+        columns: ["message"]
+        rows: [["third"]]

@@ -1,0 +1,50 @@
+# Native translation of sql-server-large-blob-replication.yaml; see nativedef.go and tests/native/cluster.yaml.
+parallel: true
+tests:
+- name: large blob values replicate to standby
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: |
+        CREATE TABLE large_blob (
+          id   BIGINT PRIMARY KEY,
+          data BYTEA
+        )
+    - exec: INSERT INTO large_blob VALUES (1, convert_to(REPEAT('abcdefghijklmnopqrst', 1250), 'UTF8'))
+    - exec: INSERT INTO large_blob VALUES (2, convert_to(REPEAT('ABCDEFGHIJKLMNOPQRST', 1250), 'UTF8'))
+    - exec: INSERT INTO large_blob VALUES (3, convert_to(REPEAT('01234567890123456789', 1250), 'UTF8'))
+    - exec: INSERT INTO large_blob VALUES (4, convert_to(REPEAT('zyxwvutsrqponmlkjihg', 1250), 'UTF8'))
+    - exec: INSERT INTO large_blob VALUES (5, convert_to(REPEAT('fedcba9876543210FEDC', 1250), 'UTF8'))
+    - query: SELECT COUNT(*) AS count FROM large_blob WHERE LENGTH(data) = 25000
+      result:
+        columns:
+        - count
+        rows:
+        - - '5'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    retry_attempts: 100
+    queries:
+    - query: SELECT COUNT(*) AS count FROM large_blob
+      result:
+        columns:
+        - count
+        rows:
+        - - '5'
+    - query: SELECT COUNT(*) AS count FROM large_blob WHERE LENGTH(data) = 25000
+      result:
+        columns:
+        - count
+        rows:
+        - - '5'

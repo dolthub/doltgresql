@@ -1,0 +1,402 @@
+# Native translation of sql-server-cluster-root-objects.yaml; see nativedef.go and tests/native/cluster.yaml.
+parallel: true
+tests:
+- name: schema replicates to standby
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: CREATE SCHEMA testschema
+    - exec: CREATE TABLE testschema.t1 (pk INT PRIMARY KEY, v TEXT)
+    - exec: INSERT INTO testschema.t1 VALUES (1, 'one'), (2, 'two'), (3, 'three')
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - query: SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'testschema'
+      result:
+        columns:
+        - schema_name
+        rows:
+        - - testschema
+    - query: SELECT nspname FROM pg_catalog.pg_namespace WHERE nspname = 'testschema'
+      result:
+        columns:
+        - nspname
+        rows:
+        - - testschema
+    - query: SELECT pk, v FROM testschema.t1 ORDER BY pk
+      result:
+        columns:
+        - pk
+        - v
+        rows:
+        - - '1'
+          - one
+        - - '2'
+          - two
+        - - '3'
+          - three
+- name: sequence replicates to standby and consumed state survives failover
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: CREATE SEQUENCE seq1 START WITH 10 INCREMENT BY 3 MAXVALUE 1000
+    - query: SELECT nextval('seq1')
+      result:
+        columns:
+        - nextval
+        rows:
+        - - '10'
+    - query: SELECT nextval('seq1')
+      result:
+        columns:
+        - nextval
+        rows:
+        - - '13'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - query: SELECT seqstart, seqincrement, seqmax FROM pg_catalog.pg_sequence WHERE seqrelid = 'seq1'::regclass
+      result:
+        columns:
+        - seqstart
+        - seqincrement
+        - seqmax
+        rows:
+        - - '10'
+          - '3'
+          - '1000'
+    # A standby sees a sequence's state as WAL-logged, which runs ahead of the
+    # values handed out.
+    - query: SELECT sequencename, last_value >= 13 AS consumed FROM pg_catalog.pg_sequences WHERE sequencename = 'seq1'
+      result:
+        columns:
+        - sequencename
+        - consumed
+        rows:
+        - - seq1
+          - 'true'
+  - action:
+      kind: switchover
+      server: server1
+      to: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    # The new primary never hands out a consumed value; as natively, it may skip some.
+    - query: SELECT nextval('seq1') > 13 AS fresh
+      result:
+        columns:
+        - fresh
+        rows:
+        - - 'true'
+- name: user-defined types replicate to standby
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: CREATE TYPE mood AS ENUM ('sad', 'ok', 'happy')
+    - exec: CREATE TYPE point_t AS (x INT, y INT)
+    - exec: CREATE DOMAIN posint AS INTEGER CONSTRAINT posint_check CHECK (VALUE > 0)
+    - exec: CREATE TABLE moods (pk INT PRIMARY KEY, m mood)
+    - exec: INSERT INTO moods VALUES (1, 'sad'), (2, 'happy')
+    - exec: CREATE TABLE points (id INT PRIMARY KEY, p point_t)
+    - exec: INSERT INTO points VALUES (1, ROW(1, 2)), (2, ROW(3, 4))
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - query: SELECT typname FROM pg_catalog.pg_type WHERE typname IN ('mood', 'point_t', 'posint') ORDER BY typname
+      result:
+        columns:
+        - typname
+        rows:
+        - - mood
+        - - point_t
+        - - posint
+    - query: SELECT pk, m FROM moods ORDER BY pk
+      result:
+        columns:
+        - pk
+        - m
+        rows:
+        - - '1'
+          - sad
+        - - '2'
+          - happy
+    - query: SELECT 'happy'::mood AS m
+      result:
+        columns:
+        - m
+        rows:
+        - - happy
+    - query: SELECT id, p FROM points ORDER BY id
+      result:
+        columns:
+        - id
+        - p
+        rows:
+        - - '1'
+          - (1,2)
+        - - '2'
+          - (3,4)
+    - query: SELECT 42::posint AS p
+      result:
+        columns:
+        - p
+        rows:
+        - - '42'
+    - query: SELECT con.conname, con.contype::text AS contype, t.typname FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_type t ON t.oid = con.contypid WHERE con.conname = 'posint_check'
+      result:
+        columns:
+        - conname
+        - contype
+        - typname
+        rows:
+        - - posint_check
+          - c
+          - posint
+    - query: SELECT (-5)::posint AS p
+      error_match: posint_check
+- name: functions replicate to standby
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: CREATE FUNCTION add_ints(a INT, b INT) RETURNS INT AS $$ SELECT a + b $$ LANGUAGE SQL
+    - exec: CREATE FUNCTION triple(input INT) RETURNS INT AS $$ BEGIN RETURN input * 3; END; $$ LANGUAGE plpgsql
+    - query: SELECT add_ints(1, 2) AS result
+      result:
+        columns:
+        - result
+        rows:
+        - - '3'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - query: SELECT proname, prokind::text AS prokind FROM pg_catalog.pg_proc WHERE proname IN ('add_ints', 'triple') ORDER BY proname
+      result:
+        columns:
+        - proname
+        - prokind
+        rows:
+        - - add_ints
+          - f
+        - - triple
+          - f
+    - query: SELECT add_ints(3, 4) AS result
+      result:
+        columns:
+        - result
+        rows:
+        - - '7'
+    - query: SELECT triple(5) AS result
+      result:
+        columns:
+        - result
+        rows:
+        - - '15'
+- name: trigger replicates to standby and fires after failover
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: CREATE TABLE t_trigger (v1 INT8)
+    - exec: CREATE FUNCTION f_trigger() RETURNS TRIGGER AS $$ BEGIN NEW.v1 := NEW.v1 * 3; RETURN NEW; END; $$ LANGUAGE plpgsql
+    - exec: CREATE TRIGGER trig_trigger BEFORE INSERT ON t_trigger FOR EACH ROW EXECUTE FUNCTION f_trigger()
+    - exec: INSERT INTO t_trigger VALUES (5)
+    - query: SELECT v1 FROM t_trigger
+      result:
+        columns:
+        - v1
+        rows:
+        - - '15'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - query: SELECT v1 FROM t_trigger
+      result:
+        columns:
+        - v1
+        rows:
+        - - '15'
+    - query: SELECT t.tgname, c.relname, p.proname, t.tgtype, t.tgenabled::text AS tgenabled FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid JOIN pg_catalog.pg_proc p ON p.oid
+        = t.tgfoid WHERE t.tgname = 'trig_trigger'
+      result:
+        columns:
+        - tgname
+        - relname
+        - proname
+        - tgtype
+        - tgenabled
+        rows:
+        - - trig_trigger
+          - t_trigger
+          - f_trigger
+          - '7'
+          - O
+  - action:
+      kind: switchover
+      server: server1
+      to: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - exec: INSERT INTO t_trigger VALUES (7)
+    - query: SELECT v1 FROM t_trigger ORDER BY v1
+      result:
+        columns:
+        - v1
+        rows:
+        - - '15'
+        - - '21'
+- name: procedure replicates to standby and is callable after failover
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: CREATE TABLE proc_data (v INT)
+    - exec: CREATE PROCEDURE insert_value(IN n INT) LANGUAGE SQL AS $$ INSERT INTO proc_data VALUES (n) $$
+    - exec: CALL insert_value(1)
+    - query: SELECT v FROM proc_data ORDER BY v
+      result:
+        columns:
+        - v
+        rows:
+        - - '1'
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - query: SELECT proname, prokind::text AS prokind FROM pg_catalog.pg_proc WHERE proname = 'insert_value'
+      result:
+        columns:
+        - proname
+        - prokind
+        rows:
+        - - insert_value
+          - p
+    - query: SELECT v FROM proc_data ORDER BY v
+      result:
+        columns:
+        - v
+        rows:
+        - - '1'
+  - action:
+      kind: switchover
+      server: server1
+      to: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - exec: CALL insert_value(2)
+    - query: SELECT v FROM proc_data ORDER BY v
+      result:
+        columns:
+        - v
+        rows:
+        - - '1'
+        - - '2'
+- name: cast replicates to standby
+  servers:
+  - name: server1
+  - name: server2
+    follows: server1
+  steps:
+  - 'on': server1
+    queries:
+    - exec: CREATE DATABASE repo1
+  - 'on': server1
+    database: repo1
+    queries:
+    - exec: CREATE TABLE cast_src (v TEXT)
+    - exec: CREATE TABLE cast_dst (v TEXT, tag TEXT)
+    - exec: CREATE FUNCTION cast_src_to_dst(src cast_src) RETURNS cast_dst AS $$ SELECT ROW((src).v, 'converted')::cast_dst $$ LANGUAGE SQL
+    - exec: CREATE FUNCTION cast_accept(dst cast_dst) RETURNS TEXT AS $$ SELECT (dst).v || ':' || (dst).tag $$ LANGUAGE SQL
+    - exec: CREATE CAST (cast_src AS cast_dst) WITH FUNCTION cast_src_to_dst(cast_src)
+    - query: SELECT cast_accept((ROW('one')::cast_src)::cast_dst) AS r
+      result:
+        columns:
+        - r
+        rows:
+        - - one:converted
+  - action:
+      kind: wait_for_replay
+      server: server2
+  - 'on': server2
+    database: repo1
+    queries:
+    - query: SELECT c.castcontext::text AS castcontext, c.castmethod::text AS castmethod FROM pg_cast c JOIN pg_type src ON src.oid = c.castsource JOIN pg_type dst ON dst.oid = c.casttarget WHERE src.typname
+        = 'cast_src' AND dst.typname = 'cast_dst'
+      result:
+        columns:
+        - castcontext
+        - castmethod
+        rows:
+        - - e
+          - f
+    - query: SELECT cast_accept((ROW('two')::cast_src)::cast_dst) AS r
+      result:
+        columns:
+        - r
+        rows:
+        - - two:converted
