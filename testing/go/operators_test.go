@@ -4036,6 +4036,37 @@ func TestOperators(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Timestamp subtraction justifies hours into days",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+				"CREATE TABLE orders (id INT PRIMARY KEY, placed TIMESTAMP, shipped TIMESTAMP);",
+				"INSERT INTO orders VALUES (1, '2024-01-01 09:00', '2024-01-04 15:00'), (2, '2024-01-04 15:00', '2024-01-01 09:00'), (3, '2024-01-01 09:00', '2024-01-01 20:30');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// https://github.com/dolthub/doltgresql/issues/3714
+					Query: `SELECT id, shipped - placed AS waited, EXTRACT(DAY FROM shipped - placed) AS days, DATE_PART('day', shipped - placed) AS dp FROM orders ORDER BY id;`,
+					Expected: []sql.Row{
+						{int32(1), "3 days 06:00:00", Numeric("3"), float64(3)},
+						{int32(2), "-3 days -06:00:00", Numeric("-3"), float64(-3)},
+						{int32(3), "11:30:00", Numeric("0"), float64(0)},
+					},
+				},
+				{
+					Query:    `SELECT id FROM orders WHERE DATE_PART('day', shipped - placed) >= 3;`,
+					Expected: []sql.Row{{int32(1)}},
+				},
+				{
+					Query:    `SELECT '2024-01-04 15:00+00'::timestamptz - '2024-01-01 09:00+00'::timestamptz, EXTRACT(DAY FROM '2024-01-04 15:00+00'::timestamptz - '2024-01-01 09:00+00'::timestamptz);`,
+					Expected: []sql.Row{{"3 days 06:00:00", Numeric("3")}},
+				},
+				{
+					Query:    `SELECT '2024-01-01 09:00+00'::timestamptz - '2024-01-04 15:00+00'::timestamptz;`,
+					Expected: []sql.Row{{"-3 days -06:00:00"}},
+				},
+			},
+		},
 	})
 }
 
