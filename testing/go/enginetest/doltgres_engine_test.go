@@ -1196,6 +1196,8 @@ func TestColumnDefaults(t *testing.T) {
 		"System variables in ALTER TABLE ADD COLUMN defaults are not allowed",
 		"User variables in ALTER TABLE ALTER COLUMN defaults are not allowed",
 		"System variables in ALTER TABLE ALTER COLUMN defaults are not allowed",
+		"Add non-nullable column without default #1",
+		"Add non-nullable column without default #2",
 	})
 	defer h.Close()
 
