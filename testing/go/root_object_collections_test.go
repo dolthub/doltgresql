@@ -42,7 +42,7 @@ func TestRootObjectCollections(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM dolt_status;`,
-					Expected: []sql.Row{{"public.s1", "f", "new table"}},
+					Expected: []sql.Row{{"public.s1", "f", "new sequence"}},
 				},
 				{
 					Query:    `DROP SEQUENCE s1;`,
@@ -58,7 +58,7 @@ func TestRootObjectCollections(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM dolt_status;`,
-					Expected: []sql.Row{{"public._d1", "f", "new table"}, {"public.d1", "f", "new table"}},
+					Expected: []sql.Row{{"public._d1", "f", "new type"}, {"public.d1", "f", "new type"}},
 				},
 				{
 					Query:    `DROP DOMAIN d1;`,
@@ -74,7 +74,7 @@ func TestRootObjectCollections(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM dolt_status;`,
-					Expected: []sql.Row{{"public.f1()", "f", "new table"}},
+					Expected: []sql.Row{{"public.f1()", "f", "new function"}},
 				},
 				{
 					Query:    `DROP FUNCTION f1;`,
@@ -90,7 +90,7 @@ func TestRootObjectCollections(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM dolt_status;`,
-					Expected: []sql.Row{{"public.p1()", "f", "new table"}},
+					Expected: []sql.Row{{"public.p1()", "f", "new procedure"}},
 				},
 				{
 					Query:    `DROP PROCEDURE p1;`,
@@ -139,6 +139,51 @@ func TestRootObjectCollections(t *testing.T) {
 				{
 					Query:    `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "dolt_status reports the kind of root object",
+			SetUpScript: []string{
+				`CREATE FUNCTION f1() RETURNS INTEGER AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE SEQUENCE s1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT * FROM dolt_status ORDER BY table_name;`,
+					Expected: []sql.Row{{"public.f1()", "f", "new function"}, {"public.s1", "f", "new sequence"}},
+				},
+				{
+					Query:            `SELECT dolt_add('.');`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT * FROM dolt_status ORDER BY table_name;`,
+					Expected: []sql.Row{{"public.f1()", "t", "new function"}, {"public.s1", "t", "new sequence"}},
+				},
+				{
+					Query:            `SELECT dolt_commit('-m', 'initial');`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `CREATE OR REPLACE FUNCTION f1() RETURNS INTEGER AS $$ BEGIN RETURN 2; END; $$ LANGUAGE plpgsql;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DROP SEQUENCE s1;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM dolt_status ORDER BY table_name;`,
+					Expected: []sql.Row{{"public.f1()", "f", "modified function"}, {"public.s1", "f", "deleted sequence"}},
+				},
+				{
+					Query:            `SELECT dolt_add('.');`,
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    `SELECT * FROM dolt_status ORDER BY table_name;`,
+					Expected: []sql.Row{{"public.f1()", "t", "modified function"}, {"public.s1", "t", "deleted sequence"}},
 				},
 			},
 		},

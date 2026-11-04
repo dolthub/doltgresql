@@ -33,7 +33,7 @@ import (
 
 // TestImportingDumps are regression tests against dumps taken from various sources.
 func TestImportingDumps(t *testing.T) {
-	t.Skip("The majority fail for now")
+	//t.Skip("The majority fail for now")
 	RunImportTests(t, []ImportTest{
 		{
 			Name: "Scrubbed-1",
