@@ -747,6 +747,30 @@ func TestAggregateFunctions(t *testing.T) {
 func TestFunctionsMath(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "abs",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT abs((-32767)::int2), abs((-2147483647)::int4), abs((-9223372036854775807)::int8);`,
+					Expected: []sql.Row{{int16(32767), int32(2147483647), int64(9223372036854775807)}},
+				},
+				{
+					Query:           `SELECT abs((-32768)::int2);`,
+					ExpectedErr:     "smallint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT abs((-2147483648)::int4);`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT abs((-9223372036854775808)::int8);`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+			},
+		},
+		{
 			Name: "cbrt",
 			SetUpScript: []string{
 				`CREATE TABLE test (pk INT primary key, v1 INT, v2 FLOAT4, v3 FLOAT8, v4 VARCHAR(255));`,
