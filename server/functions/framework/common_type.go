@@ -44,7 +44,8 @@ func FindCommonType(ctx *sql.Context, types []*pgtypes.DoltgresType) (_ *pgtypes
 			// We require implicit casts from `unknown` to `text`
 			return pgtypes.Text, true, nil
 		}
-		return candidateType, false, nil
+		commonType := withCommonTypmod(candidateType, types)
+		return commonType, commonType != candidateType, nil
 	}
 	// We have different types if we've made it this far, so we're guaranteed to require implicit casts
 	requiresCasts = true
@@ -92,5 +93,19 @@ func FindCommonType(ctx *sql.Context, types []*pgtypes.DoltgresType) (_ *pgtypes
 			return nil, false, errors.Errorf("cannot find implicit cast function from %s to %s", candidateType.String(), typ.String())
 		}
 	}
-	return candidateType, requiresCasts, nil
+	return withCommonTypmod(candidateType, types), requiresCasts, nil
+}
+
+// withCommonTypmod returns the common type with its typmod only when every given type matches it exactly, and without a
+// typmod otherwise, as PostgreSQL's select_common_typmod does.
+func withCommonTypmod(commonType *pgtypes.DoltgresType, types []*pgtypes.DoltgresType) *pgtypes.DoltgresType {
+	if commonType.GetAttTypMod() == -1 {
+		return commonType
+	}
+	for _, typ := range types {
+		if typ.ID != commonType.ID || typ.GetAttTypMod() != commonType.GetAttTypMod() {
+			return commonType.WithAttTypMod(-1)
+		}
+	}
+	return commonType
 }

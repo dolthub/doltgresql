@@ -670,7 +670,7 @@ func TestAggregateFunctions(t *testing.T) {
 					Query: `SELECT grp, sum(coalesce(amount, 0)), pg_typeof(sum(coalesce(amount, 0))) FROM numeric_sum_values GROUP BY grp ORDER BY grp;`,
 					Expected: []sql.Row{
 						{1, Numeric("12.50"), "numeric"},
-						{2, Numeric("0.00"), "numeric"},
+						{2, Numeric("0"), "numeric"},
 						{3, Numeric("100000000.00"), "numeric"},
 					},
 				},
@@ -682,7 +682,7 @@ func TestAggregateFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{1, Numeric("12.50"), Numeric("12.50"), "numeric"},
 						{1, nil, Numeric("12.50"), "numeric"},
-						{2, nil, Numeric("0.00"), "numeric"},
+						{2, nil, Numeric("0"), "numeric"},
 						{3, Numeric("0.01"), Numeric("0.01"), "numeric"},
 						{3, Numeric("99999999.99"), Numeric("100000000.00"), "numeric"},
 					},
@@ -694,7 +694,7 @@ func TestAggregateFunctions(t *testing.T) {
 					FROM numeric_sum_groups ORDER BY id;`,
 					Expected: []sql.Row{
 						{1, Numeric("12.50"), "numeric"},
-						{2, Numeric("0.00"), "numeric"},
+						{2, Numeric("0"), "numeric"},
 					},
 				},
 			},
