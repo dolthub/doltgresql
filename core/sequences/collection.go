@@ -213,13 +213,11 @@ func (sequence *Sequence) SetSequenceState(ctx context.Context, newSequenceState
 
 func (sequence *Sequence) GetSequenceSqlType(ctx context.Context) (sql.Type, bool, error) {
 	switch sequence.DataTypeID.TypeName() {
-	case "int8":
-		return types.Int8, true, nil
-	case "int16":
+	case "int2":
 		return types.Int16, true, nil
-	case "int32":
+	case "int4":
 		return types.Int32, true, nil
-	case "int64":
+	case "int8":
 		return types.Int64, true, nil
 	}
 	return nil, false, fmt.Errorf("sequences: unknown sequence data type: %s", sequence.DataTypeID.TypeName())

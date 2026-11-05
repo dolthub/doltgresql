@@ -18,9 +18,13 @@ import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/ref"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/globalstate"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/core/sequences"
 )
 
 // sequenceIDListener implements the performer and validator functions for sequences.
@@ -108,4 +112,49 @@ func (sequenceIDListener) OperationPerformer(ctx *sql.Context, operation id.Oper
 	default:
 		return errors.Errorf("sequence performer received unexpected section `%s`", originalID.Section().String())
 	}
+}
+
+// DropSequenceFromTracker removes a dropped sequence from the database's sequence tracker, so that a new sequence with
+// the same name does not continue from the dropped sequence's values. The tracker keeps the values of any sequence with
+// the same name on other branches.
+func DropSequenceFromTracker(ctx *sql.Context, databaseName string, seqID id.Sequence) error {
+	sess := dsess.DSessFromSess(ctx.Session)
+	db, err := sess.Provider().Database(ctx, databaseName)
+	if err != nil {
+		return err
+	}
+	tracker, err := dsess.GetSequenceTracker(ctx, db.(globalstate.GlobalStateProvider).GetGlobalState(), sequences.SequenceTrackerKey)
+	if err != nil {
+		return err
+	}
+	ws, err := sess.WorkingSet(ctx, databaseName)
+	if err != nil {
+		return err
+	}
+	ddb, ok := sess.GetDoltDB(ctx, databaseName)
+	if !ok {
+		return errors.Errorf(`database "%s" does not exist`, databaseName)
+	}
+	branches, err := ddb.GetBranches(ctx)
+	if err != nil {
+		return err
+	}
+	var otherWorkingSets []*doltdb.WorkingSet
+	for _, branch := range branches {
+		wsRef, err := ref.WorkingSetRefForHead(branch)
+		if err != nil {
+			return err
+		}
+		if wsRef == ws.Ref() {
+			continue
+		}
+		otherWorkingSet, err := ddb.ResolveWorkingSet(ctx, wsRef)
+		if errors.Is(err, doltdb.ErrWorkingSetNotFound) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		otherWorkingSets = append(otherWorkingSets, otherWorkingSet)
+	}
+	return tracker.DropRelation(ctx, doltdb.TableName{Name: seqID.SequenceName(), Schema: seqID.SchemaName()}, otherWorkingSets...)
 }
