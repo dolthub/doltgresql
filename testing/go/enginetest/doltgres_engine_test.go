@@ -1433,6 +1433,10 @@ func TestStoredProcedures(t *testing.T) {
 		"DROP procedures",
 		"SHOW procedures",
 		"SHOW non-existent procedures",
+		"CALL from a trigger runs in the trigger's statement",
+		"CALL from a trigger can't end the trigger's statement",
+		"CREATE TRIGGER rejects statements that end the transaction",
+		"CALL of a procedure that ends the transaction outside a trigger",
 	})
 	defer h.Close()
 
