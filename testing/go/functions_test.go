@@ -6441,6 +6441,27 @@ $$;`,
 				},
 			},
 		},
+		{
+			Name: "left and right with multibyte characters",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT LEFT('héllo', 2) AS l2, RIGHT('héllo', 4) AS r4;`,
+					Expected: []sql.Row{{"hé", "éllo"}},
+				},
+				{
+					Query:    `SELECT LEFT('日本語', 1) AS l1, OCTET_LENGTH(LEFT('日本語', 1)) AS bytes;`,
+					Expected: []sql.Row{{"日", 3}},
+				},
+				{
+					Query:    `SELECT LEFT('caté', -1) AS l, OCTET_LENGTH(LEFT('caté', -1)) AS bytes;`,
+					Expected: []sql.Row{{"cat", 3}},
+				},
+				{
+					Query:    `SELECT RIGHT('日本語', -1), LEFT('héllo', -2), RIGHT('héllo', -2), LEFT('日本語', 5), RIGHT('日本語', 5);`,
+					Expected: []sql.Row{{"本語", "hél", "llo", "日本語", "日本語"}},
+				},
+			},
+		},
 	})
 }
 

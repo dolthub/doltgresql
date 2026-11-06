@@ -37,17 +37,18 @@ var right_text_int32 = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		n := nInt.(int32)
+		runes := []rune(str)
+		n := int(nInt.(int32))
 		if n >= 0 {
-			if len(str)-int(n) < 0 {
+			if len(runes)-n < 0 {
 				return str, nil
 			}
-			return str[len(str)-int(n):], nil
+			return string(runes[len(runes)-n:]), nil
 		} else {
-			if int(-n) > len(str) {
+			if -n > len(runes) {
 				return "", nil
 			}
-			return str[int(-n):], nil
+			return string(runes[-n:]), nil
 		}
 	},
 }
