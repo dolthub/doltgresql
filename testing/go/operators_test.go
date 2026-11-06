@@ -608,6 +608,21 @@ func TestOperators(t *testing.T) {
 					Query:    `select interval '20 days' * 2.3`,
 					Expected: []sql.Row{{"46 days"}},
 				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 * (-1)::int8;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 * (-1)::int4;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 * (-1)::int2;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
 			},
 		},
 		{
@@ -839,6 +854,36 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `select interval '20 days' / 2.3`,
 					Expected: []sql.Row{{"8 days 16:41:44.347826"}},
+				},
+				{
+					Query:           `SELECT (-32768)::int2 / (-1)::int2;`,
+					ExpectedErr:     "smallint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-2147483648)::int4 / (-1)::int4;`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-2147483648)::int4 / (-1)::int2;`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 / (-1)::int8;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 / (-1)::int4;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 / (-1)::int2;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
 				},
 			},
 		},
@@ -3679,6 +3724,21 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `select - interval '20 days -11:00:00';`,
 					Expected: []sql.Row{{"-20 days +11:00:00"}},
+				},
+				{
+					Query:           `SELECT -((-32768)::int2);`,
+					ExpectedErr:     "smallint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT -((-2147483648)::int4);`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT -((-9223372036854775808)::int8);`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
 				},
 			},
 		},

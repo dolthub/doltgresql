@@ -242,7 +242,7 @@ var numeric_mul = framework.Function2{
 // multiplyOverflow is a convenience function that checks for overflow for int64 multiplication.
 func multiplyOverflow(val1 int64, val2 int64) (any, error) {
 	result := val1 * val2
-	if val2 != 0 && result/val2 != val1 {
+	if (val2 != 0 && result/val2 != val1) || (val1 == math.MinInt64 && val2 == -1) {
 		return nil, pgtypes.ErrOutOfRange.New("bigint")
 	}
 	return result, nil

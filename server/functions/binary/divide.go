@@ -121,6 +121,9 @@ func int2div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, va
 	if val2.(int16) == 0 {
 		return nil, pgtypes.ErrDivisionByZero.New()
 	}
+	if val1.(int16) == math.MinInt16 && val2.(int16) == -1 {
+		return nil, pgtypes.ErrOutOfRange.New("smallint")
+	}
 	return val1.(int16) / val2.(int16), nil
 }
 
@@ -172,6 +175,9 @@ func int4div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, va
 	if val2.(int32) == 0 {
 		return nil, pgtypes.ErrDivisionByZero.New()
 	}
+	if val1.(int32) == math.MinInt32 && val2.(int32) == -1 {
+		return nil, pgtypes.ErrOutOfRange.New("integer")
+	}
 	return val1.(int32) / val2.(int32), nil
 }
 
@@ -188,6 +194,9 @@ var int4div = framework.Function2{
 func int42div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int16) == 0 {
 		return nil, pgtypes.ErrDivisionByZero.New()
+	}
+	if val1.(int32) == math.MinInt32 && val2.(int16) == -1 {
+		return nil, pgtypes.ErrOutOfRange.New("integer")
 	}
 	return val1.(int32) / int32(val2.(int16)), nil
 }
@@ -223,6 +232,9 @@ func int8div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, va
 	if val2.(int64) == 0 {
 		return nil, pgtypes.ErrDivisionByZero.New()
 	}
+	if val1.(int64) == math.MinInt64 && val2.(int64) == -1 {
+		return nil, pgtypes.ErrOutOfRange.New("bigint")
+	}
 	return val1.(int64) / val2.(int64), nil
 }
 
@@ -240,6 +252,9 @@ func int82div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, v
 	if val2.(int16) == 0 {
 		return nil, pgtypes.ErrDivisionByZero.New()
 	}
+	if val1.(int64) == math.MinInt64 && val2.(int16) == -1 {
+		return nil, pgtypes.ErrOutOfRange.New("bigint")
+	}
 	return val1.(int64) / int64(val2.(int16)), nil
 }
 
@@ -256,6 +271,9 @@ var int82div = framework.Function2{
 func int84div_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
 	if val2.(int32) == 0 {
 		return nil, pgtypes.ErrDivisionByZero.New()
+	}
+	if val1.(int64) == math.MinInt64 && val2.(int32) == -1 {
+		return nil, pgtypes.ErrOutOfRange.New("bigint")
 	}
 	return val1.(int64) / int64(val2.(int32)), nil
 }
