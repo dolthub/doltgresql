@@ -6299,6 +6299,39 @@ $$;`,
 				},
 			},
 		},
+		{
+			Name: "strpos and position count characters in multibyte text",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT strpos('héllo', 'l');`,
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    `SELECT position('テ' IN '日本語テキスト');`,
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:    `SELECT strpos('hello', 'l');`,
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    `SELECT substr('héllo', strpos('héllo', 'l'));`,
+					Expected: []sql.Row{{"llo"}},
+				},
+				{
+					Query:    `SELECT substr('日本語テキスト', position('テ' IN '日本語テキスト'));`,
+					Expected: []sql.Row{{"テキスト"}},
+				},
+				{
+					Query:    `SELECT strpos('日本語', '');`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT strpos('日本語', 'x');`,
+					Expected: []sql.Row{{0}},
+				},
+			},
+		},
 	})
 }
 
