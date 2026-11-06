@@ -721,6 +721,77 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3723: INSERT ... SELECT over two aliases of one table",
+			SetUpScript: []string{
+				"CREATE TABLE public.c (id uuid DEFAULT gen_random_uuid() PRIMARY KEY, name text NOT NULL, project text NOT NULL);",
+				"CREATE TABLE public.e (source_id uuid NOT NULL, target_id uuid NOT NULL);",
+				"INSERT INTO public.c (name, project) VALUES ('a', 'p1'), ('b', 'p1');",
+				"CREATE TABLE public.ci (id int PRIMARY KEY, name text NOT NULL);",
+				"CREATE TABLE public.di (id int PRIMARY KEY, name text NOT NULL);",
+				"CREATE TABLE public.ei (source_id int NOT NULL, target_id int NOT NULL);",
+				"INSERT INTO public.ci VALUES (1, 'a'), (2, 'b');",
+				"INSERT INTO public.di VALUES (3, 'a'), (4, 'b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT s.name AS s, t.name AS t FROM public.c s, public.c t WHERE s.name = 'a' AND t.name = 'b';",
+					Expected: []sql.Row{{"a", "b"}},
+				},
+				{
+					Query:    "INSERT INTO public.e (source_id, target_id) SELECT s.id, t.id FROM public.c s, public.c t WHERE s.name = 'a' AND t.name = 'b';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT s.name AS s, t.name AS t FROM public.e x LEFT JOIN public.c s ON s.id = x.source_id LEFT JOIN public.c t ON t.id = x.target_id;",
+					Expected: []sql.Row{{"a", "b"}},
+				},
+				{
+					Query:    "INSERT INTO public.e (source_id, target_id) SELECT s.id, t.id FROM public.c s JOIN public.c t ON s.project = t.project WHERE s.name = 'b' AND t.name = 'a';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO public.e (source_id, target_id) VALUES ((SELECT id FROM public.c WHERE name = 'a'), (SELECT id FROM public.c WHERE name = 'b'));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT s.name AS s, t.name AS t FROM public.e x LEFT JOIN public.c s ON s.id = x.source_id LEFT JOIN public.c t ON t.id = x.target_id ORDER BY 1, 2;",
+					Expected: []sql.Row{{"a", "b"}, {"a", "b"}, {"b", "a"}},
+				},
+				{
+					Query:    "INSERT INTO public.ei (source_id, target_id) SELECT s.id, t.id FROM public.ci s, public.ci t WHERE s.name = 'a' AND t.name = 'b';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT source_id, target_id FROM public.ei;",
+					Expected: []sql.Row{{1, 2}},
+				},
+				{
+					Query:    "INSERT INTO public.ei (source_id, target_id) SELECT s.id, t.id FROM public.ci s JOIN public.ci t ON s.id <> t.id WHERE s.name = 'b';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO public.ei (source_id, target_id) VALUES ((SELECT id FROM public.ci WHERE name = 'a'), (SELECT id FROM public.ci WHERE name = 'b'));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO public.ei (source_id, target_id) SELECT s.id, t.id FROM public.ci s, public.di t WHERE s.name = 'a' AND t.name = 'b';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO public.ei (source_id, target_id) SELECT s.id, t.id FROM public.di s JOIN public.ci t ON s.name <> t.name WHERE s.name = 'a';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO public.ei (source_id, target_id) SELECT ci.id, di.id FROM public.ci, public.di WHERE ci.name = 'b' AND di.name = 'a';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT source_id, target_id FROM public.ei ORDER BY 1, 2;",
+					Expected: []sql.Row{{1, 2}, {1, 2}, {1, 4}, {2, 1}, {2, 3}, {3, 2}},
+				},
+			},
+		},
 	})
 }
 
