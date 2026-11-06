@@ -5810,6 +5810,39 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
+			Name: "lpad and rpad",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT lpad('hi', 5, ''), lpad('hello', 3, ''), lpad('hi', 2, ''), lpad('', 3, '');`,
+					Expected: []sql.Row{{"hi", "hel", "hi", ""}},
+				},
+				{
+					Query:    `SELECT rpad('hi', 5, ''), rpad('hello', 3, ''), rpad('hi', 2, ''), rpad('', 3, '');`,
+					Expected: []sql.Row{{"hi", "hel", "hi", ""}},
+				},
+				{
+					Query:    `SELECT length(lpad('hi', 5, '')), length(rpad('hi', 5, '')), octet_length(rpad('日本', 5, '')), length(rpad('', 3, ''));`,
+					Expected: []sql.Row{{2, 2, 6, 0}},
+				},
+				{
+					Query:    `SELECT lpad('hi', 5, 'xy'), lpad('hello', 3, 'xy'), lpad('日本', 5, '語'), lpad('日本語', 2, ''), lpad('hi', 0, ''), lpad('hi', -1, '');`,
+					Expected: []sql.Row{{"xyxhi", "hel", "語語語日本", "日本", "", ""}},
+				},
+				{
+					Query:    `SELECT rpad('hi', 5, 'xy'), rpad('hello', 3, 'xy'), rpad('日本', 5, '語'), rpad('日本語', 2, ''), rpad('hi', 0, ''), rpad('hi', -1, '');`,
+					Expected: []sql.Row{{"hixyx", "hel", "日本語語語", "日本", "", ""}},
+				},
+				{
+					Query:    `SELECT lpad('hi', 5), rpad('hi', 5) || '|';`,
+					Expected: []sql.Row{{"   hi", "hi   |"}},
+				},
+				{
+					Query:    `SELECT id, lpad(s, n, f), rpad(s, n, f) FROM (VALUES (1, 'hi', 5, ''), (2, 'hello', 3, ''), (3, 'hi', 5, 'xy')) v(id, s, n, f) ORDER BY id;`,
+					Expected: []sql.Row{{1, "hi", "hi"}, {2, "hel", "hel"}, {3, "xyxhi", "hixyx"}},
+				},
+			},
+		},
+		{
 			Name:        "translate",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
