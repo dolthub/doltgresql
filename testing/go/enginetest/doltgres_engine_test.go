@@ -978,7 +978,8 @@ func TestForeignKeys(t *testing.T) {
 		"Self-referential delete cascade depth limit",
 		"INSERT IGNORE INTO works correctly with foreign key violations",
 		"ALTER TABLE ADD CONSTRAINT for different database",
-		"Creating a foreign key on a table with an unsupported type works", // POINT values are not supported
+		"Creating a foreign key on a table with an unsupported type works",     // POINT values are not supported
+		"foreign key editors are closed when their statement doesn't run them", // MySQL trigger syntax, EXPLAIN PLAN
 	})
 	defer h.Close()
 
