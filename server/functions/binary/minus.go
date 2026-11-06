@@ -312,7 +312,8 @@ var timestamptz_mi = framework.Function2{
 
 		// Calculate the difference and return as interval
 		diff := ts1.Sub(ts2)
-		return duration.MakeDuration(diff.Nanoseconds(), 0, 0), nil
+		day := 24 * time.Hour
+		return duration.MakeDuration(int64(diff%day), int64(diff/day), 0), nil
 	},
 }
 
@@ -343,7 +344,8 @@ var timestamp_mi = framework.Function2{
 
 		// Calculate the difference and return as interval
 		diff := ts1.Sub(ts2)
-		return duration.MakeDuration(diff.Nanoseconds(), 0, 0), nil
+		day := 24 * time.Hour
+		return duration.MakeDuration(int64(diff%day), int64(diff/day), 0), nil
 	},
 }
 
