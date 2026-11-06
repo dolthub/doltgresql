@@ -2288,3 +2288,100 @@ func TestImplicitForeignKeyRegressionCleanup(t *testing.T) {
 		})
 	}
 }
+
+func TestMultiTableTruncate(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "qualified targets preserve database and schema",
+			SetUpScript: []string{
+				`CREATE TABLE public.tables (id INT)`,
+				`CREATE TABLE public.other (id INT)`,
+				`INSERT INTO public.tables VALUES (1)`,
+				`INSERT INTO public.other VALUES (2)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `TRUNCATE public.other, information_schema.tables`, ExpectedErr: `cross-database multi-table TRUNCATE`},
+				{Query: `TRUNCATE public.other, another_db.public.tables`, ExpectedErr: `cross-database multi-table TRUNCATE`},
+				{Query: `SELECT * FROM public.tables`, Expected: []sql.Row{{1}}},
+				{Query: `SELECT * FROM public.other`, Expected: []sql.Row{{2}}},
+				{Query: `TRUNCATE postgres.public.tables, postgres.public.other`},
+				{Query: `SELECT * FROM public.tables`, Expected: []sql.Row{}},
+				{Query: `SELECT * FROM public.other`, Expected: []sql.Row{}},
+			},
+		},
+		{
+			Name: "truncate related tables together",
+			SetUpScript: []string{
+				`CREATE TABLE parent (id INT PRIMARY KEY)`,
+				`CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent)`,
+				`INSERT INTO parent VALUES (1)`,
+				`INSERT INTO child VALUES (2, 1)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `TRUNCATE parent, missing`, ExpectedErr: `table not found`},
+				{Query: `SELECT * FROM parent`, Expected: []sql.Row{{1}}},
+				{Query: `BEGIN`},
+				{Query: `TRUNCATE parent, child RESTRICT`},
+				{Query: `ROLLBACK`},
+				{Query: `SELECT * FROM parent`, Expected: []sql.Row{{1}}},
+				{Query: `SELECT * FROM child`, Expected: []sql.Row{{2, 1}}},
+				{Query: `TRUNCATE parent, child RESTRICT`},
+				{Query: `SELECT * FROM parent`, Expected: []sql.Row{}},
+				{Query: `SELECT * FROM child`, Expected: []sql.Row{}},
+				{Query: `INSERT INTO parent VALUES (1)`},
+				{Query: `INSERT INTO child VALUES (2, 1)`},
+				{Query: `INSERT INTO child VALUES (3, 99)`, ExpectedErr: `Foreign key violation`},
+				{Query: `TRUNCATE child, parent, child`},
+				{Query: `SELECT * FROM parent`, Expected: []sql.Row{}},
+			},
+		},
+		{
+			Name: "external foreign keys prevent every truncate",
+			SetUpScript: []string{
+				`CREATE TABLE parent (id INT PRIMARY KEY)`,
+				`CREATE TABLE child (id INT REFERENCES parent)`,
+				`CREATE TABLE unrelated (id INT)`,
+				`INSERT INTO parent VALUES (1)`,
+				`INSERT INTO unrelated VALUES (2)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `TRUNCATE unrelated, parent`, ExpectedErr: `cannot truncate table parent`},
+				{Query: `SELECT * FROM unrelated`, Expected: []sql.Row{{2}}},
+				{Query: `SELECT * FROM parent`, Expected: []sql.Row{{1}}},
+			},
+		},
+		{
+			Name: "check all truncate privileges before changing rows",
+			SetUpScript: []string{
+				`CREATE TABLE allowed_table (id INT)`,
+				`CREATE TABLE protected_table (id INT)`,
+				`INSERT INTO allowed_table VALUES (1)`,
+				`INSERT INTO protected_table VALUES (2)`,
+				`CREATE USER truncator PASSWORD 'password'`,
+				`GRANT TRUNCATE ON allowed_table TO truncator`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Username: "truncator", Password: "password", Query: `TRUNCATE allowed_table, protected_table`, ExpectedErr: "permission denied"},
+				{Query: `SELECT * FROM allowed_table`, Expected: []sql.Row{{1}}},
+				{Query: `SELECT * FROM protected_table`, Expected: []sql.Row{{2}}},
+			},
+		},
+		{
+			Name: "cross-schema and cyclic references",
+			SetUpScript: []string{
+				`CREATE SCHEMA first_schema`,
+				`CREATE SCHEMA second_schema`,
+				`CREATE TABLE first_schema.t (id INT PRIMARY KEY)`,
+				`CREATE TABLE second_schema.t (id INT PRIMARY KEY REFERENCES first_schema.t)`,
+				`INSERT INTO first_schema.t VALUES (1)`,
+				`INSERT INTO second_schema.t VALUES (1)`,
+				`ALTER TABLE first_schema.t ADD FOREIGN KEY (id) REFERENCES second_schema.t`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `TRUNCATE first_schema.t, second_schema.t`},
+				{Query: `SELECT * FROM first_schema.t`, Expected: []sql.Row{}},
+				{Query: `SELECT * FROM second_schema.t`, Expected: []sql.Row{}},
+			},
+		},
+	})
+}
