@@ -5865,6 +5865,19 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
+			Name: "repeat",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT repeat('ab', 3), repeat('ab', 0), repeat('ab', -1), repeat('', 5), repeat('日', 2), repeat('ab', -2147483648);`,
+					Expected: []sql.Row{{"ababab", "", "", "", "日日", ""}},
+				},
+				{
+					Query:    `SELECT n, repeat('x', n), length(repeat('x', n)) FROM (VALUES (-3), (0), (2)) v(n) ORDER BY n;`,
+					Expected: []sql.Row{{-3, "", 0}, {0, "", 0}, {2, "xx", 2}},
+				},
+			},
+		},
+		{
 			Name:        "substring with integer arg",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
