@@ -2047,5 +2047,76 @@ ORDER BY schema_name, table_name;`,
 				},
 			},
 		},
+		{
+			Name: "ADD COLUMN NOT NULL without a default",
+			SetUpScript: []string{
+				"CREATE TABLE a (id INT PRIMARY KEY);",
+				"INSERT INTO a VALUES (1), (2);",
+				"CREATE TABLE e (id INT PRIMARY KEY);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "ALTER TABLE a ADD COLUMN h INT NOT NULL;",
+					ExpectedErr:     `column "h" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "ALTER TABLE a ADD COLUMN s TEXT NOT NULL;",
+					ExpectedErr:     `column "s" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "ALTER TABLE a ADD COLUMN d DATE NOT NULL;",
+					ExpectedErr:     `column "d" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "ALTER TABLE a ADD COLUMN b BOOLEAN NOT NULL;",
+					ExpectedErr:     `column "b" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query: "ALTER TABLE a ADD COLUMN g INT NOT NULL GENERATED ALWAYS AS (id * 2) STORED;",
+				},
+				{
+					Query:    "SELECT * FROM a ORDER BY id;",
+					Expected: []sql.Row{{1, 2}, {2, 4}},
+				},
+				{
+					Query: "ALTER TABLE e ADD COLUMN h INT NOT NULL;",
+				},
+				{
+					Query: "ALTER TABLE e ADD COLUMN s TEXT NOT NULL;",
+				},
+				{
+					Query:           "INSERT INTO e (id) VALUES (3);",
+					ExpectedErr:     "Field 'h' doesn't have a default value",
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "INSERT INTO e (id) VALUES (3);",
+					ExpectedErr:     `null value in column "h" of relation "e" violates not-null constraint`,
+					ExpectedErrCode: "23502",
+					Skip:            true,
+				},
+				{
+					Query: "INSERT INTO e VALUES (3, 4, 'x');",
+				},
+				{
+					Query:    "SELECT * FROM e;",
+					Expected: []sql.Row{{3, 4, "x"}},
+				},
+				{
+					Query: "DELETE FROM a;",
+				},
+				{
+					Query: "ALTER TABLE a ADD COLUMN h INT NOT NULL;",
+				},
+				{
+					Query:    "SELECT column_name FROM information_schema.columns WHERE table_name = 'a' ORDER BY ordinal_position;",
+					Expected: []sql.Row{{"id"}, {"g"}, {"h"}},
+				},
+			},
+		},
 	})
 }

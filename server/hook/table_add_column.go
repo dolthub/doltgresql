@@ -25,6 +25,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -34,17 +36,26 @@ func BeforeTableAddColumn(ctx *sql.Context, runner sql.StatementRunner, nodeInte
 	if !ok {
 		return nil, errors.Errorf("ADD COLUMN pre-hook expected `*plan.AddColumn` but received `%T`", nodeInterface)
 	}
-	// If the column being added doesn't have a default value, then we don't have anything to check (for now)
-	if n.Column().Default == nil {
-		return n, nil
-	}
-
 	// Grab the table being altered
 	doltTable := core.SQLNodeToDoltTable(n.Table)
 	if doltTable == nil {
 		// If this table isn't a Dolt table then we don't have anything to do
 		return n, nil
 	}
+	if col := n.Column(); col.Default == nil && !col.Nullable && col.Generated == nil {
+		rowCount, _, err := doltTable.RowCount(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if rowCount > 0 {
+			return nil, pgerror.Newf(pgcode.NotNullViolation, `column "%s" of relation "%s" contains null values`, col.Name, doltTable.Name())
+		}
+	}
+	// If the column being added doesn't have a default value, then we don't have anything to check (for now)
+	if n.Column().Default == nil {
+		return n, nil
+	}
+
 	_, root, err := core.GetRootFromContext(ctx)
 	if err != nil {
 		return n, nil
