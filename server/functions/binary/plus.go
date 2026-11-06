@@ -19,10 +19,11 @@ import (
 	"time"
 
 	"github.com/cockroachdb/apd/v3"
-	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
@@ -608,7 +609,7 @@ var timetz_pl_interval = framework.Function2{
 func intervalPlusNonInterval(d duration.Duration, t time.Time) (time.Time, error) {
 	result := duration.Add(t, d)
 	if result.After(tree.MaxSupportedTime) || result.Before(tree.MinSupportedTime) {
-		return time.Time{}, errors.Newf("timestamp out of range: %q", result.Format(time.RFC3339))
+		return time.Time{}, pgerror.Newf(pgcode.DatetimeFieldOverflow, "timestamp out of range: %q", result.Format(time.RFC3339))
 	}
 	return result, nil
 }

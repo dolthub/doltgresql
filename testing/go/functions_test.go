@@ -5533,6 +5533,45 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3705
+			Name: "date minus interval uses calendar months",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '2024-03-15'::DATE - INTERVAL '1 month';`,
+					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-31'::DATE - INTERVAL '1 month';`,
+					Expected: []sql.Row{{"2024-02-29 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-02-29'::DATE - INTERVAL '1 year';`,
+					Expected: []sql.Row{{"2023-02-28 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::DATE + INTERVAL '-1 month';`,
+					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::TIMESTAMP - INTERVAL '1 month';`,
+					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::DATE - INTERVAL '-1 month';`,
+					Expected: []sql.Row{{"2024-04-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::DATE - INTERVAL '1 year 2 months 3 days 04:05:06.789';`,
+					Expected: []sql.Row{{"2023-01-11 19:54:53.211"}},
+				},
+				{
+					Query:           `SELECT '4714-11-24 BC'::DATE - INTERVAL '1 day';`,
+					ExpectedErr:     "timestamp out of range",
+					ExpectedErrCode: "22008",
+				},
+			},
+		},
 	})
 }
 
