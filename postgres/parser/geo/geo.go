@@ -329,10 +329,10 @@ func (g *Geometry) SpaceCurveIndex() uint64 {
 	// multiplying by boxLength to give coordinates that are integers in the interval [0, boxLength-1].
 	xBounds := (bounds.MaxX - bounds.MinX) + 1
 	yBounds := (bounds.MaxY - bounds.MinY) + 1
-	// hilbertInverse returns values in the interval [0, boxLength^2-1], so return [0, 2^64-1].
+	// HilbertInverse returns values in the interval [0, boxLength^2-1], so return [0, 2^64-1].
 	xPos := uint64(((centerX - bounds.MinX) / xBounds) * boxLength)
 	yPos := uint64(((centerY - bounds.MinY) / yBounds) * boxLength)
-	return hilbertInverse(boxLength, xPos, yPos)
+	return HilbertInverse(boxLength, xPos, yPos)
 }
 
 // Compare compares a Geometry against another.

@@ -183,6 +183,11 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			operator = framework.Operator_BinaryJaccardDistance
 		case tree.HammingDistance:
 			operator = framework.Operator_BinaryHammingDistance
+		case tree.CustomBinary:
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewCustomBinaryOperator(string(node.CustomOperator)),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		default:
 			return nil, errors.Errorf("the binary operator used is not yet supported")
 		}
@@ -448,15 +453,25 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		case tree.NotSimilarTo:
 			return nil, errors.Errorf("not similar to is not yet supported")
 		case tree.RegMatch:
-			operator = vitess.RegexpStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewRegexMatchOperator("~", false),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.NotRegMatch:
-			operator = vitess.NotRegexpStr
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewRegexMatchOperator("!~", true),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.RegIMatch:
 			return vitess.InjectedExpr{Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryRegexInsensitive), Children: vitess.Exprs{left, right}}, nil
 		case tree.NotRegIMatch:
 			return vitess.InjectedExpr{Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryNotRegexInsensitive), Children: vitess.Exprs{left, right}}, nil
 		case tree.TextSearchMatch:
-			return nil, errors.Errorf("@@ is not yet supported")
+			//TODO: implement text search, which @@ should resolve to for its built-in types
+			return vitess.InjectedExpr{
+				Expression: pgexprs.NewCustomBinaryOperator("@@"),
+				Children:   vitess.Exprs{left, right},
+			}, nil
 		case tree.IsDistinctFrom:
 			return vitess.InjectedExpr{
 				Expression: pgexprs.NewIsDistinctFrom(),

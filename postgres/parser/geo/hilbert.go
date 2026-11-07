@@ -24,9 +24,9 @@
 
 package geo
 
-// hilbertInverse converts (x,y) to d on a Hilbert Curve.
+// HilbertInverse converts (x,y) to d on a Hilbert Curve.
 // Adapted from `xy2d` from https://en.wikipedia.org/wiki/Hilbert_curve#Applications_and_mapping_algorithms.
-func hilbertInverse(n, x, y uint64) uint64 {
+func HilbertInverse(n, x, y uint64) uint64 {
 	var d uint64
 	for s := n / 2; s > 0; s /= 2 {
 		var rx uint64

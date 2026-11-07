@@ -16,7 +16,7 @@ COPY --exclude=testing/postgres-client-tests/ . .
 WORKDIR /root/building/doltgresql/postgres/parser
 RUN sh ./build.sh
 WORKDIR /root/building/doltgresql/cmd/doltgres
-RUN go build -ldflags "-linkmode external -extldflags '-static'" -o /build/bin/doltgres .
+RUN go build -tags musl -ldflags "-linkmode external -extldflags '-static'" -o /build/bin/doltgres .
 
 # --- Build Go postgres clients (pgx, lib/pq) ---
 FROM golang:1.26.4 AS go_clients_build

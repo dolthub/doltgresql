@@ -511,6 +511,17 @@ func (t *DoltgresType) Compare(ctx context.Context, v1 interface{}, v2 interface
 			}
 			return int(i.(int32)), nil
 		}
+		if codec := t.codec(); codec != nil {
+			left, err := codec.Serialize(v1)
+			if err != nil {
+				return 0, err
+			}
+			right, err := codec.Serialize(v2)
+			if err != nil {
+				return 0, err
+			}
+			return codec.SerializedCompare(left, right)
+		}
 		return 0, errors.Errorf("unhandled type %T in Compare", v1)
 	}
 }

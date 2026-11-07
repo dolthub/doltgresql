@@ -20,6 +20,9 @@ import (
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 )
 
 // WindowOnlyFunction is an expression that represents CompiledWindowFunction: a PostgreSQL function that may
@@ -91,7 +94,7 @@ func (c *CompiledWindowFunction) WithChildren(ctx *sql.Context, children ...sql.
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	nc := newCompiledWindowFunctionInternal(ctx, c.Name, children[:numArgs], c.overloads, c.fnOverloads)
+	nc := newCompiledWindowFunctionInternal(ctx, c.Name, children[:numArgs:numArgs], c.overloads, c.overloads.overloadsForParams(numArgs))
 	nc.distinctWindow = c.distinctWindow
 	if nc.distinctWindow != nil {
 		if err := nc.distinctWindowError(); err != nil {
@@ -160,7 +163,7 @@ func (c *CompiledWindowFunction) NewWindowFunction(ctx *sql.Context) (sql.Window
 	// non-nil, zero-value definition). Window-only functions like cume_dist() have no scalar evaluation path,
 	// so without this check a bare call reaches GMS's windowToIter with a nil window and panics.
 	if c.window == nil {
-		return nil, cerrors.Errorf("window function %s() requires an OVER clause", c.Name)
+		return nil, pgerror.Newf(pgcode.WrongObjectType, "window function %s requires an OVER clause", c.Name)
 	}
 	fn, err := c.windowOverload()
 	if err != nil {
@@ -176,7 +179,7 @@ func (c *CompiledWindowFunction) NewWindowFunction(ctx *sql.Context) (sql.Window
 	if err != nil {
 		return nil, err
 	}
-	return newWindowFunc(args, c.window)
+	return newWindowFunc(c.withOverloadCasts(args), c.window)
 }
 
 // WithWindow implements the interface sql.WindowAdaptableExpression.

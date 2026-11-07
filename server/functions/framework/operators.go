@@ -62,6 +62,7 @@ const (
 	Operator_BinaryRegexInsensitive                    // ~*
 	Operator_BinaryNotRegexInsensitive                 // !~*
 	Operator_UnaryBitNot                               // ~
+	Operator_BinaryCustom                              // any symbol without a constant of its own
 	// NOTE: Any new operator should also be added to Operator.String() and GetOperatorFromString() functions.
 )
 

@@ -26,7 +26,6 @@ import (
 
     "go/constant"
 
-    "github.com/dolthub/doltgresql/postgres/parser/geo/geopb"
     "github.com/dolthub/doltgresql/postgres/parser/roachpb"
     "github.com/dolthub/doltgresql/postgres/parser/lex"
     "github.com/dolthub/doltgresql/postgres/parser/privilege"
@@ -573,9 +572,6 @@ func (u *sqlSymUnion) listOfStringOrPlaceholderOptList() []tree.StringOrPlacehol
 func (u *sqlSymUnion) fullBackupClause() *tree.FullBackupClause {
     return u.val.(*tree.FullBackupClause)
 }
-func (u *sqlSymUnion) geoShapeType() geopb.ShapeType {
-  return u.val.(geopb.ShapeType)
-}
 func newNameFromStr(s string) *tree.Name {
     return (*tree.Name)(&s)
 }
@@ -787,6 +783,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> LESS_EQUALS GREATER_EQUALS NOT_EQUALS
 %token <str> NOT_REGMATCH REGIMATCH NOT_REGIMATCH
 %token <str> L1_DISTANCE L2_DISTANCE COSINE_DISTANCE NEG_INNER_PRODUCT JACCARD_DISTANCE HAMMING_DISTANCE
+%token <str> OP
 %token <str> TEXTSEARCHMATCH
 %token <str> ERROR
 
@@ -802,7 +799,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> BACKUP BACKUPS BACKWARD BASETYPE BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
 %token <str> FORMAT CSV HEADER
 %token <str> BUCKET_COUNT 
-%token <str> BOOLEAN BOTH BOX2D BUFFER_USAGE_LIMIT BUNDLE BY BYPASSRLS
+%token <str> BOOLEAN BOTH BUFFER_USAGE_LIMIT BUNDLE BY BYPASSRLS
 
 %token <str> CACHE CHAIN CALL CALLED CANCEL CANCELQUERY CANONICAL CASCADE CASCADED CASE CAST CATEGORY CBRT
 %token <str> CHANGEFEED BPCHAR CHAR CHARACTER CHARACTERISTICS CHECK CHECK_OPTION CLASS CLOSE
@@ -829,8 +826,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> FILES FILTER FINALFUNC FINALFUNC_EXTRA FINALFUNC_MODIFY FINALIZE FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
 %token <str> FOLLOWING FOR FORCE FORCE_INDEX FOREIGN FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
 
-%token <str> GENERATED GEOGRAPHY GEOMETRY GEOMETRYM GEOMETRYZ GEOMETRYZM
-%token <str> GEOMETRYCOLLECTION GEOMETRYCOLLECTIONM GEOMETRYCOLLECTIONZ GEOMETRYCOLLECTIONZM
+%token <str> GENERATED
 %token <str> GLOBAL GRANT GRANTED GRANTS GREATEST GROUP GROUPING GROUPS
 
 %token <str> HANDLER HASH HASHES HAVING HIGH HISTOGRAM HOLD HOUR HYPOTHETICAL
@@ -848,13 +844,12 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 
 %token <str> LANGUAGE LARGE LAST LATERAL LATEST LC_CTYPE LC_COLLATE
 %token <str> LEADING LEAKPROOF LEASE LEAST LEFT LEFTARG LESS LEVEL LIKE LIMIT
-%token <str> LINESTRING LINESTRINGM LINESTRINGZ LINESTRINGZM LIST
+%token <str> LIST
 %token <str> LOCAL LOCALE LOCALE_PROVIDER LOCALTIME LOCALTIMESTAMP LOCKED LOGGED LOGIN LOOKUP LOW LSHIFT
 
 %token <str> MAIN MATCH MATERIALIZED MAXVALUE MERGE MERGES METHOD MFINALFUNC MFINALFUNC_EXTRA MFINALFUNC_MODIFY
 %token <str> MINITCOND MINUTE MINVALUE MINVFUNC MODIFYCLUSTERSETTING MODULUS MONTH MOVE MSFUNC MSPACE MSSPACE MSTYPE
-%token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM MULTIPOINT MULTIPOINTM
-%token <str> MULTIPOINTZ MULTIPOINTZM MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM MULTIRANGE_TYPE_NAME
+%token <str> MULTIRANGE_TYPE_NAME
 
 %token <str> NAN NAME NAMES NATURAL NEGATOR NESTED NEVER NEW NEXT NO NOCANCELQUERY NOCONTROLCHANGEFEED NOCONTROLJOB
 %token <str> NOBYPASSRLS NOCREATEDB NOCREATELOGIN NOCREATEROLE NOINHERIT NOLOGIN NOMODIFYCLUSTERSETTING NOREPLICATION NOSUPERUSER NO_INDEX_JOIN
@@ -864,7 +859,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> ORDER ORDINALITY OTHERS OUT OUTER OUTPUT OVER OVERLAPS OVERLAY OWNED OWNER OPERATOR
 
 %token <str> PARALLEL PARAMETER PARENT PARSER PARTIAL PARTITION PARTITIONS PASSEDBYVALUE PASSING PASSWORD PATH PAUSE PAUSED PHYSICAL
-%token <str> PLACING PLAIN PLAN PLANS POINT POINTM POINTZ POINTZM POLICY POLYGON POLYGONM POLYGONZ POLYGONZM
+%token <str> PLACING PLAIN PLAN PLANS POINT POLICY POLYGON
 %token <str> POSITION PRECEDING PRECISION PREFERRED PREPARE PRESERVE PRIMARY PRIOR PRIORITY PRIVILEGES
 %token <str> PROCEDURAL PROCEDURE PROCEDURES PROCESS_MAIN PROCESS_TOAST PUBLIC PUBLICATION
 
@@ -1444,8 +1439,6 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <*types.T> const_datetime interval_type
 %type <*types.T> bit_with_length bit_without_length
 %type <*types.T> character_base
-%type <*types.T> geo_shape_type
-%type <*types.T> const_geo
 %type <str> extract_arg
 %type <bool> opt_varying opt_no_inherit
 
@@ -1565,7 +1558,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %nonassoc  UNBOUNDED NESTED  // ideally should have same precedence as IDENT
 %nonassoc  IDENT NULL PARTITION RANGE ROWS GROUPS PRECEDING FOLLOWING CUBE ROLLUP PATH
 %left      CONCAT FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH REMOVE_PATH  // multi-character ops
-%left      L1_DISTANCE L2_DISTANCE COSINE_DISTANCE NEG_INNER_PRODUCT JACCARD_DISTANCE HAMMING_DISTANCE
+%left      L1_DISTANCE L2_DISTANCE COSINE_DISTANCE NEG_INNER_PRODUCT JACCARD_DISTANCE HAMMING_DISTANCE OP
 %left      '|'
 %left      '#'
 %left      '&'
@@ -12972,69 +12965,6 @@ simple_typename:
 | POINT error { return unimplementedWithIssueDetail(sqllex, 21286, "point") } // needed or else it generates a syntax error.
 | POLYGON error { return unimplementedWithIssueDetail(sqllex, 21286, "polygon") } // needed or else it generates a syntax error.
 
-geo_shape_type:
-  POINT { $$.val = geopb.ShapeType_Point }
-| POINTM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYM_type") } // { $$.val = geopb.ShapeType_PointM }
-| POINTZ error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZ_type") } // { $$.val = geopb.ShapeType_PointZ }
-| POINTZM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZM_type") } // { $$.val = geopb.ShapeType_PointZM }
-| LINESTRING { $$.val = geopb.ShapeType_LineString }
-| LINESTRINGM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYM_type") } // { $$.val = geopb.ShapeType_LineStringM }
-| LINESTRINGZ error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZ_type") } // { $$.val = geopb.ShapeType_LineStringZ }
-| LINESTRINGZM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZM_type") } // { $$.val = geopb.ShapeType_LineStringZM }
-| POLYGON { $$.val = geopb.ShapeType_Polygon }
-| POLYGONM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYM_type") } // { $$.val = geopb.ShapeType_PolygonM }
-| POLYGONZ error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZ_type") } // { $$.val = geopb.ShapeType_PolygonZ }
-| POLYGONZM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZM_type") } // { $$.val = geopb.ShapeType_PolygonZM }
-| MULTIPOINT { $$.val = geopb.ShapeType_MultiPoint }
-| MULTIPOINTM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYM_type") } // { $$.val = geopb.ShapeType_MultiPointM }
-| MULTIPOINTZ error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZ_type") } // { $$.val = geopb.ShapeType_MultiPointZ }
-| MULTIPOINTZM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZM_type") } // { $$.val = geopb.ShapeType_MultiPointZM }
-| MULTILINESTRING { $$.val = geopb.ShapeType_MultiLineString }
-| MULTILINESTRINGM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYM_type") } // { $$.val = geopb.ShapeType_MultiLineStringM }
-| MULTILINESTRINGZ error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZ_type") } // { $$.val = geopb.ShapeType_MultiLineStringZ }
-| MULTILINESTRINGZM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZM_type") } // { $$.val = geopb.ShapeType_MultiLineStringZM }
-| MULTIPOLYGON { $$.val = geopb.ShapeType_MultiPolygon }
-| MULTIPOLYGONM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYM_type") } // { $$.val = geopb.ShapeType_MultiPolygonM }
-| MULTIPOLYGONZ error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZ_type") } // { $$.val = geopb.ShapeType_MultiPolygonZ }
-| MULTIPOLYGONZM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZM_type") } // { $$.val = geopb.ShapeType_MultiPolygonZM }
-| GEOMETRYCOLLECTION { $$.val = geopb.ShapeType_GeometryCollection }
-| GEOMETRYCOLLECTIONM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYM_type") } // { $$.val = geopb.ShapeType_GeometryCollectionM }
-| GEOMETRYCOLLECTIONZ error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZ_type") } // { $$.val = geopb.ShapeType_GeometryCollectionZ }
-| GEOMETRYCOLLECTIONZM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZM_type") } // { $$.val = geopb.ShapeType_GeometryCollectionZM }
-| GEOMETRY { $$.val = geopb.ShapeType_Geometry }
-| GEOMETRYM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYM_type") } // { $$.val = geopb.ShapeType_GeometryM }
-| GEOMETRYZ error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZ_type") } // { $$.val = geopb.ShapeType_GeometryZ }
-| GEOMETRYZM error { return unimplementedWithIssueDetail(sqllex, 53091, "XYZM_type") } // { $$.val = geopb.ShapeType_GeometryZM }
-
-const_geo:
-  GEOGRAPHY { $$.val = types.Geography }
-| GEOMETRY  { $$.val = types.Geometry }
-| BOX2D     { $$.val = types.Box2D }
-| GEOMETRY '(' geo_shape_type ')'
-  {
-    $$.val = types.MakeGeometry($3.geoShapeType(), 0)
-  }
-| GEOGRAPHY '(' geo_shape_type ')'
-  {
-    $$.val = types.MakeGeography($3.geoShapeType(), 0)
-  }
-| GEOMETRY '(' geo_shape_type ',' signed_iconst ')'
-  {
-    val, err := $5.numVal().AsInt32()
-    if err != nil {
-      return setErr(sqllex, err)
-    }
-    $$.val = types.MakeGeometry($3.geoShapeType(), geopb.SRID(val))
-  }
-| GEOGRAPHY '(' geo_shape_type ',' signed_iconst ')'
-  {
-    val, err := $5.numVal().AsInt32()
-    if err != nil {
-      return setErr(sqllex, err)
-    }
-    $$.val = types.MakeGeography($3.geoShapeType(), geopb.SRID(val))
-  }
-
 // We have a separate const_typename to allow defaulting fixed-length types
 // such as CHAR() and BIT() to an unspecified length. SQL9x requires that these
 // default to a length of one, but this makes no sense for constructs like CHAR
@@ -13049,7 +12979,6 @@ const_typename:
 | bit_without_length
 | character_without_length
 | const_datetime
-| const_geo
 
 opt_numeric_modifiers:
   '(' iconst32 ')'
@@ -13631,6 +13560,14 @@ a_expr:
 | a_expr REMOVE_PATH a_expr
   {
     $$.val = &tree.FuncExpr{Func: tree.WrapFunction("json_remove_path"), Exprs: tree.Exprs{$1.expr(), $3.expr()}}
+  }
+| a_expr '@' a_expr
+  {
+    $$.val = &tree.BinaryExpr{Operator: tree.CustomBinary, CustomOperator: tree.CustomOperator("@"), Left: $1.expr(), Right: $3.expr()}
+  }
+| a_expr OP a_expr
+  {
+    $$.val = &tree.BinaryExpr{Operator: tree.CustomBinary, CustomOperator: tree.CustomOperator($2), Left: $1.expr(), Right: $3.expr()}
   }
 | a_expr L2_DISTANCE a_expr
   {
@@ -14971,6 +14908,7 @@ operator:
 | NEG_INNER_PRODUCT { $$.val = tree.NegInnerProduct }
 | JACCARD_DISTANCE { $$.val = tree.JaccardDistance }
 | HAMMING_DISTANCE { $$.val = tree.HammingDistance }
+| OP { $$.val = tree.CustomOperator($1) }
 
 math_op:
   '+' { $$.val = tree.Plus  }
@@ -16130,13 +16068,6 @@ unreserved_keyword:
 | FUNCTION
 | FUNCTIONS
 | GENERATED
-| GEOMETRYCOLLECTION
-| GEOMETRYCOLLECTIONM
-| GEOMETRYCOLLECTIONZ
-| GEOMETRYCOLLECTIONZM
-| GEOMETRYM
-| GEOMETRYZ
-| GEOMETRYZM
 | GLOBAL
 | GRANTED
 | GRANTS
@@ -16199,7 +16130,6 @@ unreserved_keyword:
 | LEFTARG
 | LESS
 | LEVEL
-| LINESTRING
 | LIST
 | LOCAL
 | LOCALE
@@ -16231,18 +16161,6 @@ unreserved_keyword:
 | MSPACE
 | MSSPACE
 | MSTYPE
-| MULTILINESTRING
-| MULTILINESTRINGM
-| MULTILINESTRINGZ
-| MULTILINESTRINGZM
-| MULTIPOINT
-| MULTIPOINTM
-| MULTIPOINTZ
-| MULTIPOINTZM
-| MULTIPOLYGON
-| MULTIPOLYGONM
-| MULTIPOLYGONZ
-| MULTIPOLYGONZM
 | MULTIRANGE_TYPE_NAME
 | NAME
 | NAMES
@@ -16305,13 +16223,7 @@ unreserved_keyword:
 | PLAIN
 | PLAN
 | PLANS
-| POINTM
-| POINTZ
-| POINTZM
 | POLICY
-| POLYGONM
-| POLYGONZ
-| POLYGONZM
 | PRECEDING
 | PREFERRED
 | PREPARE
@@ -16506,7 +16418,6 @@ col_name_keyword:
 | BIGINT
 | BIT
 | BOOLEAN
-| BOX2D
 | BPCHAR
 | CHAR
 | CHARACTER
@@ -16518,8 +16429,6 @@ col_name_keyword:
 | EXTRACT
 | EXTRACT_DURATION
 | FLOAT
-| GEOGRAPHY
-| GEOMETRY
 | GREATEST
 | GROUPING
 | HINT
