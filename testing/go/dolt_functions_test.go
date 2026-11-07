@@ -2681,6 +2681,80 @@ func TestDoltTag(t *testing.T) {
 	})
 }
 
+// TestDoltVerifyConstraints tests DOLT_VERIFY_CONSTRAINTS with and without named tables.
+func TestDoltVerifyConstraints(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Merged foreign key violation",
+			SetUpScript: []string{
+				"CREATE TABLE parent (pk INT PRIMARY KEY);",
+				"CREATE TABLE child (pk INT PRIMARY KEY, parent_fk INT REFERENCES parent (pk));",
+				"INSERT INTO parent VALUES (1);",
+				"SELECT dolt_commit('-Am', 'setup');",
+				"SELECT dolt_checkout('-b', 'b');",
+				"INSERT INTO child VALUES (1, 1);",
+				"SELECT dolt_commit('-am', 'add child');",
+				"SELECT dolt_checkout('main');",
+				"DELETE FROM parent WHERE pk = 1;",
+				"SELECT dolt_commit('-am', 'delete parent');",
+				"SET dolt_force_transaction_commit TO ON;",
+				"SELECT dolt_merge('b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints();",
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints('--all');",
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_constraint_violations;",
+					Expected: []sql.Row{{"child", Numeric("1")}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints('child');",
+					Expected: []sql.Row{{int64(1)}},
+				},
+			},
+		},
+		{
+			Name: "Merged foreign key violation in a schema on the search path",
+			SetUpScript: []string{
+				"CREATE SCHEMA s2;",
+				"SET search_path TO s2;",
+				"CREATE TABLE parent (pk INT PRIMARY KEY);",
+				"CREATE TABLE child (pk INT PRIMARY KEY, parent_fk INT REFERENCES parent (pk));",
+				"INSERT INTO parent VALUES (1);",
+				"SELECT dolt_commit('-Am', 'setup');",
+				"SELECT dolt_checkout('-b', 'b');",
+				"INSERT INTO child VALUES (1, 1);",
+				"SELECT dolt_commit('-am', 'add child');",
+				"SELECT dolt_checkout('main');",
+				"DELETE FROM parent WHERE pk = 1;",
+				"SELECT dolt_commit('-am', 'delete parent');",
+				"SET dolt_force_transaction_commit TO ON;",
+				"SELECT dolt_merge('b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints();",
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints('--all');",
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_constraint_violations;",
+					Expected: []sql.Row{{"child", Numeric("1")}},
+				},
+			},
+		},
+	})
+}
+
 func TestDoltFunctionSmokeTests(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
