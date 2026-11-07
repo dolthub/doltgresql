@@ -1155,6 +1155,31 @@ func TestFunctionsMath(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "trunc",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT trunc(1.567::numeric, 2), trunc(-2.25::numeric, 1), trunc(123.456::numeric, -1), trunc(1.5::numeric), trunc(-1.5::numeric);`,
+					Expected: []sql.Row{{Numeric("1.56"), Numeric("-2.2"), Numeric("120"), Numeric("1"), Numeric("-1")}},
+				},
+				{
+					Query:    `SELECT trunc(1.5::numeric, 3), trunc(123::numeric, 2), trunc(1.567::numeric, 0), trunc(-987.654::numeric, -2), trunc(1e20::numeric, -3);`,
+					Expected: []sql.Row{{Numeric("1.500"), Numeric("123.00"), Numeric("1"), Numeric("-900"), Numeric("100000000000000000000")}},
+				},
+				{
+					Query:    `SELECT trunc(0.001::numeric, 2)::text, trunc(-0.001::numeric, 2)::text, trunc(-0.5::numeric)::text, trunc(5::numeric, -1)::text, trunc(123.456::numeric, -5)::text;`,
+					Expected: []sql.Row{{"0.00", "0.00", "0", "0", "0"}},
+				},
+				{
+					Query:    `SELECT trunc('NaN'::numeric), trunc('NaN'::numeric, 2), trunc('Infinity'::numeric), trunc('-Infinity'::numeric, 2);`,
+					Expected: []sql.Row{{Numeric("NaN"), Numeric("NaN"), Numeric("Infinity"), Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT trunc(1.567::float8), trunc(-1.567::float8);`,
+					Expected: []sql.Row{{1.0, -1.0}},
+				},
+			},
+		},
 	})
 }
 
