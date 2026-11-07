@@ -122,21 +122,22 @@ func (c *ExplicitCast) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 	}
 	castResult, err := cast.Eval(ctx, val, sourceType, c.castToType)
-	if err != nil {
-		// For string types and string array types, we intentionally ignore the error as using a length-restricted cast
-		// is a way to intentionally truncate the data. All string types will always return the truncated result, even
-		// during an error, so it's safe to use.
-		castToType := c.castToType
-		if c.castToType.IsArrayType() {
-			castToType = c.castToType.ArrayBaseType()
-		}
-		// A nil result will be returned if there's a critical error, which we should never ignore.
-		if castToType.TypCategory != pgtypes.TypeCategory_StringTypes || castResult == nil {
-			return nil, err
-		}
+	if err != nil && !ignoresExplicitCastError(c.castToType, castResult) {
+		return nil, err
 	}
 
 	return c.applyDomainConstraints(ctx, castResult)
+}
+
+// ignoresExplicitCastError returns whether an explicit cast to |castToType| may ignore its error. For string types and
+// string array types, we intentionally ignore the error as using a length-restricted cast is a way to intentionally
+// truncate the data. All string types will always return the truncated result, even during an error, so it's safe to
+// use. A nil result will be returned if there's a critical error, which we should never ignore.
+func ignoresExplicitCastError(castToType *pgtypes.DoltgresType, castResult any) bool {
+	if castToType.IsArrayType() {
+		castToType = castToType.ArrayBaseType()
+	}
+	return castToType.TypCategory == pgtypes.TypeCategory_StringTypes && castResult != nil
 }
 
 // applyDomainConstraints enforces the NOT NULL and CHECK constraints attached to a domain cast.

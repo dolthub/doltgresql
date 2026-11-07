@@ -15,12 +15,16 @@
 package types
 
 import (
+	"strings"
+
+	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"gopkg.in/src-d/go-errors.v1"
 
-	"github.com/dolthub/doltgresql/utils"
-
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 const (
@@ -108,6 +112,27 @@ func GetTypModFromCharLength(typName string, l int32) (int32, error) {
 // GetCharLengthFromTypmod takes character type modifier and returns length value.
 func GetCharLengthFromTypmod(typmod int32) int32 {
 	return typmod - 4
+}
+
+// TruncateToCharLength returns |input| truncated to |maxChars| characters. If a removed character is not a space, then
+// this also returns an error alongside the truncated string, which explicit casts ignore since they truncate on purpose.
+// The error is marked as ErrCastOutOfRange so that conversions report an overflow. |typName| is either "character" or
+// "character varying".
+func TruncateToCharLength(input string, maxChars int32, typName string) (string, error) {
+	truncated := input
+	var n int32
+	for pos := range input {
+		if n == maxChars {
+			truncated = input[:pos]
+			break
+		}
+		n++
+	}
+	if strings.TrimRight(input[len(truncated):], " ") != "" {
+		err := cerrors.Mark(cerrors.Newf("value too long for type %s(%d)", typName, maxChars), ErrCastOutOfRange)
+		return truncated, pgerror.WithCandidateCode(err, pgcode.StringDataRightTruncation)
+	}
+	return truncated, nil
 }
 
 // serializeTypeVarChar handles serialization from the standard representation to our serialized representation that is

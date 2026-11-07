@@ -109,7 +109,7 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 
 		values[i], err = cast.Eval(ctx, val, doltgresType, targetTyp)
-		if err != nil {
+		if err != nil && (array.explicitType == nil || !ignoresExplicitCastError(targetTyp, values[i])) {
 			return nil, err
 		}
 	}
