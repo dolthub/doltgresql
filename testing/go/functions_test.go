@@ -5621,6 +5621,69 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "date and timestamptz conversions use the session time zone",
+			SetUpScript: []string{
+				`CREATE TABLE ev (id INT PRIMARY KEY, at TIMESTAMPTZ);`,
+				`INSERT INTO ev VALUES (1, '2024-03-05 20:00:00-08');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SET TIME ZONE 'America/Los_Angeles';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT '2024-03-05'::DATE::TIMESTAMPTZ::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05 00:00:00-08"}},
+				},
+				{
+					Query:    `SELECT TO_CHAR('2024-03-05'::DATE, 'YYYY-MM-DD');`,
+					Expected: []sql.Row{{"2024-03-05"}},
+				},
+				{
+					Query:    `SELECT id FROM ev WHERE at >= '2024-03-05'::DATE AND at < '2024-03-06'::DATE;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT '2024-03-06 02:00:00+00'::TIMESTAMPTZ::DATE::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05"}},
+				},
+				{
+					Query: `SELECT '2024-03-05 00:00:00-08'::TIMESTAMPTZ = '2024-03-05'::DATE, '2024-03-05'::DATE = '2024-03-05 00:00:00-08'::TIMESTAMPTZ, ` +
+						`at <> '2024-03-05'::DATE, '2024-03-06'::DATE <> at, at > '2024-03-05'::DATE, '2024-03-06'::DATE > at, ` +
+						`at <= '2024-03-05'::DATE, '2024-03-06'::DATE <= at, '2024-03-05'::DATE < at, '2024-03-06'::DATE >= at FROM ev;`,
+					Expected: []sql.Row{{"t", "t", "t", "t", "t", "t", "f", "f", "t", "t"}},
+				},
+				{
+					Query:    `SET TIME ZONE 'Asia/Tokyo';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT '2024-03-05'::DATE::TIMESTAMPTZ::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05 00:00:00+09"}},
+				},
+				{
+					Query:    `SELECT '2024-03-05 20:00:00+00'::TIMESTAMPTZ::DATE::TEXT;`,
+					Expected: []sql.Row{{"2024-03-06"}},
+				},
+				{
+					Query:    `SELECT TO_CHAR('2024-03-05'::DATE, 'YYYY-MM-DD HH24');`,
+					Expected: []sql.Row{{"2024-03-05 00"}},
+				},
+				{
+					Query:    `SET TIME ZONE 'UTC';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT '2024-03-05'::DATE::TIMESTAMPTZ::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05 00:00:00+00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-06 02:00:00+00'::TIMESTAMPTZ::DATE::TEXT;`,
+					Expected: []sql.Row{{"2024-03-06"}},
+				},
+			},
+		},
 	})
 }
 

@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/casts"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,7 +44,7 @@ func dateImplicit(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.Date,
 		ToType:   pgtypes.TimestampTZ,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			return val.(time.Time), nil
+			return functions.DateToTimestampTZ(ctx, val.(time.Time))
 		},
 	})
 }
