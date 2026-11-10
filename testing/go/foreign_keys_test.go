@@ -941,6 +941,44 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
+				Name: "same constraint name on two tables",
+				SetUpScript: []string{
+					"CREATE TABLE parent (id INT PRIMARY KEY);",
+					"CREATE TABLE c1 (id INT PRIMARY KEY, pid INT, CONSTRAINT same_fk FOREIGN KEY (pid) REFERENCES parent(id));",
+					"CREATE TABLE c2 (id INT PRIMARY KEY, pid INT, CONSTRAINT same_fk FOREIGN KEY (pid) REFERENCES parent(id));",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    "SELECT conrelid::regclass::text FROM pg_constraint WHERE conname = 'same_fk' ORDER BY 1;",
+						Expected: []sql.Row{{"c1"}, {"c2"}},
+					},
+					{
+						Query:    "ALTER TABLE c1 DROP CONSTRAINT same_fk;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conrelid::regclass::text FROM pg_constraint WHERE conname = 'same_fk' ORDER BY 1;",
+						Expected: []sql.Row{{"c2"}},
+					},
+					{
+						Query:    "INSERT INTO c1 VALUES (1, 2);",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:       "INSERT INTO c2 VALUES (1, 2);",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "ALTER TABLE c2 DROP CONSTRAINT same_fk;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conrelid::regclass::text FROM pg_constraint WHERE conname = 'same_fk';",
+						Expected: []sql.Row{},
+					},
+				},
+			},
+			{
 				Name: "foreign key default naming, added through alter table",
 				SetUpScript: []string{
 					"CREATE TABLE webhooks (id varchar not null, primary key (id));",
