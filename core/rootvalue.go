@@ -383,6 +383,11 @@ func (root *RootValue) GetForeignKeyCollection(ctx context.Context) (*doltdb.For
 	return root.fkc.Copy(), nil
 }
 
+// GetForeignKeyCollectionHash implements the interface doltdb.RootValue.
+func (root *RootValue) GetForeignKeyCollectionHash(ctx context.Context) (hash.Hash, error) {
+	return hash.New(root.st.SRV.ForeignKeyAddrBytes()), nil
+}
+
 // GetRootObject implements the interface doltdb.RootValue.
 func (root *RootValue) GetRootObject(ctx context.Context, tName doltdb.TableName) (doltdb.RootObject, bool, error) {
 	return rootobject.GetRootObject(ctx, root, tName)
