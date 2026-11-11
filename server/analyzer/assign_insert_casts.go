@@ -78,7 +78,13 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				}
 				fromColType, ok := colExprType.(*pgtypes.DoltgresType)
 				if !ok {
-					return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in values source: %s", fromColType.String())
+					// A parameter takes the type of its destination column, which is a GMS type for non-Doltgres tables
+					// (such as system tables), so it is converted the same way as the destination types above.
+					var err error
+					fromColType, err = pgtypes.FromGmsTypeToDoltgresType(colExprType)
+					if err != nil {
+						return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in values source: %s", colExprType.String())
+					}
 				}
 				toColType := destinationTypes[columnIndex]
 				// We only assign the existing expression if the types perfectly match (same parameters), otherwise we'll cast
@@ -104,7 +110,11 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 			}
 			fromColType, ok := colType.(*pgtypes.DoltgresType)
 			if !ok {
-				return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in source: %s", colType.String())
+				var err error
+				fromColType, err = pgtypes.FromGmsTypeToDoltgresType(colType)
+				if err != nil {
+					return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in source: %s", colType.String())
+				}
 			}
 			toColType := destinationTypes[i]
 			var getField sql.Expression = expression.NewGetField(i, fromColType, col.Name, true)
