@@ -33,6 +33,29 @@ func TestPreparedPgCatalog(t *testing.T) {
 
 var preparedStatementTests = []ScriptTest{
 	{
+		Name: "Insert into a Dolt system table with bare parameters",
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "INSERT INTO dolt_nonlocal_tables (table_name, target_ref, ref_table, options) VALUES ($1, $2, $3, $4)",
+				BindVars: []any{"cache_%", "main", "", "immediate"},
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "INSERT INTO dolt_ignore (pattern, ignored) VALUES ($1, $2)",
+				BindVars: []any{"scratch_%", true},
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT table_name, target_ref, options FROM dolt_nonlocal_tables",
+				Expected: []sql.Row{{"cache_%", "main", "immediate"}},
+			},
+			{
+				Query:    "SELECT pattern, ignored FROM dolt_ignore",
+				Expected: []sql.Row{{"scratch_%", "t"}},
+			},
+		},
+	},
+	{
 		Name: "Expressions without tables",
 		Assertions: []ScriptTestAssertion{
 			{
