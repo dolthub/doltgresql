@@ -4130,6 +4130,31 @@ func TestOperators(t *testing.T) {
 	})
 }
 
+func TestILike(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "ILIKE and NOT ILIKE",
+		Assertions: []ScriptTestAssertion{
+			{Query: `SELECT 'Abc' ILIKE 'a%', 'Abc' NOT ILIKE 'a%';`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT 'Abc' ILIKE 'ABC', 'Abc' ILIKE 'ab', 'Abc' ILIKE '_B_';`, Expected: []sql.Row{{"t", "f", "t"}}},
+			{Query: `SELECT 'Abc' LIKE 'a%', 'Abc' ILIKE 'a%';`, Expected: []sql.Row{{"f", "t"}}},
+			{Query: `SELECT '' ILIKE '', '' ILIKE '%', 'a' ILIKE '', '' ILIKE '_';`, Expected: []sql.Row{{"t", "t", "f", "f"}}},
+			{Query: `SELECT '50%' ILIKE '50\%', '50x' ILIKE '50\%', 'A_b' ILIKE 'a\_B';`, Expected: []sql.Row{{"t", "f", "t"}}},
+			{Query: `SELECT 'a.c' ILIKE 'A.C', 'abc' ILIKE 'A.C', 'a+c' ILIKE '_+_';`, Expected: []sql.Row{{"t", "f", "t"}}},
+			{Query: `SELECT E'A\nB' ILIKE 'a_b', E'A\nB' ILIKE 'a%b';`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT 'Éclair' ILIKE 'é%', 'STRASSE' ILIKE 'strasse';`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT NULL ILIKE 'a', 'a' ILIKE NULL, NULL NOT ILIKE 'a';`, Expected: []sql.Row{{nil, nil, nil}}},
+			{Query: `SELECT 'Abc'::varchar ILIKE 'a%', 'Abc'::name ILIKE 'A%';`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT texticlike('Abc', 'a%'), texticnlike('Abc', 'a%');`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `CREATE TABLE ilike_inputs (id int PRIMARY KEY, name text);`},
+			{Query: `INSERT INTO ilike_inputs VALUES (1, 'Alice'), (2, 'ALBERT'), (3, 'bob'), (4, NULL);`},
+			{Query: `SELECT id FROM ilike_inputs WHERE name ILIKE 'al%' ORDER BY id;`, Expected: []sql.Row{{int32(1)}, {int32(2)}}},
+			{Query: `SELECT id FROM ilike_inputs WHERE name NOT ILIKE 'al%' ORDER BY id;`, Expected: []sql.Row{{int32(3)}}},
+			{Query: `SELECT 'abc' ILIKE 'ab\';`, ExpectedErr: "LIKE pattern must not end with escape character", ExpectedErrCode: "22025"},
+			{Query: `SELECT 123 ILIKE 'abc';`, ExpectedErr: "operator does not exist"},
+		},
+	}})
+}
+
 func TestCaseInsensitiveRegex(t *testing.T) {
 	RunScripts(t, []ScriptTest{{
 		Name: "case-insensitive regex",
