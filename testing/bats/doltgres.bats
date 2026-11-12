@@ -320,8 +320,6 @@ auth_file: .doltcfg/auth.db
 branch_control_file: .doltcfg/branch_control.db
 
 user_session_vars: []
-
-jwks: []
 EOF
 
     cat config.yaml
