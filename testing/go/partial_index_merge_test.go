@@ -117,6 +117,31 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 			},
 		},
 		{
+			Name: "update that moves a row out of the predicate frees its key for an insert in the same transaction",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
+				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
+				"INSERT INTO t VALUES (1, 5, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN;"},
+				{Query: "/* client b */ BEGIN;"},
+				{Query: "/* client a */ INSERT INTO t VALUES (3, 9, NULL);"},
+				{Query: "/* client b */ UPDATE t SET slot = 10 WHERE id = 1;"},
+				{Query: "/* client b */ INSERT INTO t VALUES (2, 5, NULL);"},
+				{Query: "/* client a */ COMMIT;"},
+				{Query: "/* client b */ COMMIT;"},
+				{
+					Query:    "/* client a */ SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 5, 10}, {2, 5, nil}, {3, 9, nil}},
+				},
+				{
+					Query:       "/* client a */ INSERT INTO t VALUES (4, 5, NULL);",
+					ExpectedErr: "duplicate unique key given",
+				},
+			},
+		},
+		{
 			Name: "concurrent update that moves a row into the predicate",
 			SetUpScript: append(partialIndexMergeSetup,
 				"INSERT INTO t VALUES (1, 1, 1, 5);",
@@ -256,6 +281,54 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 				{Query: "/* client a */ INSERT INTO t VALUES (3, 2, 2, NULL);"},
 				{Query: "/* client a */ DELETE FROM t WHERE id = 1;"},
 				{Query: "/* client a */ INSERT INTO t VALUES (4, 1, 1, NULL);"},
+			},
+		},
+		{
+			Name: "concurrent insert on the old schema of a row whose new column default is inside the predicate",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, p INT);",
+				"INSERT INTO t VALUES (1, 5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN;"},
+				{Query: "/* client a */ ALTER TABLE t ADD COLUMN slot INT DEFAULT 10;"},
+				{Query: "/* client a */ CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot > 5;"},
+				{Query: "/* client b */ BEGIN;"},
+				{Query: "/* client b */ INSERT INTO t VALUES (2, 5);"},
+				{Query: "/* client a */ COMMIT;"},
+				{
+					Query:       "/* client b */ COMMIT;",
+					ExpectedErr: "Unique Key Constraint Violation",
+				},
+				{
+					Query:    "/* client a */ SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 5, 10}},
+				},
+			},
+		},
+		{
+			Name: "concurrent insert on the old schema of a row whose new column default is outside the predicate",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, p INT);",
+				"INSERT INTO t VALUES (1, 5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN;"},
+				{Query: "/* client a */ ALTER TABLE t ADD COLUMN slot INT DEFAULT 1;"},
+				{Query: "/* client a */ UPDATE t SET slot = 10 WHERE id = 1;"},
+				{Query: "/* client a */ CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot > 5;"},
+				{Query: "/* client b */ BEGIN;"},
+				{Query: "/* client b */ INSERT INTO t VALUES (2, 5);"},
+				{Query: "/* client a */ COMMIT;"},
+				{Query: "/* client b */ COMMIT;"},
+				{
+					Query:    "/* client a */ SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 5, 10}, {2, 5, 1}},
+				},
+				{
+					Query:       "/* client a */ INSERT INTO t VALUES (3, 5, 6);",
+					ExpectedErr: "duplicate unique key given",
+				},
 			},
 		},
 		{
