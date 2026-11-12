@@ -335,11 +335,11 @@ func newDecimalVarianceWindowFunction[T int16 | int32 | int64 | *apd.Decimal](co
 }
 
 func (w *decimalVarianceWindowFunction[T]) Compute(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) (interface{}, error) {
-	if interval.End <= interval.Start {
+	if interval.Len() == 0 {
 		return nil, nil
 	}
 	b := &decimalVarianceBuffer[T]{expr: w.expr, convert: w.convert, sample: w.sample, sqrtResult: w.sqrtResult}
-	for i := interval.Start; i < interval.End; i++ {
+	for i := range interval.Indices() {
 		if err := b.Update(ctx, buf[i]); err != nil {
 			return nil, err
 		}
@@ -446,11 +446,11 @@ func newFloatVarianceWindowFunction[T float32 | float64](sample, sqrtResult bool
 }
 
 func (w *floatVarianceWindowFunction[T]) Compute(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) (interface{}, error) {
-	if interval.End <= interval.Start {
+	if interval.Len() == 0 {
 		return nil, nil
 	}
 	b := &floatVarianceBuffer[T]{expr: w.expr, sample: w.sample, sqrtResult: w.sqrtResult}
-	for i := interval.Start; i < interval.End; i++ {
+	for i := range interval.Indices() {
 		if err := b.Update(ctx, buf[i]); err != nil {
 			return nil, err
 		}

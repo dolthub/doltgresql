@@ -115,15 +115,15 @@ func newJsonAggWindowFunction(exprs []sql.Expression, window *sql.WindowDefiniti
 
 // Compute implements sql.WindowFunction.
 func (w *jsonAggWindowFunction) Compute(ctx *sql.Context, interval sql.WindowInterval, buffer sql.WindowBuffer) (interface{}, error) {
-	if interval.End <= interval.Start {
+	if interval.Len() == 0 {
 		return nil, nil
 	}
-	elements := make([]string, 0, interval.End-interval.Start)
+	elements := make([]string, 0, interval.Len())
 	elemType, ok := w.expr.Type(ctx).(*pgtypes.DoltgresType)
 	if !ok {
 		return nil, errors.Errorf("json_agg: expected PostgreSQL argument type, got %T", w.expr.Type(ctx))
 	}
-	for i := interval.Start; i < interval.End; i++ {
+	for i := range interval.Indices() {
 		value, err := w.expr.Eval(ctx, buffer[i])
 		if err != nil {
 			return nil, err

@@ -62,7 +62,7 @@ func newNthValueWindowFunction(exprs []sql.Expression, window *sql.WindowDefinit
 
 // Compute implements the sql.WindowFunction interface.
 func (w *nthValueWindowFunction) Compute(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) (interface{}, error) {
-	if interval.End <= interval.Start {
+	if interval.Len() == 0 {
 		return nil, nil
 	}
 	nVal, err := w.nExpr.Eval(ctx, buf[interval.Start])
@@ -80,8 +80,8 @@ func (w *nthValueWindowFunction) Compute(ctx *sql.Context, interval sql.WindowIn
 		return nil, sql.ErrInvalidArgument.New("NTH_VALUE")
 	}
 
-	idx := interval.Start + int(n) - 1
-	if idx >= interval.End {
+	idx, ok := interval.Nth(int(n) - 1)
+	if !ok {
 		return nil, nil
 	}
 	return w.valueExpr.Eval(ctx, buf[idx])
