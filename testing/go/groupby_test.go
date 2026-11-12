@@ -71,5 +71,70 @@ func TestGroupBy(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Equal values with different representations are grouped together",
+			SetUpScript: []string{
+				"CREATE TABLE waits (id INT, w INTERVAL);",
+				"INSERT INTO waits VALUES (1, INTERVAL '1 day'), (2, '2024-01-02 00:00'::TIMESTAMP - '2024-01-01 00:00'::TIMESTAMP), (3, INTERVAL '24 hours'), (4, INTERVAL '1 month'), (5, INTERVAL '30 days'), (6, INTERVAL '25 hours');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT COUNT(*) FROM waits GROUP BY w ORDER BY 1;",
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+				{
+					Query:    "SELECT MIN(id), COUNT(*) FROM waits GROUP BY w ORDER BY 1;",
+					Expected: []sql.Row{{1, 3}, {4, 2}, {6, 1}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT w) FROM waits;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (SELECT DISTINCT w FROM waits) t;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT id FROM waits WHERE w IN (SELECT INTERVAL '1 day') ORDER BY id;",
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+				{
+					Query:    "SELECT id FROM waits WHERE w IN (SELECT w FROM waits WHERE id IN (3, 5)) ORDER BY id;",
+					Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}},
+				},
+				{
+					Query:    "SELECT id FROM waits WHERE w NOT IN (SELECT INTERVAL '24 hours') ORDER BY id;",
+					Expected: []sql.Row{{4}, {5}, {6}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (SELECT w FROM waits WHERE id = 1 UNION SELECT w FROM waits WHERE id IN (2, 3)) t;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (SELECT INTERVAL '1 day' UNION SELECT INTERVAL '24 hours' UNION SELECT INTERVAL '1440 minutes') t;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT a.id, b.id FROM waits a JOIN waits b ON a.w = b.w WHERE a.id < b.id ORDER BY 1, 2;",
+					Expected: []sql.Row{{1, 2}, {1, 3}, {2, 3}, {4, 5}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (SELECT DISTINCT x FROM (VALUES (ARRAY[1.0]), (ARRAY[1.00]), (ARRAY[1])) t(x)) s;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (VALUES (ARRAY[1.0, 2.50]), (ARRAY[1.00, 2.5]), (ARRAY[1.0, 2.51])) t(x) GROUP BY x ORDER BY 1;",
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT x) FROM (VALUES (ARRAY[INTERVAL '1 day']), (ARRAY[INTERVAL '24 hours'])) t(x);",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (VALUES (1.0), (1.00), (1)) t(x) GROUP BY x;",
+					Expected: []sql.Row{{3}},
+				},
+			},
+		},
 	})
 }
