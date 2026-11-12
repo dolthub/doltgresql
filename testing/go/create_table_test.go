@@ -753,6 +753,37 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "UNIQUE NULLS NOT DISTINCT",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CREATE TABLE t1 (a INT, b INT, UNIQUE NULLS NOT DISTINCT (a, b));",
+					ExpectedErr: "NULLS NOT DISTINCT is not yet supported",
+				},
+				{
+					Query:       "CREATE TABLE t2 (a INT, CONSTRAINT t2_a_key UNIQUE NULLS NOT DISTINCT (a));",
+					ExpectedErr: "NULLS NOT DISTINCT is not yet supported",
+				},
+				{
+					Query:       "CREATE TABLE t3 (a INT UNIQUE NULLS NOT DISTINCT);",
+					ExpectedErr: "NULLS NOT DISTINCT is not yet supported",
+				},
+				{
+					Query: "CREATE TABLE t4 (a INT UNIQUE NULLS DISTINCT, b INT, UNIQUE NULLS DISTINCT (a, b));",
+				},
+				{
+					Query: "INSERT INTO t4 VALUES (NULL, 1), (NULL, 1), (1, NULL);",
+				},
+				{
+					Query:       "INSERT INTO t4 VALUES (1, 2);",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:    "SELECT * FROM t4 ORDER BY a, b;",
+					Expected: []sql.Row{{1, nil}, {nil, 1}, {nil, 1}},
+				},
+			},
+		},
+		{
 			Name: "DEFERRABLE constraints are stored",
 			Skip: true, // DEFERRABLE is not yet supported
 			SetUpScript: []string{

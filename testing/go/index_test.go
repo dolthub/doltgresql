@@ -1374,6 +1374,40 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "unique index NULLS NOT DISTINCT",
+			SetUpScript: []string{
+				"CREATE TABLE t (a INT, b INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "CREATE UNIQUE INDEX t_a_idx ON t (a) NULLS NOT DISTINCT;",
+					ExpectedErr: "NULLS NOT DISTINCT is not yet supported",
+				},
+				{
+					Query:       "CREATE UNIQUE INDEX IF NOT EXISTS t_a_idx ON t (a, b) NULLS NOT DISTINCT;",
+					ExpectedErr: "NULLS NOT DISTINCT is not yet supported",
+				},
+				{
+					Query: "CREATE UNIQUE INDEX t_a_idx ON t (a) NULLS DISTINCT;",
+				},
+				{
+					// NULLS NOT DISTINCT has no effect on a non-unique index
+					Query: "CREATE INDEX t_b_idx ON t (b) NULLS NOT DISTINCT;",
+				},
+				{
+					Query: "INSERT INTO t VALUES (NULL, 1), (NULL, 1);",
+				},
+				{
+					Query:       "INSERT INTO t VALUES (1, 1), (1, 2);",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY a, b;",
+					Expected: []sql.Row{{nil, 1}, {nil, 1}},
+				},
+			},
+		},
+		{
 			Name: "Proper range AND + OR handling",
 			SetUpScript: []string{
 				"CREATE TABLE test(pk INTEGER PRIMARY KEY, v1 INTEGER);",

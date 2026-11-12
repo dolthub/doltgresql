@@ -2016,6 +2016,43 @@ ORDER BY schema_name, table_name;`,
 			},
 		},
 		{
+			Name: "UNIQUE NULLS NOT DISTINCT",
+			SetUpScript: []string{
+				"CREATE TABLE t (a INT, b INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "ALTER TABLE t ADD CONSTRAINT t_a_b_key UNIQUE NULLS NOT DISTINCT (a, b);",
+					ExpectedErr: "NULLS NOT DISTINCT is not yet supported",
+				},
+				{
+					Query:       "ALTER TABLE t ADD UNIQUE NULLS NOT DISTINCT (a);",
+					ExpectedErr: "NULLS NOT DISTINCT is not yet supported",
+				},
+				{
+					Query:       "ALTER TABLE t ADD COLUMN c INT UNIQUE NULLS NOT DISTINCT;",
+					ExpectedErr: "NULLS NOT DISTINCT is not yet supported",
+				},
+				{
+					Query: "ALTER TABLE t ADD CONSTRAINT t_a_b_key UNIQUE NULLS DISTINCT (a, b);",
+				},
+				{
+					Query: "ALTER TABLE t ADD COLUMN d INT UNIQUE NULLS DISTINCT;",
+				},
+				{
+					Query: "INSERT INTO t VALUES (1, NULL, NULL), (1, NULL, NULL);",
+				},
+				{
+					Query:       "INSERT INTO t VALUES (1, 1, 1), (1, 1, 2);",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:    "SELECT conname FROM pg_constraint WHERE conrelid = 't'::regclass ORDER BY conname;",
+					Expected: []sql.Row{{"t_a_b_key"}, {"t_d_key"}},
+				},
+			},
+		},
+		{
 			Name: "column defaults with user-defined functions keep working after table rewrites",
 			SetUpScript: []string{
 				"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL AS $$ SELECT 1 $$;",

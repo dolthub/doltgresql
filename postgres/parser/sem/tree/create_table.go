@@ -270,11 +270,12 @@ type ColumnTableDef struct {
 	PrimaryKey struct {
 		IsPrimaryKey bool
 	}
-	Unique               bool
-	UniqueConstraintName Name
-	UniqueDeferrable     DeferrableMode
-	UniqueInitially      InitiallyMode
-	DefaultExpr          struct {
+	Unique                 bool
+	UniqueNullsNotDistinct bool
+	UniqueConstraintName   Name
+	UniqueDeferrable       DeferrableMode
+	UniqueInitially        InitiallyMode
+	DefaultExpr            struct {
 		Expr           Expr
 		ConstraintName Name
 	}
@@ -391,6 +392,7 @@ func NewColumnTableDef(
 				d.PrimaryKey.IsPrimaryKey = true
 			} else {
 				d.Unique = true
+				d.UniqueNullsNotDistinct = !t.NullsDistinct
 			}
 			d.UniqueConstraintName = c.Name
 			d.UniqueDeferrable = c.Deferrable
@@ -512,6 +514,9 @@ func (node *ColumnTableDef) Format(ctx *FmtCtx) {
 			ctx.WriteString(" PRIMARY KEY")
 		} else if node.Unique {
 			ctx.WriteString(" UNIQUE")
+			if node.UniqueNullsNotDistinct {
+				ctx.WriteString(" NULLS NOT DISTINCT")
+			}
 		}
 		switch node.UniqueDeferrable {
 		case Deferrable:
@@ -840,6 +845,9 @@ func (node *UniqueConstraintTableDef) Format(ctx *FmtCtx) {
 		ctx.WriteString("PRIMARY KEY ")
 	} else {
 		ctx.WriteString("UNIQUE ")
+		if node.NullsNotDistinct {
+			ctx.WriteString("NULLS NOT DISTINCT ")
+		}
 	}
 	ctx.WriteByte('(')
 	ctx.FormatNode(&node.Columns)

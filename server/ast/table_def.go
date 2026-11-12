@@ -112,9 +112,14 @@ func assignTableDef(ctx *Context, node tree.TableDef, target *vitess.DDL) error 
 		}
 		return nil
 	case *tree.UniqueConstraintTableDef:
+		if node.NullsNotDistinct {
+			return errors.Errorf("NULLS NOT DISTINCT is not yet supported")
+		}
+
 		if tree.IsDeferrable(node.Deferrable, node.Initially) {
 			return errors.Errorf("DEFERRABLE constraints are not yet supported")
 		}
+
 		if target.TableSpec == nil {
 			target.TableSpec = &vitess.TableSpec{}
 		}
