@@ -367,28 +367,31 @@ func (root *RootValue) GetFeatureVersion(ctx context.Context) (ver doltdb.Featur
 
 // GetForeignKeyCollection implements the interface doltdb.RootValue.
 func (root *RootValue) GetForeignKeyCollection(ctx context.Context) (*doltdb.ForeignKeyCollection, error) {
-	fkc, err := root.loadForeignKeyCollection(ctx)
-	if err != nil {
-		return nil, err
+	root.fkcLock.Lock()
+	defer root.fkcLock.Unlock()
+
+	if root.fkc == nil {
+		fkMap, ok, err := root.st.GetForeignKeys(ctx, root.vrw)
+		if err != nil {
+			return nil, err
+		}
+
+		if !ok {
+			root.fkc, err = doltdb.NewForeignKeyCollection()
+		} else {
+			root.fkc, err = doltdb.DeserializeForeignKeys(ctx, root.vrw.Format(), fkMap)
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	return fkc.Copy(), nil
+	return root.fkc, nil
 }
 
 // GetForeignKeyCollectionHash implements the interface doltdb.RootValue.
 func (root *RootValue) GetForeignKeyCollectionHash(ctx context.Context) (hash.Hash, error) {
 	return hash.New(root.st.SRV.ForeignKeyAddrBytes()), nil
-}
-
-// GetForeignKeysForTable implements the interface doltdb.RootValue.
-func (root *RootValue) GetForeignKeysForTable(ctx context.Context, tName doltdb.TableName) (declared, referencedBy []doltdb.ForeignKey, err error) {
-	fkc, err := root.loadForeignKeyCollection(ctx)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	declared, referencedBy = fkc.KeysForTable(tName)
-	return declared, referencedBy, nil
 }
 
 // GetRootObject implements the interface doltdb.RootValue.
@@ -770,9 +773,9 @@ func (root *RootValue) RemoveTables(
 				return nil, err
 			}
 			if allowDroppingFKReferenced {
-				err = fkc.RemoveAndUnresolveTables(ctx, newRoot, tables...)
+				fkc, err = fkc.RemoveAndUnresolveTables(ctx, newRoot, tables...)
 			} else {
-				err = fkc.RemoveTables(ctx, tables...)
+				fkc, err = fkc.RemoveTables(ctx, tables...)
 			}
 			if err != nil {
 				return nil, err
@@ -955,31 +958,6 @@ func (root *RootValue) putTable(ctx context.Context, tName doltdb.TableName, ref
 	}
 
 	return root.withStorage(newStorage), nil
-}
-
-// loadForeignKeyCollection returns this root's ForeignKeyCollection, loading it on first use. The collection is shared
-// by every caller, and must not be modified.
-func (root *RootValue) loadForeignKeyCollection(ctx context.Context) (*doltdb.ForeignKeyCollection, error) {
-	root.fkcLock.Lock()
-	defer root.fkcLock.Unlock()
-
-	if root.fkc == nil {
-		fkMap, ok, err := root.st.GetForeignKeys(ctx, root.vrw)
-		if err != nil {
-			return nil, err
-		}
-
-		if !ok {
-			root.fkc, err = doltdb.NewForeignKeyCollection()
-		} else {
-			root.fkc, err = doltdb.DeserializeForeignKeys(ctx, root.vrw.Format(), fkMap)
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return root.fkc, nil
 }
 
 // withStorage returns a new root value with the given storage.
