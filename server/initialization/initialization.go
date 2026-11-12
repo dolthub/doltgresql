@@ -15,6 +15,7 @@
 package initialization
 
 import (
+	"context"
 	"sync"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
@@ -53,11 +54,20 @@ func InitializeProcess(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig)
 	initializeProcess(dEnv, cfg)
 }
 
+// maxTextBytes is the largest value PostgreSQL stores in a text field (1 GB).
+const maxTextBytes = 1 << 30
+
 // InitializeWithVariables initializes process-wide catalogs once and registers
 // PostgreSQL parameters in the supplied engine's registry on every call.
 func InitializeWithVariables(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig, vars *sql.EngineVariables) {
 	initializeProcess(dEnv, cfg)
 	config.InitWithRegistry(vars.System)
+	// string_agg is built on GROUP_CONCAT, which cuts its result at group_concat_max_len
+	// (1024 by default, as in MySQL). PostgreSQL's limit is that of any text value, 1 GB.
+	ctx := sql.NewContextWithVariables(context.Background(), vars)
+	if err := vars.System.SetGlobal(ctx, "group_concat_max_len", uint64(maxTextBytes)); err != nil {
+		panic(err)
+	}
 }
 
 // NewPostgresEngineVariables initializes process-wide catalogs once and returns
