@@ -2291,6 +2291,80 @@ func TestBasicIndexing(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "primary key lookup with a literal of another type (issue 3748)",
+			SetUpScript: []string{
+				"CREATE TABLE npk (n NUMERIC PRIMARY KEY, v TEXT);",
+				"INSERT INTO npk VALUES (1, 'a'), (2, 'b'), (1.5, 'c');",
+				"CREATE TABLE bpk (id BIGINT PRIMARY KEY, v TEXT);",
+				"INSERT INTO bpk VALUES (1, 'a'), (2, 'b');",
+				"CREATE TABLE ipk (id INT PRIMARY KEY, v TEXT);",
+				"INSERT INTO ipk VALUES (1, 'a'), (2, 'b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1.0;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1.5;",
+					Expected: []sql.Row{{"c"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = '1';",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = '1'::unknown;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = $1;",
+					BindVars: []any{"2"},
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT count(*) FROM npk WHERE n = 3;",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "UPDATE npk SET v = 'z' WHERE n = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1.0;",
+					Expected: []sql.Row{{"z"}},
+				},
+				{
+					Query:    "DELETE FROM npk WHERE n = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT count(*) FROM npk;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT v FROM bpk WHERE id = 1;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM bpk WHERE id = '2';",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT count(*) FROM ipk WHERE id = 1.5;",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SELECT v FROM ipk WHERE id = 2.0;",
+					Expected: []sql.Row{{"b"}},
+				},
+			},
+		},
 	})
 }
 

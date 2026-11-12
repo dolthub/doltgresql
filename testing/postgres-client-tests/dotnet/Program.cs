@@ -1,4 +1,5 @@
 using Npgsql;
+using NpgsqlTypes;
 
 var user = args[0];
 var port = args[1];
@@ -35,6 +36,32 @@ await using (var cmd = new NpgsqlCommand("SELECT pk FROM test_table WHERE pk = $
     var pk = (int)(await cmd.ExecuteScalarAsync())!;
     if (pk != 1)
         throw new Exception($"expected pk=1 from prepared stmt, got {pk}");
+}
+
+// Unknown-typed parameter compared with a numeric primary key (issue #3748)
+foreach (var q in new[]
+{
+    "DROP TABLE IF EXISTS numeric_pk",
+    "CREATE TABLE numeric_pk (n numeric PRIMARY KEY, v varchar(10))",
+    "INSERT INTO numeric_pk VALUES (1, 'a')",
+})
+{
+    await using var cmd = new NpgsqlCommand(q, conn);
+    await cmd.ExecuteNonQueryAsync();
+}
+await using (var cmd = new NpgsqlCommand("SELECT v FROM numeric_pk WHERE n = @p", conn))
+{
+    cmd.Parameters.Add(new NpgsqlParameter("p", NpgsqlDbType.Unknown) { Value = "1" });
+    var v = (string?)await cmd.ExecuteScalarAsync();
+    if (v != "a")
+        throw new Exception($"expected v=a for unknown-typed numeric key, got {v}");
+}
+await using (var cmd = new NpgsqlCommand("UPDATE numeric_pk SET v = 'b' WHERE n = @p", conn))
+{
+    cmd.Parameters.Add(new NpgsqlParameter("p", NpgsqlDbType.Unknown) { Value = "1" });
+    var rows = await cmd.ExecuteNonQueryAsync();
+    if (rows != 1)
+        throw new Exception($"expected 1 row updated for unknown-typed numeric key, got {rows}");
 }
 
 // Dolt workflow: create table, insert, commit, branch, insert, commit, merge
