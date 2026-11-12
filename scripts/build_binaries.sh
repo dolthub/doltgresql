@@ -75,6 +75,10 @@ for tuple in $OS_ARCH_TUPLES; do
   tags="icu_static"
   if [ "$os" = windows ]; then
       bin="$bin.exe"
+      tags="$tags msvcrt"
+  fi
+  if [ "$os" = linux ]; then
+      tags="$tags musl"
   fi
   echo Building "$o/bin/$bin"
   CGO_ENABLED=1 \

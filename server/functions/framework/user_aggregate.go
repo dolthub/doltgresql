@@ -167,6 +167,11 @@ func (b *userAggregateBuffer) resolve(ctx *sql.Context) error {
 		return nil
 	}
 	sFuncParams := append([]*pgtypes.DoltgresType{b.aggregate.StateType}, b.aggregate.ParameterTypes...)
+	for i, argument := range b.arguments {
+		if argumentType, ok := argument.Type(ctx).(*pgtypes.DoltgresType); ok && i+1 < len(sFuncParams) && sFuncParams[i+1].IsPolymorphicType() {
+			sFuncParams[i+1] = argumentType
+		}
+	}
 	b.sFunc = NewUserFunctionCall(ctx, b.aggregate.SFunc.SchemaName(), b.aggregate.SFunc.FunctionName(), sFuncParams)
 	if b.sFunc == nil {
 		return ErrFunctionDoesNotExist.New(b.aggregate.SFunc.DisplayString())

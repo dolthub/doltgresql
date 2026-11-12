@@ -112,6 +112,9 @@ func cachePgProcs(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 				argTypes, argNames any
 				types, names       []any
 			)
+			if f.Item.Window {
+				kind = "w"
+			}
 
 			hasNonEmtpyArgName := false
 			for _, param := range f.Item.AllParams {
@@ -133,7 +136,9 @@ func cachePgProcs(ctx *sql.Context, pgCatalogCache *pgCatalogCache) error {
 			}
 
 			var volatile = "i" // immutable
-			if f.Item.IsNonDeterministic {
+			if f.Item.Volatility != 0 {
+				volatile, _ = f.Item.Volatility.ToPostgres()
+			} else if f.Item.IsNonDeterministic {
 				volatile = "v" // volatile
 			}
 

@@ -115,9 +115,14 @@ func TestVectorRegistries(t *testing.T) {
 	require.Panics(t, func() {
 		Register(&extdef.Extension{
 			Name:  "doltgres_test_vector_codec",
-			Types: []extdef.Type{{Name: "delta", Codec: codec}},
+			Types: []extdef.Type{{Name: "delta", Send: "delta_send", Codec: codec}},
 		})
 	})
+	Register(&extdef.Extension{
+		Name:  "doltgres_test_vector_unsent",
+		Types: []extdef.Type{{Name: "epsilon", Codec: codec}},
+	})
+	require.Same(t, codec, getTypeCodec("epsilon"))
 	// Codec, operator class, and access method names are global, so re-registrations panic
 	require.Panics(t, func() {
 		Register(&extdef.Extension{

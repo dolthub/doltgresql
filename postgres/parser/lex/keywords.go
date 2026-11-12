@@ -46,7 +46,6 @@ var KeywordsCategories = map[string]string{
 	"bit":                          "C",
 	"boolean":                      "C",
 	"both":                         "R",
-	"box2d":                        "C",
 	"bpchar":                       "C",
 	"bucket_count":                 "U",
 	"buffer_usage_limit":           "U",
@@ -212,15 +211,6 @@ var KeywordsCategories = map[string]string{
 	"function":                     "U",
 	"functions":                    "U",
 	"generated":                    "U",
-	"geography":                    "C",
-	"geometry":                     "C",
-	"geometrycollection":           "U",
-	"geometrycollectionm":          "U",
-	"geometrycollectionz":          "U",
-	"geometrycollectionzm":         "U",
-	"geometrym":                    "U",
-	"geometryz":                    "U",
-	"geometryzm":                   "U",
 	"global":                       "U",
 	"grant":                        "R",
 	"granted":                      "U",
@@ -314,7 +304,6 @@ var KeywordsCategories = map[string]string{
 	"level":                        "U",
 	"like":                         "T",
 	"limit":                        "R",
-	"linestring":                   "U",
 	"list":                         "U",
 	"local":                        "U",
 	"locale":                       "U",
@@ -348,18 +337,6 @@ var KeywordsCategories = map[string]string{
 	"mspace":                       "U",
 	"msspace":                      "U",
 	"mstype":                       "U",
-	"multilinestring":              "U",
-	"multilinestringm":             "U",
-	"multilinestringz":             "U",
-	"multilinestringzm":            "U",
-	"multipoint":                   "U",
-	"multipointm":                  "U",
-	"multipointz":                  "U",
-	"multipointzm":                 "U",
-	"multipolygon":                 "U",
-	"multipolygonm":                "U",
-	"multipolygonz":                "U",
-	"multipolygonzm":               "U",
 	"multirange_type_name":         "U",
 	"name":                         "U",
 	"names":                        "U",
@@ -441,14 +418,8 @@ var KeywordsCategories = map[string]string{
 	"plan":                         "U",
 	"plans":                        "U",
 	"point":                        "C",
-	"pointm":                       "U",
-	"pointz":                       "U",
-	"pointzm":                      "U",
 	"policy":                       "U",
 	"polygon":                      "C",
-	"polygonm":                     "U",
-	"polygonz":                     "U",
-	"polygonzm":                    "U",
 	"position":                     "C",
 	"preceding":                    "U",
 	"precision":                    "C",
@@ -731,7 +702,6 @@ var KeywordNames = []string{
 	"bit",
 	"boolean",
 	"both",
-	"box2d",
 	"bpchar",
 	"bucket_count",
 	"buffer_usage_limit",
@@ -897,15 +867,6 @@ var KeywordNames = []string{
 	"function",
 	"functions",
 	"generated",
-	"geography",
-	"geometry",
-	"geometrycollection",
-	"geometrycollectionm",
-	"geometrycollectionz",
-	"geometrycollectionzm",
-	"geometrym",
-	"geometryz",
-	"geometryzm",
 	"global",
 	"grant",
 	"granted",
@@ -999,7 +960,6 @@ var KeywordNames = []string{
 	"level",
 	"like",
 	"limit",
-	"linestring",
 	"list",
 	"local",
 	"locale",
@@ -1033,18 +993,6 @@ var KeywordNames = []string{
 	"mspace",
 	"msspace",
 	"mstype",
-	"multilinestring",
-	"multilinestringm",
-	"multilinestringz",
-	"multilinestringzm",
-	"multipoint",
-	"multipointm",
-	"multipointz",
-	"multipointzm",
-	"multipolygon",
-	"multipolygonm",
-	"multipolygonz",
-	"multipolygonzm",
 	"multirange_type_name",
 	"name",
 	"names",
@@ -1126,14 +1074,8 @@ var KeywordNames = []string{
 	"plan",
 	"plans",
 	"point",
-	"pointm",
-	"pointz",
-	"pointzm",
 	"policy",
 	"polygon",
-	"polygonm",
-	"polygonz",
-	"polygonzm",
 	"position",
 	"preceding",
 	"precision",
@@ -1464,8 +1406,6 @@ func GetKeywordID(k string) int32 {
 		return BOOLEAN
 	case "both":
 		return BOTH
-	case "box2d":
-		return BOX2D
 	case "bpchar":
 		return BPCHAR
 	case "bucket_count":
@@ -1796,24 +1736,6 @@ func GetKeywordID(k string) int32 {
 		return FUNCTIONS
 	case "generated":
 		return GENERATED
-	case "geography":
-		return GEOGRAPHY
-	case "geometry":
-		return GEOMETRY
-	case "geometrycollection":
-		return GEOMETRYCOLLECTION
-	case "geometrycollectionm":
-		return GEOMETRYCOLLECTIONM
-	case "geometrycollectionz":
-		return GEOMETRYCOLLECTIONZ
-	case "geometrycollectionzm":
-		return GEOMETRYCOLLECTIONZM
-	case "geometrym":
-		return GEOMETRYM
-	case "geometryz":
-		return GEOMETRYZ
-	case "geometryzm":
-		return GEOMETRYZM
 	case "global":
 		return GLOBAL
 	case "grant":
@@ -2000,8 +1922,6 @@ func GetKeywordID(k string) int32 {
 		return LIKE
 	case "limit":
 		return LIMIT
-	case "linestring":
-		return LINESTRING
 	case "list":
 		return LIST
 	case "local":
@@ -2068,30 +1988,6 @@ func GetKeywordID(k string) int32 {
 		return MSSPACE
 	case "mstype":
 		return MSTYPE
-	case "multilinestring":
-		return MULTILINESTRING
-	case "multilinestringm":
-		return MULTILINESTRINGM
-	case "multilinestringz":
-		return MULTILINESTRINGZ
-	case "multilinestringzm":
-		return MULTILINESTRINGZM
-	case "multipoint":
-		return MULTIPOINT
-	case "multipointm":
-		return MULTIPOINTM
-	case "multipointz":
-		return MULTIPOINTZ
-	case "multipointzm":
-		return MULTIPOINTZM
-	case "multipolygon":
-		return MULTIPOLYGON
-	case "multipolygonm":
-		return MULTIPOLYGONM
-	case "multipolygonz":
-		return MULTIPOLYGONZ
-	case "multipolygonzm":
-		return MULTIPOLYGONZM
 	case "multirange_type_name":
 		return MULTIRANGE_TYPE_NAME
 	case "name":
@@ -2254,22 +2150,10 @@ func GetKeywordID(k string) int32 {
 		return PLANS
 	case "point":
 		return POINT
-	case "pointm":
-		return POINTM
-	case "pointz":
-		return POINTZ
-	case "pointzm":
-		return POINTZM
 	case "policy":
 		return POLICY
 	case "polygon":
 		return POLYGON
-	case "polygonm":
-		return POLYGONM
-	case "polygonz":
-		return POLYGONZ
-	case "polygonzm":
-		return POLYGONZM
 	case "position":
 		return POSITION
 	case "preceding":

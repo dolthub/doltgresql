@@ -92,11 +92,15 @@ func getQuickFunctionFromProvider(ctx *sql.Context, schemaName string, functionN
 	}
 }
 
-// getQuickExtensionFunction resolves an extension-provided function by name only. Returns nil if no registered
+// getQuickExtensionFunction resolves an extension-provided function by name and parameter types. Returns nil if no registered
 // extension declares a matching routine. Extension routines never read their resolved types, so the wrapper carries
 // placeholders sized to the routine's signature.
 func getQuickExtensionFunction(functionID id.Function) any {
-	routine, ok := extensions.GetRoutine(functionID.FunctionName(), functionID.ParameterCount())
+	paramTypeNames := make([]string, functionID.ParameterCount())
+	for i, param := range functionID.Parameters() {
+		paramTypeNames[i] = param.TypeName()
+	}
+	routine, ok := extensions.GetRoutine(functionID.FunctionName(), paramTypeNames)
 	if !ok {
 		return nil
 	}

@@ -27,7 +27,8 @@ type TypeCodec struct {
 }
 
 // LoadTypeCodec returns the storage codec registered under the given name, or nil when the type serializes through its
-// send and receive functions. This is used to avoid a dependency cycle.
+// send and receive functions. A type without a send function is looked up by its own name. This is used to avoid a
+// dependency cycle.
 var LoadTypeCodec func(sendFuncName string) *TypeCodec
 
 var _ types.VectorIndexableType = &DoltgresType{}
@@ -36,6 +37,9 @@ var _ types.VectorIndexableType = &DoltgresType{}
 func (t *DoltgresType) codec() *TypeCodec {
 	if LoadTypeCodec == nil {
 		return nil
+	}
+	if t.SendFunc == 0 {
+		return LoadTypeCodec(t.ID.TypeName())
 	}
 	return LoadTypeCodec(globalFunctionRegistry.GetString(t.SendFunc))
 }
