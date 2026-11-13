@@ -2223,6 +2223,18 @@ func TestBasicIndexing(t *testing.T) {
 					Expected: []sql.Row{{"a"}},
 				},
 				{
+					Query:    "SELECT v FROM npk WHERE n = '01';",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = '1.50';",
+					Expected: []sql.Row{{"c"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 2::INT8;",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
 					Query:    "SELECT v FROM npk WHERE n = $1;",
 					BindVars: []any{"2"},
 					Expected: []sql.Row{{"b"}},
@@ -2253,6 +2265,18 @@ func TestBasicIndexing(t *testing.T) {
 				},
 				{
 					Query:    "SELECT v FROM bpk WHERE id = '2';",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT v FROM bpk WHERE id = 2::INT8;",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT v FROM ipk WHERE id = 2::INT8;",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT v FROM ipk WHERE id = '2';",
 					Expected: []sql.Row{{"b"}},
 				},
 				{

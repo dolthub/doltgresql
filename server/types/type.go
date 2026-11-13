@@ -639,6 +639,21 @@ func (t *DoltgresType) ConvertToType(ctx *sql.Context, typ sql.ExtendedType, val
 		return nil, sql.InRange, errors.Errorf("expected DoltgresType, got %T", typ)
 	}
 
+	// There are no casts to the unknown type, whose values are the text of a literal, so a value converts to unknown
+	// through the output function of its type. This mirrors the conversion from unknown through the input function
+	// below, and lets callers check that a value converted from an unknown literal converts back to the same text.
+	if t.ID == Unknown.ID && dt.ID != Unknown.ID {
+		if val == nil {
+			return nil, sql.InRange, nil
+		}
+
+		str, err := dt.IoOutput(ctx, val)
+		if err != nil {
+			return nil, sql.InRange, err
+		}
+		return str, sql.InRange, nil
+	}
+
 	cast, err := t.getOrBuildCast(ctx, dt, convTyp)
 	if err != nil {
 		return nil, sql.InRange, err
