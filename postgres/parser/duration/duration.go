@@ -27,12 +27,14 @@ package duration
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"strings"
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
@@ -189,6 +191,14 @@ func (d Duration) Compare(x Duration) int {
 		return 1
 	}
 	return 0
+}
+
+// WriteHashKey writes the total span of the duration to |w|, treating a month as 30 days and a day as 24 hours, the
+// same way that PostgreSQL hashes intervals. Durations that are equal, such as 1 day and 24 hours, write identical bytes.
+func (d Duration) WriteHashKey(_ *sql.Context, w io.Writer) error {
+	span, _, _ := d.EncodeBigInt()
+	_, err := w.Write(span.Append(nil, 16))
+	return err
 }
 
 // FromInt64 converts an int64 number of seconds to a
