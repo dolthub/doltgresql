@@ -413,5 +413,26 @@ select 'drop table gexec_test', 'select ''2000-01-01''::date as party_over'`,
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3851
+			Name: "string literal containing a double quote in a function argument",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT lower('"');`,
+					Expected:         []sql.Row{{`"`}},
+					ExpectedColNames: []string{"lower"},
+				},
+				{
+					Query:            `SELECT replace('a', '"', 'b');`,
+					Expected:         []sql.Row{{"a"}},
+					ExpectedColNames: []string{"replace"},
+				},
+				{
+					Query:            `SELECT '"';`,
+					Expected:         []sql.Row{{`"`}},
+					ExpectedColNames: []string{"?column?"},
+				},
+			},
+		},
 	})
 }
