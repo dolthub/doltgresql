@@ -1860,6 +1860,47 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "partial index predicate that evaluates to NULL",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT);",
+				"CREATE UNIQUE INDEX t_partial ON t (a) WHERE b > 5;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t VALUES (1, 1, NULL), (2, 1, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (3, 1, 6);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t VALUES (4, 1, 7);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "UPDATE t SET b = NULL WHERE id = 3;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t SET b = 8 WHERE id = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE t SET b = 9 WHERE id = 2;",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "DELETE FROM t WHERE b IS NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t;",
+					Expected: []sql.Row{{1, 1, 8}},
+				},
+			},
+		},
+		{
 			Name: "partial index on keyless table",
 			SetUpScript: []string{
 				"CREATE TABLE t (a INT, b INT);",
@@ -1912,6 +1953,65 @@ func TestBasicIndexing(t *testing.T) {
 				{
 					Query:       "INSERT INTO t VALUES (3, 99);",
 					ExpectedErr: "duplicate unique key given",
+				},
+			},
+		},
+		{
+			Name: "partial unique index on keyless table with rows outside the predicate",
+			SetUpScript: []string{
+				"CREATE TABLE t (p INT, slot INT);",
+				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t VALUES (1, 5), (1, 6);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (1, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t VALUES (1, NULL);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "UPDATE t SET slot = 7 WHERE slot IS NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (1, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY slot;",
+					Expected: []sql.Row{{1, 5}, {1, 6}, {1, 7}, {1, nil}},
+				},
+			},
+		},
+		{
+			Name: "dropping a column that precedes the columns of a partial index predicate",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, extra INT, p INT, slot INT);",
+				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
+				"INSERT INTO t VALUES (1, 0, 1, NULL), (2, 0, 2, 5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t DROP COLUMN extra;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 1, nil}, {2, 2, 5}},
+				},
+				{
+					Query:       "INSERT INTO t VALUES (3, 1, NULL);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "INSERT INTO t VALUES (3, 2, NULL);",
+					Expected: []sql.Row{},
 				},
 			},
 		},
