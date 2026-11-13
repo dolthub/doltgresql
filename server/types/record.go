@@ -22,9 +22,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/hash"
 
-	"github.com/dolthub/doltgresql/utils"
-
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // Record is a generic, anonymous record type, without field type information supplied yet. When used with RecordExpr,
