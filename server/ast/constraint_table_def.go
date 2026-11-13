@@ -108,10 +108,6 @@ func nodeUniqueConstraintTableDef(
 		return nil, errors.Errorf("TABLESPACE is not yet supported")
 	}
 
-	if node.NullsNotDistinct {
-		return nil, errors.Errorf("NULLS NOT DISTINCT is not yet supported")
-	}
-
 	if tree.IsDeferrable(node.Deferrable, node.Initially) {
 		return nil, errors.Errorf("DEFERRABLE constraints are not yet supported")
 	}
@@ -131,10 +127,11 @@ func nodeUniqueConstraintTableDef(
 		Table:    tableName,
 		IfExists: ifExists,
 		IndexSpec: &vitess.IndexSpec{
-			ToName: vitess.NewColIdent(bareIdentifier(node.Name)),
-			Action: "create",
-			Type:   indexType,
-			Fields: indexFields,
+			ToName:  vitess.NewColIdent(bareIdentifier(node.Name)),
+			Action:  "create",
+			Type:    indexType,
+			Fields:  indexFields,
+			Options: nullsNotDistinctOptions(node.NullsNotDistinct),
 		},
 	}, nil
 }

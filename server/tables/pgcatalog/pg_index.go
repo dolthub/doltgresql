@@ -266,27 +266,27 @@ func pgIndexToRow(index *pgIndex) sql.Row {
 	}
 
 	return sql.Row{
-		index.indexOid,         // indexrelid
-		index.tableOid,         // indrelid
-		index.indnatts,         // indnatts
-		index.indnatts,         // indnkeyatts (we don't support INCLUDE columns, so all columns are key columns)
-		index.index.IsUnique(), // indisunique
-		false,                  // indnullsnotdistinct
-		index.indisprimary,     // indisprimary
-		false,                  // indisexclusion
-		false,                  // indimmediate
-		false,                  // indisclustered
-		true,                   // indisvalid
-		false,                  // indcheckxmin
-		true,                   // indisready
-		true,                   // indislive
-		false,                  // indisreplident
-		index.indkey,           // indkey
-		indCollation,           // indcollation
-		index.indclass,         // indclass
-		index.indoption,        // indoption
-		nil,                    // indexprs
-		indexPred(index.index), // indpred
+		index.indexOid,                         // indexrelid
+		index.tableOid,                         // indrelid
+		index.indnatts,                         // indnatts
+		index.indnatts,                         // indnkeyatts (we don't support INCLUDE columns, so all columns are key columns)
+		index.index.IsUnique(),                 // indisunique
+		sql.IndexNullsNotDistinct(index.index), // indnullsnotdistinct
+		index.indisprimary,                     // indisprimary
+		false,                                  // indisexclusion
+		false,                                  // indimmediate
+		false,                                  // indisclustered
+		true,                                   // indisvalid
+		false,                                  // indcheckxmin
+		true,                                   // indisready
+		true,                                   // indislive
+		false,                                  // indisreplident
+		index.indkey,                           // indkey
+		indCollation,                           // indcollation
+		index.indclass,                         // indclass
+		index.indoption,                        // indoption
+		nil,                                    // indexprs
+		indexPred(index.index),                 // indpred
 	}
 }
 

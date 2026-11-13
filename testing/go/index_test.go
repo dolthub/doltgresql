@@ -1374,6 +1374,65 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "unique index NULLS NOT DISTINCT",
+			SetUpScript: []string{
+				"CREATE TABLE it (id INT PRIMARY KEY, a INT, b INT);",
+				"INSERT INTO it VALUES (1, NULL, 1), (2, NULL, 1), (3, 2, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "CREATE UNIQUE INDEX it_a_b_idx ON it (a, b) NULLS NOT DISTINCT;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "CREATE UNIQUE INDEX IF NOT EXISTS it_a_b_idx ON it (a, b) NULLS NOT DISTINCT;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "CREATE UNIQUE INDEX it_a_b_idx ON it (a, b) NULLS DISTINCT;",
+				},
+				{
+					Query: "CREATE UNIQUE INDEX it_b_a_idx ON it (b DESC, a) NULLS NOT DISTINCT WHERE id > 1;",
+				},
+				{
+					// NULLS NOT DISTINCT has no effect on a non-unique index, but is still recorded
+					Query: "CREATE INDEX it_b_idx ON it (b) NULLS NOT DISTINCT;",
+				},
+				{
+					Query:           "INSERT INTO it VALUES (4, 2, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "INSERT INTO it VALUES (4, NULL, 1);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO it VALUES (0, 2, NULL);",
+				},
+				{
+					Query: "SELECT c.relname, i.indnullsnotdistinct FROM pg_index i " +
+						"JOIN pg_class c ON c.oid = i.indexrelid WHERE i.indrelid = 'it'::regclass ORDER BY 1;",
+					Expected: []sql.Row{{"it_a_b_idx", "f"}, {"it_b_a_idx", "t"}, {"it_b_idx", "t"}, {"it_pkey", "f"}},
+				},
+				{
+					Query: "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'it' AND indexname <> 'it_b_a_idx' ORDER BY 1;",
+					Expected: []sql.Row{
+						{"it_a_b_idx", "CREATE UNIQUE INDEX it_a_b_idx ON public.it USING btree (a, b)"},
+						{"it_b_idx", "CREATE INDEX it_b_idx ON public.it USING btree (b) NULLS NOT DISTINCT"},
+						{"it_pkey", "CREATE UNIQUE INDEX it_pkey ON public.it USING btree (id)"},
+					},
+				},
+				{
+					Query:    "SELECT * FROM it ORDER BY id;",
+					Expected: []sql.Row{{0, 2, nil}, {1, nil, 1}, {2, nil, 1}, {3, 2, nil}},
+				},
+			},
+		},
+		{
 			Name: "Proper range AND + OR handling",
 			SetUpScript: []string{
 				"CREATE TABLE test(pk INTEGER PRIMARY KEY, v1 INTEGER);",

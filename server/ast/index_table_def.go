@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/sirupsen/logrus"
 
+	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
@@ -51,4 +52,13 @@ func nodeIndexTableDef(ctx *Context, node *tree.IndexTableDef) (*vitess.IndexDef
 		},
 		Fields: indexFields,
 	}, nil
+}
+
+// nullsNotDistinctOptions returns the index options that mark an index as treating NULLs as equal to each other, which
+// are empty when |nullsNotDistinct| is false.
+func nullsNotDistinctOptions(nullsNotDistinct bool) []*vitess.IndexOption {
+	if !nullsNotDistinct {
+		return nil
+	}
+	return []*vitess.IndexOption{{Name: sql.NullsNotDistinctOptionName}}
 }

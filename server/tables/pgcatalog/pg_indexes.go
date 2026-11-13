@@ -138,6 +138,9 @@ func getIndexDef(ctx *sql.Context, index sql.Index, schema string, tableSchema s
 	colsStr := strings.Join(cols, ", ")
 
 	def := fmt.Sprintf("CREATE%s INDEX %s ON %s.%s USING %s (%s)", unique, name, schema, index.Table(), using, colsStr)
+	if sql.IndexNullsNotDistinct(index) {
+		def += " NULLS NOT DISTINCT"
+	}
 	if pi, ok := index.(sql.PartialIndex); ok && pi.Predicate() != "" {
 		def += " WHERE (" + pi.Predicate() + ")"
 	}
