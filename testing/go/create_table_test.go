@@ -862,6 +862,19 @@ func TestCreateTable(t *testing.T) {
 					Query:    "SELECT pg_get_indexdef('t1_a_b_key'::regclass);",
 					Expected: []sql.Row{{"CREATE UNIQUE INDEX t1_a_b_key ON public.t1 USING btree (a, b) NULLS NOT DISTINCT"}},
 				},
+				{
+					// rewriting the table keeps the option
+					Query: "ALTER TABLE t1 ALTER COLUMN b TYPE BIGINT;",
+				},
+				{
+					Query:           "INSERT INTO t1 VALUES (6, NULL, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:    "SELECT indnullsnotdistinct FROM pg_index WHERE indexrelid = 't1_a_b_key'::regclass;",
+					Expected: []sql.Row{{"t"}},
+				},
 			},
 		},
 		{
