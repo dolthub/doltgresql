@@ -35,11 +35,6 @@ func nodeCreateIndex(ctx *Context, node *tree.CreateIndex) (*vitess.AlterTable, 
 	if node == nil {
 		return nil, nil
 	}
-
-	if node.Unique && !node.NullsDistinct {
-		return nil, errors.Errorf("NULLS NOT DISTINCT is not yet supported")
-	}
-
 	var vectorOptions []*vitess.IndexOption
 	columns := node.Columns
 	indexParams := node.IndexParams
@@ -96,7 +91,7 @@ func nodeCreateIndex(ctx *Context, node *tree.CreateIndex) (*vitess.AlterTable, 
 					ToName:    indexDef.Info.Name,
 					Type:      indexType,
 					Fields:    indexDef.Fields,
-					Options:   append(indexDef.Options, vectorOptions...),
+					Options:   append(append(indexDef.Options, vectorOptions...), nullsNotDistinctOptions(!node.NullsDistinct)...),
 					Predicate: predicate,
 				},
 			},

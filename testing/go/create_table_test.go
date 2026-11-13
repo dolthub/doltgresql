@@ -754,32 +754,113 @@ func TestCreateTable(t *testing.T) {
 		},
 		{
 			Name: "UNIQUE NULLS NOT DISTINCT",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id INT PRIMARY KEY, a INT, b INT, UNIQUE NULLS NOT DISTINCT (a, b));",
+				"INSERT INTO t1 VALUES (1, 1, NULL), (2, NULL, NULL), (3, NULL, 1), (4, 1, 1);",
+				"CREATE TABLE t2 (id INT PRIMARY KEY, a INT, CONSTRAINT t2_a_uniq UNIQUE NULLS NOT DISTINCT (a));",
+				"CREATE TABLE t3 (id INT PRIMARY KEY, a INT UNIQUE NULLS NOT DISTINCT);",
+				"CREATE TABLE t4 (id INT PRIMARY KEY, a INT UNIQUE NULLS DISTINCT, b INT, UNIQUE NULLS DISTINCT (a, b));",
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					Query:       "CREATE TABLE t1 (a INT, b INT, UNIQUE NULLS NOT DISTINCT (a, b));",
-					ExpectedErr: "NULLS NOT DISTINCT is not yet supported",
+					Query:           "INSERT INTO t1 VALUES (5, 1, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
 				},
 				{
-					Query:       "CREATE TABLE t2 (a INT, CONSTRAINT t2_a_key UNIQUE NULLS NOT DISTINCT (a));",
-					ExpectedErr: "NULLS NOT DISTINCT is not yet supported",
+					Query:           "INSERT INTO t1 VALUES (5, NULL, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
 				},
 				{
-					Query:       "CREATE TABLE t3 (a INT UNIQUE NULLS NOT DISTINCT);",
-					ExpectedErr: "NULLS NOT DISTINCT is not yet supported",
+					Query:           "INSERT INTO t1 VALUES (5, NULL, 1);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
 				},
 				{
-					Query: "CREATE TABLE t4 (a INT UNIQUE NULLS DISTINCT, b INT, UNIQUE NULLS DISTINCT (a, b));",
+					Query: "INSERT INTO t1 VALUES (5, 2, NULL);",
 				},
 				{
-					Query: "INSERT INTO t4 VALUES (NULL, 1), (NULL, 1), (1, NULL);",
+					Query:           "UPDATE t1 SET a = 1 WHERE id = 5;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
 				},
 				{
-					Query:       "INSERT INTO t4 VALUES (1, 2);",
-					ExpectedErr: "duplicate unique key",
+					Query: "UPDATE t1 SET b = 2 WHERE id = 5;",
 				},
 				{
-					Query:    "SELECT * FROM t4 ORDER BY a, b;",
-					Expected: []sql.Row{{1, nil}, {nil, 1}, {nil, 1}},
+					Query:    "SELECT * FROM t1 ORDER BY id;",
+					Expected: []sql.Row{{1, 1, nil}, {2, nil, nil}, {3, nil, 1}, {4, 1, 1}, {5, 2, 2}},
+				},
+				{
+					Query: "INSERT INTO t2 VALUES (1, NULL);",
+				},
+				{
+					Query:           "INSERT INTO t2 VALUES (2, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO t3 VALUES (1, NULL);",
+				},
+				{
+					Query:           "INSERT INTO t3 VALUES (2, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO t3 VALUES (2, NULL) ON CONFLICT (a) DO NOTHING;",
+				},
+				{
+					Query: "INSERT INTO t3 VALUES (2, NULL) ON CONFLICT (a) DO UPDATE SET id = 10;",
+				},
+				{
+					Query: "INSERT INTO t3 VALUES (3, NULL) ON CONFLICT DO NOTHING;",
+				},
+				{
+					Query:    "SELECT * FROM t3;",
+					Expected: []sql.Row{{10, nil}},
+				},
+				{
+					Query: "INSERT INTO t4 VALUES (1, NULL, 1), (2, NULL, 1);",
+				},
+				{
+					Query: "SELECT c.relname, i.indnullsnotdistinct FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid " +
+						"WHERE i.indrelid IN ('t1'::regclass, 't2'::regclass, 't3'::regclass, 't4'::regclass) ORDER BY 1;",
+					Expected: []sql.Row{
+						{"t1_a_b_key", "t"},
+						{"t1_pkey", "f"},
+						{"t2_a_uniq", "t"},
+						{"t2_pkey", "f"},
+						{"t3_a_key", "t"},
+						{"t3_pkey", "f"},
+						{"t4_a_b_key", "f"},
+						{"t4_a_key", "f"},
+						{"t4_pkey", "f"},
+					},
+				},
+				{
+					Query: "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint " +
+						"WHERE conrelid IN ('t1'::regclass, 't3'::regclass, 't4'::regclass) AND contype = 'u' ORDER BY 1;",
+					Expected: []sql.Row{
+						{"t1_a_b_key", "UNIQUE NULLS NOT DISTINCT (a, b)"},
+						{"t3_a_key", "UNIQUE NULLS NOT DISTINCT (a)"},
+						{"t4_a_b_key", "UNIQUE (a, b)"},
+						{"t4_a_key", "UNIQUE (a)"},
+					},
+				},
+				{
+					Query: "SELECT indexname, indexdef FROM pg_indexes WHERE tablename IN ('t1', 't3') ORDER BY 1;",
+					Expected: []sql.Row{
+						{"t1_a_b_key", "CREATE UNIQUE INDEX t1_a_b_key ON public.t1 USING btree (a, b) NULLS NOT DISTINCT"},
+						{"t1_pkey", "CREATE UNIQUE INDEX t1_pkey ON public.t1 USING btree (id)"},
+						{"t3_a_key", "CREATE UNIQUE INDEX t3_a_key ON public.t3 USING btree (a) NULLS NOT DISTINCT"},
+						{"t3_pkey", "CREATE UNIQUE INDEX t3_pkey ON public.t3 USING btree (id)"},
+					},
+				},
+				{
+					Query:    "SELECT pg_get_indexdef('t1_a_b_key'::regclass);",
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX t1_a_b_key ON public.t1 USING btree (a, b) NULLS NOT DISTINCT"}},
 				},
 			},
 		},

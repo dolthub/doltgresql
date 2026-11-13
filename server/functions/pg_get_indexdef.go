@@ -84,6 +84,9 @@ func buildIndexDef(ctx *sql.Context, index sql.Index, table sql.Table, schemaNam
 	colsStr := strings.Join(cols, ", ")
 
 	def := fmt.Sprintf("CREATE%s INDEX %s ON %s.%s USING %s (%s)", unique, name, schemaName, index.Table(), using, colsStr)
+	if sql.IndexNullsNotDistinct(index) {
+		def += " NULLS NOT DISTINCT"
+	}
 	if pi, ok := index.(sql.PartialIndex); ok && pi.Predicate() != "" {
 		def += " WHERE (" + pi.Predicate() + ")"
 	}
