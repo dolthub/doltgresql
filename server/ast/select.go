@@ -210,10 +210,10 @@ func inputExpressionForSelectExpr(node tree.SelectExpr) string {
 	}
 	inputExpression := tree.AsStringWithFlags(&node, tree.FmtOmitFunctionArgs)
 	// To be consistent with vitess handling, InputExpression always gets its outer quotes trimmed
-	if strings.HasPrefix(inputExpression, "'") && strings.HasSuffix(inputExpression, "'") {
+	if len(inputExpression) >= 2 && strings.HasPrefix(inputExpression, "'") && strings.HasSuffix(inputExpression, "'") {
 		inputExpression = inputExpression[1 : len(inputExpression)-1]
 	}
-	if strings.HasPrefix(inputExpression, "\"") && strings.HasSuffix(inputExpression, "\"") {
+	if len(inputExpression) >= 2 && strings.HasPrefix(inputExpression, "\"") && strings.HasSuffix(inputExpression, "\"") {
 		inputExpression = inputExpression[1 : len(inputExpression)-1]
 	}
 	return inputExpression
