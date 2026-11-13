@@ -278,6 +278,38 @@ func TestSmokeTests(t *testing.T) {
 			},
 		},
 		{
+			Name: "delete branch after writing to it with USE",
+			SetUpScript: []string{
+				"CREATE TABLE t (k INT PRIMARY KEY);",
+				"SELECT dolt_commit('-Am', 'init');",
+				"SELECT dolt_branch('b');",
+				"USE \"postgres/b\";",
+				"INSERT INTO t VALUES (1);",
+				"USE postgres;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT dolt_branch('-d', 'b');",
+					Expected: []sql.Row{{int64(0)}},
+				},
+				{
+					Query:    "SELECT name FROM dolt_branches ORDER BY name;",
+					Expected: []sql.Row{{"main"}},
+				},
+				{
+					Query: "INSERT INTO t VALUES (2);",
+				},
+				{
+					Query:    "SELECT length(dolt_commit('-am', 'x')::text);",
+					Expected: []sql.Row{{32}},
+				},
+				{
+					Query:    "SELECT * FROM t;",
+					Expected: []sql.Row{{2}},
+				},
+			},
+		},
+		{
 			Name: "Boolean results",
 			Assertions: []ScriptTestAssertion{
 				{
@@ -872,6 +904,53 @@ func TestSmokeTests(t *testing.T) {
 				{
 					Query:       `INSERT INTO test2 VALUES (-1);`,
 					ExpectedErr: "index_constraint2",
+				},
+			},
+		},
+	})
+}
+
+// TestDeleteBranchUsedInSession checks that deleting a branch that a session has written to through a revision database
+// doesn't break that session, regardless of which session deletes the branch.
+func TestDeleteBranchUsedInSession(t *testing.T) {
+	RunTransactionTests(t, []ScriptTest{
+		{
+			Name: "delete branch written by another session",
+			SetUpScript: []string{
+				"CREATE TABLE t (k INT PRIMARY KEY);",
+				"SELECT dolt_commit('-Am', 'init');",
+				"SELECT dolt_branch('b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "/* client A */ USE \"postgres/b\";",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "/* client A */ INSERT INTO t VALUES (1);",
+				},
+				{
+					Query:            "/* client A */ USE postgres;",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    "/* client B */ SELECT dolt_branch('-D', 'b');",
+					Expected: []sql.Row{{int64(0)}},
+				},
+				{
+					Query: "/* client A */ INSERT INTO t VALUES (2);",
+				},
+				{
+					Query:    "/* client A */ SELECT length(dolt_commit('-am', 'x')::text);",
+					Expected: []sql.Row{{32}},
+				},
+				{
+					Query:    "/* client A */ SELECT * FROM t;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "/* client B */ SELECT * FROM t;",
+					Expected: []sql.Row{{2}},
 				},
 			},
 		},
