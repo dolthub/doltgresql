@@ -17,6 +17,7 @@ package functions
 import (
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -25,7 +26,7 @@ import (
 func initHasAnyColumnPrivilege() {
 	framework.RegisterFunction(has_any_column_privilege_name_text_text)
 	framework.RegisterFunction(has_any_column_privilege_name_oid_text)
-	framework.RegisterFunction(has_any_column_privilege_oid_name_text)
+	framework.RegisterFunction(has_any_column_privilege_oid_text_text)
 	framework.RegisterFunction(has_any_column_privilege_oid_oid_text)
 	framework.RegisterFunction(has_any_column_privilege_text_text)
 	framework.RegisterFunction(has_any_column_privilege_oid_text)
@@ -33,72 +34,80 @@ func initHasAnyColumnPrivilege() {
 
 // has_any_column_privilege_name_text_text represents the PostgreSQL function of the same name, taking the same parameters.
 var has_any_column_privilege_name_text_text = framework.Function3{
-	Name:       "has_any_column_privilege",
-	Return:     pgtypes.Bool,
-	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Name, pgtypes.Text, pgtypes.Text},
-	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO does user have privilege for table
-		return true, nil
+	Name:               "has_any_column_privilege",
+	Return:             pgtypes.Bool,
+	Parameters:         [3]*pgtypes.DoltgresType{pgtypes.Name, pgtypes.Text, pgtypes.Text},
+	Strict:             true,
+	IsNonDeterministic: true,
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, user, relation, privilege any) (any, error) {
+		return hasRelationPrivilege(ctx, user, relation, privilege, anyColumnPrivilegeTypes)
 	},
 }
 
 // has_any_column_privilege_name_oid_text represents the PostgreSQL function of the same name, taking the same parameters.
 var has_any_column_privilege_name_oid_text = framework.Function3{
-	Name:       "has_any_column_privilege",
-	Return:     pgtypes.Bool,
-	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Name, pgtypes.Oid, pgtypes.Text},
-	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO does user have privilege for table
-		return true, nil
+	Name:               "has_any_column_privilege",
+	Return:             pgtypes.Bool,
+	Parameters:         [3]*pgtypes.DoltgresType{pgtypes.Name, pgtypes.Oid, pgtypes.Text},
+	Strict:             true,
+	IsNonDeterministic: true,
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, user, relation, privilege any) (any, error) {
+		return hasRelationPrivilege(ctx, user, relation, privilege, anyColumnPrivilegeTypes)
 	},
 }
 
-// has_any_column_privilege_oid_name_text represents the PostgreSQL function of the same name, taking the same parameters.
-var has_any_column_privilege_oid_name_text = framework.Function3{
-	Name:       "has_any_column_privilege",
-	Return:     pgtypes.Bool,
-	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Name, pgtypes.Text},
-	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO does user have privilege for table
-		return true, nil
+// has_any_column_privilege_oid_text_text represents the PostgreSQL function of the same name, taking the same parameters.
+var has_any_column_privilege_oid_text_text = framework.Function3{
+	Name:               "has_any_column_privilege",
+	Return:             pgtypes.Bool,
+	Parameters:         [3]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Text, pgtypes.Text},
+	Strict:             true,
+	IsNonDeterministic: true,
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, user, relation, privilege any) (any, error) {
+		return hasRelationPrivilege(ctx, user, relation, privilege, anyColumnPrivilegeTypes)
 	},
 }
 
 // has_any_column_privilege_oid_oid_text represents the PostgreSQL function of the same name, taking the same parameters.
 var has_any_column_privilege_oid_oid_text = framework.Function3{
-	Name:       "has_any_column_privilege",
-	Return:     pgtypes.Bool,
-	Parameters: [3]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid, pgtypes.Text},
-	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, val1, val2, val3 any) (any, error) {
-		// TODO does user have privilege for table
-		return true, nil
+	Name:               "has_any_column_privilege",
+	Return:             pgtypes.Bool,
+	Parameters:         [3]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Oid, pgtypes.Text},
+	Strict:             true,
+	IsNonDeterministic: true,
+	Callable: func(ctx *sql.Context, _ [4]*pgtypes.DoltgresType, user, relation, privilege any) (any, error) {
+		return hasRelationPrivilege(ctx, user, relation, privilege, anyColumnPrivilegeTypes)
 	},
 }
 
 // has_any_column_privilege_text_text represents the PostgreSQL function of the same name, taking the same parameters.
 var has_any_column_privilege_text_text = framework.Function2{
-	Name:       "has_any_column_privilege",
-	Return:     pgtypes.Bool,
-	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
-	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// TODO does current user have privilege for table
-		return true, nil
+	Name:               "has_any_column_privilege",
+	Return:             pgtypes.Bool,
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Text, pgtypes.Text},
+	Strict:             true,
+	IsNonDeterministic: true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, relation, privilege any) (any, error) {
+		return hasRelationPrivilege(ctx, nil, relation, privilege, anyColumnPrivilegeTypes)
 	},
 }
 
 // has_any_column_privilege_oid_text represents the PostgreSQL function of the same name, taking the same parameters.
 var has_any_column_privilege_oid_text = framework.Function2{
-	Name:       "has_any_column_privilege",
-	Return:     pgtypes.Bool,
-	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Text},
-	Strict:     true,
-	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1, val2 any) (any, error) {
-		// TODO does current user have privilege for table
-		return true, nil
+	Name:               "has_any_column_privilege",
+	Return:             pgtypes.Bool,
+	Parameters:         [2]*pgtypes.DoltgresType{pgtypes.Oid, pgtypes.Text},
+	Strict:             true,
+	IsNonDeterministic: true,
+	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, relation, privilege any) (any, error) {
+		return hasRelationPrivilege(ctx, nil, relation, privilege, anyColumnPrivilegeTypes)
 	},
+}
+
+// anyColumnPrivilegeTypes are the privilege names accepted by has_any_column_privilege.
+var anyColumnPrivilegeTypes = map[string]auth.Privilege{
+	"SELECT":     auth.Privilege_SELECT,
+	"INSERT":     auth.Privilege_INSERT,
+	"UPDATE":     auth.Privilege_UPDATE,
+	"REFERENCES": auth.Privilege_REFERENCES,
 }

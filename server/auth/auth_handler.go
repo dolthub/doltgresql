@@ -503,24 +503,40 @@ func checkPrivilegeOnSchema(state AuthorizationQueryState, schemaName string, pr
 
 // checkPrivilegeOnTable checks privileges for given table or view provided with schema name.
 func checkPrivilegeOnTable(state AuthorizationQueryState, relationKind, schemaName, tableName string, privileges []Privilege) error {
-	roleTableKey := TablePrivilegeKey{
-		Role:  state.role.ID(),
-		Table: doltdb.TableName{Name: tableName, Schema: schemaName},
-	}
-	publicTableKey := TablePrivilegeKey{
-		Role:  state.public.ID(),
-		Table: doltdb.TableName{Name: tableName, Schema: schemaName},
-	}
 	for _, privilege := range privileges {
-		if !HasTablePrivilege(roleTableKey, privilege) && !HasTablePrivilege(publicTableKey, privilege) {
-			if privilege == Privilege_SELECT && isPublicCatalogTable(schemaName, tableName) {
-				//TODO: catalogs are granted to PUBLIC by default, so deny them once REVOKE ... FROM PUBLIC is supported
-				continue
-			}
+		if !roleHasTablePrivilege(state.role.ID(), state.public.ID(), schemaName, tableName, privilege) {
 			return pgerror.Newf(pgcode.InsufficientPrivilege, "permission denied for %s %s", relationKind, tableName)
 		}
 	}
 	return nil
+}
+
+// RoleHasTablePrivilege returns whether the role holds the given privilege on the table or view, either directly,
+// through an inherited role, or through PUBLIC. This applies the same rules as query execution. The caller must hold
+// the auth lock.
+func RoleHasTablePrivilege(role RoleID, schemaName, tableName string, privilege Privilege) bool {
+	public := GetRole("public")
+	return roleHasTablePrivilege(role, public.ID(), schemaName, tableName, privilege)
+}
+
+func roleHasTablePrivilege(role RoleID, public RoleID, schemaName, tableName string, privilege Privilege) bool {
+	table := doltdb.TableName{Name: tableName, Schema: schemaName}
+	if HasTablePrivilege(TablePrivilegeKey{Role: role, Table: table}, privilege) ||
+		HasTablePrivilege(TablePrivilegeKey{Role: public, Table: table}, privilege) {
+		return true
+	}
+
+	//TODO: catalogs are granted to PUBLIC by default, so deny them once REVOKE ... FROM PUBLIC is supported
+	return privilege == Privilege_SELECT && isPublicCatalogTable(schemaName, tableName)
+}
+
+// RoleHasTablePrivilegeGrantOption returns whether the role holds WITH GRANT OPTION for the given privilege on the table
+// or view, either directly, through an inherited role, or through PUBLIC. The caller must hold the auth lock.
+func RoleHasTablePrivilegeGrantOption(role RoleID, schemaName, tableName string, privilege Privilege) bool {
+	public := GetRole("public")
+	table := doltdb.TableName{Name: tableName, Schema: schemaName}
+	return HasTablePrivilegeGrantOption(TablePrivilegeKey{Role: role, Table: table}, privilege).IsValid() ||
+		HasTablePrivilegeGrantOption(TablePrivilegeKey{Role: public.ID(), Table: table}, privilege).IsValid()
 }
 
 // restrictedCatalogTables are the pg_catalog relations that Postgres does not grant SELECT on to PUBLIC.
@@ -556,22 +572,33 @@ func isPublicCatalogTable(schemaName string, tableName string) bool {
 
 // checkPrivilegeOnSequence checks privileges for given sequence provided with schema name.
 func checkPrivilegeOnSequence(state AuthorizationQueryState, schemaName, seqName string, privileges []Privilege) error {
-	roleSequenceKey := SequencePrivilegeKey{
-		Role:   state.role.ID(),
-		Schema: schemaName,
-		Name:   seqName,
-	}
-	publicSequenceKey := SequencePrivilegeKey{
-		Role:   state.public.ID(),
-		Schema: schemaName,
-		Name:   seqName,
-	}
 	for _, privilege := range privileges {
-		if !HasSequencePrivilege(roleSequenceKey, privilege) && !HasSequencePrivilege(publicSequenceKey, privilege) {
+		if !roleHasSequencePrivilege(state.role.ID(), state.public.ID(), schemaName, seqName, privilege) {
 			return pgerror.Newf(pgcode.InsufficientPrivilege, "permission denied for sequence %s", seqName)
 		}
 	}
 	return nil
+}
+
+// RoleHasSequencePrivilege returns whether the role holds the given privilege on the sequence, either directly, through
+// an inherited role, or through PUBLIC. This applies the same rules as query execution. The caller must hold the auth
+// lock.
+func RoleHasSequencePrivilege(role RoleID, schemaName, seqName string, privilege Privilege) bool {
+	public := GetRole("public")
+	return roleHasSequencePrivilege(role, public.ID(), schemaName, seqName, privilege)
+}
+
+func roleHasSequencePrivilege(role RoleID, public RoleID, schemaName, seqName string, privilege Privilege) bool {
+	return HasSequencePrivilege(SequencePrivilegeKey{Role: role, Schema: schemaName, Name: seqName}, privilege) ||
+		HasSequencePrivilege(SequencePrivilegeKey{Role: public, Schema: schemaName, Name: seqName}, privilege)
+}
+
+// RoleHasSequencePrivilegeGrantOption returns whether the role holds WITH GRANT OPTION for the given privilege on the
+// sequence, either directly, through an inherited role, or through PUBLIC. The caller must hold the auth lock.
+func RoleHasSequencePrivilegeGrantOption(role RoleID, schemaName, seqName string, privilege Privilege) bool {
+	public := GetRole("public")
+	return HasSequencePrivilegeGrantOption(SequencePrivilegeKey{Role: role, Schema: schemaName, Name: seqName}, privilege).IsValid() ||
+		HasSequencePrivilegeGrantOption(SequencePrivilegeKey{Role: public.ID(), Schema: schemaName, Name: seqName}, privilege).IsValid()
 }
 
 // checkPrivilegeOnRoutine checks privileges for given function or procedure provided with schema name.
