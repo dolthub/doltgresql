@@ -62,18 +62,20 @@ const maxTextBytes = 1 << 30
 func InitializeWithVariables(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig, vars *sql.EngineVariables) {
 	initializeProcess(dEnv, cfg)
 	config.InitWithRegistry(vars.System)
-	// string_agg is built on GROUP_CONCAT, which cuts its result at group_concat_max_len
-	// (1024 by default, as in MySQL). PostgreSQL's limit is that of any text value, 1 GB.
-	ctx := sql.NewContextWithVariables(context.Background(), vars)
-	if err := vars.System.SetGlobal(ctx, "group_concat_max_len", uint64(maxTextBytes)); err != nil {
-		panic(err)
-	}
 }
 
 // NewPostgresEngineVariables initializes process-wide catalogs once and returns
 // a new engine bundle with Dolt's and PostgreSQL's definitions registered.
 func NewPostgresEngineVariables(dEnv *env.DoltEnv, cfg *doltgresservercfg.DoltgresConfig) (*sql.EngineVariables, error) {
 	vars := sqle.NewEngineVariables()
+
+	// string_agg is built on GROUP_CONCAT, which cuts its result at group_concat_max_len
+	// (1024 by default, as in MySQL). PostgreSQL's limit is that of any text value, 1 GB.
+	ctx := sql.NewContextWithVariables(context.Background(), vars)
+	if err := vars.System.SetGlobal(ctx, "group_concat_max_len", uint64(maxTextBytes)); err != nil {
+		return nil, err
+	}
+
 	InitializeWithVariables(dEnv, cfg, vars)
 	return vars, nil
 }
