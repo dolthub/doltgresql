@@ -671,10 +671,12 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 	}
 
 	// We need to update the root for all databases used by this context. This logic parallels what happens during
-	// transaction commit in the dolt/sqle layer, where we check each branch state to see if it's dirty
+	// transaction commit in the dolt/sqle layer, where we check each branch state to see if it's dirty. Collections
+	// cached for a database or branch that has since been dropped or deleted (possibly by another session) have nowhere
+	// to be written, so we evict them.
 	for _, db := range slices.Sorted(maps.Keys(cv.colls)) {
 		if err := updateSessionRootForDatabase(ctx, db, cv.colls[db]); err != nil {
-			if sql.ErrDatabaseNotFound.Is(err) {
+			if sql.ErrDatabaseNotFound.Is(err) || errors.Is(err, doltdb.ErrBranchNotFound) {
 				delete(cv.colls, db)
 				continue
 			}
