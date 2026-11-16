@@ -740,6 +740,161 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "aggregate FILTER (WHERE ...)",
+			SetUpScript: []string{
+				"CREATE TABLE posts (id INT PRIMARY KEY, grp TEXT, status TEXT, n INT);",
+				`INSERT INTO posts VALUES
+					(1, 'a', 'published', 1),
+					(2, 'a', 'draft', 2),
+					(3, 'a', 'published', NULL),
+					(4, 'b', 'published', 4),
+					(5, 'b', 'draft', 5);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'published') FROM posts;",
+					Expected:         []sql.Row{{5, 3}},
+					ExpectedColNames: []string{"count", "count"},
+				},
+				{
+					Query:    "SELECT COUNT(n) FILTER (WHERE status = 'published') FROM posts;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT grp) FILTER (WHERE status = 'draft') FROM posts;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT MIN(n) FILTER (WHERE status = 'draft'), MAX(n) FILTER (WHERE status = 'published') FROM posts;",
+					Expected: []sql.Row{{2, 4}},
+				},
+				{
+					Query: "SELECT grp, COUNT(*) FILTER (WHERE status = 'published'), COUNT(*) FROM posts GROUP BY grp ORDER BY grp;",
+					Expected: []sql.Row{
+						{"a", 2, 3},
+						{"b", 1, 2},
+					},
+				},
+				{
+					Query:    "SELECT COUNT(*) FILTER (WHERE status = 'archived'), MAX(n) FILTER (WHERE status = 'archived') FROM posts;",
+					Expected: []sql.Row{{0, nil}},
+				},
+				{
+					Query:    "SELECT string_agg(status, ',') FILTER (WHERE id = 4) FROM posts;",
+					Expected: []sql.Row{{"published"}},
+				},
+				{
+					Query:    "SELECT array_agg(n ORDER BY id) FILTER (WHERE status = 'draft') FROM posts;",
+					Expected: []sql.Row{{"{2,5}"}},
+				},
+			},
+		},
+		{
+			Name: "aggregate FILTER keeps the aggregate's NULL handling",
+			SetUpScript: []string{
+				"CREATE TABLE filtered (id INT PRIMARY KEY, g TEXT, x INT, s TEXT, b BOOL);",
+				"INSERT INTO filtered VALUES (1, 'a', 1, 'p', true), (2, 'a', NULL, 'q', false), (3, 'b', 3, NULL, true), (4, 'b', 4, 'r', NULL), (5, 'a', 5, 'p', true);",
+				"CREATE FUNCTION count_all_step(int8, int4) RETURNS int8 LANGUAGE SQL AS 'SELECT $1 + 1';",
+				"CREATE AGGREGATE count_all(int4) (SFUNC = count_all_step, STYPE = int8, INITCOND = '0');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT array_agg(x ORDER BY id) FILTER (WHERE id > 1) FROM filtered;",
+					Expected:         []sql.Row{{"{NULL,3,4,5}"}},
+					ExpectedColNames: []string{"array_agg"},
+				},
+				{
+					Query:    "SELECT json_agg(x) FILTER (WHERE id > 3) FROM filtered;",
+					Expected: []sql.Row{{"[4, 5]"}},
+				},
+				{
+					Query: "SELECT g, array_agg(x ORDER BY id) FILTER (WHERE b) FROM filtered GROUP BY g ORDER BY g;",
+					Expected: []sql.Row{
+						{"a", "{1,5}"},
+						{"b", "{3}"},
+					},
+				},
+				{
+					// The step function is not strict, so this aggregate counts NULL inputs too
+					Query:    "SELECT count_all(x) FILTER (WHERE id > 1), count_all(x) FROM filtered;",
+					Expected: []sql.Row{{4, 5}},
+				},
+				{
+					Query:    "SELECT xmlagg(xmlelement(name e, x)) FILTER (WHERE id > 3) FROM filtered;",
+					Expected: []sql.Row{{"<e>4</e><e>5</e>"}},
+				},
+				{
+					Query:    "SELECT bool_and(b) FILTER (WHERE id < 3), bool_or(b) FILTER (WHERE id > 3), stddev(x) FILTER (WHERE id > 2) FROM filtered;",
+					Expected: []sql.Row{{"f", "t", Numeric("1.00000000000000000000")}},
+				},
+				{
+					Query:    "SELECT string_agg(s, ',' ORDER BY s) FILTER (WHERE id > 1) FROM filtered;",
+					Expected: []sql.Row{{"p,q,r"}},
+				},
+				{
+					// The filter is applied before the aggregate's argument is evaluated
+					Query:    "SELECT sum(10 / x) FILTER (WHERE x <> 0 AND x IS NOT NULL) FROM filtered;",
+					Expected: []sql.Row{{17}},
+				},
+				{
+					Query:    "SELECT count(DISTINCT g) FILTER (WHERE x > 2), min(x) FILTER (WHERE id > 1), max(x) FILTER (WHERE id < 5) FROM filtered;",
+					Expected: []sql.Row{{2, 3, 4}},
+				},
+				{
+					Query:    "SELECT count(*) FILTER (WHERE false), max(x) FILTER (WHERE false), sum(x) FILTER (WHERE NULL) FROM filtered;",
+					Expected: []sql.Row{{0, nil, nil}},
+				},
+				{
+					Query:    "SELECT g FROM filtered GROUP BY g HAVING count(*) FILTER (WHERE b) > 1;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT count(*) FILTER (WHERE x IN (SELECT max(x) FROM filtered)) FROM filtered;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query: "SELECT id, sum(x) FILTER (WHERE x > 2) OVER (ORDER BY id), count(*) FILTER (WHERE b) OVER (ORDER BY id) FROM filtered ORDER BY id;",
+					Expected: []sql.Row{
+						{1, nil, 1},
+						{2, nil, 1},
+						{3, 3, 2},
+						{4, 7, 2},
+						{5, 12, 3},
+					},
+				},
+				{
+					Query: "SELECT id, sum(x) FILTER (WHERE b) OVER (PARTITION BY g ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM filtered ORDER BY id;",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 1},
+						{3, 3},
+						{4, 3},
+						{5, 5},
+					},
+				},
+				{
+					Query:       "SELECT abs(x) FILTER (WHERE id > 1) FROM filtered;",
+					ExpectedErr: "FILTER specified, but abs is not an aggregate function",
+				},
+				{
+					Query:       "SELECT row_number() FILTER (WHERE id > 1) OVER () FROM filtered;",
+					ExpectedErr: "FILTER is not implemented for non-aggregate window functions",
+				},
+				{
+					Query:       "SELECT count(*) FILTER (WHERE sum(x) > 1) FROM filtered;",
+					ExpectedErr: "aggregate functions are not allowed in FILTER",
+				},
+				{
+					Query:       "SELECT array_agg(x) FILTER (WHERE count(*) > 1) FROM filtered;",
+					ExpectedErr: "aggregate functions are not allowed in FILTER",
+				},
+				{
+					Query:       "SELECT count(*) FILTER (WHERE row_number() OVER () > 1) FROM filtered;",
+					ExpectedErr: "window functions are not allowed in FILTER",
+				},
+			},
+		},
 	})
 }
 

@@ -15,7 +15,6 @@
 package ast
 
 import (
-	"go/constant"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -30,12 +29,6 @@ import (
 func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 	if node == nil {
 		return nil, nil
-	}
-	if node.Filter != nil {
-		var err error
-		if node, err = rewriteAggregateFilter(node); err != nil {
-			return nil, err
-		}
 	}
 	if node.AggType == tree.OrderedSetAgg {
 		return nil, errors.Errorf("WITHIN GROUP is not yet supported")
@@ -70,6 +63,10 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 		return nil, err
 	}
 	exprs, err := nodeExprsToSelectExprs(ctx, node.Exprs)
+	if err != nil {
+		return nil, err
+	}
+	filter, err := nodeExpr(ctx, node.Filter)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +107,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 				SeparatorString: sepString,
 			},
 			OrderBy: orderBy,
+			Filter:  filter,
 		}, nil
 	case "array_agg":
 		var orderBy vitess.OrderBy
@@ -127,6 +125,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 				Auth:               vitess.AuthInformation{},
 			},
 			OrderBy: orderBy,
+			Filter:  filter,
 		}, nil
 	case "greatest":
 		return vitess.InjectedExpr{
@@ -154,6 +153,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 		Name:      name,
 		Distinct:  distinct,
 		Exprs:     exprs,
+		Filter:    filter,
 		Over:      (*vitess.Over)(windowDef),
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_EXECUTE,
@@ -174,39 +174,4 @@ func dropStarArgument(exprs vitess.SelectExprs) vitess.SelectExprs {
 		return exprs
 	}
 	return nil
-}
-
-// filterableAggregates are the aggregates that ignore NULL inputs. For these, FILTER (WHERE c)
-// is the same as passing NULL for every row where c is not true.
-var filterableAggregates = map[string]struct{}{
-	"avg": {}, "bit_and": {}, "bit_or": {}, "bool_and": {}, "bool_or": {}, "count": {},
-	"every": {}, "max": {}, "min": {}, "stddev": {}, "stddev_pop": {}, "stddev_samp": {},
-	"string_agg": {}, "sum": {}, "var_pop": {}, "var_samp": {}, "variance": {},
-}
-
-// rewriteAggregateFilter turns agg(x) FILTER (WHERE c) into agg(CASE WHEN c THEN x END), and
-// count(*) FILTER (WHERE c) into count(CASE WHEN c THEN 1 END). Only the aggregated value is
-// filtered; later arguments, such as the separator of string_agg, are left as they are.
-func rewriteAggregateFilter(node *tree.FuncExpr) (*tree.FuncExpr, error) {
-	var name string
-	switch ref := node.Func.FunctionReference.(type) {
-	case *tree.FunctionDefinition:
-		name = ref.Name
-	case *tree.UnresolvedName:
-		name = ref.Parts[0]
-	}
-	name = strings.ToLower(name)
-	if _, ok := filterableAggregates[name]; !ok || len(node.Exprs) == 0 {
-		return nil, errors.Errorf("FILTER is not yet supported for %s", name)
-	}
-	filtered := *node
-	filtered.Filter = nil
-	filtered.Exprs = append(tree.Exprs(nil), node.Exprs...)
-	value := filtered.Exprs[0]
-	switch value.(type) {
-	case tree.UnqualifiedStar, *tree.UnqualifiedStar:
-		value = tree.NewNumVal(constant.MakeInt64(1), "1", false)
-	}
-	filtered.Exprs[0] = &tree.CaseExpr{Whens: []*tree.When{{Cond: node.Filter, Val: value}}}
-	return &filtered, nil
 }
