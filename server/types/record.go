@@ -15,12 +15,15 @@
 package types
 
 import (
+	"encoding/binary"
+	"io"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
-
-	"github.com/dolthub/doltgresql/utils"
+	"github.com/dolthub/go-mysql-server/sql/hash"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // Record is a generic, anonymous record type, without field type information supplied yet. When used with RecordExpr,
@@ -68,6 +71,20 @@ var Record = &DoltgresType{
 type RecordValue struct {
 	Value any
 	Type  sql.Type
+}
+
+// WriteHashKey implements the hash.Hashable interface. It writes the hash of the value, so that records whose values
+// compare as equal hash the same even when the values have different representations.
+func (r RecordValue) WriteHashKey(ctx *sql.Context, w io.Writer) error {
+	h, err := hash.HashOf(ctx, nil, sql.Row{r.Value})
+	if err != nil {
+		return err
+	}
+
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], h)
+	_, err = w.Write(buf[:])
+	return err
 }
 
 // serializeTypeRecord handles serialization from the standard representation to our serialized representation that is
