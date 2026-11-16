@@ -49,6 +49,7 @@ type RootValue struct {
 	ns        tree.NodeStore
 	st        storage.RootStorage
 	fkc       *doltdb.ForeignKeyCollection // cache the first load
+	fkcLock   sync.Mutex                   // guards fkc, which may be loaded from multiple sessions sharing this root
 	hash      hash.Hash                    // cache the first load
 	colls     []objinterface.Collection    // cache the first load
 	collsLock sync.Mutex                   // guards colls, which may be loaded from multiple sessions sharing this root
@@ -366,21 +367,26 @@ func (root *RootValue) GetFeatureVersion(ctx context.Context) (ver doltdb.Featur
 
 // GetForeignKeyCollection implements the interface doltdb.RootValue.
 func (root *RootValue) GetForeignKeyCollection(ctx context.Context) (*doltdb.ForeignKeyCollection, error) {
+	root.fkcLock.Lock()
+	defer root.fkcLock.Unlock()
+
 	if root.fkc == nil {
 		fkMap, ok, err := root.st.GetForeignKeys(ctx, root.vrw)
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
-			return doltdb.NewForeignKeyCollection()
-		}
 
-		root.fkc, err = doltdb.DeserializeForeignKeys(ctx, root.vrw.Format(), fkMap)
+		if !ok {
+			root.fkc, err = doltdb.NewForeignKeyCollection()
+		} else {
+			root.fkc, err = doltdb.DeserializeForeignKeys(ctx, root.vrw.Format(), fkMap)
+		}
 		if err != nil {
 			return nil, err
 		}
 	}
-	return root.fkc.Copy(), nil
+
+	return root.fkc, nil
 }
 
 // GetForeignKeyCollectionHash implements the interface doltdb.RootValue.
@@ -767,9 +773,9 @@ func (root *RootValue) RemoveTables(
 				return nil, err
 			}
 			if allowDroppingFKReferenced {
-				err = fkc.RemoveAndUnresolveTables(ctx, newRoot, tables...)
+				fkc, err = fkc.RemoveAndUnresolveTables(ctx, newRoot, tables...)
 			} else {
-				err = fkc.RemoveTables(ctx, tables...)
+				fkc, err = fkc.RemoveTables(ctx, tables...)
 			}
 			if err != nil {
 				return nil, err
