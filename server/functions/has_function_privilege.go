@@ -116,22 +116,7 @@ func hasFunctionPrivilege(ctx *sql.Context, user, target, privilege any) (any, e
 	var actor auth.Role
 	var err error
 	auth.LockRead(func() {
-		if user == nil {
-			actor, err = auth.CurrentRoleLocked(ctx)
-		} else if _, oid := user.(id.Id); oid {
-			actor, _, err = pgHasRoleLookup(ctx, user)
-		} else {
-			var name string
-			name, err = framework.UnwrapString(ctx, user)
-			if err != nil {
-				return
-			}
-			if name == "public" {
-				actor = auth.GetRole("public")
-			} else {
-				actor, _, err = pgHasRoleLookup(ctx, user)
-			}
-		}
+		actor, err = privilegeInquiryRole(ctx, user)
 	})
 	if err != nil {
 		return nil, err
@@ -217,4 +202,25 @@ func functionPrivilegeRoutineExists(ctx *sql.Context, routine id.Id) (exists, bu
 	default:
 		return false, false, nil
 	}
+}
+
+// privilegeInquiryRole resolves the user argument of the has_*_privilege functions. A nil user selects the effective
+// current role, and the name "public" selects the PUBLIC pseudo-role. Like PostgreSQL, a role OID that does not exist is
+// not an error, and returns a role that holds only the privileges granted to PUBLIC. The caller must hold the auth lock.
+func privilegeInquiryRole(ctx *sql.Context, user any) (auth.Role, error) {
+	if user == nil {
+		return auth.CurrentRoleLocked(ctx)
+	}
+	if _, ok := user.(id.Id); !ok {
+		name, err := framework.UnwrapString(ctx, user)
+		if err != nil {
+			return auth.Role{}, err
+		}
+		if name == "public" {
+			return auth.GetRole("public"), nil
+		}
+	}
+
+	role, _, err := pgHasRoleLookup(ctx, user)
+	return role, err
 }
