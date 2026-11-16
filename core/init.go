@@ -45,19 +45,34 @@ func Init() {
 		castsColl, err := GetCastsCollectionFromContext(ctx, "")
 		return func(sourceType *pgtypes.DoltgresType, targetType *pgtypes.DoltgresType) (pgtypes.Cast, bool, error) {
 			var cast casts.Cast
+			var castType casts.CastType
 			var cErr error
 			switch convTyp {
 			case 'e':
+				castType = casts.CastType_Explicit
 				cast, cErr = castsColl.GetExplicitCast(ctx, sourceType, targetType)
 			case 'a':
+				castType = casts.CastType_Assignment
 				cast, cErr = castsColl.GetAssignmentCast(ctx, sourceType, targetType)
 			case 'i':
+				castType = casts.CastType_Implicit
 				cast, cErr = castsColl.GetImplicitCast(ctx, sourceType, targetType)
 			default:
 				return nil, false, fmt.Errorf("unknown conversion type: %v", convTyp)
 			}
 			if cErr != nil {
 				return nil, false, cErr
+			}
+			// As in PostgreSQL, there are no casts to the unknown type, whose values are the text of a literal. Values
+			// still convert to it here through their output function, so that callers can check that a value converted
+			// from an unknown literal converts back to the same text.
+			if !cast.ID.IsValid() && targetType.ID == pgtypes.Unknown.ID && sourceType.ID != pgtypes.Unknown.ID {
+				cast = casts.Cast{
+					ID:       id.NewCast(sourceType.ID, targetType.ID),
+					CastType: castType,
+					Function: id.NullFunction,
+					UseInOut: true,
+				}
 			}
 			return cast, cast.ID.IsValid(), nil
 		}, err
