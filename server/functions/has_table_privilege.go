@@ -265,7 +265,9 @@ func relationPrivilegeHeld(actor auth.Role, kind relationKind, schemaName, relat
 		}
 		return auth.RoleHasTablePrivilege(actor.ID(), schemaName, relationName, req.privilege)
 	case relationKind_Sequence:
-		// Of the table privileges, only SELECT and UPDATE apply to sequences.
+		// Of the table privileges, only SELECT and UPDATE apply to sequences. Only privileges granted with GRANT ... ON
+		// SEQUENCE are found here: GRANT ... ON <sequence> without the SEQUENCE keyword is recorded as a table
+		// privilege, which the sequence privilege checks during execution do not consult either.
 		if req.privilege != auth.Privilege_SELECT && req.privilege != auth.Privilege_UPDATE {
 			return false
 		}

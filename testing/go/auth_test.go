@@ -2555,6 +2555,45 @@ func TestHasTablePrivilege(t *testing.T) {
 			{Query: `SELECT has_table_privilege('priv_tbl', 'INSERT'), has_table_privilege('priv_tbl', 'SELECT')`, Expected: []sql.Row{{"t", "f"}}},
 			{Query: `RESET ROLE`},
 		},
+	}, {
+		// GRANT ... ON <sequence> without the SEQUENCE keyword is recorded as a table privilege, which the sequence
+		// privilege checks do not consult. PostgreSQL keeps a single ACL per relation, so both syntaxes grant the same
+		// privilege on a sequence.
+		Name: "has_table_privilege on a sequence granted with table syntax",
+		SetUpScript: []string{
+			`CREATE SEQUENCE acl_seq`,
+			`CREATE ROLE seq_reader`,
+			`GRANT SELECT ON acl_seq TO seq_reader`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT has_table_privilege('seq_reader', 'acl_seq', 'SELECT'), has_any_column_privilege('seq_reader', 'acl_seq', 'SELECT'), has_table_privilege('seq_reader', 'acl_seq', 'UPDATE')`,
+				Expected: []sql.Row{{"t", "t", "f"}},
+				Skip:     true, // GRANT ON TABLE does not record sequence privileges
+			},
+			{Query: `GRANT SELECT ON SEQUENCE acl_seq TO seq_reader`},
+			{Query: `SELECT has_table_privilege('seq_reader', 'acl_seq', 'SELECT'), has_any_column_privilege('seq_reader', 'acl_seq', 'SELECT'), has_table_privilege('seq_reader', 'acl_seq', 'UPDATE')`, Expected: []sql.Row{{"t", "t", "f"}}},
+		},
+	}, {
+		// Temporary tables cannot yet be resolved as relations by name (regclass), and do not appear in pg_class.
+		Name: "has_table_privilege on a temporary table",
+		SetUpScript: []string{
+			`CREATE ROLE temp_reader`,
+			`CREATE TEMP TABLE tmp_tbl (pk INT PRIMARY KEY)`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT has_table_privilege('tmp_tbl', 'SELECT'), has_table_privilege('temp_reader', 'tmp_tbl', 'SELECT')`,
+				Expected: []sql.Row{{"t", "f"}},
+				Skip:     true, // temporary tables cannot be resolved by regclass
+			},
+			{Query: `GRANT SELECT ON tmp_tbl TO temp_reader`},
+			{
+				Query:    `SELECT has_table_privilege('temp_reader', 'tmp_tbl', 'SELECT'), has_any_column_privilege('temp_reader', 'tmp_tbl', 'INSERT')`,
+				Expected: []sql.Row{{"t", "f"}},
+				Skip:     true, // temporary tables cannot be resolved by regclass
+			},
+		},
 	}})
 }
 
