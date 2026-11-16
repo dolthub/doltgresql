@@ -688,6 +688,30 @@ func TestAggregateFunctions(t *testing.T) {
 					},
 				},
 				{
+					Query: `SELECT grp,
+						sum(coalesce(amount, 0)) FILTER (WHERE amount IS NOT NULL),
+						pg_typeof(sum(coalesce(amount, 0)) FILTER (WHERE amount IS NOT NULL))
+					FROM numeric_sum_values GROUP BY grp ORDER BY grp;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), "numeric"},
+						{2, nil, "numeric"},
+						{3, Numeric("100000000.00"), "numeric"},
+					},
+				},
+				{
+					Query: `SELECT grp, amount,
+						sum(coalesce(amount, 0)) FILTER (WHERE amount > 1) OVER (PARTITION BY grp ORDER BY amount),
+						pg_typeof(sum(coalesce(amount, 0)) FILTER (WHERE amount > 1) OVER (PARTITION BY grp ORDER BY amount))
+					FROM numeric_sum_values ORDER BY grp, amount;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), Numeric("12.50"), "numeric"},
+						{1, nil, Numeric("12.50"), "numeric"},
+						{2, nil, nil, "numeric"},
+						{3, Numeric("0.01"), nil, "numeric"},
+						{3, Numeric("99999999.99"), Numeric("99999999.99"), "numeric"},
+					},
+				},
+				{
 					Query: `SELECT id,
 						(SELECT sum(coalesce(amount, 0)) FROM numeric_sum_values WHERE grp = numeric_sum_groups.id),
 						pg_typeof((SELECT sum(coalesce(amount, 0)) FROM numeric_sum_values WHERE grp = numeric_sum_groups.id))
@@ -848,6 +872,20 @@ func TestAggregateFunctions(t *testing.T) {
 				{
 					Query:    "SELECT g FROM filtered GROUP BY g HAVING count(*) FILTER (WHERE b) > 1;",
 					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT g, count(*) FILTER (WHERE b) FROM filtered GROUP BY g ORDER BY count(*) FILTER (WHERE b), g;",
+					Expected: []sql.Row{{"b", 1}, {"a", 2}},
+				},
+				{
+					Query: "SELECT f.id, (SELECT count(*) FILTER (WHERE f2.x > f.id) FROM filtered f2) FROM filtered f ORDER BY f.id;",
+					Expected: []sql.Row{
+						{1, 3},
+						{2, 3},
+						{3, 2},
+						{4, 1},
+						{5, 0},
+					},
 				},
 				{
 					Query:    "SELECT count(*) FILTER (WHERE x IN (SELECT max(x) FROM filtered)) FROM filtered;",
