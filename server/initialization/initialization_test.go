@@ -39,4 +39,8 @@ func TestNewPostgresEngineVariables(t *testing.T) {
 
 	_, _, ok = a.System.GetGlobal(dsess.DoltStatsEnabled)
 	require.True(t, ok)
+
+	_, groupConcatMaxLen, ok := a.System.GetGlobal("group_concat_max_len")
+	require.True(t, ok)
+	require.EqualValues(t, maxTextBytes, groupConcatMaxLen)
 }
