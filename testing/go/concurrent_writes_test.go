@@ -20,8 +20,9 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-// TestConcurrentWrites tests that a transaction writing a row that another transaction committed first fails with a
-// serialization failure, rather than losing the other transaction's write.
+// TestConcurrentWrites tests that a transaction writing a column of a row that another transaction changed and committed
+// first fails with a serialization failure, rather than losing the other transaction's write, while changes to different
+// rows or different columns of the same row merge.
 func TestConcurrentWrites(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -94,6 +95,111 @@ func TestConcurrentWrites(t *testing.T) {
 			},
 		},
 		{
+			Name: "concurrent increments of the same column",
+			SetUpScript: []string{
+				`CREATE USER user1 PASSWORD 'password';`,
+				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
+				`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
+				`GRANT ALL PRIVILEGES ON SCHEMA public TO user1;`,
+				`GRANT ALL PRIVILEGES ON t TO user1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `BEGIN;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `UPDATE t SET a = a + 1 WHERE pk = 1;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Username: "user1",
+					Password: "password",
+					Query:    `UPDATE t SET a = a + 1 WHERE pk = 1;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `COMMIT;`,
+					ExpectedErr:     "serialization failure",
+					ExpectedErrCode: "40001",
+				},
+				{
+					Query:    `SELECT * FROM t ORDER BY pk;`,
+					Expected: []sql.Row{{1, 1, 0}, {2, 0, 0}},
+				},
+			},
+		},
+		{
+			Name: "concurrent updates of the same column to different values",
+			SetUpScript: []string{
+				`CREATE USER user1 PASSWORD 'password';`,
+				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
+				`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
+				`GRANT ALL PRIVILEGES ON SCHEMA public TO user1;`,
+				`GRANT ALL PRIVILEGES ON t TO user1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `BEGIN;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `UPDATE t SET a = 5 WHERE pk = 1;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Username: "user1",
+					Password: "password",
+					Query:    `UPDATE t SET a = 7 WHERE pk = 1;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `COMMIT;`,
+					ExpectedErr:     "serialization failure",
+					ExpectedErrCode: "40001",
+				},
+				{
+					Query:    `SELECT * FROM t ORDER BY pk;`,
+					Expected: []sql.Row{{1, 7, 0}, {2, 0, 0}},
+				},
+			},
+		},
+		{
+			Name: "concurrent updates that agree on a shared column but differ in another",
+			SetUpScript: []string{
+				`CREATE USER user1 PASSWORD 'password';`,
+				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
+				`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
+				`GRANT ALL PRIVILEGES ON SCHEMA public TO user1;`,
+				`GRANT ALL PRIVILEGES ON t TO user1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `BEGIN;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `UPDATE t SET a = a + 1, b = 5 WHERE pk = 1;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Username: "user1",
+					Password: "password",
+					Query:    `UPDATE t SET a = a + 1 WHERE pk = 1;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `COMMIT;`,
+					ExpectedErr:     "serialization failure",
+					ExpectedErrCode: "40001",
+				},
+				{
+					Query:    `SELECT * FROM t ORDER BY pk;`,
+					Expected: []sql.Row{{1, 1, 0}, {2, 0, 0}},
+				},
+			},
+		},
+		{
 			Name: "concurrent updates of different columns in the same row",
 			SetUpScript: []string{
 				`CREATE USER user1 PASSWORD 'password';`,
@@ -118,13 +224,12 @@ func TestConcurrentWrites(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:           `COMMIT;`,
-					ExpectedErr:     "serialization failure",
-					ExpectedErrCode: "40001",
+					Query:    `COMMIT;`,
+					Expected: []sql.Row{},
 				},
 				{
 					Query:    `SELECT * FROM t;`,
-					Expected: []sql.Row{{1, 1, 0}},
+					Expected: []sql.Row{{1, 1, 1}},
 				},
 			},
 		},
@@ -160,6 +265,76 @@ func TestConcurrentWrites(t *testing.T) {
 				{
 					Query:    `SELECT * FROM t;`,
 					Expected: []sql.Row{{2, 0, 0}},
+				},
+			},
+		},
+		{
+			Name: "concurrent delete and update of the same row",
+			SetUpScript: []string{
+				`CREATE USER user1 PASSWORD 'password';`,
+				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
+				`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
+				`GRANT ALL PRIVILEGES ON SCHEMA public TO user1;`,
+				`GRANT ALL PRIVILEGES ON t TO user1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `BEGIN;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `DELETE FROM t WHERE pk = 1;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Username: "user1",
+					Password: "password",
+					Query:    `UPDATE t SET b = 1 WHERE pk = 1;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `COMMIT;`,
+					ExpectedErr:     "serialization failure",
+					ExpectedErrCode: "40001",
+				},
+				{
+					Query:    `SELECT * FROM t ORDER BY pk;`,
+					Expected: []sql.Row{{1, 0, 1}, {2, 0, 0}},
+				},
+			},
+		},
+		{
+			Name: "concurrent inserts of the same row",
+			SetUpScript: []string{
+				`CREATE USER user1 PASSWORD 'password';`,
+				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
+				`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
+				`GRANT ALL PRIVILEGES ON SCHEMA public TO user1;`,
+				`GRANT ALL PRIVILEGES ON t TO user1;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `BEGIN;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO t VALUES (3, 0, 0);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Username: "user1",
+					Password: "password",
+					Query:    `INSERT INTO t VALUES (3, 0, 0);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           `COMMIT;`,
+					ExpectedErr:     "serialization failure",
+					ExpectedErrCode: "40001",
+				},
+				{
+					Query:    `SELECT * FROM t ORDER BY pk;`,
+					Expected: []sql.Row{{1, 0, 0}, {2, 0, 0}, {3, 0, 0}},
 				},
 			},
 		},

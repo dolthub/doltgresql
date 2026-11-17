@@ -15,6 +15,7 @@
 package core
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
@@ -119,8 +120,21 @@ func Init() {
 	}
 }
 
-// transactionRowMergePolicy treats every row written by two concurrent transactions as a conflict, so the later commit
-// fails with a serialization failure rather than silently losing the earlier transaction's write.
-func transactionRowMergePolicy(*sql.Context, merge.RowMergeInput) (val.Tuple, tree.RowMergeStatus, error) {
-	return nil, tree.RowMergeConflict, nil
+// transactionRowMergePolicy decides each row that both a committing transaction and a concurrently committed
+// transaction changed. If both changed the same column of the row, the later commit fails with a serialization failure,
+// even when both wrote the same value: each may have computed its value from the row as it was before the other's
+// change, as `SET n = n + 1` does, so accepting both would silently lose one of the changes. Inserting or deleting a row
+// changes all of its columns. Changes to different columns of the same row merge as usual.
+func transactionRowMergePolicy(_ *sql.Context, in merge.RowMergeInput) (val.Tuple, tree.RowMergeStatus, error) {
+	if in.Base == nil || in.Left == nil || in.Right == nil {
+		return nil, tree.RowMergeConflict, nil
+	}
+
+	for i := 0; i < in.ValueDesc.Count(); i++ {
+		base := in.Base.GetField(i)
+		if !bytes.Equal(in.Left.GetField(i), base) && !bytes.Equal(in.Right.GetField(i), base) {
+			return nil, tree.RowMergeConflict, nil
+		}
+	}
+	return nil, tree.RowMergeDefer, nil
 }
