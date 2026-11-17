@@ -315,7 +315,11 @@ func getRootFromContextForDatabase(ctx *sql.Context, database string) (*dsess.Do
 	// Some databases (e.g. Dolt's synthetic dolt_cluster system database) aren't backed by a Doltgres *RootValue
 	// and never accumulate Doltgres-specific root object state (sequences, types, etc.), so there's nothing to
 	// return here.
-	root, ok := state.WorkingRoot().(*RootValue)
+	workingRoot, err := state.WorkingRoot(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	root, ok := workingRoot.(*RootValue)
 	if !ok {
 		return session, nil, nil
 	}
@@ -667,10 +671,12 @@ func CloseContextRootFinalizer(ctx *sql.Context) error {
 	}
 
 	// We need to update the root for all databases used by this context. This logic parallels what happens during
-	// transaction commit in the dolt/sqle layer, where we check each branch state to see if it's dirty
+	// transaction commit in the dolt/sqle layer, where we check each branch state to see if it's dirty. Collections
+	// cached for a database or branch that has since been dropped or deleted (possibly by another session) have nowhere
+	// to be written, so we evict them.
 	for _, db := range slices.Sorted(maps.Keys(cv.colls)) {
 		if err := updateSessionRootForDatabase(ctx, db, cv.colls[db]); err != nil {
-			if sql.ErrDatabaseNotFound.Is(err) {
+			if sql.ErrDatabaseNotFound.Is(err) || errors.Is(err, doltdb.ErrBranchNotFound) {
 				delete(cv.colls, db)
 				continue
 			}

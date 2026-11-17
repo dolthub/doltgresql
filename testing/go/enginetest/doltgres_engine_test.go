@@ -943,6 +943,12 @@ func TestForeignKeys(t *testing.T) {
 		"foreign key naming",
 		"Naming automatically created FK indexes",
 		"partial foreign key update",
+		"UPDATE only checks the foreign keys over the columns it changes",
+		"UPDATE checks a foreign key over a column that a BEFORE UPDATE trigger assigns",
+		"UPDATE checks a foreign key over a generated column of the columns it assigns",
+		"UPDATE checks a foreign key over a column with an ON UPDATE expression",
+		"UPDATE JOIN only checks the foreign keys over the columns it changes",
+		"RESTRICT doesn't depend on the child's other foreign keys",
 		"ON UPDATE CASCADE maintains an index over a virtual column",
 		"ON UPDATE CASCADE recomputes chained virtual columns",
 		"ON DELETE CASCADE maintains an index over a virtual column, self-referential",
@@ -978,7 +984,8 @@ func TestForeignKeys(t *testing.T) {
 		"Self-referential delete cascade depth limit",
 		"INSERT IGNORE INTO works correctly with foreign key violations",
 		"ALTER TABLE ADD CONSTRAINT for different database",
-		"Creating a foreign key on a table with an unsupported type works", // POINT values are not supported
+		"Creating a foreign key on a table with an unsupported type works",     // POINT values are not supported
+		"foreign key editors are closed when their statement doesn't run them", // MySQL trigger syntax, EXPLAIN PLAN
 	})
 	defer h.Close()
 
@@ -1196,6 +1203,8 @@ func TestColumnDefaults(t *testing.T) {
 		"System variables in ALTER TABLE ADD COLUMN defaults are not allowed",
 		"User variables in ALTER TABLE ALTER COLUMN defaults are not allowed",
 		"System variables in ALTER TABLE ALTER COLUMN defaults are not allowed",
+		"Add non-nullable column without default #1",
+		"Add non-nullable column without default #2",
 	})
 	defer h.Close()
 
@@ -1431,6 +1440,10 @@ func TestStoredProcedures(t *testing.T) {
 		"DROP procedures",
 		"SHOW procedures",
 		"SHOW non-existent procedures",
+		"CALL from a trigger runs in the trigger's statement",
+		"CALL from a trigger can't end the trigger's statement",
+		"CREATE TRIGGER rejects statements that end the transaction",
+		"CALL of a procedure that ends the transaction outside a trigger",
 	})
 	defer h.Close()
 
@@ -1920,6 +1933,11 @@ func TestStatsStorage(t *testing.T) {
 	t.Skip()
 	h := newDoltgresServerHarness(t)
 	denginetest.RunStatsStorageTests(t, h)
+}
+
+func TestRevisionStatistics(t *testing.T) {
+	h := newDoltgresServerHarness(t)
+	denginetest.RunRevisionStatisticsTests(t, h)
 }
 
 func TestJoinStats(t *testing.T) {

@@ -670,7 +670,7 @@ func TestAggregateFunctions(t *testing.T) {
 					Query: `SELECT grp, sum(coalesce(amount, 0)), pg_typeof(sum(coalesce(amount, 0))) FROM numeric_sum_values GROUP BY grp ORDER BY grp;`,
 					Expected: []sql.Row{
 						{1, Numeric("12.50"), "numeric"},
-						{2, Numeric("0.00"), "numeric"},
+						{2, Numeric("0"), "numeric"},
 						{3, Numeric("100000000.00"), "numeric"},
 					},
 				},
@@ -682,9 +682,33 @@ func TestAggregateFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{1, Numeric("12.50"), Numeric("12.50"), "numeric"},
 						{1, nil, Numeric("12.50"), "numeric"},
-						{2, nil, Numeric("0.00"), "numeric"},
+						{2, nil, Numeric("0"), "numeric"},
 						{3, Numeric("0.01"), Numeric("0.01"), "numeric"},
 						{3, Numeric("99999999.99"), Numeric("100000000.00"), "numeric"},
+					},
+				},
+				{
+					Query: `SELECT grp,
+						sum(coalesce(amount, 0)) FILTER (WHERE amount IS NOT NULL),
+						pg_typeof(sum(coalesce(amount, 0)) FILTER (WHERE amount IS NOT NULL))
+					FROM numeric_sum_values GROUP BY grp ORDER BY grp;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), "numeric"},
+						{2, nil, "numeric"},
+						{3, Numeric("100000000.00"), "numeric"},
+					},
+				},
+				{
+					Query: `SELECT grp, amount,
+						sum(coalesce(amount, 0)) FILTER (WHERE amount > 1) OVER (PARTITION BY grp ORDER BY amount),
+						pg_typeof(sum(coalesce(amount, 0)) FILTER (WHERE amount > 1) OVER (PARTITION BY grp ORDER BY amount))
+					FROM numeric_sum_values ORDER BY grp, amount;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), Numeric("12.50"), "numeric"},
+						{1, nil, Numeric("12.50"), "numeric"},
+						{2, nil, nil, "numeric"},
+						{3, Numeric("0.01"), nil, "numeric"},
+						{3, Numeric("99999999.99"), Numeric("99999999.99"), "numeric"},
 					},
 				},
 				{
@@ -694,7 +718,7 @@ func TestAggregateFunctions(t *testing.T) {
 					FROM numeric_sum_groups ORDER BY id;`,
 					Expected: []sql.Row{
 						{1, Numeric("12.50"), "numeric"},
-						{2, Numeric("0.00"), "numeric"},
+						{2, Numeric("0"), "numeric"},
 					},
 				},
 			},
@@ -740,12 +764,205 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "aggregate FILTER (WHERE ...)",
+			SetUpScript: []string{
+				"CREATE TABLE posts (id INT PRIMARY KEY, grp TEXT, status TEXT, n INT);",
+				`INSERT INTO posts VALUES
+					(1, 'a', 'published', 1),
+					(2, 'a', 'draft', 2),
+					(3, 'a', 'published', NULL),
+					(4, 'b', 'published', 4),
+					(5, 'b', 'draft', 5);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'published') FROM posts;",
+					Expected:         []sql.Row{{5, 3}},
+					ExpectedColNames: []string{"count", "count"},
+				},
+				{
+					Query:    "SELECT COUNT(n) FILTER (WHERE status = 'published') FROM posts;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT grp) FILTER (WHERE status = 'draft') FROM posts;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT MIN(n) FILTER (WHERE status = 'draft'), MAX(n) FILTER (WHERE status = 'published') FROM posts;",
+					Expected: []sql.Row{{2, 4}},
+				},
+				{
+					Query: "SELECT grp, COUNT(*) FILTER (WHERE status = 'published'), COUNT(*) FROM posts GROUP BY grp ORDER BY grp;",
+					Expected: []sql.Row{
+						{"a", 2, 3},
+						{"b", 1, 2},
+					},
+				},
+				{
+					Query:    "SELECT COUNT(*) FILTER (WHERE status = 'archived'), MAX(n) FILTER (WHERE status = 'archived') FROM posts;",
+					Expected: []sql.Row{{0, nil}},
+				},
+				{
+					Query:    "SELECT string_agg(status, ',') FILTER (WHERE id = 4) FROM posts;",
+					Expected: []sql.Row{{"published"}},
+				},
+				{
+					Query:    "SELECT array_agg(n ORDER BY id) FILTER (WHERE status = 'draft') FROM posts;",
+					Expected: []sql.Row{{"{2,5}"}},
+				},
+			},
+		},
+		{
+			Name: "aggregate FILTER keeps the aggregate's NULL handling",
+			SetUpScript: []string{
+				"CREATE TABLE filtered (id INT PRIMARY KEY, g TEXT, x INT, s TEXT, b BOOL);",
+				"INSERT INTO filtered VALUES (1, 'a', 1, 'p', true), (2, 'a', NULL, 'q', false), (3, 'b', 3, NULL, true), (4, 'b', 4, 'r', NULL), (5, 'a', 5, 'p', true);",
+				"CREATE FUNCTION count_all_step(int8, int4) RETURNS int8 LANGUAGE SQL AS 'SELECT $1 + 1';",
+				"CREATE AGGREGATE count_all(int4) (SFUNC = count_all_step, STYPE = int8, INITCOND = '0');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT array_agg(x ORDER BY id) FILTER (WHERE id > 1) FROM filtered;",
+					Expected:         []sql.Row{{"{NULL,3,4,5}"}},
+					ExpectedColNames: []string{"array_agg"},
+				},
+				{
+					Query:    "SELECT json_agg(x) FILTER (WHERE id > 3) FROM filtered;",
+					Expected: []sql.Row{{"[4, 5]"}},
+				},
+				{
+					Query: "SELECT g, array_agg(x ORDER BY id) FILTER (WHERE b) FROM filtered GROUP BY g ORDER BY g;",
+					Expected: []sql.Row{
+						{"a", "{1,5}"},
+						{"b", "{3}"},
+					},
+				},
+				{
+					// The step function is not strict, so this aggregate counts NULL inputs too
+					Query:    "SELECT count_all(x) FILTER (WHERE id > 1), count_all(x) FROM filtered;",
+					Expected: []sql.Row{{4, 5}},
+				},
+				{
+					Query:    "SELECT xmlagg(xmlelement(name e, x)) FILTER (WHERE id > 3) FROM filtered;",
+					Expected: []sql.Row{{"<e>4</e><e>5</e>"}},
+				},
+				{
+					Query:    "SELECT bool_and(b) FILTER (WHERE id < 3), bool_or(b) FILTER (WHERE id > 3), stddev(x) FILTER (WHERE id > 2) FROM filtered;",
+					Expected: []sql.Row{{"f", "t", Numeric("1.00000000000000000000")}},
+				},
+				{
+					Query:    "SELECT string_agg(s, ',' ORDER BY s) FILTER (WHERE id > 1) FROM filtered;",
+					Expected: []sql.Row{{"p,q,r"}},
+				},
+				{
+					// The filter is applied before the aggregate's argument is evaluated
+					Query:    "SELECT sum(10 / x) FILTER (WHERE x <> 0 AND x IS NOT NULL) FROM filtered;",
+					Expected: []sql.Row{{17}},
+				},
+				{
+					Query:    "SELECT count(DISTINCT g) FILTER (WHERE x > 2), min(x) FILTER (WHERE id > 1), max(x) FILTER (WHERE id < 5) FROM filtered;",
+					Expected: []sql.Row{{2, 3, 4}},
+				},
+				{
+					Query:    "SELECT count(*) FILTER (WHERE false), max(x) FILTER (WHERE false), sum(x) FILTER (WHERE NULL) FROM filtered;",
+					Expected: []sql.Row{{0, nil, nil}},
+				},
+				{
+					Query:    "SELECT g FROM filtered GROUP BY g HAVING count(*) FILTER (WHERE b) > 1;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT g, count(*) FILTER (WHERE b) FROM filtered GROUP BY g ORDER BY count(*) FILTER (WHERE b), g;",
+					Expected: []sql.Row{{"b", 1}, {"a", 2}},
+				},
+				{
+					Query: "SELECT f.id, (SELECT count(*) FILTER (WHERE f2.x > f.id) FROM filtered f2) FROM filtered f ORDER BY f.id;",
+					Expected: []sql.Row{
+						{1, 3},
+						{2, 3},
+						{3, 2},
+						{4, 1},
+						{5, 0},
+					},
+				},
+				{
+					Query:    "SELECT count(*) FILTER (WHERE x IN (SELECT max(x) FROM filtered)) FROM filtered;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query: "SELECT id, sum(x) FILTER (WHERE x > 2) OVER (ORDER BY id), count(*) FILTER (WHERE b) OVER (ORDER BY id) FROM filtered ORDER BY id;",
+					Expected: []sql.Row{
+						{1, nil, 1},
+						{2, nil, 1},
+						{3, 3, 2},
+						{4, 7, 2},
+						{5, 12, 3},
+					},
+				},
+				{
+					Query: "SELECT id, sum(x) FILTER (WHERE b) OVER (PARTITION BY g ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM filtered ORDER BY id;",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 1},
+						{3, 3},
+						{4, 3},
+						{5, 5},
+					},
+				},
+				{
+					Query:       "SELECT abs(x) FILTER (WHERE id > 1) FROM filtered;",
+					ExpectedErr: "FILTER specified, but abs is not an aggregate function",
+				},
+				{
+					Query:       "SELECT row_number() FILTER (WHERE id > 1) OVER () FROM filtered;",
+					ExpectedErr: "FILTER is not implemented for non-aggregate window functions",
+				},
+				{
+					Query:       "SELECT count(*) FILTER (WHERE sum(x) > 1) FROM filtered;",
+					ExpectedErr: "aggregate functions are not allowed in FILTER",
+				},
+				{
+					Query:       "SELECT array_agg(x) FILTER (WHERE count(*) > 1) FROM filtered;",
+					ExpectedErr: "aggregate functions are not allowed in FILTER",
+				},
+				{
+					Query:       "SELECT count(*) FILTER (WHERE row_number() OVER () > 1) FROM filtered;",
+					ExpectedErr: "window functions are not allowed in FILTER",
+				},
+			},
+		},
 	})
 }
 
 // https://www.postgresql.org/docs/15/functions-math.html
 func TestFunctionsMath(t *testing.T) {
 	RunScripts(t, []ScriptTest{
+		{
+			Name: "abs",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT abs((-32767)::int2), abs((-2147483647)::int4), abs((-9223372036854775807)::int8);`,
+					Expected: []sql.Row{{int16(32767), int32(2147483647), int64(9223372036854775807)}},
+				},
+				{
+					Query:           `SELECT abs((-32768)::int2);`,
+					ExpectedErr:     "smallint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT abs((-2147483648)::int4);`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT abs((-9223372036854775808)::int8);`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+			},
+		},
 		{
 			Name: "cbrt",
 			SetUpScript: []string{
@@ -1128,6 +1345,31 @@ func TestFunctionsMath(t *testing.T) {
 				{
 					Query:       `INSERT INTO num_nulls_check VALUES (NULL, NULL);`,
 					ExpectedErr: "Check constraint",
+				},
+			},
+		},
+		{
+			Name: "trunc",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT trunc(1.567::numeric, 2), trunc(-2.25::numeric, 1), trunc(123.456::numeric, -1), trunc(1.5::numeric), trunc(-1.5::numeric);`,
+					Expected: []sql.Row{{Numeric("1.56"), Numeric("-2.2"), Numeric("120"), Numeric("1"), Numeric("-1")}},
+				},
+				{
+					Query:    `SELECT trunc(1.5::numeric, 3), trunc(123::numeric, 2), trunc(1.567::numeric, 0), trunc(-987.654::numeric, -2), trunc(1e20::numeric, -3);`,
+					Expected: []sql.Row{{Numeric("1.500"), Numeric("123.00"), Numeric("1"), Numeric("-900"), Numeric("100000000000000000000")}},
+				},
+				{
+					Query:    `SELECT trunc(0.001::numeric, 2)::text, trunc(-0.001::numeric, 2)::text, trunc(-0.5::numeric)::text, trunc(5::numeric, -1)::text, trunc(123.456::numeric, -5)::text;`,
+					Expected: []sql.Row{{"0.00", "0.00", "0", "0", "0"}},
+				},
+				{
+					Query:    `SELECT trunc('NaN'::numeric), trunc('NaN'::numeric, 2), trunc('Infinity'::numeric), trunc('-Infinity'::numeric, 2);`,
+					Expected: []sql.Row{{Numeric("NaN"), Numeric("NaN"), Numeric("Infinity"), Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT trunc(1.567::float8), trunc(-1.567::float8);`,
+					Expected: []sql.Row{{1.0, -1.0}},
 				},
 			},
 		},
@@ -4830,6 +5072,34 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Query:    `select '2011-03-27 02:00:00'::timestamp at time zone 'MSK';`,
 					Expected: []sql.Row{{"2011-03-26 15:30:00-06:30"}},
 				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone 'Asia/Kolkata';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone 'America/New_York';`,
+					Expected: []sql.Row{{"2024-03-05 05:00:00"}},
+				},
+				{
+					Query:    `select '2024-07-01 10:00:00+00'::timestamptz at time zone 'America/New_York';`,
+					Expected: []sql.Row{{"2024-07-01 06:00:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone interval '05:30';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone '+05:30';`,
+					Expected: []sql.Row{{"2024-03-05 04:30:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone '-05:30';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `select timezone('Asia/Kolkata', timestamp with time zone '2001-02-16 20:38:40.12-05');`,
+					Expected: []sql.Row{{"2001-02-17 07:08:40.12"}},
+				},
 			},
 		},
 		{
@@ -5505,6 +5775,108 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3705
+			Name: "date minus interval uses calendar months",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '2024-03-15'::DATE - INTERVAL '1 month';`,
+					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-31'::DATE - INTERVAL '1 month';`,
+					Expected: []sql.Row{{"2024-02-29 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-02-29'::DATE - INTERVAL '1 year';`,
+					Expected: []sql.Row{{"2023-02-28 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::DATE + INTERVAL '-1 month';`,
+					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::TIMESTAMP - INTERVAL '1 month';`,
+					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::DATE - INTERVAL '-1 month';`,
+					Expected: []sql.Row{{"2024-04-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::DATE - INTERVAL '1 year 2 months 3 days 04:05:06.789';`,
+					Expected: []sql.Row{{"2023-01-11 19:54:53.211"}},
+				},
+				{
+					Query:           `SELECT '4714-11-24 BC'::DATE - INTERVAL '1 day';`,
+					ExpectedErr:     "timestamp out of range",
+					ExpectedErrCode: "22008",
+				},
+			},
+		},
+		{
+			Name: "date and timestamptz conversions use the session time zone",
+			SetUpScript: []string{
+				`CREATE TABLE ev (id INT PRIMARY KEY, at TIMESTAMPTZ);`,
+				`INSERT INTO ev VALUES (1, '2024-03-05 20:00:00-08');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SET TIME ZONE 'America/Los_Angeles';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT '2024-03-05'::DATE::TIMESTAMPTZ::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05 00:00:00-08"}},
+				},
+				{
+					Query:    `SELECT TO_CHAR('2024-03-05'::DATE, 'YYYY-MM-DD');`,
+					Expected: []sql.Row{{"2024-03-05"}},
+				},
+				{
+					Query:    `SELECT id FROM ev WHERE at >= '2024-03-05'::DATE AND at < '2024-03-06'::DATE;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT '2024-03-06 02:00:00+00'::TIMESTAMPTZ::DATE::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05"}},
+				},
+				{
+					Query: `SELECT '2024-03-05 00:00:00-08'::TIMESTAMPTZ = '2024-03-05'::DATE, '2024-03-05'::DATE = '2024-03-05 00:00:00-08'::TIMESTAMPTZ, ` +
+						`at <> '2024-03-05'::DATE, '2024-03-06'::DATE <> at, at > '2024-03-05'::DATE, '2024-03-06'::DATE > at, ` +
+						`at <= '2024-03-05'::DATE, '2024-03-06'::DATE <= at, '2024-03-05'::DATE < at, '2024-03-06'::DATE >= at FROM ev;`,
+					Expected: []sql.Row{{"t", "t", "t", "t", "t", "t", "f", "f", "t", "t"}},
+				},
+				{
+					Query:    `SET TIME ZONE 'Asia/Tokyo';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT '2024-03-05'::DATE::TIMESTAMPTZ::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05 00:00:00+09"}},
+				},
+				{
+					Query:    `SELECT '2024-03-05 20:00:00+00'::TIMESTAMPTZ::DATE::TEXT;`,
+					Expected: []sql.Row{{"2024-03-06"}},
+				},
+				{
+					Query:    `SELECT TO_CHAR('2024-03-05'::DATE, 'YYYY-MM-DD HH24');`,
+					Expected: []sql.Row{{"2024-03-05 00"}},
+				},
+				{
+					Query:    `SET TIME ZONE 'UTC';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT '2024-03-05'::DATE::TIMESTAMPTZ::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05 00:00:00+00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-06 02:00:00+00'::TIMESTAMPTZ::DATE::TEXT;`,
+					Expected: []sql.Row{{"2024-03-06"}},
+				},
+			},
+		},
 	})
 }
 
@@ -5719,6 +6091,39 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
+			Name: "lpad and rpad",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT lpad('hi', 5, ''), lpad('hello', 3, ''), lpad('hi', 2, ''), lpad('', 3, '');`,
+					Expected: []sql.Row{{"hi", "hel", "hi", ""}},
+				},
+				{
+					Query:    `SELECT rpad('hi', 5, ''), rpad('hello', 3, ''), rpad('hi', 2, ''), rpad('', 3, '');`,
+					Expected: []sql.Row{{"hi", "hel", "hi", ""}},
+				},
+				{
+					Query:    `SELECT length(lpad('hi', 5, '')), length(rpad('hi', 5, '')), octet_length(rpad('日本', 5, '')), length(rpad('', 3, ''));`,
+					Expected: []sql.Row{{2, 2, 6, 0}},
+				},
+				{
+					Query:    `SELECT lpad('hi', 5, 'xy'), lpad('hello', 3, 'xy'), lpad('日本', 5, '語'), lpad('日本語', 2, ''), lpad('hi', 0, ''), lpad('hi', -1, '');`,
+					Expected: []sql.Row{{"xyxhi", "hel", "語語語日本", "日本", "", ""}},
+				},
+				{
+					Query:    `SELECT rpad('hi', 5, 'xy'), rpad('hello', 3, 'xy'), rpad('日本', 5, '語'), rpad('日本語', 2, ''), rpad('hi', 0, ''), rpad('hi', -1, '');`,
+					Expected: []sql.Row{{"hixyx", "hel", "日本語語語", "日本", "", ""}},
+				},
+				{
+					Query:    `SELECT lpad('hi', 5), rpad('hi', 5) || '|';`,
+					Expected: []sql.Row{{"   hi", "hi   |"}},
+				},
+				{
+					Query:    `SELECT id, lpad(s, n, f), rpad(s, n, f) FROM (VALUES (1, 'hi', 5, ''), (2, 'hello', 3, ''), (3, 'hi', 5, 'xy')) v(id, s, n, f) ORDER BY id;`,
+					Expected: []sql.Row{{1, "hi", "hi"}, {2, "hel", "hel"}, {3, "xyxhi", "hixyx"}},
+				},
+			},
+		},
+		{
 			Name:        "translate",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
@@ -5737,6 +6142,19 @@ func TestStringFunction(t *testing.T) {
 				{
 					Query:    `select translate('こんにちは', 'ん', 'a');`,
 					Expected: []sql.Row{{`こaにちは`}},
+				},
+			},
+		},
+		{
+			Name: "repeat",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT repeat('ab', 3), repeat('ab', 0), repeat('ab', -1), repeat('', 5), repeat('日', 2), repeat('ab', -2147483648);`,
+					Expected: []sql.Row{{"ababab", "", "", "", "日日", ""}},
+				},
+				{
+					Query:    `SELECT n, repeat('x', n), length(repeat('x', n)) FROM (VALUES (-3), (0), (2)) v(n) ORDER BY n;`,
+					Expected: []sql.Row{{-3, "", 0}, {0, "", 0}, {2, "xx", 2}},
 				},
 			},
 		},
@@ -5874,6 +6292,23 @@ func TestStringFunction(t *testing.T) {
 					Expected: []sql.Row{
 						{"1a82b83c84d85e"},
 					},
+				},
+			},
+		},
+		{
+			Name: "string_agg is not cut at 1024 characters",
+			SetUpScript: []string{
+				"CREATE TABLE parts (id INT PRIMARY KEY, s TEXT);",
+				"INSERT INTO parts SELECT g, repeat('x', 100) FROM generate_series(1, 50) AS g;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT length(string_agg(s, '')) FROM parts;",
+					Expected: []sql.Row{{5000}},
+				},
+				{
+					Query:    "SELECT length(string_agg(s, ',' ORDER BY id)) FROM parts;",
+					Expected: []sql.Row{{5049}},
 				},
 			},
 		},
@@ -6268,6 +6703,60 @@ $$;`,
 				{
 					Query:    `SELECT * FROM audit ORDER BY op, id;`,
 					Expected: []sql.Row{{"src", "INSERT", "a"}, {"src", "INSERT", "b'c"}, {"src", "UPDATE", "d"}},
+				},
+			},
+		},
+		{
+			Name: "strpos and position count characters in multibyte text",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT strpos('héllo', 'l');`,
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    `SELECT position('テ' IN '日本語テキスト');`,
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:    `SELECT strpos('hello', 'l');`,
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    `SELECT substr('héllo', strpos('héllo', 'l'));`,
+					Expected: []sql.Row{{"llo"}},
+				},
+				{
+					Query:    `SELECT substr('日本語テキスト', position('テ' IN '日本語テキスト'));`,
+					Expected: []sql.Row{{"テキスト"}},
+				},
+				{
+					Query:    `SELECT strpos('日本語', '');`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT strpos('日本語', 'x');`,
+					Expected: []sql.Row{{0}},
+				},
+			},
+		},
+		{
+			Name: "left and right with multibyte characters",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT LEFT('héllo', 2) AS l2, RIGHT('héllo', 4) AS r4;`,
+					Expected: []sql.Row{{"hé", "éllo"}},
+				},
+				{
+					Query:    `SELECT LEFT('日本語', 1) AS l1, OCTET_LENGTH(LEFT('日本語', 1)) AS bytes;`,
+					Expected: []sql.Row{{"日", 3}},
+				},
+				{
+					Query:    `SELECT LEFT('caté', -1) AS l, OCTET_LENGTH(LEFT('caté', -1)) AS bytes;`,
+					Expected: []sql.Row{{"cat", 3}},
+				},
+				{
+					Query:    `SELECT RIGHT('日本語', -1), LEFT('héllo', -2), RIGHT('héllo', -2), LEFT('日本語', 5), RIGHT('日本語', 5);`,
+					Expected: []sql.Row{{"本語", "hél", "llo", "日本語", "日本語"}},
 				},
 			},
 		},

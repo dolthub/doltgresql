@@ -29,6 +29,9 @@ func nodeShowVar(ctx *Context, node *tree.ShowVar) (vitess.Statement, error) {
 	if node == nil {
 		return nil, nil
 	}
+	if ctx.variables() == nil {
+		return nil, errors.New("SHOW requires an engine variable registry")
+	}
 
 	if strings.ToLower(node.Name) == "is_superuser" {
 		return nil, errors.Errorf("SHOW IS_SUPERUSER is not yet supported")

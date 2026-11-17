@@ -4366,6 +4366,158 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "Assigning a string that is too long for a character type",
+		SetUpScript: []string{
+			"CREATE TABLE t3707 (id INT PRIMARY KEY, v VARCHAR(3), c CHAR(3));",
+			"CREATE INDEX t3707_v ON t3707 (v);",
+			"CREATE INDEX t3707_c ON t3707 (c);",
+			"INSERT INTO t3707 VALUES (3, 'x', 'x');",
+			"CREATE TABLE t3707_array (id INT PRIMARY KEY, a VARCHAR(3)[]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:           "INSERT INTO t3707 VALUES (1, 'abcdef', 'x');",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (2, 'x', 'abcdef');",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "UPDATE t3707 SET v = 'wxyz' WHERE id = 3;",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "UPDATE t3707 SET c = 'wxyz' WHERE id = 3;",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (4, 'abcdef'::TEXT, 'x');",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (4, 'x', 'abcdef'::TEXT);",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 (id, v) SELECT 5, 'abcdef';",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 (id, c) SELECT 5, 'abcdef';",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (6, 'ab  c', 'x');",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (6, 'x', 'abcde'::CHAR(5));",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (6, 'éèêë', 'x');",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (3, 'x', 'x') ON CONFLICT (id) DO UPDATE SET c = 'wxyz';",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:    "INSERT INTO t3707 VALUES (7, 'ab   ', 'ab    '), (8, 'ab   '::TEXT, 'ab    '::TEXT), (9, 'éèê', 'éèê');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id, v, c, length(v) FROM t3707 ORDER BY id;",
+				Expected: []sql.Row{{3, "x", "x  ", 1}, {7, "ab ", "ab ", 3}, {8, "ab ", "ab ", 3}, {9, "éèê", "éèê", 3}},
+			},
+			{
+				Query:    "SELECT 'abcdef'::VARCHAR(3), 'abcdef'::CHAR(3), length('abcdef'::TEXT::CHAR(3)), 'ab   '::TEXT::VARCHAR(3) || '|';",
+				Expected: []sql.Row{{"abc", "abc", 3, "ab |"}},
+			},
+			{
+				Query:    "SELECT ARRAY['abcdef']::VARCHAR(3)[], '{abcdef}'::CHAR(3)[], ARRAY['abcdef'::TEXT]::VARCHAR(3)[];",
+				Expected: []sql.Row{{"{abc}", "{abc}", "{abc}"}},
+			},
+			{
+				Query:    "SELECT id FROM t3707 WHERE v = 'éèêë';",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id FROM t3707 WHERE c = 'éèêë';",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:           "INSERT INTO t3707_array VALUES (1, ARRAY['abcdef']);",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707_array VALUES (2, '{abcdef}');",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:    `INSERT INTO t3707_array VALUES (3, ARRAY['ab   ']), (4, '{"ab   "}');`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id, a, length(a[1]) FROM t3707_array ORDER BY id;",
+				Expected: []sql.Row{{3, `{"ab "}`, 3}, {4, `{"ab "}`, 3}},
+			},
+			{
+				Skip:     true, // TODO: column defaults are evaluated when the table is created, rather than when a row uses them
+				Query:    "CREATE TABLE t3707_default (id INT PRIMARY KEY, v VARCHAR(3) DEFAULT 'abcdef');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT * FROM (VALUES ('abc'::VARCHAR(3), '0123456789'), ('0123456789', 'abc'::VARCHAR(3))) v(a, b);",
+				Expected: []sql.Row{{"abc", "0123456789"}, {"0123456789", "abc"}},
+			},
+			{
+				Query:    "SELECT a::VARCHAR(3) FROM (VALUES ('abc'::VARCHAR(3)), ('0123456789')) v(a);",
+				Expected: []sql.Row{{"abc"}, {"012"}},
+			},
+			{
+				Query:    "SELECT * FROM (VALUES ('abc'::VARCHAR(3)), ('0123456789'::VARCHAR(5))) v(a);",
+				Expected: []sql.Row{{"abc"}, {"01234"}},
+			},
+			{
+				Query:    "SELECT * FROM (VALUES ('abc'::VARCHAR(3)), ('0123'::CHAR(4))) v(a);",
+				Expected: []sql.Row{{"abc"}, {"0123"}},
+			},
+			{
+				Query:    "SELECT * FROM (VALUES (1.5::NUMERIC(5,2)), (2.5::NUMERIC(6,3))) v(a);",
+				Expected: []sql.Row{{Numeric("1.50")}, {Numeric("2.500")}},
+			},
+			{
+				Query:    "SELECT COALESCE(NULL::VARCHAR(3), '0123456789'), GREATEST('abc'::VARCHAR(3), '0123456789');",
+				Expected: []sql.Row{{"0123456789", "abc"}},
+			},
+			{
+				Query:    "SELECT ARRAY['abc'::VARCHAR(3), '0123456789'];",
+				Expected: []sql.Row{{"{abc,0123456789}"}},
+			},
+			{
+				Skip:     true, // TODO: CASE keeps the typmod of a branch when its branches have different typmods
+				Query:    "SELECT CASE WHEN false THEN 'abc'::VARCHAR(3) ELSE '0123456789' END;",
+				Expected: []sql.Row{{"0123456789"}},
+			},
+		},
+	},
 }
 
 func TestSameTypes(t *testing.T) {

@@ -608,6 +608,21 @@ func TestOperators(t *testing.T) {
 					Query:    `select interval '20 days' * 2.3`,
 					Expected: []sql.Row{{"46 days"}},
 				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 * (-1)::int8;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 * (-1)::int4;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 * (-1)::int2;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
 			},
 		},
 		{
@@ -839,6 +854,36 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `select interval '20 days' / 2.3`,
 					Expected: []sql.Row{{"8 days 16:41:44.347826"}},
+				},
+				{
+					Query:           `SELECT (-32768)::int2 / (-1)::int2;`,
+					ExpectedErr:     "smallint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-2147483648)::int4 / (-1)::int4;`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-2147483648)::int4 / (-1)::int2;`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 / (-1)::int8;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 / (-1)::int4;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 / (-1)::int2;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
 				},
 			},
 		},
@@ -3680,6 +3725,21 @@ func TestOperators(t *testing.T) {
 					Query:    `select - interval '20 days -11:00:00';`,
 					Expected: []sql.Row{{"-20 days +11:00:00"}},
 				},
+				{
+					Query:           `SELECT -((-32768)::int2);`,
+					ExpectedErr:     "smallint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT -((-2147483648)::int4);`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT -((-9223372036854775808)::int8);`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
 			},
 		},
 		{
@@ -4033,6 +4093,37 @@ func TestOperators(t *testing.T) {
 					// https://github.com/dolthub/doltgresql/issues/2160
 					Query:       `SELECT * FROM t WHERE v = true;`,
 					ExpectedErr: "operator does not exist: varchar = bool",
+				},
+			},
+		},
+		{
+			Name: "Timestamp subtraction justifies hours into days",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+				"CREATE TABLE orders (id INT PRIMARY KEY, placed TIMESTAMP, shipped TIMESTAMP);",
+				"INSERT INTO orders VALUES (1, '2024-01-01 09:00', '2024-01-04 15:00'), (2, '2024-01-04 15:00', '2024-01-01 09:00'), (3, '2024-01-01 09:00', '2024-01-01 20:30');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// https://github.com/dolthub/doltgresql/issues/3714
+					Query: `SELECT id, shipped - placed AS waited, EXTRACT(DAY FROM shipped - placed) AS days, DATE_PART('day', shipped - placed) AS dp FROM orders ORDER BY id;`,
+					Expected: []sql.Row{
+						{int32(1), "3 days 06:00:00", Numeric("3"), float64(3)},
+						{int32(2), "-3 days -06:00:00", Numeric("-3"), float64(-3)},
+						{int32(3), "11:30:00", Numeric("0"), float64(0)},
+					},
+				},
+				{
+					Query:    `SELECT id FROM orders WHERE DATE_PART('day', shipped - placed) >= 3;`,
+					Expected: []sql.Row{{int32(1)}},
+				},
+				{
+					Query:    `SELECT '2024-01-04 15:00+00'::timestamptz - '2024-01-01 09:00+00'::timestamptz, EXTRACT(DAY FROM '2024-01-04 15:00+00'::timestamptz - '2024-01-01 09:00+00'::timestamptz);`,
+					Expected: []sql.Row{{"3 days 06:00:00", Numeric("3")}},
+				},
+				{
+					Query:    `SELECT '2024-01-01 09:00+00'::timestamptz - '2024-01-04 15:00+00'::timestamptz;`,
+					Expected: []sql.Row{{"-3 days -06:00:00"}},
 				},
 			},
 		},

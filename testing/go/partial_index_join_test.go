@@ -91,5 +91,51 @@ func TestPartialIndexMergeJoinDoesNotLoseRows(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "lookup through a partial index the query does not imply",
+			SetUpScript: []string{
+				"CREATE TABLE parent (id int PRIMARY KEY);",
+				"CREATE TABLE child (id int PRIMARY KEY, owner_id int NOT NULL, scope_id int NOT NULL, parent_id int NOT NULL, slot int, state varchar(10) NOT NULL DEFAULT 'active');",
+				"CREATE INDEX child_owner_scope ON child (owner_id, scope_id, state);",
+				"CREATE UNIQUE INDEX child_uniq_no_slot ON child (owner_id, scope_id, parent_id) WHERE slot IS NULL;",
+				"INSERT INTO parent (id) SELECT generate_series(1, 200);",
+				// Every owner has 10 rows with a slot, so none of them is in the partial index.
+				"INSERT INTO child (id, owner_id, scope_id, parent_id, slot) SELECT o * 10 + k, o, 1, (o * 7 + k) % 200 + 1, k FROM generate_series(1, 500) AS o, generate_series(0, 9) AS k;",
+				// Owner 6000 has 5 rows in the partial index and 5 outside it.
+				"INSERT INTO child (id, owner_id, scope_id, parent_id, slot) SELECT 600000 + k, 6000, 1, k, CASE WHEN k <= 5 THEN NULL ELSE k END FROM generate_series(1, 10) AS k;",
+				// Owner 7000 has two rows for the same parent, allowed by the unique partial index because both have a slot.
+				"INSERT INTO child (id, owner_id, scope_id, parent_id, slot) VALUES (700001, 7000, 1, 5, 1), (700002, 7000, 1, 5, 2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT count(*) FROM parent p WHERE EXISTS (SELECT 1 FROM child c WHERE c.parent_id = p.id AND c.owner_id = 100 AND c.scope_id = 1);",
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    "SELECT count(*) FROM parent p WHERE NOT EXISTS (SELECT 1 FROM child c WHERE c.parent_id = p.id AND c.owner_id = 100 AND c.scope_id = 1);",
+					Expected: []sql.Row{{190}},
+				},
+				{
+					Query:    "SELECT count(c.id) FROM parent p LEFT JOIN child c ON c.parent_id = p.id AND c.owner_id = 100 AND c.scope_id = 1;",
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    "SELECT count(*) FROM child c JOIN parent p ON p.id = c.parent_id WHERE c.owner_id = 6000 AND c.scope_id = 1;",
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    "SELECT count(*) FROM child JOIN parent ON parent.id = child.parent_id WHERE child.owner_id = 6000 AND child.scope_id = 1 AND child.slot IS NULL;",
+					Expected: []sql.Row{{5}},
+				},
+				{
+					Query:    "SELECT count(*) FROM parent p WHERE EXISTS (SELECT 1 FROM child c WHERE c.parent_id = p.id AND c.owner_id = 7000 AND c.scope_id = 1);",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT count(*) FROM (SELECT owner_id, scope_id, parent_id FROM child ORDER BY owner_id, scope_id, parent_id LIMIT 20) t;",
+					Expected: []sql.Row{{20}},
+				},
+			},
+		},
 	})
 }

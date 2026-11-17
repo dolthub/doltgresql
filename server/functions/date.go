@@ -161,3 +161,12 @@ func getDateStyleInputFormat(ctx *sql.Context) []pgdate.ParseMode {
 	formatsInOrder[0] = setFormat
 	return formatsInOrder
 }
+
+// DateToTimestampTZ returns the given date as midnight in the server's time zone.
+func DateToTimestampTZ(ctx *sql.Context, date time.Time) (time.Time, error) {
+	loc, err := GetServerLocation(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, loc), nil
+}

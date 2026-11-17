@@ -24,6 +24,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgdate"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -40,7 +41,11 @@ func timestampTZAssignment(builtInCasts map[id.Cast]casts.Cast) {
 		FromType: pgtypes.TimestampTZ,
 		ToType:   pgtypes.Date,
 		Function: func(ctx *sql.Context, val any, _, targetType *pgtypes.DoltgresType) (any, error) {
-			d, err := pgdate.MakeDateFromTime(val.(time.Time))
+			loc, err := functions.GetServerLocation(ctx)
+			if err != nil {
+				return nil, err
+			}
+			d, err := pgdate.MakeDateFromTime(val.(time.Time).In(loc))
 			if err != nil {
 				return nil, err
 			}

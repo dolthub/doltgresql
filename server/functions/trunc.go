@@ -49,8 +49,7 @@ var trunc_numeric = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Numeric},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		dec := val.(*apd.Decimal)
-		return sql.DecimalRound(dec, 0)
+		return truncNumeric(val.(*apd.Decimal), 0)
 	},
 }
 
@@ -61,8 +60,34 @@ var trunc_numeric_int64 = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Numeric, pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, num any, places any) (any, error) {
-		dec := num.(*apd.Decimal)
-		scale := places.(int32)
-		return sql.DecimalRound(dec, -scale)
+		return truncNumeric(num.(*apd.Decimal), places.(int32))
 	},
+}
+
+// truncNumeric truncates the numeric toward zero, keeping the given number of digits after the decimal point. A negative
+// scale truncates digits to the left of the decimal point.
+func truncNumeric(dec *apd.Decimal, scale int32) (*apd.Decimal, error) {
+	if dec.Form != apd.Finite {
+		return dec, nil
+	}
+	p := dec.NumDigits()
+	if dec.Exponent > 0 {
+		p += int64(dec.Exponent)
+	}
+	if scale > 0 {
+		p += int64(scale)
+	}
+	ctx := sql.DecimalCtx.WithPrecision(uint32(p))
+	ctx.Rounding = apd.RoundDown
+	res := new(apd.Decimal)
+	if _, err := ctx.Quantize(res, dec, -scale); err != nil {
+		return nil, err
+	}
+	if res.IsZero() {
+		res.Negative = false
+	}
+	if scale < 0 {
+		return sql.DecimalRound(res, 0)
+	}
+	return res, nil
 }

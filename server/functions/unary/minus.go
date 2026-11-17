@@ -15,11 +15,12 @@
 package unary
 
 import (
+	"math"
+
 	"github.com/cockroachdb/apd/v3"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
-
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -67,6 +68,9 @@ var int2um = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int16},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		if val1.(int16) == math.MinInt16 {
+			return nil, pgtypes.ErrOutOfRange.New("smallint")
+		}
 		return -(val1.(int16)), nil
 	},
 }
@@ -78,6 +82,9 @@ var int4um = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int32},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		if val1.(int32) == math.MinInt32 {
+			return nil, pgtypes.ErrOutOfRange.New("integer")
+		}
 		return -(val1.(int32)), nil
 	},
 }
@@ -89,6 +96,9 @@ var int8um = framework.Function1{
 	Parameters: [1]*pgtypes.DoltgresType{pgtypes.Int64},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val1 any) (any, error) {
+		if val1.(int64) == math.MinInt64 {
+			return nil, pgtypes.ErrOutOfRange.New("bigint")
+		}
 		return -(val1.(int64)), nil
 	},
 }

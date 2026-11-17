@@ -29,6 +29,7 @@ const (
 	AuthType_REFERENCES     = "REFERENCES"
 	AuthType_SELECT         = "SELECT"
 	AuthType_SET            = "SET"
+	AuthType_SUPER          = "SUPER"
 	AuthType_TEMPORARY      = "TEMPORARY"
 	AuthType_TRIGGER        = "TRIGGER"
 	AuthType_TRUNCATE       = "TRUNCATE"

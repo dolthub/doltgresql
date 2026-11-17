@@ -941,6 +941,44 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
+				Name: "same constraint name on two tables",
+				SetUpScript: []string{
+					"CREATE TABLE parent (id INT PRIMARY KEY);",
+					"CREATE TABLE c1 (id INT PRIMARY KEY, pid INT, CONSTRAINT same_fk FOREIGN KEY (pid) REFERENCES parent(id));",
+					"CREATE TABLE c2 (id INT PRIMARY KEY, pid INT, CONSTRAINT same_fk FOREIGN KEY (pid) REFERENCES parent(id));",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    "SELECT conrelid::regclass::text FROM pg_constraint WHERE conname = 'same_fk' ORDER BY 1;",
+						Expected: []sql.Row{{"c1"}, {"c2"}},
+					},
+					{
+						Query:    "ALTER TABLE c1 DROP CONSTRAINT same_fk;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conrelid::regclass::text FROM pg_constraint WHERE conname = 'same_fk' ORDER BY 1;",
+						Expected: []sql.Row{{"c2"}},
+					},
+					{
+						Query:    "INSERT INTO c1 VALUES (1, 2);",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:       "INSERT INTO c2 VALUES (1, 2);",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "ALTER TABLE c2 DROP CONSTRAINT same_fk;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conrelid::regclass::text FROM pg_constraint WHERE conname = 'same_fk';",
+						Expected: []sql.Row{},
+					},
+				},
+			},
+			{
 				Name: "foreign key default naming, added through alter table",
 				SetUpScript: []string{
 					"CREATE TABLE webhooks (id varchar not null, primary key (id));",
@@ -1025,6 +1063,110 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query:    "SELECT * FROM public.hn_stories where title = 'test2';",
 						Expected: []sql.Row{{"test2", "test2"}},
+					},
+				},
+			},
+			{
+				Name: "UPDATE only checks the foreign keys over the columns it changes",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY, v INT)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, pid INT REFERENCES pt (id), v INT)`,
+					`INSERT INTO pt VALUES (1, 0), (2, 0)`,
+					`INSERT INTO ct VALUES (1, 1, 0)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE pt SET v = 1 WHERE id = 1",
+					},
+					{
+						Query: "UPDATE ct SET v = 1",
+					},
+					{
+						Query:       "UPDATE ct SET pid = 9",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:       "UPDATE pt SET id = 9 WHERE id = 1",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 1, 1}},
+					},
+				},
+			},
+			{
+				Name: "UPDATE checks a foreign key over a column that a BEFORE UPDATE trigger assigns",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, pid INT REFERENCES pt (id), v INT)`,
+					`INSERT INTO pt VALUES (1), (2)`,
+					`INSERT INTO ct VALUES (1, 1, 0)`,
+					`CREATE FUNCTION ct_bu() RETURNS TRIGGER AS $$ BEGIN NEW.pid := NEW.v; RETURN NEW; END; $$ LANGUAGE plpgsql`,
+					`CREATE TRIGGER ct_bu BEFORE UPDATE ON ct FOR EACH ROW EXECUTE FUNCTION ct_bu()`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE ct SET v = 2",
+					},
+					{
+						Query:       "UPDATE ct SET v = 9",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 2, 2}},
+					},
+				},
+			},
+			{
+				Name: "UPDATE checks a foreign key over a generated column of the columns it assigns",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, a INT, g INT GENERATED ALWAYS AS (a + 1) STORED REFERENCES pt (id))`,
+					`INSERT INTO pt VALUES (1), (2)`,
+					`INSERT INTO ct (id, a) VALUES (1, 0)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE ct SET a = 1",
+					},
+					{
+						Query:       "UPDATE ct SET a = 5",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 1, 2}},
+					},
+				},
+			},
+			{
+				Name: "UPDATE ... FROM only checks the foreign keys over the columns it changes",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY, v INT)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, pid INT REFERENCES pt (id), v INT)`,
+					`INSERT INTO pt VALUES (1, 0), (2, 0)`,
+					`INSERT INTO ct VALUES (1, 1, 0)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE ct SET v = 1 FROM pt WHERE pt.id = ct.pid",
+					},
+					{
+						Query:       "UPDATE ct SET pid = 9 FROM pt WHERE pt.id = ct.pid",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query: "UPDATE pt SET v = 3 FROM ct WHERE pt.id = ct.pid",
+					},
+					{
+						Query:       "UPDATE pt SET id = 9 FROM ct WHERE pt.id = ct.pid",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 1, 1}},
 					},
 				},
 			},

@@ -2016,6 +2016,83 @@ ORDER BY schema_name, table_name;`,
 			},
 		},
 		{
+			Name: "UNIQUE NULLS NOT DISTINCT",
+			SetUpScript: []string{
+				"CREATE TABLE at1 (id INT PRIMARY KEY, a INT, b INT);",
+				"INSERT INTO at1 VALUES (1, 1, NULL), (2, 1, NULL), (3, NULL, NULL);",
+				"CREATE TABLE at2 (id INT PRIMARY KEY);",
+				"INSERT INTO at2 VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "ALTER TABLE at1 ADD CONSTRAINT at1_a_b_key UNIQUE NULLS NOT DISTINCT (a, b);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD UNIQUE NULLS NOT DISTINCT (a);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD CONSTRAINT at1_a_b_key UNIQUE NULLS DISTINCT (a, b);",
+				},
+				{
+					Query: "DELETE FROM at1 WHERE id = 2;",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD CONSTRAINT at1_b_key UNIQUE NULLS NOT DISTINCT (b, a);",
+				},
+				{
+					Query:           "INSERT INTO at1 VALUES (4, NULL, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD COLUMN c INT UNIQUE NULLS NOT DISTINCT;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD COLUMN d INT;",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD CONSTRAINT at1_d_key UNIQUE NULLS NOT DISTINCT (d);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'at1'::regclass AND contype = 'u' ORDER BY 1;",
+					Expected: []sql.Row{
+						{"at1_a_b_key", "UNIQUE (a, b)"},
+						{"at1_b_key", "UNIQUE NULLS NOT DISTINCT (b, a)"},
+					},
+				},
+				{
+					Query: "UPDATE at1 SET d = 1 WHERE id = 1;",
+				},
+				{
+					Query:    "SELECT * FROM at1 ORDER BY id;",
+					Expected: []sql.Row{{1, 1, nil, 1}, {3, nil, nil, nil}},
+				},
+				{
+					Query: "ALTER TABLE at2 ADD COLUMN c INT UNIQUE NULLS NOT DISTINCT;",
+				},
+				{
+					Query:           "INSERT INTO at2 (id) VALUES (2);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO at2 VALUES (2, 1);",
+				},
+				{
+					Query:    "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'at2'::regclass AND contype = 'u';",
+					Expected: []sql.Row{{"at2_c_key", "UNIQUE NULLS NOT DISTINCT (c)"}},
+				},
+			},
+		},
+		{
 			Name: "column defaults with user-defined functions keep working after table rewrites",
 			SetUpScript: []string{
 				"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL AS $$ SELECT 1 $$;",
@@ -2044,6 +2121,77 @@ ORDER BY schema_name, table_name;`,
 				{
 					Query:    "SELECT * FROM t ORDER BY id;",
 					Expected: []sql.Row{{1, 1}, {2, 1}},
+				},
+			},
+		},
+		{
+			Name: "ADD COLUMN NOT NULL without a default",
+			SetUpScript: []string{
+				"CREATE TABLE a (id INT PRIMARY KEY);",
+				"INSERT INTO a VALUES (1), (2);",
+				"CREATE TABLE e (id INT PRIMARY KEY);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "ALTER TABLE a ADD COLUMN h INT NOT NULL;",
+					ExpectedErr:     `column "h" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "ALTER TABLE a ADD COLUMN s TEXT NOT NULL;",
+					ExpectedErr:     `column "s" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "ALTER TABLE a ADD COLUMN d DATE NOT NULL;",
+					ExpectedErr:     `column "d" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "ALTER TABLE a ADD COLUMN b BOOLEAN NOT NULL;",
+					ExpectedErr:     `column "b" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query: "ALTER TABLE a ADD COLUMN g INT NOT NULL GENERATED ALWAYS AS (id * 2) STORED;",
+				},
+				{
+					Query:    "SELECT * FROM a ORDER BY id;",
+					Expected: []sql.Row{{1, 2}, {2, 4}},
+				},
+				{
+					Query: "ALTER TABLE e ADD COLUMN h INT NOT NULL;",
+				},
+				{
+					Query: "ALTER TABLE e ADD COLUMN s TEXT NOT NULL;",
+				},
+				{
+					Query:           "INSERT INTO e (id) VALUES (3);",
+					ExpectedErr:     "Field 'h' doesn't have a default value",
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "INSERT INTO e (id) VALUES (3);",
+					ExpectedErr:     `null value in column "h" of relation "e" violates not-null constraint`,
+					ExpectedErrCode: "23502",
+					Skip:            true,
+				},
+				{
+					Query: "INSERT INTO e VALUES (3, 4, 'x');",
+				},
+				{
+					Query:    "SELECT * FROM e;",
+					Expected: []sql.Row{{3, 4, "x"}},
+				},
+				{
+					Query: "DELETE FROM a;",
+				},
+				{
+					Query: "ALTER TABLE a ADD COLUMN h INT NOT NULL;",
+				},
+				{
+					Query:    "SELECT column_name FROM information_schema.columns WHERE table_name = 'a' ORDER BY ordinal_position;",
+					Expected: []sql.Row{{"id"}, {"g"}, {"h"}},
 				},
 			},
 		},
