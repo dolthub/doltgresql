@@ -98,6 +98,8 @@ func getConstraintDef(ctx *sql.Context, oidVal id.Id) (string, error) {
 			colsStr := getColumnNamesString(index.Item.Expressions())
 			if strings.ToLower(index.Item.ID()) == "primary" {
 				result = fmt.Sprintf("PRIMARY KEY (%s)", colsStr)
+			} else if sql.IndexNullsNotDistinct(index.Item) {
+				result = fmt.Sprintf("UNIQUE NULLS NOT DISTINCT (%s)", colsStr)
 			} else {
 				result = fmt.Sprintf("UNIQUE (%s)", colsStr)
 			}
