@@ -6296,6 +6296,23 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
+			Name: "string_agg is not cut at 1024 characters",
+			SetUpScript: []string{
+				"CREATE TABLE parts (id INT PRIMARY KEY, s TEXT);",
+				"INSERT INTO parts SELECT g, repeat('x', 100) FROM generate_series(1, 50) AS g;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT length(string_agg(s, '')) FROM parts;",
+					Expected: []sql.Row{{5000}},
+				},
+				{
+					Query:    "SELECT length(string_agg(s, ',' ORDER BY id)) FROM parts;",
+					Expected: []sql.Row{{5049}},
+				},
+			},
+		},
+		{
 			Name: "concat",
 			Assertions: []ScriptTestAssertion{
 				{ // https://github.com/dolthub/doltgresql/issues/2547
