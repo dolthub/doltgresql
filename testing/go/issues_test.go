@@ -27,6 +27,51 @@ import (
 func TestIssues(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "Issue #3895: over-long branch and tag names are refused",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "select dolt_branch(repeat('a', 1024));",
+					Expected: []sql.Row{{int64(0)}},
+				},
+				{
+					Query:       "select dolt_branch(repeat('b', 1025));",
+					ExpectedErr: "is an invalid branch name",
+				},
+				{
+					Query:       "select dolt_branch(repeat('c', 32768));",
+					ExpectedErr: "is an invalid branch name",
+				},
+				{
+					Query:    "select length(name) from dolt.branches order by 1;",
+					Expected: []sql.Row{{int32(4)}, {int32(1024)}},
+				},
+				{
+					Query:    "select count(*) from dolt_branch_control where length(branch) > 1024;",
+					Expected: []sql.Row{{int64(0)}},
+				},
+				{
+					Query:    "select dolt_tag(repeat('t', 1024), 'HEAD');",
+					Expected: []sql.Row{{int64(0)}},
+				},
+				{
+					Query:       "select dolt_tag(repeat('u', 1025), 'HEAD');",
+					ExpectedErr: "not a valid user tag name",
+				},
+				{
+					Query:       "select dolt_tag(repeat('n', 65536), 'HEAD');",
+					ExpectedErr: "not a valid user tag name",
+				},
+				{
+					Query:       "select dolt_tag(repeat('n', 65537), 'HEAD');",
+					ExpectedErr: "not a valid user tag name",
+				},
+				{
+					Query:    "select length(tag_name) from dolt.tags order by 1;",
+					Expected: []sql.Row{{int32(1024)}},
+				},
+			},
+		},
+		{
 			Name: "Issue #25: double-quoted args to dolt functions treated as identifiers",
 			SetUpScript: []string{
 				"create table tbl (pk int);",

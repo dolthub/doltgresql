@@ -8856,6 +8856,7 @@ table_constraint_elem:
         Columns: $4.idxElems(),
         IndexParams: $6.constraintIdxParams(),
       },
+      NullsNotDistinct: !$2.bool(),
     }
   }
 | PRIMARY KEY '(' index_params ')' constraint_index_params

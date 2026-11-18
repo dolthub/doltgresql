@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"math"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,6 +100,161 @@ func TestBindingInsertSelectWithOidZero(t *testing.T) {
 	assert.Equal(t, int32(12), id)
 	assert.Equal(t, int64(9223372036854775806), value)
 	assert.Equal(t, "inserted", label)
+}
+
+// TestBindingUnknownOidPrimaryKeyLookup verifies primary key lookups with a parameter that the client declares with the
+// unknown type, as Npgsql does for NpgsqlDbType.Unknown (https://github.com/dolthub/doltgresql/issues/3748).
+func TestBindingUnknownOidPrimaryKeyLookup(t *testing.T) {
+	ctx, connection, controller := CreateServer(t, "postgres")
+	defer func() {
+		connection.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+	conn := connection.Default
+
+	_, err := connection.Exec(ctx, "CREATE TABLE npk (n NUMERIC PRIMARY KEY, v TEXT);")
+	require.NoError(t, err)
+	_, err = connection.Exec(ctx, "INSERT INTO npk VALUES (1, 'a'), (2, 'b'), (1.5, 'c');")
+	require.NoError(t, err)
+
+	paramOIDs := []uint32{pgtype.UnknownOID}
+	paramFormats := []int16{0}
+	for _, test := range []struct {
+		key      string
+		expected []string
+	}{
+		{key: "1", expected: []string{"a"}},
+		{key: "1.50", expected: []string{"c"}},
+		{key: "3", expected: nil},
+	} {
+		result := conn.PgConn().ExecParams(ctx, "SELECT v FROM npk WHERE n = $1;", [][]byte{[]byte(test.key)}, paramOIDs,
+			paramFormats, nil).Read()
+		require.NoError(t, result.Err)
+		var values []string
+		for _, row := range result.Rows {
+			values = append(values, string(row[0]))
+		}
+		assert.Equal(t, test.expected, values, "key %s", test.key)
+	}
+
+	result := conn.PgConn().ExecParams(ctx, "UPDATE npk SET v = 'z' WHERE n = $1;", [][]byte{[]byte("1")}, paramOIDs,
+		paramFormats, nil).Read()
+	require.NoError(t, result.Err)
+	assert.Equal(t, int64(1), result.CommandTag.RowsAffected())
+
+	var v string
+	require.NoError(t, conn.QueryRow(ctx, "SELECT v FROM npk WHERE n = 1;").Scan(&v))
+	assert.Equal(t, "z", v)
+}
+
+// TestBindingBinaryNumeric verifies numeric parameters sent in the binary format, including the zero value that
+// Npgsql sends with no digits (https://github.com/dolthub/doltgresql/issues/3747).
+func TestBindingBinaryNumeric(t *testing.T) {
+	ctx, connection, controller := CreateServer(t, "postgres")
+	defer func() {
+		connection.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+	conn := connection.Default
+
+	encodeNumeric := func(weight int16, sign uint16, dscale int16, digits ...int16) []byte {
+		data := make([]byte, 8+2*len(digits))
+		binary.BigEndian.PutUint16(data[0:], uint16(len(digits)))
+		binary.BigEndian.PutUint16(data[2:], uint16(weight))
+		binary.BigEndian.PutUint16(data[4:], sign)
+		binary.BigEndian.PutUint16(data[6:], uint16(dscale))
+		for i, digit := range digits {
+			binary.BigEndian.PutUint16(data[8+2*i:], uint16(digit))
+		}
+		return data
+	}
+	paramOIDs := []uint32{pgtype.NumericOID}
+	paramFormats := []int16{1}
+	for _, test := range []struct {
+		name     string
+		param    []byte
+		expected string
+	}{
+		{name: "zero", param: encodeNumeric(0, 0, 0), expected: "0"},
+		{name: "zero with scale", param: encodeNumeric(0, 0, 1), expected: "0.0"},
+		{name: "small fraction", param: encodeNumeric(-2, 0, 8, 1), expected: "0.00000001"},
+		{name: "negative", param: encodeNumeric(0, 0x4000, 1, 12, 5000), expected: "-12.5"},
+		{name: "trailing zero digits", param: encodeNumeric(1, 0, 0, 1), expected: "10000"},
+		{name: "NaN", param: encodeNumeric(0, 0xC000, 0), expected: "NaN"},
+		{name: "infinity", param: encodeNumeric(0, 0xD000, 0), expected: "Infinity"},
+		{name: "negative infinity", param: encodeNumeric(0, 0xF000, 0), expected: "-Infinity"},
+		{name: "negative zero", param: encodeNumeric(0, 0x4000, 0), expected: "0"},
+		{name: "negative zero with scale", param: encodeNumeric(0, 0x4000, 2), expected: "0.00"},
+		{name: "zero with nonzero weight", param: encodeNumeric(-3, 0, 2), expected: "0.00"},
+		{name: "max digit", param: encodeNumeric(0, 0, 0, 9999), expected: "9999"},
+		{name: "integer and fraction", param: encodeNumeric(0, 0, 4, 1, 1), expected: "1.0001"},
+		{name: "scale pads fraction", param: encodeNumeric(0, 0, 6, 1, 5000), expected: "1.500000"},
+		{name: "scale truncates fraction", param: encodeNumeric(0, 0, 2, 1, 5678), expected: "1.56"},
+		{name: "scale truncates negative fraction", param: encodeNumeric(0, 0x4000, 2, 1, 5678), expected: "-1.56"},
+		{name: "scale truncates to negative zero", param: encodeNumeric(-2, 0x4000, 2, 1), expected: "0.00"},
+		{name: "integer with internal zero digit", param: encodeNumeric(2, 0, 0, 1, 0, 1), expected: "100000001"},
+		{name: "large weight", param: encodeNumeric(5, 0, 0, 12), expected: "12" + strings.Repeat("0", 20)},
+		{name: "beyond int64", param: encodeNumeric(5, 0, 0, 9223, 3720, 3685, 4775, 8080, 1234),
+			expected: "922337203685477580801234"},
+		{name: "beyond int64 with fraction", param: encodeNumeric(4, 0x4000, 4, 1, 2, 3, 4, 5, 6),
+			expected: "-10002000300040005.0006"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := conn.PgConn().ExecParams(ctx, "SELECT $1::numeric::text;", [][]byte{test.param}, paramOIDs,
+				paramFormats, nil).Read()
+			require.NoError(t, result.Err)
+			require.Len(t, result.Rows, 1)
+			assert.Equal(t, test.expected, string(result.Rows[0][0]))
+		})
+	}
+
+	_, err := connection.Exec(ctx, "CREATE TABLE t (id INT PRIMARY KEY, n NUMERIC);")
+	require.NoError(t, err)
+	result := conn.PgConn().ExecParams(ctx, "INSERT INTO t VALUES (1, $1);", [][]byte{encodeNumeric(0, 0, 0)}, paramOIDs,
+		paramFormats, nil).Read()
+	require.NoError(t, result.Err)
+	var n string
+	require.NoError(t, conn.QueryRow(ctx, "SELECT n::text FROM t WHERE id = 1;").Scan(&n))
+	assert.Equal(t, "0", n)
+
+	withDigitCount := func(data []byte, ndigits int16) []byte {
+		binary.BigEndian.PutUint16(data[0:], uint16(ndigits))
+		return data
+	}
+	for _, test := range []struct {
+		name          string
+		param         []byte
+		expectedError string
+	}{
+		{name: "invalid sign", param: encodeNumeric(0, 0x1234, 0), expectedError: "invalid sign"},
+		{name: "sign with extra bits", param: encodeNumeric(0, 0x4001, 0), expectedError: "invalid sign"},
+		{name: "truncated header", param: []byte{0, 0, 0, 0}, expectedError: "insufficient data left in message"},
+		{name: "single byte", param: []byte{0}, expectedError: "insufficient data left in message"},
+		{name: "missing digits", param: withDigitCount(encodeNumeric(0, 0, 0, 1), 2),
+			expectedError: "insufficient data left in message"},
+		{name: "truncated digit", param: encodeNumeric(0, 0, 0, 1)[:9], expectedError: "insufficient data left in message"},
+		{name: "negative digit count", param: withDigitCount(encodeNumeric(0, 0, 0), -1),
+			expectedError: "invalid length"},
+		{name: "negative scale", param: encodeNumeric(0, 0, -1, 1), expectedError: "invalid scale"},
+		{name: "digit too large", param: encodeNumeric(0, 0, 0, 10000), expectedError: "invalid digit"},
+		{name: "negative digit", param: encodeNumeric(0, 0, 0, -1), expectedError: "invalid digit"},
+		{name: "invalid digit after valid digit", param: encodeNumeric(1, 0, 0, 1, 10000), expectedError: "invalid digit"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := conn.PgConn().ExecParams(ctx, "SELECT $1::numeric;", [][]byte{test.param}, paramOIDs,
+				paramFormats, nil).Read()
+			require.ErrorContains(t, result.Err, test.expectedError)
+		})
+	}
+
+	// The connection must remain usable after rejecting malformed parameters.
+	result = conn.PgConn().ExecParams(ctx, "SELECT $1::numeric::text;", [][]byte{encodeNumeric(0, 0, 0, 7)}, paramOIDs,
+		paramFormats, nil).Read()
+	require.NoError(t, result.Err)
+	require.Len(t, result.Rows, 1)
+	assert.Equal(t, "7", string(result.Rows[0][0]))
 }
 
 // TestBindingInt4ToBigintWithUntypedNull is a regression test for
