@@ -1374,6 +1374,65 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "unique index NULLS NOT DISTINCT",
+			SetUpScript: []string{
+				"CREATE TABLE it (id INT PRIMARY KEY, a INT, b INT);",
+				"INSERT INTO it VALUES (1, NULL, 1), (2, NULL, 1), (3, 2, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "CREATE UNIQUE INDEX it_a_b_idx ON it (a, b) NULLS NOT DISTINCT;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "CREATE UNIQUE INDEX IF NOT EXISTS it_a_b_idx ON it (a, b) NULLS NOT DISTINCT;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "CREATE UNIQUE INDEX it_a_b_idx ON it (a, b) NULLS DISTINCT;",
+				},
+				{
+					Query: "CREATE UNIQUE INDEX it_b_a_idx ON it (b DESC, a) NULLS NOT DISTINCT WHERE id > 1;",
+				},
+				{
+					// NULLS NOT DISTINCT has no effect on a non-unique index, but is still recorded
+					Query: "CREATE INDEX it_b_idx ON it (b) NULLS NOT DISTINCT;",
+				},
+				{
+					Query:           "INSERT INTO it VALUES (4, 2, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "INSERT INTO it VALUES (4, NULL, 1);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO it VALUES (0, 2, NULL);",
+				},
+				{
+					Query: "SELECT c.relname, i.indnullsnotdistinct FROM pg_index i " +
+						"JOIN pg_class c ON c.oid = i.indexrelid WHERE i.indrelid = 'it'::regclass ORDER BY 1;",
+					Expected: []sql.Row{{"it_a_b_idx", "f"}, {"it_b_a_idx", "t"}, {"it_b_idx", "t"}, {"it_pkey", "f"}},
+				},
+				{
+					Query: "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'it' AND indexname <> 'it_b_a_idx' ORDER BY 1;",
+					Expected: []sql.Row{
+						{"it_a_b_idx", "CREATE UNIQUE INDEX it_a_b_idx ON public.it USING btree (a, b)"},
+						{"it_b_idx", "CREATE INDEX it_b_idx ON public.it USING btree (b) NULLS NOT DISTINCT"},
+						{"it_pkey", "CREATE UNIQUE INDEX it_pkey ON public.it USING btree (id)"},
+					},
+				},
+				{
+					Query:    "SELECT * FROM it ORDER BY id;",
+					Expected: []sql.Row{{0, 2, nil}, {1, nil, 1}, {2, nil, 1}, {3, 2, nil}},
+				},
+			},
+		},
+		{
 			Name: "Proper range AND + OR handling",
 			SetUpScript: []string{
 				"CREATE TABLE test(pk INTEGER PRIMARY KEY, v1 INTEGER);",
@@ -1801,6 +1860,47 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "partial index predicate that evaluates to NULL",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT);",
+				"CREATE UNIQUE INDEX t_partial ON t (a) WHERE b > 5;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t VALUES (1, 1, NULL), (2, 1, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (3, 1, 6);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t VALUES (4, 1, 7);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "UPDATE t SET b = NULL WHERE id = 3;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t SET b = 8 WHERE id = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE t SET b = 9 WHERE id = 2;",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "DELETE FROM t WHERE b IS NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t;",
+					Expected: []sql.Row{{1, 1, 8}},
+				},
+			},
+		},
+		{
 			Name: "partial index on keyless table",
 			SetUpScript: []string{
 				"CREATE TABLE t (a INT, b INT);",
@@ -1853,6 +1953,65 @@ func TestBasicIndexing(t *testing.T) {
 				{
 					Query:       "INSERT INTO t VALUES (3, 99);",
 					ExpectedErr: "duplicate unique key given",
+				},
+			},
+		},
+		{
+			Name: "partial unique index on keyless table with rows outside the predicate",
+			SetUpScript: []string{
+				"CREATE TABLE t (p INT, slot INT);",
+				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t VALUES (1, 5), (1, 6);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (1, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t VALUES (1, NULL);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "UPDATE t SET slot = 7 WHERE slot IS NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (1, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY slot;",
+					Expected: []sql.Row{{1, 5}, {1, 6}, {1, 7}, {1, nil}},
+				},
+			},
+		},
+		{
+			Name: "dropping a column that precedes the columns of a partial index predicate",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, extra INT, p INT, slot INT);",
+				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
+				"INSERT INTO t VALUES (1, 0, 1, NULL), (2, 0, 2, 5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t DROP COLUMN extra;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 1, nil}, {2, 2, 5}},
+				},
+				{
+					Query:       "INSERT INTO t VALUES (3, 1, NULL);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "INSERT INTO t VALUES (3, 2, NULL);",
+					Expected: []sql.Row{},
 				},
 			},
 		},
@@ -2188,6 +2347,104 @@ func TestBasicIndexing(t *testing.T) {
 				{
 					Query:    "SELECT * FROM mj_t x JOIN mj_u y ON y.n = x.n WHERE x.w = 1 ORDER BY 1, 2, 3;",
 					Expected: []sql.Row{{1, 1, 1}, {1, 2, 2}},
+				},
+			},
+		},
+		{
+			Name: "primary key lookup with a literal of another type (issue 3748)",
+			SetUpScript: []string{
+				"CREATE TABLE npk (n NUMERIC PRIMARY KEY, v TEXT);",
+				"INSERT INTO npk VALUES (1, 'a'), (2, 'b'), (1.5, 'c');",
+				"CREATE TABLE bpk (id BIGINT PRIMARY KEY, v TEXT);",
+				"INSERT INTO bpk VALUES (1, 'a'), (2, 'b');",
+				"CREATE TABLE ipk (id INT PRIMARY KEY, v TEXT);",
+				"INSERT INTO ipk VALUES (1, 'a'), (2, 'b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1.0;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1.5;",
+					Expected: []sql.Row{{"c"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = '1';",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = '1'::unknown;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = '01';",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = '1.50';",
+					Expected: []sql.Row{{"c"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 2::INT8;",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = $1;",
+					BindVars: []any{"2"},
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT count(*) FROM npk WHERE n = 3;",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "UPDATE npk SET v = 'z' WHERE n = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1.0;",
+					Expected: []sql.Row{{"z"}},
+				},
+				{
+					Query:    "DELETE FROM npk WHERE n = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT count(*) FROM npk;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT v FROM bpk WHERE id = 1;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM bpk WHERE id = '2';",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT v FROM bpk WHERE id = 2::INT8;",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT v FROM ipk WHERE id = 2::INT8;",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT v FROM ipk WHERE id = '2';",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT count(*) FROM ipk WHERE id = 1.5;",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SELECT v FROM ipk WHERE id = 2.0;",
+					Expected: []sql.Row{{"b"}},
 				},
 			},
 		},

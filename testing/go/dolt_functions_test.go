@@ -2838,6 +2838,63 @@ func TestDoltVerifyConstraints(t *testing.T) {
 			},
 		},
 		{
+			Name: "Merged UNIQUE NULLS NOT DISTINCT violation",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT, UNIQUE NULLS NOT DISTINCT (a, b));",
+				"INSERT INTO t VALUES (1, 1, NULL);",
+				"SELECT dolt_commit('-Am', 'setup');",
+				"SELECT dolt_checkout('-b', 'b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "INSERT INTO t VALUES (2, 1, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:    "SELECT indnullsnotdistinct FROM pg_index WHERE indexrelid = 't_a_b_key'::regclass;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query: "INSERT INTO t VALUES (2, NULL, NULL);",
+				},
+				{
+					Query:            "SELECT dolt_commit('-am', 'insert on b');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_checkout('main');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "INSERT INTO t VALUES (3, NULL, NULL);",
+				},
+				{
+					Query:            "SELECT dolt_commit('-am', 'insert on main');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "SET dolt_force_transaction_commit TO ON;",
+				},
+				{
+					Query:            "SELECT dolt_merge('b');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    "SELECT violation_type, pk, a, b FROM dolt_constraint_violations_t ORDER BY pk;",
+					Expected: []sql.Row{{"unique index", 2, nil, nil}, {"unique index", 3, nil, nil}},
+				},
+				{
+					Query:    "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 't_a_b_key';",
+					Expected: []sql.Row{{"UNIQUE NULLS NOT DISTINCT (a, b)"}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints('--all');",
+					Expected: []sql.Row{{int64(1)}},
+				},
+			},
+		},
+		{
 			Name: "Merged foreign key violation in a schema on the search path",
 			SetUpScript: []string{
 				"CREATE SCHEMA s2;",

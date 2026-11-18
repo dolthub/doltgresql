@@ -1067,6 +1067,110 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
+				Name: "UPDATE only checks the foreign keys over the columns it changes",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY, v INT)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, pid INT REFERENCES pt (id), v INT)`,
+					`INSERT INTO pt VALUES (1, 0), (2, 0)`,
+					`INSERT INTO ct VALUES (1, 1, 0)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE pt SET v = 1 WHERE id = 1",
+					},
+					{
+						Query: "UPDATE ct SET v = 1",
+					},
+					{
+						Query:       "UPDATE ct SET pid = 9",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:       "UPDATE pt SET id = 9 WHERE id = 1",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 1, 1}},
+					},
+				},
+			},
+			{
+				Name: "UPDATE checks a foreign key over a column that a BEFORE UPDATE trigger assigns",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, pid INT REFERENCES pt (id), v INT)`,
+					`INSERT INTO pt VALUES (1), (2)`,
+					`INSERT INTO ct VALUES (1, 1, 0)`,
+					`CREATE FUNCTION ct_bu() RETURNS TRIGGER AS $$ BEGIN NEW.pid := NEW.v; RETURN NEW; END; $$ LANGUAGE plpgsql`,
+					`CREATE TRIGGER ct_bu BEFORE UPDATE ON ct FOR EACH ROW EXECUTE FUNCTION ct_bu()`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE ct SET v = 2",
+					},
+					{
+						Query:       "UPDATE ct SET v = 9",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 2, 2}},
+					},
+				},
+			},
+			{
+				Name: "UPDATE checks a foreign key over a generated column of the columns it assigns",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, a INT, g INT GENERATED ALWAYS AS (a + 1) STORED REFERENCES pt (id))`,
+					`INSERT INTO pt VALUES (1), (2)`,
+					`INSERT INTO ct (id, a) VALUES (1, 0)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE ct SET a = 1",
+					},
+					{
+						Query:       "UPDATE ct SET a = 5",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 1, 2}},
+					},
+				},
+			},
+			{
+				Name: "UPDATE ... FROM only checks the foreign keys over the columns it changes",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY, v INT)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, pid INT REFERENCES pt (id), v INT)`,
+					`INSERT INTO pt VALUES (1, 0), (2, 0)`,
+					`INSERT INTO ct VALUES (1, 1, 0)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE ct SET v = 1 FROM pt WHERE pt.id = ct.pid",
+					},
+					{
+						Query:       "UPDATE ct SET pid = 9 FROM pt WHERE pt.id = ct.pid",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query: "UPDATE pt SET v = 3 FROM ct WHERE pt.id = ct.pid",
+					},
+					{
+						Query:       "UPDATE pt SET id = 9 FROM ct WHERE pt.id = ct.pid",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 1, 1}},
+					},
+				},
+			},
+			{
 				Name: "merging",
 				SetUpScript: []string{
 					`CREATE TABLE "evaluation_job_config" (
