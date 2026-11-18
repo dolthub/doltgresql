@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"math"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -184,6 +185,21 @@ func TestBindingBinaryNumeric(t *testing.T) {
 		{name: "NaN", param: encodeNumeric(0, 0xC000, 0), expected: "NaN"},
 		{name: "infinity", param: encodeNumeric(0, 0xD000, 0), expected: "Infinity"},
 		{name: "negative infinity", param: encodeNumeric(0, 0xF000, 0), expected: "-Infinity"},
+		{name: "negative zero", param: encodeNumeric(0, 0x4000, 0), expected: "0"},
+		{name: "negative zero with scale", param: encodeNumeric(0, 0x4000, 2), expected: "0.00"},
+		{name: "zero with nonzero weight", param: encodeNumeric(-3, 0, 2), expected: "0.00"},
+		{name: "max digit", param: encodeNumeric(0, 0, 0, 9999), expected: "9999"},
+		{name: "integer and fraction", param: encodeNumeric(0, 0, 4, 1, 1), expected: "1.0001"},
+		{name: "scale pads fraction", param: encodeNumeric(0, 0, 6, 1, 5000), expected: "1.500000"},
+		{name: "scale truncates fraction", param: encodeNumeric(0, 0, 2, 1, 5678), expected: "1.56"},
+		{name: "scale truncates negative fraction", param: encodeNumeric(0, 0x4000, 2, 1, 5678), expected: "-1.56"},
+		{name: "scale truncates to negative zero", param: encodeNumeric(-2, 0x4000, 2, 1), expected: "0.00"},
+		{name: "integer with internal zero digit", param: encodeNumeric(2, 0, 0, 1, 0, 1), expected: "100000001"},
+		{name: "large weight", param: encodeNumeric(5, 0, 0, 12), expected: "12" + strings.Repeat("0", 20)},
+		{name: "beyond int64", param: encodeNumeric(5, 0, 0, 9223, 3720, 3685, 4775, 8080, 1234),
+			expected: "922337203685477580801234"},
+		{name: "beyond int64 with fraction", param: encodeNumeric(4, 0x4000, 4, 1, 2, 3, 4, 5, 6),
+			expected: "-10002000300040005.0006"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			result := conn.PgConn().ExecParams(ctx, "SELECT $1::numeric::text;", [][]byte{test.param}, paramOIDs,
@@ -203,9 +219,42 @@ func TestBindingBinaryNumeric(t *testing.T) {
 	require.NoError(t, conn.QueryRow(ctx, "SELECT n::text FROM t WHERE id = 1;").Scan(&n))
 	assert.Equal(t, "0", n)
 
-	result = conn.PgConn().ExecParams(ctx, "SELECT $1::numeric;", [][]byte{encodeNumeric(0, 0x1234, 0)}, paramOIDs,
+	withDigitCount := func(data []byte, ndigits int16) []byte {
+		binary.BigEndian.PutUint16(data[0:], uint16(ndigits))
+		return data
+	}
+	for _, test := range []struct {
+		name          string
+		param         []byte
+		expectedError string
+	}{
+		{name: "invalid sign", param: encodeNumeric(0, 0x1234, 0), expectedError: "invalid sign"},
+		{name: "sign with extra bits", param: encodeNumeric(0, 0x4001, 0), expectedError: "invalid sign"},
+		{name: "truncated header", param: []byte{0, 0, 0, 0}, expectedError: "insufficient data left in message"},
+		{name: "single byte", param: []byte{0}, expectedError: "insufficient data left in message"},
+		{name: "missing digits", param: withDigitCount(encodeNumeric(0, 0, 0, 1), 2),
+			expectedError: "insufficient data left in message"},
+		{name: "truncated digit", param: encodeNumeric(0, 0, 0, 1)[:9], expectedError: "insufficient data left in message"},
+		{name: "negative digit count", param: withDigitCount(encodeNumeric(0, 0, 0), -1),
+			expectedError: "invalid length"},
+		{name: "negative scale", param: encodeNumeric(0, 0, -1, 1), expectedError: "invalid scale"},
+		{name: "digit too large", param: encodeNumeric(0, 0, 0, 10000), expectedError: "invalid digit"},
+		{name: "negative digit", param: encodeNumeric(0, 0, 0, -1), expectedError: "invalid digit"},
+		{name: "invalid digit after valid digit", param: encodeNumeric(1, 0, 0, 1, 10000), expectedError: "invalid digit"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := conn.PgConn().ExecParams(ctx, "SELECT $1::numeric;", [][]byte{test.param}, paramOIDs,
+				paramFormats, nil).Read()
+			require.ErrorContains(t, result.Err, test.expectedError)
+		})
+	}
+
+	// The connection must remain usable after rejecting malformed parameters.
+	result = conn.PgConn().ExecParams(ctx, "SELECT $1::numeric::text;", [][]byte{encodeNumeric(0, 0, 0, 7)}, paramOIDs,
 		paramFormats, nil).Read()
-	require.ErrorContains(t, result.Err, "invalid sign")
+	require.NoError(t, result.Err)
+	require.Len(t, result.Rows, 1)
+	assert.Equal(t, "7", string(result.Rows[0][0]))
 }
 
 // TestBindingInt4ToBigintWithUntypedNull is a regression test for

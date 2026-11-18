@@ -132,7 +132,10 @@ var numeric_recv = framework.Function3{
 		default:
 			return nil, errors.Errorf("invalid sign in external \"numeric\" value")
 		}
-		if ndigits < 0 || len(data) < headerSize+2*int(ndigits) {
+		if ndigits < 0 {
+			return nil, errors.Errorf("invalid length in external \"numeric\" value")
+		}
+		if len(data) < headerSize+2*int(ndigits) {
 			return nil, errors.Errorf("insufficient data left in message")
 		}
 		if dscale < 0 {
@@ -151,8 +154,21 @@ var numeric_recv = framework.Function3{
 		}
 		// Each base-10000 digit spans four decimal digits, and weight is the position of the first digit.
 		result.Exponent = (int32(weight) - int32(ndigits) + 1) * 4
-		result.Negative = sign == numericBinaryNegative && !result.IsZero()
-		return sql.DecimalRound(result, int32(dscale))
+		result.Negative = sign == numericBinaryNegative
+		// Postgres truncates digits hidden by dscale rather than rounding them.
+		precision := result.NumDigits() + int64(dscale)
+		if result.Exponent > 0 {
+			precision += int64(result.Exponent)
+		}
+		truncateCtx := sql.DecimalCtx.WithPrecision(uint32(precision))
+		truncateCtx.Rounding = apd.RoundDown
+		if _, err = truncateCtx.Quantize(result, result, -int32(dscale)); err != nil {
+			return nil, err
+		}
+		if result.IsZero() {
+			result.Negative = false
+		}
+		return result, nil
 	},
 }
 
