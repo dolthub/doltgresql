@@ -580,6 +580,7 @@ func TestJoinsScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"filter pushdown through join uppercase name", // syntax error (join without on)
 		"join index lookups do not handle filters",    // need a different join syntax (no ON clause not supported in postgres)
+		"keyless table anti-join",                     // compares a boolean to a string, which postgres rejects
 	})
 	defer h.Close()
 	enginetest.TestJoinsScripts(t, h)
@@ -943,6 +944,12 @@ func TestForeignKeys(t *testing.T) {
 		"foreign key naming",
 		"Naming automatically created FK indexes",
 		"partial foreign key update",
+		"UPDATE only checks the foreign keys over the columns it changes",
+		"UPDATE checks a foreign key over a column that a BEFORE UPDATE trigger assigns",
+		"UPDATE checks a foreign key over a generated column of the columns it assigns",
+		"UPDATE checks a foreign key over a column with an ON UPDATE expression",
+		"UPDATE JOIN only checks the foreign keys over the columns it changes",
+		"RESTRICT doesn't depend on the child's other foreign keys",
 		"ON UPDATE CASCADE maintains an index over a virtual column",
 		"ON UPDATE CASCADE recomputes chained virtual columns",
 		"ON DELETE CASCADE maintains an index over a virtual column, self-referential",
@@ -1371,6 +1378,7 @@ func TestStoredProcedures(t *testing.T) {
 		"FETCH captures state at OPEN",
 		"FETCH implicitly closes",
 		"SQLEXCEPTION declare handler",
+		"IF and IF/ELSE blocks inside EXIT HANDLER",
 		"Test cursor continue-handler checksum loops",
 		"DECLARE HANDLERs exit according to the block they were declared in",
 		"Labeled BEGIN...END",
