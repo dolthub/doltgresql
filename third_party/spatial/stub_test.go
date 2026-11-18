@@ -32,17 +32,10 @@ func TestStubReturnsUnavailable(t *testing.T) {
 	require.ErrorIs(t, err, ErrNativeUnavailable)
 	_, err = NewTransformer("EPSG:4326", "EPSG:3857")
 	require.ErrorIs(t, err, ErrNativeUnavailable)
-	_, err = DatabaseCRSInfo("EPSG", nil)
-	require.ErrorIs(t, err, ErrNativeUnavailable)
 	_, err = WagyuClip([][]int64{{0, 0, 1, 0, 1, 1, 0, 0}}, 0, 0, 1, 1)
 	require.ErrorIs(t, err, ErrNativeUnavailable)
 }
 
 func TestStubPanicsWithUnavailable(t *testing.T) {
 	require.PanicsWithError(t, ErrNativeUnavailable.Error(), func() { GEOSVersion() })
-}
-
-func TestStubReadsNothing(t *testing.T) {
-	require.False(t, Reads("EPSG:4326"))
-	require.False(t, IsGeographic("EPSG:4326"))
 }

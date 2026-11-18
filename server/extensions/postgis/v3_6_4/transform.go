@@ -60,15 +60,9 @@ func columnViews() []extdef.View {
 	}
 }
 
-// spatialRefSysRows returns the starting rows of spatial_ref_sys, which has no rows when the binary was built without
-// the native spatial libraries.
+// spatialRefSysRows returns the starting rows of spatial_ref_sys.
 func spatialRefSysRows(ctx *sql.Context) ([][]any, error) {
-	rows, err := databaseSRSRows()
-	if errors.Is(err, spatial.ErrNativeUnavailable) {
-		return nil, nil
-	}
-
-	return rows, err
+	return databaseSRSRows()
 }
 
 // databaseSRSRows reads the starting rows of spatial_ref_sys from PROJ's database, which never changes, so it is only

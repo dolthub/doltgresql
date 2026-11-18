@@ -17,8 +17,8 @@
 package spatial
 
 // This file stands in for the native GEOS, PROJ, and Wagyu bindings when building without the
-// postgis_native tag. Functions that can return an error return ErrNativeUnavailable, PROJ's database reads as
-// empty, and the others panic with ErrNativeUnavailable.
+// postgis_native tag. Functions that can return an error return ErrNativeUnavailable, and the others panic with
+// ErrNativeUnavailable.
 
 // GEOS is a GEOS context, which cannot run any operations without the native spatial libraries.
 type GEOS struct{}
@@ -31,11 +31,6 @@ type Transformer struct{}
 
 // GEOSVersion is unavailable without the native spatial libraries.
 func GEOSVersion() string {
-	panic(ErrNativeUnavailable)
-}
-
-// PROJVersion is unavailable without the native spatial libraries.
-func PROJVersion() string {
 	panic(ErrNativeUnavailable)
 }
 
@@ -337,16 +332,6 @@ func (g *GEOS) Boundary(a Geometry) (Geometry, error) {
 	return Geometry{}, ErrNativeUnavailable
 }
 
-// DatabaseCRSInfo is unavailable without the native spatial libraries.
-func DatabaseCRSInfo(authority string, within *[4]float64) ([]CRSInfo, error) {
-	return nil, ErrNativeUnavailable
-}
-
-// CRSDefinitions is unavailable without the native spatial libraries.
-func CRSDefinitions(authority string, code string) (wkt string, projString string, err error) {
-	return "", "", ErrNativeUnavailable
-}
-
 // NewTransformer is unavailable without the native spatial libraries.
 func NewTransformer(source string, target string) (*Transformer, error) {
 	return nil, ErrNativeUnavailable
@@ -357,12 +342,6 @@ func NewPipelineTransformer(pipeline string, forward bool) (*Transformer, error)
 	return nil, ErrNativeUnavailable
 }
 
-// Reads returns false, as there is no PROJ database to read definitions from without the native spatial libraries.
-// Unlike the other stubs, it does not panic, since type modifiers are checked with it while analyzing a query.
-func Reads(definition string) bool {
-	return false
-}
-
 // Close does nothing without the native spatial libraries.
 func (t *Transformer) Close() {
 }
@@ -370,16 +349,6 @@ func (t *Transformer) Close() {
 // Transform is unavailable without the native spatial libraries.
 func (t *Transformer) Transform(coords []float64, dims int, hasZ bool) error {
 	return ErrNativeUnavailable
-}
-
-// PROJSettings is unavailable without the native spatial libraries.
-func PROJSettings() (networkEnabled bool, urlEndpoint string, writableDirectory string, databasePath string) {
-	panic(ErrNativeUnavailable)
-}
-
-// IsGeographic returns false, as PROJ cannot read any definition without the native spatial libraries.
-func IsGeographic(definition string) bool {
-	return false
 }
 
 // WagyuClip is unavailable without the native spatial libraries.
