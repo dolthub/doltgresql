@@ -777,6 +777,8 @@ github.com/the42/cartconvert v0.0.0-20131203171324-aae784c392b8 h1:I4DY8wLxJXCrM
 github.com/the42/cartconvert v0.0.0-20131203171324-aae784c392b8/go.mod h1:fWO/msnJVhHqN1yX6OBoxSyfj7TEj1hHiL8bJSQsK30=
 github.com/theory/sqljson v0.4.0 h1:c+XSeZtCNkoXkDUyOQQamvcMSD8y+kY/kM90IrJgdZc=
 github.com/theory/sqljson v0.4.0/go.mod h1:+J9ysorcZxPYN3t9/k9Yh0bP8IucAGbOBe/jZtQGu8I=
+github.com/tidwall/geodesic v1.52.4 h1:nT9cvYziVbmqFMDuvJzCJKvBJ9wFx0gRwvVrt86fpXg=
+github.com/tidwall/geodesic v1.52.4/go.mod h1:SNL5vSG4X+o0ExTya69PX7/ZQ2SAvmjAxI+o5ZGJsxs=
 github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/gjson v1.14.4 h1:uo0p8EbA09J7RQaflQ1aBRffTR7xedD2bcIVSYxLnkM=
 github.com/tidwall/gjson v1.14.4/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=

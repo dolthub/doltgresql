@@ -38,6 +38,7 @@ require (
 	github.com/sirupsen/logrus v1.8.3
 	github.com/stretchr/testify v1.11.1
 	github.com/theory/sqljson v0.4.0
+	github.com/tidwall/geodesic v1.52.4
 	github.com/twpayne/go-geom v1.3.6
 	github.com/xdg-go/scram v1.2.0
 	github.com/xdg-go/stringprep v1.0.4

@@ -16,7 +16,7 @@
 
 package spatial
 
-// This file stands in for the native GEOS, PROJ, GeographicLib, and Wagyu bindings when building without the
+// This file stands in for the native GEOS, PROJ, and Wagyu bindings when building without the
 // postgis_native tag. Functions that can return an error return ErrNativeUnavailable, PROJ's database reads as
 // empty, and the others panic with ErrNativeUnavailable.
 
@@ -28,15 +28,6 @@ type Group struct{}
 
 // Transformer transforms coordinates, which cannot exist without the native spatial libraries.
 type Transformer struct{}
-
-// Ellipsoid is an ellipsoid of revolution, which only reports its parameters without the native spatial libraries.
-type Ellipsoid struct {
-	radius     float64
-	flattening float64
-}
-
-// WGS84 is the ellipsoid of the WGS 84 datum.
-var WGS84 = NewEllipsoid(6378137, 1/298.257223563)
 
 // GEOSVersion is unavailable without the native spatial libraries.
 func GEOSVersion() string {
@@ -389,41 +380,6 @@ func PROJSettings() (networkEnabled bool, urlEndpoint string, writableDirectory 
 // IsGeographic returns false, as PROJ cannot read any definition without the native spatial libraries.
 func IsGeographic(definition string) bool {
 	return false
-}
-
-// NewEllipsoid returns the ellipsoid with the given equatorial radius and flattening.
-func NewEllipsoid(radius float64, flattening float64) *Ellipsoid {
-	return &Ellipsoid{radius: radius, flattening: flattening}
-}
-
-// Radius returns the equatorial radius of the ellipsoid.
-func (e *Ellipsoid) Radius() float64 {
-	return e.radius
-}
-
-// Flattening returns the flattening of the ellipsoid.
-func (e *Ellipsoid) Flattening() float64 {
-	return e.flattening
-}
-
-// Inverse is unavailable without the native spatial libraries.
-func (e *Ellipsoid) Inverse(lat1 float64, lon1 float64, lat2 float64, lon2 float64) (distance float64, azimuth1 float64, azimuth2 float64) {
-	panic(ErrNativeUnavailable)
-}
-
-// Direct is unavailable without the native spatial libraries.
-func (e *Ellipsoid) Direct(lat float64, lon float64, azimuth float64, distance float64) (float64, float64) {
-	panic(ErrNativeUnavailable)
-}
-
-// Position is unavailable without the native spatial libraries.
-func (e *Ellipsoid) Position(lat1 float64, lon1 float64, lat2 float64, lon2 float64, distance float64) (float64, float64) {
-	panic(ErrNativeUnavailable)
-}
-
-// PolygonArea is unavailable without the native spatial libraries.
-func (e *Ellipsoid) PolygonArea(lats []float64, lons []float64) float64 {
-	panic(ErrNativeUnavailable)
 }
 
 // WagyuClip is unavailable without the native spatial libraries.

@@ -40,15 +40,9 @@ func TestStubReturnsUnavailable(t *testing.T) {
 
 func TestStubPanicsWithUnavailable(t *testing.T) {
 	require.PanicsWithError(t, ErrNativeUnavailable.Error(), func() { GEOSVersion() })
-	require.PanicsWithError(t, ErrNativeUnavailable.Error(), func() { WGS84.Inverse(0, 0, 1, 1) })
 }
 
 func TestStubReadsNothing(t *testing.T) {
 	require.False(t, Reads("EPSG:4326"))
 	require.False(t, IsGeographic("EPSG:4326"))
-}
-
-func TestStubEllipsoidParameters(t *testing.T) {
-	require.Equal(t, 6378137.0, WGS84.Radius())
-	require.Equal(t, 1/298.257223563, WGS84.Flattening())
 }
