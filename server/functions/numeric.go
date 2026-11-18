@@ -21,11 +21,22 @@ import (
 	"strings"
 
 	"github.com/cockroachdb/apd/v3"
+	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 	"github.com/dolthub/doltgresql/utils"
+)
+
+// Sign and base values used by the binary wire format of numeric.
+const (
+	numericBinaryPositive         = 0x0000
+	numericBinaryNegative         = 0x4000
+	numericBinaryNaN              = 0xC000
+	numericBinaryPositiveInfinity = 0xD000
+	numericBinaryNegativeInfinity = 0xF000
+	numericBinaryBase             = 10000
 )
 
 // initNumeric registers the functions to the catalog.
@@ -95,80 +106,69 @@ var numeric_recv = framework.Function3{
 		if len(data) == 0 {
 			return nil, nil
 		}
+		const headerSize = 8
+		if len(data) < headerSize {
+			return nil, errors.Errorf("insufficient data left in message")
+		}
 		reader := utils.NewWireReader(data)
-		var d *apd.Decimal
-
-		// 1. Read Header
 		ndigits := reader.ReadInt16()
 		weight := reader.ReadInt16()
-		sign := reader.ReadInt16()
+		sign := uint16(reader.ReadInt16())
 		dscale := reader.ReadInt16()
 
-		// 2. Handle Special Values (NaN, Inf)
-		// These usually manifest as specific bit patterns in the header
-		switch uint16(sign) {
-		case 0xC000: // pgNumericNaN
-			d.Form = apd.NaN
-			return d, nil
-		case 0xD000: // pgNumericPosInf
-			d.Form = apd.Infinite
-			return d, nil
-		case 0xF000: // pgNumericNegInf
-			d.Form = apd.Infinite
-			d.Negative = true
-			return d, nil
+		result := new(apd.Decimal)
+		switch sign {
+		case numericBinaryNaN:
+			result.Form = apd.NaN
+			return result, nil
+		case numericBinaryPositiveInfinity:
+			result.Form = apd.Infinite
+			return result, nil
+		case numericBinaryNegativeInfinity:
+			result.Form = apd.Infinite
+			result.Negative = true
+			return result, nil
+		case numericBinaryPositive, numericBinaryNegative:
+		default:
+			return nil, errors.Errorf("invalid sign in external \"numeric\" value")
+		}
+		if ndigits < 0 {
+			return nil, errors.Errorf("invalid length in external \"numeric\" value")
+		}
+		if len(data) < headerSize+2*int(ndigits) {
+			return nil, errors.Errorf("insufficient data left in message")
+		}
+		if dscale < 0 {
+			return nil, errors.Errorf("invalid scale in external \"numeric\" value")
 		}
 
-		// 3. Handle Finite Values
-		if ndigits == 0 {
-			d.SetInt64(0)
-			return d, nil
-		}
-
-		// Read base-10000 digits
-		digits := make([]int16, ndigits)
+		base := apd.NewBigInt(numericBinaryBase)
+		digit := new(apd.BigInt)
 		for i := 0; i < int(ndigits); i++ {
-			digits[i] = reader.ReadInt16()
-		}
-
-		// 4. Convert base-10000 to string for *apd.Decimal
-		// Each digit is exactly 4 characters wide (except potentially the first)
-		var sb strings.Builder
-		if sign == 16384 {
-			sb.WriteByte('-')
-		}
-
-		for i, digit := range digits {
-			// Calculate how many 10000-base digits are before the decimal
-			// 'weight' is the index of the first digit, where 0 is 10^0 in base 10000
-			if i == int(weight)+1 {
-				sb.WriteByte('.')
+			digitValue := reader.ReadInt16()
+			if digitValue < 0 || digitValue >= numericBinaryBase {
+				return nil, errors.Errorf("invalid digit in external \"numeric\" value")
 			}
-
-			sDigit := strconv.Itoa(int(digit))
-			// Pad with leading zeros if not the very first digit
-			if l := len(sDigit); l < 4 {
-				padding := 4 - l
-				for p := 0; p < padding; p++ {
-					sb.WriteByte('0')
-				}
-			}
-			sb.WriteString(sDigit)
+			result.Coeff.Mul(&result.Coeff, base)
+			result.Coeff.Add(&result.Coeff, digit.SetInt64(int64(digitValue)))
 		}
-
-		// If weight is larger than digits, we need trailing zeros
-		if int(weight) >= len(digits) {
-			for i := 0; i < int(weight)-len(digits)+1; i++ {
-				sb.WriteString("0000")
-			}
+		// Each base-10000 digit spans four decimal digits, and weight is the position of the first digit.
+		result.Exponent = (int32(weight) - int32(ndigits) + 1) * 4
+		result.Negative = sign == numericBinaryNegative
+		// Postgres truncates digits hidden by dscale rather than rounding them.
+		precision := result.NumDigits() + int64(dscale)
+		if result.Exponent > 0 {
+			precision += int64(result.Exponent)
 		}
-
-		dec, _, err := sql.DecimalHighPrecisionCtx.NewFromString(sb.String())
-		if err != nil {
+		truncateCtx := sql.DecimalCtx.WithPrecision(uint32(precision))
+		truncateCtx.Rounding = apd.RoundDown
+		if _, err = truncateCtx.Quantize(result, result, -int32(dscale)); err != nil {
 			return nil, err
 		}
-
-		return sql.DecimalRound(dec, int32(dscale))
+		if result.IsZero() {
+			result.Negative = false
+		}
+		return result, nil
 	},
 }
 
