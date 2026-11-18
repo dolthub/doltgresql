@@ -147,6 +147,67 @@ func TestBindingUnknownOidPrimaryKeyLookup(t *testing.T) {
 	assert.Equal(t, "z", v)
 }
 
+// TestBindingBinaryNumeric verifies numeric parameters sent in the binary format, including the zero value that
+// Npgsql sends with no digits (https://github.com/dolthub/doltgresql/issues/3747).
+func TestBindingBinaryNumeric(t *testing.T) {
+	ctx, connection, controller := CreateServer(t, "postgres")
+	defer func() {
+		connection.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+	conn := connection.Default
+
+	encodeNumeric := func(weight int16, sign uint16, dscale int16, digits ...int16) []byte {
+		data := make([]byte, 8+2*len(digits))
+		binary.BigEndian.PutUint16(data[0:], uint16(len(digits)))
+		binary.BigEndian.PutUint16(data[2:], uint16(weight))
+		binary.BigEndian.PutUint16(data[4:], sign)
+		binary.BigEndian.PutUint16(data[6:], uint16(dscale))
+		for i, digit := range digits {
+			binary.BigEndian.PutUint16(data[8+2*i:], uint16(digit))
+		}
+		return data
+	}
+	paramOIDs := []uint32{pgtype.NumericOID}
+	paramFormats := []int16{1}
+	for _, test := range []struct {
+		name     string
+		param    []byte
+		expected string
+	}{
+		{name: "zero", param: encodeNumeric(0, 0, 0), expected: "0"},
+		{name: "zero with scale", param: encodeNumeric(0, 0, 1), expected: "0.0"},
+		{name: "small fraction", param: encodeNumeric(-2, 0, 8, 1), expected: "0.00000001"},
+		{name: "negative", param: encodeNumeric(0, 0x4000, 1, 12, 5000), expected: "-12.5"},
+		{name: "trailing zero digits", param: encodeNumeric(1, 0, 0, 1), expected: "10000"},
+		{name: "NaN", param: encodeNumeric(0, 0xC000, 0), expected: "NaN"},
+		{name: "infinity", param: encodeNumeric(0, 0xD000, 0), expected: "Infinity"},
+		{name: "negative infinity", param: encodeNumeric(0, 0xF000, 0), expected: "-Infinity"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			result := conn.PgConn().ExecParams(ctx, "SELECT $1::numeric::text;", [][]byte{test.param}, paramOIDs,
+				paramFormats, nil).Read()
+			require.NoError(t, result.Err)
+			require.Len(t, result.Rows, 1)
+			assert.Equal(t, test.expected, string(result.Rows[0][0]))
+		})
+	}
+
+	_, err := connection.Exec(ctx, "CREATE TABLE t (id INT PRIMARY KEY, n NUMERIC);")
+	require.NoError(t, err)
+	result := conn.PgConn().ExecParams(ctx, "INSERT INTO t VALUES (1, $1);", [][]byte{encodeNumeric(0, 0, 0)}, paramOIDs,
+		paramFormats, nil).Read()
+	require.NoError(t, result.Err)
+	var n string
+	require.NoError(t, conn.QueryRow(ctx, "SELECT n::text FROM t WHERE id = 1;").Scan(&n))
+	assert.Equal(t, "0", n)
+
+	result = conn.PgConn().ExecParams(ctx, "SELECT $1::numeric;", [][]byte{encodeNumeric(0, 0x1234, 0)}, paramOIDs,
+		paramFormats, nil).Read()
+	require.ErrorContains(t, result.Err, "invalid sign")
+}
+
 // TestBindingInt4ToBigintWithUntypedNull is a regression test for
 // https://github.com/dolthub/doltgresql/issues/2973: an int4-typed parameter bound to
 // a BIGINT column was silently corrupted whenever the same statement also had an untyped
