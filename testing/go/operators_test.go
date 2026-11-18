@@ -4141,7 +4141,7 @@ func TestILike(t *testing.T) {
 			{Query: `SELECT '50%' ILIKE '50\%', '50x' ILIKE '50\%', 'A_b' ILIKE 'a\_B';`, Expected: []sql.Row{{"t", "f", "t"}}},
 			{Query: `SELECT 'a.c' ILIKE 'A.C', 'abc' ILIKE 'A.C', 'a+c' ILIKE '_+_';`, Expected: []sql.Row{{"t", "f", "t"}}},
 			{Query: `SELECT E'A\nB' ILIKE 'a_b', E'A\nB' ILIKE 'a%b';`, Expected: []sql.Row{{"t", "t"}}},
-			{Query: `SELECT 'Éclair' ILIKE 'é%', 'STRASSE' ILIKE 'strasse';`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT E'\u00c9clair' ILIKE E'\u00e9%', 'STRASSE' ILIKE 'strasse';`, Expected: []sql.Row{{"t", "t"}}},
 			{Query: `SELECT NULL ILIKE 'a', 'a' ILIKE NULL, NULL NOT ILIKE 'a';`, Expected: []sql.Row{{nil, nil, nil}}},
 			{Query: `SELECT 'Abc'::varchar ILIKE 'a%', 'Abc'::name ILIKE 'A%';`, Expected: []sql.Row{{"t", "t"}}},
 			{Query: `SELECT texticlike('Abc', 'a%'), texticnlike('Abc', 'a%');`, Expected: []sql.Row{{"t", "f"}}},
