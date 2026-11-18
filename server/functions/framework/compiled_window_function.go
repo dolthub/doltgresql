@@ -94,7 +94,7 @@ func (c *CompiledWindowFunction) WithChildren(ctx *sql.Context, children ...sql.
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	nc := newCompiledWindowFunctionInternal(ctx, c.Name, children[:numArgs:numArgs], c.overloads, c.overloads.overloadsForParams(numArgs))
+	nc := newCompiledWindowFunctionInternal(ctx, c.Name, children[:numArgs:numArgs], c.overloads, c.fnOverloads)
 	nc.distinctWindow = c.distinctWindow
 	if nc.distinctWindow != nil {
 		if err := nc.distinctWindowError(); err != nil {

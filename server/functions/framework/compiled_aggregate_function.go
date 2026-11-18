@@ -98,7 +98,7 @@ func (c *CompiledAggregateFunction) WithChildren(ctx *sql.Context, children ...s
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	nc := newCompiledAggregateFunctionInternal(ctx, c.Name, children[:numArgs], c.overloads, c.overloads.overloadsForParams(numArgs))
+	nc := newCompiledAggregateFunctionInternal(ctx, c.Name, children[:numArgs], c.overloads, c.fnOverloads)
 	nc.distinctWindow = c.distinctWindow
 	if nc.distinctWindow != nil {
 		if err := nc.distinctWindowError(); err != nil {

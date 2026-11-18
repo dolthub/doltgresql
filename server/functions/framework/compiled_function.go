@@ -770,7 +770,7 @@ func (c *CompiledFunction) WithChildren(ctx *sql.Context, children ...sql.Expres
 	}
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
-	nc := newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.overloads.overloadsForParams(len(children)), c.IsOperator, c.runner)
+	nc := newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner)
 	nc.distinctWindow = c.distinctWindow
 	if nc.distinctWindow != nil {
 		if err := nc.distinctWindowError(); err != nil {
@@ -1295,6 +1295,12 @@ func (c *CompiledFunction) ResolveDefaultValues(ctx *sql.Context, getDefExpr fun
 				c.originalTypes = append(c.originalTypes, dt)
 			}
 			inParamIdx += 1
+		}
+
+		// The cached overloads were filtered by the original argument count, so they must match the new count for
+		// WithChildren to resolve against them
+		if len(c.Arguments) != argCount {
+			c.fnOverloads = c.overloads.overloadsForParams(len(c.Arguments))
 		}
 	}
 
