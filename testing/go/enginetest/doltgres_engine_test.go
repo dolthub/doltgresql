@@ -580,6 +580,7 @@ func TestJoinsScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"filter pushdown through join uppercase name", // syntax error (join without on)
 		"join index lookups do not handle filters",    // need a different join syntax (no ON clause not supported in postgres)
+		"keyless table anti-join",                     // compares a boolean to a string, which postgres rejects
 	})
 	defer h.Close()
 	enginetest.TestJoinsScripts(t, h)
