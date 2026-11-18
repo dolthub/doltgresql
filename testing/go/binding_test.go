@@ -101,6 +101,52 @@ func TestBindingInsertSelectWithOidZero(t *testing.T) {
 	assert.Equal(t, "inserted", label)
 }
 
+// TestBindingUnknownOidPrimaryKeyLookup verifies primary key lookups with a parameter that the client declares with the
+// unknown type, as Npgsql does for NpgsqlDbType.Unknown (https://github.com/dolthub/doltgresql/issues/3748).
+func TestBindingUnknownOidPrimaryKeyLookup(t *testing.T) {
+	ctx, connection, controller := CreateServer(t, "postgres")
+	defer func() {
+		connection.Close(ctx)
+		controller.Stop()
+		require.NoError(t, controller.WaitForStop())
+	}()
+	conn := connection.Default
+
+	_, err := connection.Exec(ctx, "CREATE TABLE npk (n NUMERIC PRIMARY KEY, v TEXT);")
+	require.NoError(t, err)
+	_, err = connection.Exec(ctx, "INSERT INTO npk VALUES (1, 'a'), (2, 'b'), (1.5, 'c');")
+	require.NoError(t, err)
+
+	paramOIDs := []uint32{pgtype.UnknownOID}
+	paramFormats := []int16{0}
+	for _, test := range []struct {
+		key      string
+		expected []string
+	}{
+		{key: "1", expected: []string{"a"}},
+		{key: "1.50", expected: []string{"c"}},
+		{key: "3", expected: nil},
+	} {
+		result := conn.PgConn().ExecParams(ctx, "SELECT v FROM npk WHERE n = $1;", [][]byte{[]byte(test.key)}, paramOIDs,
+			paramFormats, nil).Read()
+		require.NoError(t, result.Err)
+		var values []string
+		for _, row := range result.Rows {
+			values = append(values, string(row[0]))
+		}
+		assert.Equal(t, test.expected, values, "key %s", test.key)
+	}
+
+	result := conn.PgConn().ExecParams(ctx, "UPDATE npk SET v = 'z' WHERE n = $1;", [][]byte{[]byte("1")}, paramOIDs,
+		paramFormats, nil).Read()
+	require.NoError(t, result.Err)
+	assert.Equal(t, int64(1), result.CommandTag.RowsAffected())
+
+	var v string
+	require.NoError(t, conn.QueryRow(ctx, "SELECT v FROM npk WHERE n = 1;").Scan(&v))
+	assert.Equal(t, "z", v)
+}
+
 // TestBindingInt4ToBigintWithUntypedNull is a regression test for
 // https://github.com/dolthub/doltgresql/issues/2973: an int4-typed parameter bound to
 // a BIGINT column was silently corrupted whenever the same statement also had an untyped

@@ -210,6 +210,159 @@ ON CONFLICT (id) do update set c1 = $4`,
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3789
+			Name: "on conflict update on tables with expression indexes",
+			SetUpScript: []string{
+				"CREATE TABLE b (id INT PRIMARY KEY, s TEXT, u TEXT)",
+				"CREATE INDEX ib ON b ((length(u)))",
+				"INSERT INTO b (id, s, u) VALUES (1, 'a', 'x')",
+				"CREATE TABLE d (id INT PRIMARY KEY, c1 TEXT, c2 TEXT, c3 TEXT)",
+				"CREATE INDEX id3 ON d ((length(c3)))",
+				"INSERT INTO d VALUES (1, 'a', 'b', 'c')",
+				"CREATE TABLE h (id INT PRIMARY KEY, s TEXT, u TEXT)",
+				"CREATE INDEX ih1 ON h ((length(s)))",
+				"CREATE INDEX ih2 ON h ((lower(u)))",
+				"INSERT INTO h VALUES (1, 'a', 'x')",
+				"CREATE TABLE j (id INT PRIMARY KEY, s TEXT)",
+				"CREATE INDEX ij ON j ((length(s)))",
+				"INSERT INTO j VALUES (1, 'a')",
+				"CREATE TABLE l (id INT PRIMARY KEY, payload TEXT)",
+				"CREATE INDEX il ON l ((md5(payload)))",
+				"INSERT INTO l VALUES (1, 'first')",
+				"CREATE TABLE g (id INT PRIMARY KEY, s TEXT, n INT GENERATED ALWAYS AS (length(s)) STORED)",
+				"CREATE INDEX ig ON g ((upper(s)))",
+				"INSERT INTO g (id, s) VALUES (1, 'a')",
+				"CREATE TABLE ue (id INT PRIMARY KEY, s TEXT, u TEXT)",
+				"CREATE UNIQUE INDEX uue ON ue ((md5(u)))",
+				"INSERT INTO ue VALUES (1, 'a', 'x')",
+				"CREATE TABLE p (id INT PRIMARY KEY, s TEXT, u TEXT)",
+				"CREATE INDEX ip ON p (u)",
+				"INSERT INTO p VALUES (1, 'a', 'x')",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO b (id, s, u) VALUES (1, 'ZZZ', 'Y') ON CONFLICT (id) DO UPDATE SET s = excluded.s",
+					ExpectedTag: "INSERT 0 1",
+				},
+				{
+					Query:    "SELECT * FROM b",
+					Expected: []sql.Row{{1, "ZZZ", "x"}},
+				},
+				{
+					Query: "INSERT INTO b VALUES (1, 'QQ', 'Y') ON CONFLICT (id) DO UPDATE SET s = excluded.s",
+				},
+				{
+					Query:    "SELECT * FROM b",
+					Expected: []sql.Row{{1, "QQ", "x"}},
+				},
+				{
+					Query: "INSERT INTO b (u, s, id) VALUES ('Y', 'TT', 1) ON CONFLICT (id) DO UPDATE SET s = excluded.s",
+				},
+				{
+					Query:    "SELECT * FROM b",
+					Expected: []sql.Row{{1, "TT", "x"}},
+				},
+				{
+					Query: "INSERT INTO b (id, s, u) SELECT 1, 'SS', 'Y' ON CONFLICT (id) DO UPDATE SET s = excluded.s",
+				},
+				{
+					Query:    "SELECT * FROM b",
+					Expected: []sql.Row{{1, "SS", "x"}},
+				},
+				{
+					Query: "INSERT INTO b (id, s, u) VALUES (1, 'WW', 'yy') ON CONFLICT (id) DO UPDATE SET u = excluded.u",
+				},
+				{
+					Query:    "SELECT * FROM b",
+					Expected: []sql.Row{{1, "SS", "yy"}},
+				},
+				{
+					Query:    "INSERT INTO b (id, s, u) VALUES (1, 'VV', 'zzz') ON CONFLICT (id) DO UPDATE SET s = b.s || excluded.s, u = excluded.u || b.u WHERE length(b.u) < length(excluded.u) RETURNING *",
+					Expected: []sql.Row{{1, "SSVV", "zzzyy"}},
+				},
+				{
+					Query:       "INSERT INTO b (id, s, u) VALUES (1, 'no', 'z') ON CONFLICT (id) DO UPDATE SET s = excluded.s WHERE length(b.u) < length(excluded.u)",
+					ExpectedTag: "INSERT 0 0",
+				},
+				{
+					Query:    "INSERT INTO b (id, s, u) VALUES (1, 'm1', 'u1'), (2, 'm2', 'u2') ON CONFLICT (id) DO UPDATE SET s = excluded.s, u = excluded.u RETURNING *",
+					Expected: []sql.Row{{1, "m1", "u1"}, {2, "m2", "u2"}},
+				},
+				{
+					Query:    "SELECT * FROM b ORDER BY id",
+					Expected: []sql.Row{{1, "m1", "u1"}, {2, "m2", "u2"}},
+				},
+				{
+					Query: "INSERT INTO d VALUES (1, 'X1', 'X2', 'X3') ON CONFLICT (id) DO UPDATE SET c2 = excluded.c2",
+				},
+				{
+					Query:    "SELECT * FROM d",
+					Expected: []sql.Row{{1, "a", "X2", "c"}},
+				},
+				{
+					Query: "INSERT INTO h VALUES (1, 'ZZZ', 'Y') ON CONFLICT (id) DO UPDATE SET s = excluded.s",
+				},
+				{
+					Query:    "SELECT * FROM h",
+					Expected: []sql.Row{{1, "ZZZ", "x"}},
+				},
+				{
+					Query: "INSERT INTO h VALUES (1, 'Q', 'W') ON CONFLICT (id) DO UPDATE SET u = excluded.u",
+				},
+				{
+					Query:    "SELECT * FROM h",
+					Expected: []sql.Row{{1, "ZZZ", "W"}},
+				},
+				{
+					Query:    "SELECT id FROM h WHERE lower(u) = 'w'",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query: "INSERT INTO j VALUES (1, 'ZZZ') ON CONFLICT (id) DO UPDATE SET s = excluded.s",
+				},
+				{
+					Query:    "SELECT * FROM j",
+					Expected: []sql.Row{{1, "ZZZ"}},
+				},
+				{
+					Query:    "SELECT id FROM j WHERE length(s) = 3",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query: "INSERT INTO l VALUES (1, 'second') ON CONFLICT (id) DO UPDATE SET payload = excluded.payload",
+				},
+				{
+					Query:    "SELECT * FROM l",
+					Expected: []sql.Row{{1, "second"}},
+				},
+				{
+					Query:    "SELECT id FROM l WHERE md5(payload) = md5('second')",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query: "INSERT INTO g (id, s) VALUES (1, 'ZZZ') ON CONFLICT (id) DO UPDATE SET s = excluded.s",
+				},
+				{
+					Query:    "SELECT * FROM g",
+					Expected: []sql.Row{{1, "ZZZ", 3}},
+				},
+				{
+					Query: "INSERT INTO ue VALUES (1, 'c', 'y') ON CONFLICT (id) DO UPDATE SET s = excluded.s, u = excluded.u",
+				},
+				{
+					Query:    "SELECT * FROM ue",
+					Expected: []sql.Row{{1, "c", "y"}},
+				},
+				{
+					Query: "INSERT INTO p VALUES (1, 'ZZZ', 'Y') ON CONFLICT (id) DO UPDATE SET s = excluded.s",
+				},
+				{
+					Query:    "SELECT * FROM p",
+					Expected: []sql.Row{{1, "ZZZ", "x"}},
+				},
+			},
+		},
+		{
 			Name: "on conflict do nothing only ignores uniqueness conflicts",
 			SetUpScript: []string{
 				"CREATE TABLE conflict_parent (id INT PRIMARY KEY)",
