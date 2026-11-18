@@ -20,11 +20,6 @@ package spatial
 // GEOS is a context for running GEOS operations, which may only be used by one goroutine at a time.
 type GEOS struct{}
 
-// GEOSVersion is not supported yet.
-func GEOSVersion() string {
-	panic(ErrNotSupported)
-}
-
 // IsValidDetail is not supported yet.
 func (g *GEOS) IsValidDetail(a Geometry, flags int) (valid bool, reason string, location Geometry, err error) {
 	return false, "", Geometry{}, ErrNotSupported
@@ -32,11 +27,6 @@ func (g *GEOS) IsValidDetail(a Geometry, flags int) (valid bool, reason string, 
 
 // CoverageUnion is not supported yet.
 func (g *GEOS) CoverageUnion(a Geometry) (Geometry, error) {
-	return Geometry{}, ErrNotSupported
-}
-
-// Normalize is not supported yet.
-func (g *GEOS) Normalize(a Geometry) (Geometry, error) {
 	return Geometry{}, ErrNotSupported
 }
 
@@ -115,16 +105,6 @@ func (g *GEOS) MinimumClearanceLine(a Geometry) (Geometry, error) {
 	return Geometry{}, ErrNotSupported
 }
 
-// FrechetDistance is not supported yet.
-func (g *GEOS) FrechetDistance(a Geometry, b Geometry, densifyFraction float64) (float64, error) {
-	return 0, ErrNotSupported
-}
-
-// HausdorffDistance is not supported yet.
-func (g *GEOS) HausdorffDistance(a Geometry, b Geometry, densifyFraction float64) (float64, error) {
-	return 0, ErrNotSupported
-}
-
 // ClipByRect is not supported yet.
 func (g *GEOS) ClipByRect(a Geometry, minX float64, minY float64, maxX float64, maxY float64) (Geometry, error) {
 	return Geometry{}, ErrNotSupported
@@ -143,11 +123,6 @@ func (g *GEOS) LargestEmptyCircle(obstacles Geometry, boundary *Geometry, tolera
 // ConcaveHullOfPolygons is not supported yet.
 func (g *GEOS) ConcaveHullOfPolygons(a Geometry, ratio float64, tight bool, allowHoles bool) (Geometry, error) {
 	return Geometry{}, ErrNotSupported
-}
-
-// MinimumBoundingCircle is not supported yet.
-func (g *GEOS) MinimumBoundingCircle(a Geometry) (circle Geometry, center Geometry, radius float64, err error) {
-	return Geometry{}, Geometry{}, 0, ErrNotSupported
 }
 
 // SetPrecision is not supported yet.

@@ -33,5 +33,4 @@ func TestStubReturnsUnavailable(t *testing.T) {
 }
 
 func TestStubPanicsWithUnavailable(t *testing.T) {
-	require.PanicsWithError(t, ErrNotSupported.Error(), func() { GEOSVersion() })
 }

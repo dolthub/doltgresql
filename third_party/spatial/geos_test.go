@@ -235,3 +235,80 @@ func TestOrientationIndex(t *testing.T) {
 	require.Equal(t, 0, orientationIndex(xy{x: 0.1, y: 0.1}, xy{x: 0.3, y: 0.3}, xy{x: 0.7, y: 0.7}))
 	require.Equal(t, -1, orientationIndex(xy{x: 1, y: 1}, xy{x: 3, y: 3.0000000000000004}, xy{x: 2, y: 2}))
 }
+
+func TestNormalize(t *testing.T) {
+	g := NewGEOS()
+	defer g.Close()
+	collection := Geometry{Type: GeometryCollection, Members: []Geometry{
+		coordsOf(Point, 2, 3),
+		{Type: MultiLineString, Members: []Geometry{coordsOf(LineString, 0, 0, 1, 1), coordsOf(LineString, 2, 2, 3, 3)}},
+		polygon([]float64{0, 10, 0, 0, 10, 0, 10, 10, 0, 10}, []float64{1, 1, 2, 1, 2, 2, 1, 2, 1, 1}, []float64{5, 5, 6, 5, 6, 6, 5, 6, 5, 5}),
+	}}
+	normalized, err := g.Normalize(collection)
+	require.NoError(t, err)
+	require.Equal(t, Point, normalized.Members[2].Type)
+	require.Equal(t, "POLYGON((0 0,0 10,10 10,10 0,0 0),(5 5,6 5,6 6,5 6,5 5),(1 1,2 1,2 2,1 2,1 1))", text(normalized.Members[0]))
+	require.Equal(t, "MULTILINESTRING((2 2,3 3),(0 0,1 1))", text(normalized.Members[1]))
+	for _, test := range []struct {
+		input    Geometry
+		expected string
+	}{
+		{coordsOf(LineString, 3, 3, 1, 1, 2, 2), "LINESTRING(2 2,1 1,3 3)"},
+		{coordsOf(LineString, 0, 0, 1, 0, 1, 1, 0, 0), "LINESTRING(0 0,1 1,1 0,0 0)"},
+		{multiPoint(1, 1, 0, 0, 2, 2), "MULTIPOINT((2 2),(1 1),(0 0))"},
+	} {
+		normalized, err := g.Normalize(test.input)
+		require.NoError(t, err)
+		require.Equal(t, test.expected, text(normalized))
+	}
+}
+
+func TestDiscreteDistances(t *testing.T) {
+	g := NewGEOS()
+	defer g.Close()
+	line := coordsOf(LineString, 0, 0, 2, 0)
+	bent := coordsOf(LineString, 0, 1, 1, 2, 2, 1)
+	distance, err := g.HausdorffDistance(line, bent, -1)
+	require.NoError(t, err)
+	require.Equal(t, 2.0, distance)
+	distance, err = g.HausdorffDistance(line, bent, 0.5)
+	require.NoError(t, err)
+	require.Equal(t, 2.0, distance)
+	distance, err = g.HausdorffDistance(polygon([]float64{0, 0, 0, 2, 1, 2, 2, 2, 2, 0, 0, 0}),
+		polygon([]float64{0.5, 0.5, 0.5, 2.5, 1.5, 2.5, 2.5, 2.5, 2.5, 0.5, 0.5, 0.5}), -1)
+	require.NoError(t, err)
+	require.Equal(t, 0.7071067811865476, distance)
+	_, err = g.HausdorffDistance(line, bent, 2)
+	require.Error(t, err)
+
+	straight := coordsOf(LineString, 0, 0, 100, 0)
+	peaked := coordsOf(LineString, 0, 0, 50, 50, 100, 0)
+	distance, err = g.FrechetDistance(straight, peaked, -1)
+	require.NoError(t, err)
+	require.Equal(t, 70.71067811865476, distance)
+	distance, err = g.FrechetDistance(straight, peaked, 0.5)
+	require.NoError(t, err)
+	require.Equal(t, 50.0, distance)
+	distance, err = g.FrechetDistance(coordsOf(LineString, 1, 1, 2, 3, 5, 4), coordsOf(LineString, 0, 0, 3, 1, 6, 6, 9, 2), 0.3)
+	require.NoError(t, err)
+	require.Equal(t, 4.47213595499958, distance)
+}
+
+func TestMinimumBoundingCircle(t *testing.T) {
+	g := NewGEOS()
+	defer g.Close()
+	_, center, radius, err := g.MinimumBoundingCircle(multiPoint(0, 0, 4, 0, 2, 3))
+	require.NoError(t, err)
+	require.InDeltaSlice(t, []float64{2, 0.833333333333333}, center.Coords, 1e-15)
+	require.Equal(t, 2.1666666666666665, radius)
+	_, center, radius, err = g.MinimumBoundingCircle(coordsOf(LineString, 0, 0, 10, 0, 3, 1, 5, 2))
+	require.NoError(t, err)
+	require.Equal(t, []float64{5, 0}, center.Coords)
+	require.Equal(t, 5.0, radius)
+	circle, center, radius, err := g.MinimumBoundingCircle(coordsOf(Point, 1, 2))
+	require.NoError(t, err)
+	require.Equal(t, "POINT(1 2)", text(circle))
+	require.Equal(t, []float64{1, 2}, center.Coords)
+	require.Equal(t, 0.0, radius)
+	require.Equal(t, "3.11.1-CAPI-1.17.1", GEOSVersion())
+}
