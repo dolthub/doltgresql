@@ -178,6 +178,49 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
+			// Check constraints may call user-defined and volatile functions, and keep the schema of the functions
+			// they call, as column defaults do.
+			Name: "check constraint with a user-defined function",
+			SetUpScript: []string{
+				"CREATE SCHEMA s2;",
+				"CREATE FUNCTION public.ok(x int) RETURNS bool AS $$ SELECT x > 0 $$ LANGUAGE sql;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE TABLE s2.t (x int CHECK (ok(x)));",
+				},
+				{
+					Query: "CREATE FUNCTION s2.ok(x int) RETURNS bool AS $$ SELECT false $$ LANGUAGE sql;",
+				},
+				{
+					Query: "SET search_path = s2, public;",
+				},
+				{
+					Query: "INSERT INTO s2.t VALUES (1);",
+				},
+				{
+					Query: "SET search_path = '';",
+				},
+				{
+					Query: "INSERT INTO s2.t VALUES (2);",
+				},
+				{
+					Query:       "INSERT INTO s2.t VALUES (-1);",
+					ExpectedErr: `Check constraint`,
+				},
+				{
+					Query: "ALTER TABLE s2.t ADD CONSTRAINT volatile_check CHECK (random() < 2);",
+				},
+				{
+					Query: "INSERT INTO s2.t VALUES (3);",
+				},
+				{
+					Query:    "SELECT x FROM s2.t ORDER BY x;",
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+			},
+		},
+		{
 			Skip: true, // TODO: vitess does not support multiple check constraint on a single column
 			Name: "Create table with multiple check constraints on a single column",
 			Assertions: []ScriptTestAssertion{
