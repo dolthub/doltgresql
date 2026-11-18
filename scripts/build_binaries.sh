@@ -64,7 +64,7 @@ platform_cgo_ldflags["darwin-amd64"]=""
 platform_cgo_ldflags["windows-amd64"]="-static-libgcc -static-libstdc++ -Wl,-Bstatic -lssp"
 
 # Release binaries embed the coordinate reference system catalog compressed, which go generate writes
-go generate ./third_party/spatial
+go generate ./server/extensions/postgis/spatial
 
 for tuple in $OS_ARCH_TUPLES; do
   os=`echo $tuple | sed 's/-.*//'`

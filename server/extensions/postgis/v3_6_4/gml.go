@@ -26,7 +26,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
-	"github.com/dolthub/doltgresql/third_party/spatial"
+	"github.com/dolthub/doltgresql/server/extensions/postgis/spatial"
 )
 
 // The bits of the options argument of ST_AsGML.

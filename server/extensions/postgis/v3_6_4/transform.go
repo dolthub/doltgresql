@@ -27,7 +27,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
-	"github.com/dolthub/doltgresql/third_party/spatial"
+	"github.com/dolthub/doltgresql/server/extensions/postgis/spatial"
 )
 
 // spatialRefSysTable declares the spatial_ref_sys table, which starts with the coordinate reference systems in PROJ's

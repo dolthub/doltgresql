@@ -22,7 +22,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
-	"github.com/dolthub/doltgresql/third_party/spatial"
+	"github.com/dolthub/doltgresql/server/extensions/postgis/spatial"
 )
 
 // stGeometricMedian implements ST_GeometricMedian with Weiszfeld's algorithm, starting from the centroid of the

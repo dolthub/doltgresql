@@ -15,7 +15,7 @@
 package spatial
 
 // Release builds embed the catalog compressed, which shrinks binaries by about 10MB. Its compressed form is not checked
-// in, so builds with the compressed_catalog tag must first run `go generate ./third_party/spatial`, as
+// in, so builds with the compressed_catalog tag must first run `go generate ./server/extensions/postgis/spatial`, as
 // scripts/build_binaries.sh does. Other builds embed the text itself.
 //go:generate go run ./internal/compresscatalog crs_catalog.tsv crs_catalog.tsv.gz
 

@@ -26,8 +26,8 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
+	"github.com/dolthub/doltgresql/server/extensions/postgis/spatial"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/third_party/spatial"
 )
 
 // spheroid is the value of the spheroid type: a named ellipsoid given by its semi-major axis and its flattening.

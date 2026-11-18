@@ -24,8 +24,8 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
+	"github.com/dolthub/doltgresql/server/extensions/postgis/spatial"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/third_party/spatial"
 )
 
 // isCurved returns whether the type number names one of the curved types.

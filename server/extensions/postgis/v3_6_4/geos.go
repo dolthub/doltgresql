@@ -17,7 +17,7 @@ package v3_6_4
 import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
-	"github.com/dolthub/doltgresql/third_party/spatial"
+	"github.com/dolthub/doltgresql/server/extensions/postgis/spatial"
 )
 
 // toGEOS converts a shape to a GEOS geometry the way PostGIS hands geometries to GEOS: curves are first linearized

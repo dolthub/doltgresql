@@ -20,8 +20,8 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
+	"github.com/dolthub/doltgresql/server/extensions/postgis/spatial"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/third_party/spatial"
 )
 
 // listedCRSs returns the coordinate reference systems of an authority that the postgis_srs functions list: the

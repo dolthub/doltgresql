@@ -18,7 +18,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
-	"github.com/dolthub/doltgresql/third_party/spatial"
+	"github.com/dolthub/doltgresql/server/extensions/postgis/spatial"
 )
 
 // spatialPredicate returns an implementation of a GEOS spatial relationship test. The function name is the one

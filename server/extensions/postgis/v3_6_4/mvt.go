@@ -25,8 +25,8 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
+	"github.com/dolthub/doltgresql/server/extensions/postgis/spatial"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
-	"github.com/dolthub/doltgresql/third_party/spatial"
 )
 
 // highestDimensionParts returns the parts of a collection that have its highest dimension, as a single part or as a

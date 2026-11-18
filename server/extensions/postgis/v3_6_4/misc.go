@@ -21,7 +21,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/extensions/extdef"
-	"github.com/dolthub/doltgresql/third_party/spatial"
+	"github.com/dolthub/doltgresql/server/extensions/postgis/spatial"
 )
 
 // postgisVersion is the version of PostGIS that the extension emulates.
@@ -34,7 +34,7 @@ const postgisRevision = "94d984b"
 // and its scripts.
 const postgisRevisionDate = "2026-06-08 18:28:56"
 
-// wagyuVersion is the version of the Wagyu library in third_party/spatial, which PostGIS reports as built in.
+// wagyuVersion is the version of the Wagyu library that PostGIS reports as built in.
 const wagyuVersion = "0.5.0 (Internal)"
 
 // constant returns an implementation that always returns the value.
