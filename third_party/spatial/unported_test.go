@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build !postgis_native
-
 package spatial
 
 import (
@@ -26,14 +24,14 @@ func TestStubReturnsUnavailable(t *testing.T) {
 	g := NewGEOS()
 	defer g.Close()
 	point := Geometry{Type: Point, Coords: []float64{1, 2}}
-	_, err := g.Intersects(point, point)
-	require.ErrorIs(t, err, ErrNativeUnavailable)
-	_, err = g.Buffer(point, 1, BufferParams{QuadSegs: 8, EndCap: BufferRound, Join: BufferRound})
-	require.ErrorIs(t, err, ErrNativeUnavailable)
+	_, err := g.MakeValid(point, false, false)
+	require.ErrorIs(t, err, ErrNotSupported)
+	_, err = g.Intersection(point, point, 0.5)
+	require.ErrorIs(t, err, ErrNotSupported)
 	_, err = WagyuClip([][]int64{{0, 0, 1, 0, 1, 1, 0, 0}}, 0, 0, 1, 1)
-	require.ErrorIs(t, err, ErrNativeUnavailable)
+	require.ErrorIs(t, err, ErrNotSupported)
 }
 
 func TestStubPanicsWithUnavailable(t *testing.T) {
-	require.PanicsWithError(t, ErrNativeUnavailable.Error(), func() { GEOSVersion() })
+	require.PanicsWithError(t, ErrNotSupported.Error(), func() { GEOSVersion() })
 }

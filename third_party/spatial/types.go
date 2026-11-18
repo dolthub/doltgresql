@@ -16,9 +16,9 @@ package spatial
 
 import "github.com/cockroachdb/errors"
 
-// ErrNativeUnavailable is returned, or panicked with by functions that cannot return an error, when the binary was
-// built without the native GEOS and PROJ libraries, which are only linked when building with the postgis_native tag.
-var ErrNativeUnavailable = errors.New("this PostGIS function requires the native spatial libraries, which this build does not include")
+// ErrNotSupported is returned, or panicked with by functions that cannot return an error, by the operations that have
+// not been ported to Go yet.
+var ErrNotSupported = errors.New("this PostGIS function is not supported yet")
 
 // GeometryType is the type of a Geometry, numbered as GEOS numbers them.
 type GeometryType int

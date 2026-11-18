@@ -31,6 +31,7 @@ require (
 	github.com/madflojo/testcerts v1.1.1
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/mitchellh/go-wordwrap v1.0.1
+	github.com/peterstace/simplefeatures v0.59.0
 	github.com/pierrre/geohash v1.0.0
 	github.com/pkg/profile v1.5.0
 	github.com/sergi/go-diff v1.1.0
