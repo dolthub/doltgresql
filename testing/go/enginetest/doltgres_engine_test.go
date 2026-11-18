@@ -16,6 +16,7 @@ package enginetest
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"runtime"
 	"testing"
@@ -883,6 +884,39 @@ func TestIndexes(t *testing.T) {
 	for _, script := range queries.IndexQueries {
 		enginetest.TestScript(t, h, script)
 	}
+}
+
+// TestPartialIndexPredicateReadsWorkingSetWhileMaterializing writes to a table with a partial index on a varchar
+// column, then to more tables than the session caches writer schemas for, then to the first table again.
+// Materializing that table's edits rebuilds its writer schema, whose predicate reads the working set to resolve casts.
+func TestPartialIndexPredicateReadsWorkingSetWhileMaterializing(t *testing.T) {
+	const otherTables = 70
+	setUp := []string{
+		"CREATE TABLE t (id int PRIMARY KEY, status varchar(30) NOT NULL)",
+		"CREATE UNIQUE INDEX t_i ON t (id) WHERE status IN ('x','y')",
+	}
+	for i := 0; i < otherTables; i++ {
+		setUp = append(setUp, fmt.Sprintf("CREATE TABLE f%d (id int PRIMARY KEY)", i))
+	}
+	setUp = append(setUp, "BEGIN", "INSERT INTO t VALUES (1, 'x')")
+	for i := 0; i < otherTables; i++ {
+		setUp = append(setUp, fmt.Sprintf("INSERT INTO f%d VALUES (1)", i))
+	}
+	setUp = append(setUp, "INSERT INTO t VALUES (2, 'z')", "UPDATE t SET status = 'y' WHERE id = 1", "COMMIT")
+
+	h := newDoltgresServerHarness(t)
+	defer h.Close()
+	h.Setup(setup.MydbData)
+	enginetest.TestScript(t, h, queries.ScriptTest{
+		Name:        "partial index predicate on varchar resolved while materializing pending edits",
+		SetUpScript: setUp,
+		Assertions: []queries.ScriptTestAssertion{
+			{
+				Query:    "SELECT id, status FROM t ORDER BY id",
+				Expected: []sql.Row{{int64(1), "y"}, {int64(2), "z"}},
+			},
+		},
+	})
 }
 
 func TestIndexedExpressions(t *testing.T) {
