@@ -303,6 +303,47 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		// An unqualified name matches the overloads in every schema on the search path, where pg_catalog comes first
+		// unless the path places it later. An overload hides any with the same parameter types later on the path.
+		Name: "unqualified function calls match overloads across the search path",
+		SetUpScript: []string{
+			"CREATE SCHEMA s2;",
+			"CREATE FUNCTION public.upper(x text) RETURNS text AS $$ SELECT 'shadowed' $$ LANGUAGE sql;",
+			"CREATE FUNCTION public.myf(x int) RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;",
+			"CREATE FUNCTION s2.myf(x bigint) RETURNS int AS $$ SELECT 2 $$ LANGUAGE sql;",
+			"CREATE FUNCTION public.myg(x int) RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;",
+			"CREATE FUNCTION s2.myg(x int) RETURNS int AS $$ SELECT 2 $$ LANGUAGE sql;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT upper('q');",
+				Expected: []sql.Row{{"Q"}},
+			},
+			{
+				Query:    "SELECT public.upper('q');",
+				Expected: []sql.Row{{"shadowed"}},
+			},
+			{
+				Query:    "SELECT myf(1), myg(1);",
+				Expected: []sql.Row{{1, 1}},
+			},
+			{
+				Query: "SET search_path = s2, public;",
+			},
+			{
+				Query:    "SELECT myf(1), myf(1::bigint), myg(1);",
+				Expected: []sql.Row{{1, 2, 2}},
+			},
+			{
+				Query: "SET search_path = public, pg_catalog;",
+			},
+			{
+				Query:    "SELECT upper('q');",
+				Expected: []sql.Row{{"shadowed"}},
+			},
+		},
+	},
+	{
 		Name: "search path returns user table before public table",
 		SetUpScript: []string{
 			"create schema postgres",
