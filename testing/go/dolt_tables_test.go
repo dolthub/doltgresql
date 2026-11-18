@@ -1812,7 +1812,12 @@ WHERE to_commit = dolt_hashof('HEAD')
 						{"public.dolt_ignore", "t", "new table"},
 						{"public.foo", "t", "new table"},
 						{"public.generated_exception", "t", "new table"},
-						{"public.generated_foo", "f", "new table"},
+					},
+				},
+				{
+					Query: "SELECT table_name, ignored FROM dolt_status_ignored WHERE NOT staged;",
+					Expected: []sql.Row{
+						{"public.generated_foo", "t"},
 					},
 				},
 				{
@@ -1898,13 +1903,19 @@ WHERE to_commit = dolt_hashof('HEAD')
 						{"newschema", "t", "new schema"},
 						{"newschema.dolt_ignore", "t", "new table"},
 						{"newschema.foo", "t", "new table"},
-						{"newschema.generated_exception", "f", "new table"},
 						{"newschema.generated_foo", "t", "new table"},
-						{"newschema.test_foo", "f", "new table"},
 						{"public.dolt_ignore", "t", "new table"},
 						{"public.foo", "t", "new table"},
 						{"public.generated_exception", "t", "new table"},
-						{"public.generated_foo", "f", "new table"},
+					},
+				},
+				{
+					// Each table is matched against the patterns of its own schema.
+					Query: "SELECT table_name, ignored FROM dolt_status_ignored WHERE NOT staged ORDER BY table_name;",
+					Expected: []sql.Row{
+						{"newschema.generated_exception", "t"},
+						{"newschema.test_foo", "t"},
+						{"public.generated_foo", "t"},
 					},
 				},
 			},
