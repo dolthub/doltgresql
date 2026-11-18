@@ -38,6 +38,7 @@ type crsEntry struct {
 	celestialBody string
 	wkt           string
 	projString    string
+	pipeline      string
 }
 
 // crsCatalog holds the catalog's systems in the order that PROJ lists them, along with an index of them by authority
@@ -58,7 +59,7 @@ var catalog = sync.OnceValue(func() *crsCatalog {
 			continue
 		}
 		fields := strings.Split(line, "\t")
-		if len(fields) != 13 {
+		if len(fields) != 14 {
 			panic(errors.Errorf("malformed coordinate reference system catalog line: %q", line))
 		}
 		kind, _ := strconv.Atoi(fields[2])
@@ -82,6 +83,7 @@ var catalog = sync.OnceValue(func() *crsCatalog {
 			celestialBody: fields[9],
 			wkt:           fields[11],
 			projString:    fields[12],
+			pipeline:      fields[13],
 		}
 		codes, ok := c.byCode[entry.Authority]
 		if !ok {

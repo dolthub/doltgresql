@@ -16,7 +16,7 @@
 
 package spatial
 
-// This file stands in for the native GEOS, PROJ, and Wagyu bindings when building without the
+// This file stands in for the native GEOS and Wagyu bindings when building without the
 // postgis_native tag. Functions that can return an error return ErrNativeUnavailable, and the others panic with
 // ErrNativeUnavailable.
 
@@ -25,9 +25,6 @@ type GEOS struct{}
 
 // Group is a group of converted geometries, which cannot exist without the native spatial libraries.
 type Group struct{}
-
-// Transformer transforms coordinates, which cannot exist without the native spatial libraries.
-type Transformer struct{}
 
 // GEOSVersion is unavailable without the native spatial libraries.
 func GEOSVersion() string {
@@ -330,25 +327,6 @@ func (g *GEOS) Polygonize(geometries []Geometry) (Geometry, error) {
 // Boundary is unavailable without the native spatial libraries.
 func (g *GEOS) Boundary(a Geometry) (Geometry, error) {
 	return Geometry{}, ErrNativeUnavailable
-}
-
-// NewTransformer is unavailable without the native spatial libraries.
-func NewTransformer(source string, target string) (*Transformer, error) {
-	return nil, ErrNativeUnavailable
-}
-
-// NewPipelineTransformer is unavailable without the native spatial libraries.
-func NewPipelineTransformer(pipeline string, forward bool) (*Transformer, error) {
-	return nil, ErrNativeUnavailable
-}
-
-// Close does nothing without the native spatial libraries.
-func (t *Transformer) Close() {
-}
-
-// Transform is unavailable without the native spatial libraries.
-func (t *Transformer) Transform(coords []float64, dims int, hasZ bool) error {
-	return ErrNativeUnavailable
 }
 
 // WagyuClip is unavailable without the native spatial libraries.

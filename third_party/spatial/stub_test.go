@@ -30,8 +30,6 @@ func TestStubReturnsUnavailable(t *testing.T) {
 	require.ErrorIs(t, err, ErrNativeUnavailable)
 	_, err = g.Buffer(point, 1, BufferParams{QuadSegs: 8, EndCap: BufferRound, Join: BufferRound})
 	require.ErrorIs(t, err, ErrNativeUnavailable)
-	_, err = NewTransformer("EPSG:4326", "EPSG:3857")
-	require.ErrorIs(t, err, ErrNativeUnavailable)
 	_, err = WagyuClip([][]int64{{0, 0, 1, 0, 1, 1, 0, 0}}, 0, 0, 1, 1)
 	require.ErrorIs(t, err, ErrNativeUnavailable)
 }

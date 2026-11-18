@@ -272,6 +272,10 @@ func transformGeometry(g Geometry, source string, target string, srid int32) (Ge
 		return err
 	})
 	if !formed {
+		if errors.Is(err, spatial.ErrUnsupportedTransformation) {
+			return Geometry{}, false, pgerror.Newf(pgcode.FeatureNotSupported, "transform: %s", err.Error())
+		}
+
 		return Geometry{}, false, nil
 	}
 	return result, true, err

@@ -2085,6 +2085,13 @@ func TestPostGIS(t *testing.T) {
 					ExpectedErrCode: `XX000`,
 				},
 				{
+					// PostGIS transforms these, but PROJ only chooses their datum shifts while transforming, which is not
+					// emulated
+					Query:           `SELECT ST_AsEWKT(ST_Transform('SRID=4326;POINT(-1 52)'::geometry, 27700));`,
+					ExpectedErr:     `this coordinate transformation is not supported`,
+					ExpectedErrCode: `0A000`,
+				},
+				{
 					Query:    `SELECT ST_AsEWKT(ST_TransformPipeline('SRID=4326;POINT(2 49)'::geometry, 'urn:ogc:def:coordinateOperation:EPSG::16031'), 3), ST_AsEWKT(ST_TransformPipeline('SRID=4326;POINT(2 49)'::geometry, 'urn:ogc:def:coordinateOperation:EPSG::16031', 32631), 3), ST_AsEWKT(ST_InverseTransformPipeline('SRID=32631;POINT(426857.988 5427937.523)'::geometry, 'urn:ogc:def:coordinateOperation:EPSG::16031', 4326), 6);`,
 					Expected: []sql.Row{{`POINT(426857.988 5427937.523)`, `SRID=32631;POINT(426857.988 5427937.523)`, `SRID=4326;POINT(2 49)`}},
 				},
