@@ -1377,6 +1377,7 @@ func TestStoredProcedures(t *testing.T) {
 		"FETCH captures state at OPEN",
 		"FETCH implicitly closes",
 		"SQLEXCEPTION declare handler",
+		"IF and IF/ELSE blocks inside EXIT HANDLER",
 		"Test cursor continue-handler checksum loops",
 		"DECLARE HANDLERs exit according to the block they were declared in",
 		"Labeled BEGIN...END",
