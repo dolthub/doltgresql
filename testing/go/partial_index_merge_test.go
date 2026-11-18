@@ -15,6 +15,7 @@
 package _go
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
@@ -420,6 +421,63 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 					Expected: []sql.Row{{1}},
 				},
 			},
+		},
+	})
+}
+
+// TestPartialIndexPendingEdits writes to a table with a partial index after a transaction has written to enough other
+// tables that its pending edits are saved mid-transaction, which rebuilds the table's writer.
+func TestPartialIndexPendingEdits(t *testing.T) {
+	setUp := []string{
+		"CREATE TABLE t (id int PRIMARY KEY, status varchar(30) NOT NULL);",
+		"CREATE UNIQUE INDEX t_i ON t (id) WHERE status IN ('x','y');",
+	}
+	assertions := []ScriptTestAssertion{
+		{
+			Query:    "BEGIN;",
+			Expected: []sql.Row{},
+		},
+		{
+			Query:    "INSERT INTO t (id, status) VALUES (1, 'x');",
+			Expected: []sql.Row{},
+		},
+	}
+	for i := 0; i < 70; i++ {
+		setUp = append(setUp, fmt.Sprintf("CREATE TABLE f%d (id int PRIMARY KEY, c0 int);", i))
+		assertions = append(assertions, ScriptTestAssertion{
+			Query:    fmt.Sprintf("INSERT INTO f%d VALUES (1, 1);", i),
+			Expected: []sql.Row{},
+		})
+	}
+
+	assertions = append(assertions,
+		ScriptTestAssertion{
+			Query:    "INSERT INTO t (id, status) VALUES (2, 'z');",
+			Expected: []sql.Row{},
+		},
+		ScriptTestAssertion{
+			Query:    "UPDATE t SET status = 'y' WHERE id = 2;",
+			Expected: []sql.Row{},
+		},
+		ScriptTestAssertion{
+			Query:    "COMMIT;",
+			Expected: []sql.Row{},
+		},
+		ScriptTestAssertion{
+			Query:    "SELECT id, status FROM t ORDER BY id;",
+			Expected: []sql.Row{{1, "x"}, {2, "y"}},
+		},
+		ScriptTestAssertion{
+			Query:    "SELECT id FROM t WHERE status IN ('x','y') ORDER BY id;",
+			Expected: []sql.Row{{1}, {2}},
+		},
+	)
+	RunScripts(t, []ScriptTest{
+		{
+			// https://github.com/dolthub/doltgresql/issues/3877
+			Name:        "writes to a table with a partial index after many other tables are written",
+			SetUpScript: setUp,
+			Assertions:  assertions,
 		},
 	})
 }
