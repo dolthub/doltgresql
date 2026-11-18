@@ -379,34 +379,34 @@ func resolveType(ctx *sql.Context, db sql.Database, typ *pgtypes.DoltgresType) (
 		return nil, err
 	}
 
-	// An empty schema name resolves to the current schema here, and the loop below tries the rest of the search path
-	schema, _ := core.GetSchemaName(ctx, db, typ.ID.SchemaName())
-	resolvedType, err := typs.GetTypeWithTypmod(ctx, id.NewType(schema, typ.ID.TypeName()), typ.UnresolvedTypmods)
+	// A qualified name only resolves in its own schema
+	if typ.ID.SchemaName() != "" {
+		resolvedType, err := typs.GetTypeWithTypmod(ctx, typ.ID, typ.UnresolvedTypmods)
+		if err != nil {
+			return nil, err
+		}
+		if resolvedType == nil {
+			return nil, pgtypes.ErrTypeDoesNotExist.New(typ.Name())
+		}
+		return resolvedType, nil
+	}
+
+	// An unqualified name resolves through the search path, as in Postgres, and not through the schema of the object
+	// being created, whose own types (such as the row types of its tables) are otherwise found first
+	searchPath, err := core.SearchPath(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if resolvedType == nil {
-		if typ.ID.SchemaName() == "" {
-			searchPath, err := core.SearchPath(ctx)
-			if err != nil {
-				return nil, err
-			}
-			for _, pathSchema := range searchPath {
-				if pathSchema == schema {
-					continue
-				}
-				resolvedType, err = typs.GetTypeWithTypmod(ctx, id.NewType(pathSchema, typ.ID.TypeName()), typ.UnresolvedTypmods)
-				if err != nil {
-					return nil, err
-				}
-				if resolvedType != nil && (typ.ID.TypeName() == "unknown" || resolvedType.ID != pgtypes.Unknown.ID) {
-					return resolvedType, nil
-				}
-			}
+	for _, pathSchema := range searchPath {
+		resolvedType, err := typs.GetTypeWithTypmod(ctx, id.NewType(pathSchema, typ.ID.TypeName()), typ.UnresolvedTypmods)
+		if err != nil {
+			return nil, err
 		}
-		return nil, pgtypes.ErrTypeDoesNotExist.New(typ.Name())
+		if resolvedType != nil && (typ.ID.TypeName() == "unknown" || resolvedType.ID != pgtypes.Unknown.ID) {
+			return resolvedType, nil
+		}
 	}
-	return resolvedType, nil
+	return nil, pgtypes.ErrTypeDoesNotExist.New(typ.Name())
 }
 
 // resolveDefaultColumnType resolves the OutType of a *sql.ColumnDefaultValue if it's not nil (and not already resolved).

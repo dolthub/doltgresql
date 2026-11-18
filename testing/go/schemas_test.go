@@ -243,6 +243,31 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		// Tables create row types named after them, which must not shadow the types that an unqualified name finds
+		// through the search path when creating another table in the same schema.
+		Name: "unqualified column types resolve through the search path, not the table's schema",
+		SetUpScript: []string{
+			"CREATE SCHEMA s1;",
+			"CREATE TYPE public.status AS ENUM ('a', 'b');",
+			"CREATE TABLE s1.varchar (id int);",
+			"CREATE TABLE s1.status (id int);",
+			"CREATE TABLE s1.t (v varchar(5), s status);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "INSERT INTO s1.t VALUES ('hello', 'b');",
+			},
+			{
+				Query:    "SELECT v, s FROM s1.t;",
+				Expected: []sql.Row{{"hello", "b"}},
+			},
+			{
+				Query:       "INSERT INTO s1.t VALUES ('toolong', 'a');",
+				ExpectedErr: "value too long for type character varying(5)",
+			},
+		},
+	},
+	{
 		Name: "search path returns user table before public table",
 		SetUpScript: []string{
 			"create schema postgres",
