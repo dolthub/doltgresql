@@ -2016,6 +2016,83 @@ ORDER BY schema_name, table_name;`,
 			},
 		},
 		{
+			Name: "UNIQUE NULLS NOT DISTINCT",
+			SetUpScript: []string{
+				"CREATE TABLE at1 (id INT PRIMARY KEY, a INT, b INT);",
+				"INSERT INTO at1 VALUES (1, 1, NULL), (2, 1, NULL), (3, NULL, NULL);",
+				"CREATE TABLE at2 (id INT PRIMARY KEY);",
+				"INSERT INTO at2 VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "ALTER TABLE at1 ADD CONSTRAINT at1_a_b_key UNIQUE NULLS NOT DISTINCT (a, b);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD UNIQUE NULLS NOT DISTINCT (a);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD CONSTRAINT at1_a_b_key UNIQUE NULLS DISTINCT (a, b);",
+				},
+				{
+					Query: "DELETE FROM at1 WHERE id = 2;",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD CONSTRAINT at1_b_key UNIQUE NULLS NOT DISTINCT (b, a);",
+				},
+				{
+					Query:           "INSERT INTO at1 VALUES (4, NULL, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD COLUMN c INT UNIQUE NULLS NOT DISTINCT;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD COLUMN d INT;",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD CONSTRAINT at1_d_key UNIQUE NULLS NOT DISTINCT (d);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'at1'::regclass AND contype = 'u' ORDER BY 1;",
+					Expected: []sql.Row{
+						{"at1_a_b_key", "UNIQUE (a, b)"},
+						{"at1_b_key", "UNIQUE NULLS NOT DISTINCT (b, a)"},
+					},
+				},
+				{
+					Query: "UPDATE at1 SET d = 1 WHERE id = 1;",
+				},
+				{
+					Query:    "SELECT * FROM at1 ORDER BY id;",
+					Expected: []sql.Row{{1, 1, nil, 1}, {3, nil, nil, nil}},
+				},
+				{
+					Query: "ALTER TABLE at2 ADD COLUMN c INT UNIQUE NULLS NOT DISTINCT;",
+				},
+				{
+					Query:           "INSERT INTO at2 (id) VALUES (2);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO at2 VALUES (2, 1);",
+				},
+				{
+					Query:    "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'at2'::regclass AND contype = 'u';",
+					Expected: []sql.Row{{"at2_c_key", "UNIQUE NULLS NOT DISTINCT (c)"}},
+				},
+			},
+		},
+		{
 			Name: "column defaults with user-defined functions keep working after table rewrites",
 			SetUpScript: []string{
 				"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL AS $$ SELECT 1 $$;",
