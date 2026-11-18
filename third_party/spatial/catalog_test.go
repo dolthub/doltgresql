@@ -15,6 +15,9 @@
 package spatial
 
 import (
+	"bytes"
+	"compress/gzip"
+	"os"
 	"strings"
 	"testing"
 
@@ -47,6 +50,21 @@ func TestCatalogContents(t *testing.T) {
 	infos, err = DatabaseCRSInfo("unknown", nil)
 	require.NoError(t, err)
 	require.Empty(t, infos)
+}
+
+func TestCatalogText(t *testing.T) {
+	// Whichever form is embedded, it holds the checked-in catalog
+	text, err := os.ReadFile("crs_catalog.tsv")
+	require.NoError(t, err)
+	require.Equal(t, string(text), catalogText())
+
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	_, err = writer.Write(text)
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	require.Equal(t, string(text), decompressCatalog(compressed.Bytes()))
+	require.Panics(t, func() { decompressCatalog([]byte("not gzip")) })
 }
 
 func TestCatalogSearch(t *testing.T) {

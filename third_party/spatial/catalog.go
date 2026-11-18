@@ -15,7 +15,6 @@
 package spatial
 
 import (
-	_ "embed"
 	"math"
 	"strconv"
 	"strings"
@@ -23,11 +22,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 )
-
-// crsCatalogData holds the coordinate reference systems of PROJ's database, as described at the top of the file.
-//
-//go:embed crs_catalog.tsv
-var crsCatalogData string
 
 // projDataVersion is the version of PROJ whose database the catalog was generated from.
 const projDataVersion = "9.8.1"
@@ -54,7 +48,7 @@ var versionedAuthorities = map[string][]string{"IAU": {"IAU_2015"}}
 // catalog returns the parsed catalog, which is parsed on first use.
 var catalog = sync.OnceValue(func() *crsCatalog {
 	c := &crsCatalog{byCode: make(map[string]map[string]int)}
-	for _, line := range strings.Split(crsCatalogData, "\n") {
+	for _, line := range strings.Split(catalogText(), "\n") {
 		if len(line) == 0 || line[0] == '#' {
 			continue
 		}
