@@ -21,6 +21,7 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/procedures"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/plpgsql"
 	"github.com/dolthub/doltgresql/utils"
 )
@@ -44,7 +45,7 @@ func (function Function) Serialize(ctx context.Context) ([]byte, error) {
 
 	// Write all of the functions to the writer
 	writer := utils.NewWriter(256)
-	writer.VariableUint(4) // Version
+	writer.VariableUint(5) // Version
 	// Write the function data
 	writer.Id(function.ID.AsId())
 	writer.Id(function.ReturnType.AsId())
@@ -77,6 +78,9 @@ func (function Function) Serialize(ctx context.Context) ([]byte, error) {
 	for _, mode := range paramModes {
 		writer.Uint8(uint8(mode))
 	}
+	// Write version 5 data
+	writer.Bool(function.Window)
+	writer.Uint8(uint8(function.Volatility))
 	// Returns the data
 	return writer.Data(), nil
 }
@@ -89,7 +93,7 @@ func DeserializeFunction(ctx context.Context, data []byte) (Function, error) {
 	}
 	reader := utils.NewReader(data)
 	version := reader.VariableUint()
-	if version > 4 {
+	if version > 5 {
 		return Function{}, errors.Errorf("version %d of functions is not supported, please upgrade the server", version)
 	}
 
@@ -136,6 +140,10 @@ func DeserializeFunction(ctx context.Context, data []byte) (Function, error) {
 		for modeIdx := uint64(0); modeIdx < modeCount; modeIdx++ {
 			paramModes[modeIdx] = procedures.ParameterMode(reader.Uint8())
 		}
+	}
+	if version >= 5 {
+		f.Window = reader.Bool()
+		f.Volatility = tree.Volatility(reader.Uint8())
 	}
 
 	f.AllParams = make([]procedures.Parameter, len(paramNames))

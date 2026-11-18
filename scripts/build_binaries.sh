@@ -63,6 +63,9 @@ platform_cgo_ldflags["darwin-amd64"]=""
 # but on Windows we need to pull in the separate ssp library
 platform_cgo_ldflags["windows-amd64"]="-static-libgcc -static-libstdc++ -Wl,-Bstatic -lssp"
 
+# Release binaries embed the coordinate reference system catalog compressed, which go generate writes
+go generate ./server/extensions/postgis/spatial
+
 for tuple in $OS_ARCH_TUPLES; do
   os=`echo $tuple | sed 's/-.*//'`
   arch=`echo $tuple | sed 's/.*-//'`
@@ -72,7 +75,7 @@ for tuple in $OS_ARCH_TUPLES; do
   cp -r ./licenses "$o/licenses"
   cp LICENSE "$o/licenses"
   bin="doltgres"
-  tags="icu_static"
+  tags="icu_static compressed_catalog"
   if [ "$os" = windows ]; then
       bin="$bin.exe"
   fi

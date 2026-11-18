@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/expression"
+	"github.com/dolthub/go-mysql-server/sql/expression/function"
 	"github.com/dolthub/go-mysql-server/sql/expression/function/vector"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	"github.com/dolthub/go-mysql-server/sql/procedures"
@@ -35,6 +36,10 @@ import (
 // BinaryOperator represents a VALUE OPERATOR VALUE expression.
 type BinaryOperator struct {
 	operator     framework.Operator
+	customSymbol string
+	// regexNegated is set for a regex match operator, which falls back to a regex match when no user-defined operator
+	// matches its operands, negating the match when true.
+	regexNegated *bool
 	compiledFunc framework.Function
 }
 
@@ -49,6 +54,27 @@ var _ vector.OrderableDistance = (*BinaryOperator)(nil)
 // NewBinaryOperator returns a new *BinaryOperator.
 func NewBinaryOperator(operator framework.Operator) *BinaryOperator {
 	return &BinaryOperator{operator: operator}
+}
+
+// NewCustomBinaryOperator returns a new *BinaryOperator for an operator symbol that has no framework.Operator of its
+// own. Such an operator is only ever user-defined.
+func NewCustomBinaryOperator(symbol string) *BinaryOperator {
+	return &BinaryOperator{operator: framework.Operator_BinaryCustom, customSymbol: symbol}
+}
+
+// NewRegexMatchOperator returns a new *BinaryOperator for the ~ or !~ operator, which resolves to a user-defined
+// operator of the same symbol when one matches its operands, and otherwise to a regex match that is negated when
+// `negated` is true.
+func NewRegexMatchOperator(symbol string, negated bool) *BinaryOperator {
+	return &BinaryOperator{operator: framework.Operator_BinaryCustom, customSymbol: symbol, regexNegated: &negated}
+}
+
+// symbol returns the operator's symbol.
+func (b *BinaryOperator) symbol() string {
+	if b.operator == framework.Operator_BinaryCustom {
+		return b.customSymbol
+	}
+	return b.operator.String()
 }
 
 // Children implements the sql.Expression interface.
@@ -84,6 +110,8 @@ func (b *BinaryOperator) SetStatementRunner(ctx *sql.Context, runner sql.Stateme
 	}
 	return &BinaryOperator{
 		operator:     b.operator,
+		customSymbol: b.customSymbol,
+		regexNegated: b.regexNegated,
 		compiledFunc: interpreterExpr.SetStatementRunner(ctx, runner).(framework.Function),
 	}
 }
@@ -91,16 +119,16 @@ func (b *BinaryOperator) SetStatementRunner(ctx *sql.Context, runner sql.Stateme
 // String implements the sql.Expression interface.
 func (b *BinaryOperator) String() string {
 	if b.compiledFunc == nil {
-		return fmt.Sprintf("? %s ?", b.operator.String())
+		return fmt.Sprintf("? %s ?", b.symbol())
 	}
 	// We know that we'll always have two parameters here
 	switch f := b.compiledFunc.(type) {
 	case *framework.CompiledFunction:
 		return fmt.Sprintf("%s %s %s",
-			f.Arguments[0].String(), b.operator.String(), f.Arguments[1].String())
+			f.Arguments[0].String(), b.symbol(), f.Arguments[1].String())
 	case *framework.QuickFunction2:
 		return fmt.Sprintf("%s %s %s",
-			f.Arguments[0].String(), b.operator.String(), f.Arguments[1].String())
+			f.Arguments[0].String(), b.symbol(), f.Arguments[1].String())
 	default:
 		return fmt.Sprintf("unexpected binary operator function type: %T", b.compiledFunc)
 	}
@@ -138,6 +166,8 @@ func (b *BinaryOperator) WithChildren(ctx *sql.Context, children ...sql.Expressi
 		}
 		return &BinaryOperator{
 			operator:     b.operator,
+			customSymbol: b.customSymbol,
+			regexNegated: b.regexNegated,
 			compiledFunc: compiledFunc.(framework.Function),
 		}, nil
 	} else {
@@ -163,28 +193,36 @@ func (b *BinaryOperator) WithResolvedChildren(ctx context.Context, children []an
 	if !ok {
 		return nil, errors.Errorf("expected vitess child to be an expression but has type `%T`", children[1])
 	}
-	funcName := "internal_binary_operator_func_" + b.operator.String()
+	funcName := "internal_binary_operator_func_" + b.symbol()
+	if b.regexNegated != nil && isTextOperand(sqlCtx, left) && isTextOperand(sqlCtx, right) {
+		return regexMatch(sqlCtx, left, right, *b.regexNegated)
+	}
 	var compiledFunc framework.Function
-	builtInFunc := framework.GetBinaryFunction(b.operator).Compile(sqlCtx, funcName, left, right)
-	if builtInFunc != nil && builtInFunc.StashedError() == nil {
+	builtIn := framework.GetBinaryFunction(b.operator)
+	builtInFunc := builtIn.Compile(sqlCtx, funcName, left, right)
+	if builtInFunc != nil && builtInFunc.StashedError() == nil && prefersBuiltIn(sqlCtx, builtIn, left, right) {
 		compiledFunc = builtInFunc
 	} else {
-		userFunc, err := getUserDefinedOperator(sqlCtx, b.operator, left, right)
+		userFunc, err := getUserDefinedOperator(sqlCtx, b.symbol(), left, right)
 		if err != nil {
 			return nil, err
 		}
 		if userFunc != nil {
 			compiledFunc = userFunc
+		} else if b.regexNegated != nil {
+			return regexMatch(sqlCtx, left, right, *b.regexNegated)
 		} else if builtInFunc != nil {
 			compiledFunc = builtInFunc
 		}
 	}
 	if compiledFunc == nil {
 		return nil, errors.Errorf("operator does not exist: %s %s %s",
-			left.Type(sqlCtx).String(), b.operator.String(), right.Type(sqlCtx).String())
+			left.Type(sqlCtx).String(), b.symbol(), right.Type(sqlCtx).String())
 	}
 	return &BinaryOperator{
 		operator:     b.operator,
+		customSymbol: b.customSymbol,
+		regexNegated: b.regexNegated,
 		compiledFunc: compiledFunc,
 	}, nil
 }
@@ -305,9 +343,45 @@ func unwrapIndexScanTarget(expr sql.Expression) sql.Expression {
 	return expr
 }
 
+// isTextOperand returns whether the operand has a string type or the unknown type, for which a regex match operator
+// is always the built-in regex match.
+func isTextOperand(ctx *sql.Context, operand sql.Expression) bool {
+	operandType, ok := operand.Type(ctx).(*pgtypes.DoltgresType)
+	return !ok || operandType.ID == pgtypes.Unknown.ID || operandType.TypCategory == pgtypes.TypeCategory_StringTypes
+}
+
+// regexMatch returns the regex match of the left operand against the pattern on the right, negated when `negated` is
+// true.
+func regexMatch(ctx *sql.Context, left sql.Expression, right sql.Expression, negated bool) (sql.Expression, error) {
+	match, err := function.NewRegexpLike(ctx, left, right)
+	if err != nil {
+		return nil, err
+	}
+	if negated {
+		return expression.NewNot(match), nil
+	}
+	return match, nil
+}
+
+// prefersBuiltIn returns whether a resolvable built-in operator is chosen before any user-defined operator. Postgres
+// prefers a built-in overload whose parameter types exactly match the operands, and resolves two operands of unknown
+// type as text. Otherwise, a user-defined operator matching the operands wins over a built-in that needs casts.
+func prefersBuiltIn(ctx *sql.Context, builtIn framework.IntermediateFunction, left sql.Expression, right sql.Expression) bool {
+	leftType, leftOk := left.Type(ctx).(*pgtypes.DoltgresType)
+	rightType, rightOk := right.Type(ctx).(*pgtypes.DoltgresType)
+	if !leftOk || !rightOk || builtIn.Functions == nil {
+		return true
+	}
+	if leftType.ID == pgtypes.Unknown.ID && rightType.ID == pgtypes.Unknown.ID {
+		return true
+	}
+	_, ok := builtIn.Functions.ExactMatchForTypes(leftType, rightType)
+	return ok
+}
+
 // getUserDefinedOperator returns the function for the user-defined operator matching the given operands. Returns nil if
 // an operator is not found.
-func getUserDefinedOperator(ctx *sql.Context, operator framework.Operator, left sql.Expression, right sql.Expression) (framework.Function, error) {
+func getUserDefinedOperator(ctx *sql.Context, symbol string, left sql.Expression, right sql.Expression) (framework.Function, error) {
 	leftType, ok := left.Type(ctx).(*pgtypes.DoltgresType)
 	if !ok {
 		if leftType, _ = pgtypes.FromGmsTypeToDoltgresType(left.Type(ctx)); leftType == nil {
@@ -328,7 +402,7 @@ func getUserDefinedOperator(ctx *sql.Context, operator framework.Operator, left 
 	if err != nil {
 		return nil, err
 	}
-	op, ok, err := operatorCollection.ResolveOperator(ctx, searchPath, operator.String(), leftType.ID, rightType.ID)
+	op, ok, err := operatorCollection.ResolveOperator(ctx, searchPath, symbol, leftType.ID, rightType.ID)
 	if err != nil || !ok {
 		return nil, err
 	}

@@ -104,17 +104,22 @@ func (fp *FunctionProvider) overloads(ctx *sql.Context, schema, name string) (ov
 			}
 		}
 		if len(overload.ExtensionName) > 0 {
-			if err = overloadTree.Add(ExtensionFunction{
+			var extFunction FunctionInterface = ExtensionFunction{
 				ID:                 overload.ID,
 				ReturnType:         returnType,
 				ParameterTypes:     paramTypes,
+				AllParams:          overload.AllParams,
 				Variadic:           overload.Variadic,
 				IsNonDeterministic: overload.IsNonDeterministic,
 				Strict:             overload.Strict,
 				SetOf:              overload.SetOf,
 				ExtensionName:      overload.ExtensionName,
 				ExtensionSymbol:    overload.ExtensionSymbol,
-			}); err != nil {
+			}
+			if overload.Window {
+				extFunction = ExtensionWindowFunction{ExtensionFunction: extFunction.(ExtensionFunction)}
+			}
+			if err = overloadTree.Add(extFunction); err != nil {
 				return nil, false, false
 			}
 		} else if len(overload.SQLDefinition) > 0 {
@@ -218,6 +223,17 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 					}
 				}
 				return aggregate, nil
+			},
+		}, true
+	}
+	if slices.ContainsFunc(overloadTree.AllOverloads, func(overload FunctionInterface) bool {
+		_, isWindow := overload.(WindowFunctionInterface)
+		return isWindow
+	}) {
+		return sql.FunctionN{
+			Name: name,
+			Fn: func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
+				return NewCompiledWindowFunction(ctx, name, params, overloadTree), nil
 			},
 		}, true
 	}

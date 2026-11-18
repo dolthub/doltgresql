@@ -453,6 +453,30 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 			},
 		},
 		{
+			// The domain cast in the default is rewritten after the default is filled in, which re-resolves the call
+			// with more arguments than it was first resolved with
+			Name: "default with a domain cast alongside an overload with fewer parameters",
+			SetUpScript: []string{
+				`CREATE DOMAIN possmall AS smallint CHECK (VALUE > 0);`,
+				`CREATE FUNCTION g2(a varchar) RETURNS text AS $$ SELECT 'one' $$ LANGUAGE sql;`,
+				`CREATE FUNCTION g2(a text, b int DEFAULT 7::possmall) RETURNS text AS $$ SELECT 'two' || b $$ LANGUAGE sql;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT g2('a'::text);`,
+					Expected: []sql.Row{{"two7"}},
+				},
+				{
+					Query:    `SELECT g2('a'::varchar);`,
+					Expected: []sql.Row{{"one"}},
+				},
+				{
+					Query:    `SELECT g2('a'::text, 3);`,
+					Expected: []sql.Row{{"two3"}},
+				},
+			},
+		},
+		{
 			Name:        "use sql statements in BEGIN ATOMIC ... END in sql_body",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{

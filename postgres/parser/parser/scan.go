@@ -130,6 +130,13 @@ func (s *scanner) scan(lval *sqlSymType) {
 	lval.pos = int32(s.pos - 1)
 	lval.str = s.in[lval.pos:s.pos]
 
+	if op := s.operatorAt(int(lval.pos)); len(op) > 1 && !namedOperators[op] {
+		s.pos = int(lval.pos) + len(op)
+		lval.id = OP
+		lval.str = op
+		return
+	}
+
 	switch ch {
 	case '$':
 		// placeholder? $[0-9]+
@@ -458,6 +465,37 @@ func (s *scanner) scan(lval *sqlSymType) {
 
 	// Everything else is a single character token which we already initialized
 	// lval for above.
+}
+
+// namedOperators holds the operators of more than one character that the scanner gives a dedicated token.
+var namedOperators = map[string]bool{
+	"!=": true, "!~": true, "!~*": true, "??": true, "?|": true, "?&": true, "<<": true, "<<=": true, "<>": true,
+	"<=>": true, "<=": true, "<@": true, "<->": true, "<+>": true, "<#>": true, "<%>": true, "<~>": true, ">>": true,
+	">>=": true, ">=": true, "||": true, "||/": true, "|/": true, "//": true, "~*": true, "@>": true, "@@": true,
+	"&&": true, "->": true, "->>": true, "#>": true, "#>>": true, "#-": true,
+}
+
+// operatorAt returns the operator that starts at the given position, following the rules that Postgres uses to
+// split a run of operator characters. The run ends before any comment that starts within it, and trailing '+' and '-'
+// characters are dropped unless the operator contains a character that cannot appear in an SQL-standard operator, so
+// that "=-1" is read as "=" followed by "-1". It returns an empty string when no operator starts at the position.
+func (s *scanner) operatorAt(start int) string {
+	end := start
+	for end < len(s.in) && strings.IndexByte("~!@#^&|?+-*/%<>=", s.in[end]) >= 0 {
+		if end > start && ((s.in[end-1] == '/' && s.in[end] == '*') || (s.in[end-1] == '-' && s.in[end] == '-')) {
+			end--
+			break
+		}
+		end++
+	}
+	op := s.in[start:end]
+	if len(op) > 1 && (op[len(op)-1] == '+' || op[len(op)-1] == '-') && !strings.ContainsAny(op, "~!@#^&|?%") {
+		op = strings.TrimRight(op, "+-")
+		if op == "" {
+			op = s.in[start : start+1]
+		}
+	}
+	return op
 }
 
 func (s *scanner) peek() int {
