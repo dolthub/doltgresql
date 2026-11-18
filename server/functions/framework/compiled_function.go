@@ -290,7 +290,7 @@ func (c *CompiledFunction) StashedError() error {
 // String implements the interface sql.Expression.
 func (c *CompiledFunction) String() string {
 	sb := strings.Builder{}
-	sb.WriteString(c.Name + "(")
+	sb.WriteString(c.schemaQualifiedName() + "(")
 	for i, param := range c.Arguments {
 		// Aliases will output the string "x as x", which is an artifact of how we build the AST, so we'll bypass it
 		if alias, ok := param.(*expression.Alias); ok {
@@ -303,6 +303,21 @@ func (c *CompiledFunction) String() string {
 	}
 	sb.WriteString(")")
 	return sb.String()
+}
+
+// schemaQualifiedName returns the name of the function, qualified by the schema of the overload it resolved to when
+// that schema is not `pg_catalog`. Column defaults are persisted as this string and re-parsed later, under a search path
+// that may not reach the function's schema, or that may reach a different function of the same name first.
+func (c *CompiledFunction) schemaQualifiedName() string {
+	if c.IsOperator || !c.overload.Valid() {
+		return c.Name
+	}
+	functionID := id.Function(c.overload.Function().InternalID())
+	schema := functionID.SchemaName()
+	if schema == "" || schema == "pg_catalog" {
+		return c.Name
+	}
+	return schema + "." + c.Name
 }
 
 // OverloadString returns the name of the function represented by the given overload.

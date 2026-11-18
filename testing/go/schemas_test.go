@@ -243,6 +243,66 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		// An unqualified function name resolves through the search path, and not through the schema of a table that
+		// the statement references. Column defaults keep the schema of the function they resolved to.
+		Name: "unqualified function calls resolve through the search path, not the table's schema",
+		SetUpScript: []string{
+			"CREATE SCHEMA s2;",
+			"CREATE TABLE s2.n (x int);",
+			"INSERT INTO s2.n VALUES (1);",
+			"CREATE FUNCTION public.myf(x int) RETURNS int AS $$ SELECT x + 1 $$ LANGUAGE sql;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT myf(x) FROM s2.n;",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query: "CREATE FUNCTION s2.myf(x int) RETURNS int AS $$ SELECT x + 100 $$ LANGUAGE sql;",
+			},
+			{
+				Query:    "SELECT myf(x) FROM s2.n;",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query:            "SELECT s2.myf(x) FROM s2.n;",
+				Expected:         []sql.Row{{101}},
+				ExpectedColNames: []string{"myf"},
+			},
+			{
+				Query:    "SELECT x FROM s2.n WHERE myf(x) = 2;",
+				Expected: []sql.Row{{1}},
+			},
+			{
+				Query: "ALTER TABLE s2.n ADD COLUMN y int DEFAULT myf(1);",
+			},
+			{
+				Query:    "SELECT x, y FROM s2.n;",
+				Expected: []sql.Row{{1, 2}},
+			},
+			{
+				Query: "SET search_path = s2, public;",
+			},
+			{
+				Query:    "SELECT myf(x) FROM s2.n;",
+				Expected: []sql.Row{{101}},
+			},
+			{
+				Query: "INSERT INTO s2.n (x) VALUES (5);",
+			},
+			{
+				Query: "SET search_path = '';",
+			},
+			{
+				Query: "INSERT INTO s2.n (x) VALUES (6);",
+			},
+			{
+				Query:    "SELECT x, y FROM s2.n ORDER BY x;",
+				Expected: []sql.Row{{1, 2}, {5, 2}, {6, 2}},
+			},
+		},
+	},
+	{
 		Name: "search path returns user table before public table",
 		SetUpScript: []string{
 			"create schema postgres",
