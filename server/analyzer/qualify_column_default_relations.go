@@ -32,14 +32,6 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// sequenceFunctionNames are the functions whose first argument names a sequence. Postgres declares that argument as a
-// regclass.
-var sequenceFunctionNames = map[string]struct{}{
-	"currval": {},
-	"nextval": {},
-	"setval":  {},
-}
-
 // QualifyColumnDefaultRelations qualifies the relation names in the column defaults and generated columns of a table
 // that is being created or altered. Postgres resolves a constant regclass, such as the sequence given to nextval, when
 // the default is created, so the default keeps naming the same relation under any later search path. Column defaults
@@ -94,7 +86,7 @@ func qualifyRelationArgument(ctx *sql.Context, e sql.Expression) (sql.Expression
 			return e, transform.SameTree, nil
 		}
 	case sql.FunctionExpression:
-		if _, ok := sequenceFunctionNames[strings.ToLower(e.FunctionName())]; !ok {
+		if !functions.IsSequenceFunction(e.FunctionName()) {
 			return e, transform.SameTree, nil
 		}
 	default:
