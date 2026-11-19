@@ -8,10 +8,10 @@ require (
 	github.com/antchfx/xpath v1.3.3
 	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20261119223059-c97d60ba966d
+	github.com/dolthub/dolt/go v0.40.5-0.20261119223927-6593ffc486fa
 	github.com/dolthub/eventsapi_schema v0.0.0-20261119125135-6b30707d614f
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20261119222815-e2c2453f1600
+	github.com/dolthub/go-mysql-server v0.20.1-0.20261119223502-8f671efce726
 	github.com/dolthub/pg_query_go/v6 v6.0.0-20260922094746-ae7577e21dfe
 	github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166
 	github.com/dolthub/vitess v0.0.0-20261119220027-04838708053d
@@ -148,7 +148,7 @@ require (
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/juju/gnuflag v0.0.0-20171113085948-2ce1bb71843d // indirect
 	github.com/kch42/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
