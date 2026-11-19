@@ -539,6 +539,10 @@ func RunTransactionTest(t *testing.T, script ScriptTest) {
 				var err error
 				client, err = pgx.ConnectConfig(ctx, config)
 				require.NoError(t, err)
+				// A statement that waits for a row lock that the script never releases would otherwise wait forever.
+				// Scripts that test lock_timeout set their own.
+				_, err = client.Exec(ctx, "SET lock_timeout = 10000")
+				require.NoError(t, err)
 				clients[clientName] = client
 			}
 

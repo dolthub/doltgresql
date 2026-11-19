@@ -21,8 +21,11 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-// partialIndexMergeSetup creates a table with a partial unique index that only covers rows without a slot.
+// partialIndexMergeSetup creates a table with a partial unique index that only covers rows without a slot. Row-level
+// locking is turned off, so that concurrent transactions don't wait for each other and their changes are merged when
+// the later one commits, which is what these tests are about.
 var partialIndexMergeSetup = []string{
+	"SET dolt_row_level_locking = 0;",
 	"CREATE TABLE t (id INT PRIMARY KEY, p INT, m INT, slot INT);",
 	"CREATE UNIQUE INDEX t_partial ON t (p, m) WHERE slot IS NULL;",
 }
@@ -120,6 +123,7 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 		{
 			Name: "update that moves a row out of the predicate frees its key for an insert in the same transaction",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
 				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
 				"INSERT INTO t VALUES (1, 5, NULL);",
@@ -219,6 +223,7 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 		{
 			Name: "concurrent insert outside a predicate that evaluates to NULL",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
 				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot > 5;",
 			},
@@ -260,6 +265,7 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 		{
 			Name: "concurrent insert outside the predicate and a column drop",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, extra INT, p INT, m INT, slot INT);",
 				"CREATE UNIQUE INDEX t_partial ON t (p, m) WHERE slot IS NULL;",
 				"INSERT INTO t VALUES (1, 0, 1, 1, NULL);",
@@ -287,6 +293,7 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 		{
 			Name: "concurrent insert on the old schema of a row whose new column default is inside the predicate",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT);",
 				"INSERT INTO t VALUES (1, 5);",
 			},
@@ -310,6 +317,7 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 		{
 			Name: "concurrent insert on the old schema of a row whose new column default is outside the predicate",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT);",
 				"INSERT INTO t VALUES (1, 5);",
 			},
@@ -335,6 +343,7 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 		{
 			Name: "concurrent insert outside the predicate on a keyless table",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (p INT, slot INT);",
 				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
 			},
@@ -359,6 +368,7 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 		{
 			Name: "partial index created concurrently with an insert outside the predicate",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
 				"INSERT INTO t VALUES (1, 1, 5);",
 			},
@@ -380,6 +390,7 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 		{
 			Name: "partial index created by the last committer while another transaction inserts outside the predicate",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
 				"INSERT INTO t VALUES (1, 1, 5);",
 			},
@@ -401,6 +412,7 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 		{
 			Name: "partial non-unique index with a concurrent insert outside the predicate",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
 				"CREATE INDEX t_partial ON t (p) WHERE slot IS NULL;",
 			},
@@ -489,6 +501,7 @@ func TestPartialIndexBranchMerge(t *testing.T) {
 		{
 			Name: "merge of a branch that adds a partial unique index",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
 				"INSERT INTO t VALUES (1, 1, 5);",
 				"SELECT dolt_commit('-Am', 'create t');",
@@ -515,6 +528,7 @@ func TestPartialIndexBranchMerge(t *testing.T) {
 		{
 			Name: "merge of a branch that adds a partial non-unique index",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
 				"INSERT INTO t VALUES (1, 1, 5);",
 				"SELECT dolt_commit('-Am', 'create t');",
@@ -544,6 +558,7 @@ func TestPartialIndexBranchMerge(t *testing.T) {
 		{
 			Name: "merge of a branch that inserts a row outside the predicate",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
 				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
 				"INSERT INTO t VALUES (1, 1, NULL);",
@@ -570,6 +585,7 @@ func TestPartialIndexBranchMerge(t *testing.T) {
 		{
 			Name: "resolving a conflict with their row outside the predicate",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
 				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
 				"INSERT INTO t VALUES (1, 1, 10);",
@@ -601,6 +617,7 @@ func TestPartialIndexBranchMerge(t *testing.T) {
 		{
 			Name: "resolving a conflict with their row inside the predicate",
 			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
 				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
 				"INSERT INTO t VALUES (1, 1, 10);",
