@@ -8,13 +8,13 @@ require (
 	github.com/antchfx/xpath v1.3.3
 	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20261119192928-45e4cd4956fa
+	github.com/dolthub/dolt/go v0.40.5-0.20261119223059-c97d60ba966d
 	github.com/dolthub/eventsapi_schema v0.0.0-20261119125135-6b30707d614f
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
-	github.com/dolthub/go-mysql-server v0.20.1-0.20261119192803-873bdd8cc40a
+	github.com/dolthub/go-mysql-server v0.20.1-0.20261119222815-e2c2453f1600
 	github.com/dolthub/pg_query_go/v6 v6.0.0-20260922094746-ae7577e21dfe
 	github.com/dolthub/sqllogictest/go v0.0.0-20260624223518-788480b24166
-	github.com/dolthub/vitess v0.0.0-20261119000524-fea4a3d52a9d
+	github.com/dolthub/vitess v0.0.0-20261119220027-04838708053d
 	github.com/fatih/color v1.13.0
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/goccy/go-json v0.10.2
