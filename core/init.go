@@ -15,10 +15,15 @@
 package core
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
+	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
+	"github.com/dolthub/dolt/go/store/val"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/casts"
@@ -32,6 +37,7 @@ import (
 func Init() {
 	doltdb.EmptyRootValue = emptyRootValue
 	doltdb.NewRootValue = newRootValue
+	dsess.TransactionRowMergePolicy = transactionRowMergePolicy
 	types.DoltgresRootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
 	types.DoltgresRootValueWalkAddrs = rootValueWalkAddrs
 	plpgsql.GetTypesCollectionFromContext = GetTypesCollectionFromContext
@@ -112,4 +118,23 @@ func Init() {
 		}
 		return pgtypes.Text
 	}
+}
+
+// transactionRowMergePolicy decides each row that both a committing transaction and a concurrently committed
+// transaction changed. If both changed the same column of the row, the later commit fails with a serialization failure,
+// even when both wrote the same value: each may have computed its value from the row as it was before the other's
+// change, as `SET n = n + 1` does, so accepting both would silently lose one of the changes. Inserting or deleting a row
+// changes all of its columns. Changes to different columns of the same row merge as usual.
+func transactionRowMergePolicy(_ *sql.Context, in merge.RowMergeInput) (val.Tuple, tree.RowMergeStatus, error) {
+	if in.Base == nil || in.Left == nil || in.Right == nil {
+		return nil, tree.RowMergeConflict, nil
+	}
+
+	for i := 0; i < in.ValueDesc.Count(); i++ {
+		base := in.Base.GetField(i)
+		if !bytes.Equal(in.Left.GetField(i), base) && !bytes.Equal(in.Right.GetField(i), base) {
+			return nil, tree.RowMergeConflict, nil
+		}
+	}
+	return nil, tree.RowMergeDefer, nil
 }
