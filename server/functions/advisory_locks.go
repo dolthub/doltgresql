@@ -198,6 +198,12 @@ func waitForAdvisoryLock(ctx *sql.Context, lockSubsystem *sql.LockSubsystem, loc
 	return lockSubsystem.Lock(ctx, lockName, time.Millisecond*-1)
 }
 
+// WaitsForAdvisoryLock returns whether the session given is waiting for an advisory lock.
+func WaitsForAdvisoryLock(sessionID uint32) bool {
+	_, ok := advisoryLockWaits.Load(sessionID)
+	return ok
+}
+
 // advisoryLockBlocker returns the session that holds the advisory lock that the session given is waiting for, or
 // false if it isn't waiting for one.
 func advisoryLockBlocker(sessionID uint32) (uint32, bool) {

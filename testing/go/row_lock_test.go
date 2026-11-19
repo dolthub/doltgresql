@@ -346,6 +346,13 @@ func TestRowLockIntrospection(t *testing.T) {
 						FROM pg_locks WHERE NOT granted`,
 					Expected: []sql.Row{{"ExclusiveLock", "f", "t", "t", "t", "f", "f"}},
 				},
+				{
+					// pg_stat_activity shows the waiting session as waiting for a lock, and both sessions'
+					// transactions.
+					Query: `/* client a */ SELECT pid = pg_backend_pid(), wait_event_type, wait_event, backend_xid IS NOT NULL
+						FROM pg_stat_activity WHERE pid IN (SELECT pid FROM pg_locks) ORDER BY wait_event_type NULLS FIRST`,
+					Expected: []sql.Row{{"t", nil, nil, "t"}, {"f", "Lock", "tuple", "t"}},
+				},
 				{Query: "/* client a */ COMMIT", Expected: []sql.Row{}},
 				{Query: "/* client b */ SELECT count(*) FROM pg_locks", Expected: []sql.Row{{0}}},
 			},

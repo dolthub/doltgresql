@@ -23,6 +23,7 @@ import (
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -56,10 +57,38 @@ func (p PgStatActivityHandler) RowIter(ctx *sql.Context, partition sql.Partition
 	sort.Slice(processes, func(i, j int) bool {
 		return processes[i].Connection < processes[j].Connection
 	})
-	return &pgStatActivityRowIter{
-		processes: processes,
-		idx:       0,
-	}, nil
+	iter := &pgStatActivityRowIter{
+		processes:  processes,
+		idx:        0,
+		txns:       make(map[uint32]uint32),
+		waitEvents: make(map[uint32]string),
+	}
+
+	// What each session is waiting for, and the transaction it is in, come from the row journal.
+	if journal := functions.RowJournal(ctx); journal != nil {
+		for _, txn := range journal.ActiveTxns() {
+			iter.txns[txn.SessionID] = uint32(txn.ID)
+		}
+
+		for _, lock := range journal.Locks() {
+			if lock.Granted {
+				continue
+			}
+
+			iter.waitEvents[lock.SessionID] = "tuple"
+			if lock.Target.WholeTable {
+				iter.waitEvents[lock.SessionID] = "relation"
+			}
+		}
+	}
+
+	for _, process := range processes {
+		if functions.WaitsForAdvisoryLock(process.Connection) {
+			iter.waitEvents[process.Connection] = "advisory"
+		}
+	}
+
+	return iter, nil
 }
 
 // PkSchema implements the interface tables.Handler.
@@ -100,6 +129,11 @@ var pgStatActivitySchema = sql.Schema{
 type pgStatActivityRowIter struct {
 	processes []sql.Process
 	idx       int
+	// txns holds the ID of the transaction that each session is in, by the session's ID.
+	txns map[uint32]uint32
+	// waitEvents holds the kind of lock that each session that is waiting for a lock is waiting for, by the
+	// session's ID.
+	waitEvents map[uint32]string
 }
 
 var _ sql.RowIter = (*pgStatActivityRowIter)(nil)
@@ -143,6 +177,17 @@ func (iter *pgStatActivityRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		queryStart = process.StartedAt
 	}
 
+	var waitEventType any
+	var waitEvent any
+	if event, ok := iter.waitEvents[process.Connection]; ok {
+		waitEventType = "Lock"
+		waitEvent = event
+	}
+	var backendXid any
+	if xid, ok := iter.txns[process.Connection]; ok {
+		backendXid = xid
+	}
+
 	return sql.Row{
 		datid,                     // datid
 		datname,                   // datname
@@ -158,10 +203,10 @@ func (iter *pgStatActivityRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 		nil,                       // xact_start (TODO: transaction start time is not tracked)
 		queryStart,                // query_start
 		nil,                       // state_change (TODO: not tracked)
-		nil,                       // wait_event_type
-		nil,                       // wait_event
+		waitEventType,             // wait_event_type
+		waitEvent,                 // wait_event
 		state,                     // state
-		nil,                       // backend_xid
+		backendXid,                // backend_xid
 		nil,                       // backend_xmin
 		nil,                       // query_id
 		query,                     // query
