@@ -81,8 +81,7 @@ func (cfg *DoltgresConfig) Overrides() sql.EngineOverrides {
 				PostSQLExecution: hook.AfterTableDropColumn,
 			},
 		},
-		SchemaFormatter:                      pgsql.NewPostgresSchemaFormatter(),
-		DisplayExpression:                    functions.DisplayExpression,
+		SchemaFormatter:                      pgsql.NewPostgresSchemaFormatter(functions.FormatExpression),
 		CostedIndexScanExpressionFilter:      &analyzer.LogicTreeWalker{},
 		PermitNonDeterministicCheckFunctions: true,
 	}

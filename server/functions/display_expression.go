@@ -30,8 +30,18 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// FormatExpression returns the text shown for an expression that a table persists, with its function calls shown as
+// DisplayExpression shows them. The persisted text is returned when the expression cannot be shown otherwise.
+func FormatExpression(ctx *sql.Context, expr sql.Expression) string {
+	displayed, err := DisplayExpression(ctx, expr)
+	if err != nil {
+		return expr.String()
+	}
+	return displayed.String()
+}
+
 // DisplayCheckExpression returns the text shown for the persisted expression of a check constraint on the named table,
-// with its function calls shown as DisplayExpression shows them. The persisted text is returned when it cannot be
+// as the schema formatter shows it. The persisted text is returned when it cannot be
 // resolved.
 func DisplayCheckExpression(ctx *sql.Context, tableName doltdb.TableName, checkExpression string) string {
 	expr, err := expranalysis.ResolveExpression(ctx, tableName, checkExpression)
@@ -51,11 +61,7 @@ func DisplayCheckExpression(ctx *sql.Context, tableName doltdb.TableName, checkE
 		return checkExpression
 	}
 
-	displayed, err := DisplayExpression(ctx, expr)
-	if err != nil {
-		return checkExpression
-	}
-	return displayed.String()
+	return formatter.FormatExpression(ctx, expr)
 }
 
 // PostgresDefaultString returns the text that Postgres shows for a default built from constants and casts, where a string
