@@ -16,6 +16,7 @@ package functions
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -81,7 +82,7 @@ func acquireTransactionAdvisoryLock(ctx *sql.Context, lockName string, try bool)
 	if try {
 		acquired, err = lockSubsystem.TryLock(ctx, lockName)
 	} else {
-		err = lockSubsystem.Lock(ctx, lockName, time.Millisecond*-1)
+		err = waitForAdvisoryLock(ctx, lockSubsystem, lockName)
 	}
 	if err != nil || !acquired {
 		return acquired, err
@@ -137,7 +138,7 @@ func acquireSessionAdvisoryLock(ctx *sql.Context, lockName string, try bool) (bo
 	if try {
 		acquired, err = lockSubsystem.TryLock(ctx, lockName)
 	} else {
-		err = lockSubsystem.Lock(ctx, lockName, time.Millisecond*-1)
+		err = waitForAdvisoryLock(ctx, lockSubsystem, lockName)
 	}
 	if err != nil || !acquired {
 		return acquired, err
@@ -184,6 +185,34 @@ var pg_advisory_unlock_bigint = framework.Function1{
 		}
 		return true, nil
 	},
+}
+
+// advisoryLockWaits holds, for each session that is waiting for an advisory lock, the name of the lock. It is what
+// lets pg_blocking_pids say which session a session that waits for an advisory lock is waiting for.
+var advisoryLockWaits sync.Map
+
+// waitForAdvisoryLock acquires an advisory lock for the session of |ctx|, waiting for as long as it takes.
+func waitForAdvisoryLock(ctx *sql.Context, lockSubsystem *sql.LockSubsystem, lockName string) error {
+	advisoryLockWaits.Store(ctx.Session.ID(), lockName)
+	defer advisoryLockWaits.Delete(ctx.Session.ID())
+	return lockSubsystem.Lock(ctx, lockName, time.Millisecond*-1)
+}
+
+// advisoryLockBlocker returns the session that holds the advisory lock that the session given is waiting for, or
+// false if it isn't waiting for one.
+func advisoryLockBlocker(sessionID uint32) (uint32, bool) {
+	lockName, ok := advisoryLockWaits.Load(sessionID)
+	if !ok {
+		return 0, false
+	}
+
+	lockSubsystem := getLockSubsystem()
+	if lockSubsystem == nil {
+		return 0, false
+	}
+
+	state, owner := lockSubsystem.GetLockState(lockName.(string))
+	return owner, state == sql.LockInUse && owner != sessionID
 }
 
 // getLockSubsystem returns the active lock system for the SQL engine.

@@ -351,6 +351,29 @@ func TestRowLockIntrospection(t *testing.T) {
 			},
 		},
 		{
+			Name: "pg_blocking_pids reports the holder of an advisory lock that a session waits for",
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ CREATE TABLE pids (name TEXT PRIMARY KEY, pid INT)", Expected: []sql.Row{}},
+				{Query: "/* client a */ INSERT INTO pids VALUES ('a', pg_backend_pid())", Expected: []sql.Row{}},
+				{Query: "/* client b */ INSERT INTO pids VALUES ('b', pg_backend_pid())", Expected: []sql.Row{}},
+				{Query: "/* client a */ SELECT pg_advisory_lock(42)", Expected: []sql.Row{{"t"}}},
+				{Query: "/* client b */ SELECT pg_advisory_lock(42)", ExpectedBlocking: true},
+				{
+					Query: `/* client a */ SELECT pg_blocking_pids(b.pid) = ARRAY[a.pid],
+							pg_isolation_test_session_is_blocked(b.pid, ARRAY[a.pid]),
+							pg_isolation_test_session_is_blocked(a.pid, ARRAY[b.pid])
+						FROM pids a, pids b WHERE a.name = 'a' AND b.name = 'b'`,
+					Expected: []sql.Row{{"t", "t", "f"}},
+				},
+				{Query: "/* client a */ SELECT pg_advisory_unlock(42)", Expected: []sql.Row{{"t"}}},
+				{
+					Query:    "/* client b */ SELECT cardinality(pg_blocking_pids(pg_backend_pid()))",
+					Expected: []sql.Row{{0}},
+				},
+				{Query: "/* client b */ SELECT pg_advisory_unlock(42)", Expected: []sql.Row{{"t"}}},
+			},
+		},
+		{
 			Name:        "pg_locks reports the lock that a DDL statement takes on a table",
 			SetUpScript: rowLockSetup,
 			Assertions: []ScriptTestAssertion{

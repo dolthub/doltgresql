@@ -86,28 +86,29 @@ func RowJournal(ctx *sql.Context) *rowjournal.Journal {
 	return sess.Provider().RowJournal()
 }
 
-// BlockingSessions returns the IDs of the sessions whose transactions hold a lock that the session given is waiting
-// for, or are ahead of it in the queue for one, in ascending order.
+// BlockingSessions returns the IDs of the sessions that hold a row lock, a table lock or an advisory lock that the
+// session given is waiting for, or are ahead of it in the queue for one, in ascending order.
 func BlockingSessions(ctx *sql.Context, sessionID uint32) []uint32 {
-	journal := RowJournal(ctx)
-	if journal == nil {
-		return nil
-	}
-
-	sessions := make(map[rowjournal.TxnID]uint32)
-	for _, txn := range journal.ActiveTxns() {
-		sessions[txn.ID] = txn.SessionID
-	}
-
 	blocking := make(map[uint32]struct{})
-	for _, lock := range journal.Locks() {
-		if lock.Granted || lock.SessionID != sessionID {
-			continue
+	if owner, ok := advisoryLockBlocker(sessionID); ok {
+		blocking[owner] = struct{}{}
+	}
+
+	if journal := RowJournal(ctx); journal != nil {
+		sessions := make(map[rowjournal.TxnID]uint32)
+		for _, txn := range journal.ActiveTxns() {
+			sessions[txn.ID] = txn.SessionID
 		}
 
-		for _, txn := range lock.BlockedBy {
-			if session, ok := sessions[txn]; ok {
-				blocking[session] = struct{}{}
+		for _, lock := range journal.Locks() {
+			if lock.Granted || lock.SessionID != sessionID {
+				continue
+			}
+
+			for _, txn := range lock.BlockedBy {
+				if session, ok := sessions[txn]; ok {
+					blocking[session] = struct{}{}
+				}
 			}
 		}
 	}
