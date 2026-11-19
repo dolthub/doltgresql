@@ -105,6 +105,16 @@ var StatsTests = []ScriptTest{
 				Query:       "ANALYZE an_t, nope;",
 				ExpectedErr: "nope",
 			},
+			{
+				Query:       "ANALYZE an_t (no_such_col);",
+				ExpectedErr: `column "no_such_col" of relation "an_t" does not exist`,
+				Skip:        true, // column lists are not validated
+			},
+			{
+				Query:       "ANALYZE an_t (id, id);",
+				ExpectedErr: `column "id" of relation "an_t" appears more than once`,
+				Skip:        true, // column lists are not validated
+			},
 		},
 	},
 }
