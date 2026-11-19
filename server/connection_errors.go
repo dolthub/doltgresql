@@ -15,6 +15,8 @@
 package server
 
 import (
+	"strings"
+
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -201,6 +203,12 @@ func castSQLError(err error) *pgconn.PgError {
 	// row that a concurrent transaction changed before this one could lock it.
 	case sql.ErrLockDeadlock.Is(err):
 		code = pgcode.SerializationFailure
+		// A row that a concurrent transaction changed is reported in the words Postgres uses for it, which clients
+		// and tests match on. They arrive inside the engine's generic wording for a serialization failure.
+		if _, rest, ok := strings.Cut(err.Error(), "could not serialize access due to concurrent "); ok {
+			what, _, _ := strings.Cut(rest, ",")
+			message = "could not serialize access due to concurrent " + what
+		}
 	case sql.ErrRowLockDeadlock.Is(err):
 		code = pgcode.DeadlockDetected
 		message = "deadlock detected"
