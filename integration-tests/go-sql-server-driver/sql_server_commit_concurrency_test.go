@@ -66,6 +66,11 @@ func testSQLTransactionWithAmendCommit(t *testing.T) {
 		db.Close()
 	})
 
+	// This test is about transactions whose conflicting changes are found when they commit. With row-level locking, a
+	// transaction that changes a row another has changed waits for it and then fails at the statement.
+	_, err = db.ExecContext(ctx, "SET dolt_row_level_locking = 0")
+	require.NoError(t, err)
+
 	_, err = db.ExecContext(ctx, `
 CREATE TABLE test_table (
   id serial PRIMARY KEY,
@@ -150,6 +155,11 @@ func testSQLRacingAmend(t *testing.T) {
 	t.Cleanup(func() {
 		db.Close()
 	})
+
+	// This test is about transactions whose conflicting changes are found when they commit. With row-level locking, a
+	// transaction that changes a row another has changed waits for it and then fails at the statement.
+	_, err = db.ExecContext(ctx, "SET dolt_row_level_locking = 0")
+	require.NoError(t, err)
 
 	_, err = db.ExecContext(ctx, `
 	CREATE TABLE test_table (
@@ -281,6 +291,11 @@ func testSQLRacingAmendWithSerial(t *testing.T) {
 	t.Cleanup(func() {
 		db.Close()
 	})
+
+	// This test is about transactions whose conflicting changes are found when they commit. With row-level locking, a
+	// transaction that changes a row another has changed waits for it and then fails at the statement.
+	_, err = db.ExecContext(ctx, "SET dolt_row_level_locking = 0")
+	require.NoError(t, err)
 
 	_, err = db.ExecContext(ctx, `
 	CREATE TABLE test_table (
