@@ -314,3 +314,59 @@ func TestTransactionIDs(t *testing.T) {
 		},
 	})
 }
+
+// TestRowLockIntrospection tests the views and functions that report who holds and who waits for row locks.
+func TestRowLockIntrospection(t *testing.T) {
+	RunTransactionTests(t, []ScriptTest{
+		{
+			Name:        "pg_locks and pg_blocking_pids report row locks",
+			SetUpScript: rowLockSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ SELECT count(*) FROM pg_locks", Expected: []sql.Row{{0}}},
+				{Query: "/* client a */ BEGIN", Expected: []sql.Row{}},
+				{Query: "/* client a */ SELECT * FROM t WHERE pk = 1 FOR SHARE", Expected: []sql.Row{{1, 10}}},
+				{Query: "/* client a */ UPDATE t SET v = 21 WHERE pk = 2", Expected: []sql.Row{}},
+				{
+					Query: `/* client a */ SELECT locktype, relation::regclass::text, mode, granted, pid = pg_backend_pid(), transactionid::text = txid_current()::text
+						FROM pg_locks ORDER BY mode`,
+					Expected: []sql.Row{
+						{"tuple", "t", "ExclusiveLock", "t", "t", "t"},
+						{"tuple", "t", "RowShareLock", "t", "t", "t"},
+					},
+				},
+				{Query: "/* client a */ SELECT pg_blocking_pids(pg_backend_pid())", Expected: []sql.Row{{"{}"}}},
+				{Query: "/* client b */ UPDATE t SET v = 11 WHERE pk = 1", ExpectedBlocking: true},
+				{
+					// The waiting request is listed with the lock it wants, and is blocked by the session that holds
+					// the row.
+					Query: `/* client a */ SELECT mode, granted, pid <> pg_backend_pid(), pg_blocking_pids(pid) = ARRAY[pg_backend_pid()],
+							pg_isolation_test_session_is_blocked(pid, ARRAY[pg_backend_pid()]),
+							pg_isolation_test_session_is_blocked(pid, ARRAY[pid]),
+							pg_isolation_test_session_is_blocked(pg_backend_pid(), ARRAY[pid])
+						FROM pg_locks WHERE NOT granted`,
+					Expected: []sql.Row{{"ExclusiveLock", "f", "t", "t", "t", "f", "f"}},
+				},
+				{Query: "/* client a */ COMMIT", Expected: []sql.Row{}},
+				{Query: "/* client b */ SELECT count(*) FROM pg_locks", Expected: []sql.Row{{0}}},
+			},
+		},
+		{
+			Name:        "pg_locks reports the lock that a DDL statement takes on a table",
+			SetUpScript: rowLockSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN", Expected: []sql.Row{}},
+				{Query: "/* client a */ SELECT * FROM t WHERE pk = 1 FOR KEY SHARE", Expected: []sql.Row{{1, 10}}},
+				{Query: "/* client b */ ALTER TABLE t ADD COLUMN w INT", ExpectedBlocking: true},
+				{
+					Query: "/* client a */ SELECT locktype, relation::regclass::text, mode, granted FROM pg_locks ORDER BY granted DESC",
+					Expected: []sql.Row{
+						{"tuple", "t", "AccessShareLock", "t"},
+						{"relation", "t", "AccessExclusiveLock", "f"},
+					},
+				},
+				{Query: "/* client a */ COMMIT", Expected: []sql.Row{}},
+				{Query: "/* client b */ SELECT pk, v, w FROM t WHERE pk = 1", Expected: []sql.Row{{1, 10, nil}}},
+			},
+		},
+	})
+}
