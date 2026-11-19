@@ -50,6 +50,7 @@ type CompiledFunction struct {
 	Name           string
 	Arguments      []sql.Expression
 	IsOperator     bool
+	qualified      bool
 	overloads      *Overloads
 	fnOverloads    []Overload
 	overload       overloadMatch
@@ -306,17 +307,27 @@ func (c *CompiledFunction) String() string {
 }
 
 // schemaQualifiedName returns the name of the function, qualified by the schema of the overload it resolved to when
-// that schema is not `pg_catalog`. Column defaults are persisted as this string and re-parsed later, under a search path
-// that may not reach the function's schema, or that may reach a different function of the same name first.
+// that schema is not `pg_catalog`, or when the function is qualified. Column defaults are persisted as this string and
+// re-parsed later, under a search path that may not reach the function's schema, or that may reach a different function
+// of the same name first.
 func (c *CompiledFunction) schemaQualifiedName() string {
 	if c.IsOperator {
 		return c.Name
 	}
 	schema := c.SchemaName()
-	if schema == "" || schema == "pg_catalog" {
+	if schema == "" || (schema == "pg_catalog" && !c.qualified) {
 		return c.Name
 	}
 	return schema + "." + c.Name
+}
+
+// WithQualifiedName returns a copy of this function whose string form names the schema of the overload it resolved to,
+// even when that schema is `pg_catalog`. An expression that is persisted as a string keeps calling the same built-in
+// function under a search path that puts another schema with a function of the same name ahead of `pg_catalog`.
+func (c *CompiledFunction) WithQualifiedName() *CompiledFunction {
+	nc := *c
+	nc.qualified = true
+	return &nc
 }
 
 // SchemaName returns the schema of the overload that the function resolved to, or an empty string if it has not
@@ -827,6 +838,7 @@ func (c *CompiledFunction) WithChildren(ctx *sql.Context, children ...sql.Expres
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
 	nc := newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner)
+	nc.qualified = c.qualified
 	nc.distinctWindow = c.distinctWindow
 	if nc.distinctWindow != nil {
 		if err := nc.distinctWindowError(); err != nil {

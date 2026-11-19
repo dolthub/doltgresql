@@ -99,7 +99,9 @@ func (fp *FunctionProvider) overloads(ctx *sql.Context, schema, name string) (ov
 		}
 	}
 
-	if !hasUserOverloads {
+	// Built-in functions are otherwise found through the engine's function registry, which loses the schema that a call
+	// names. A call qualified by pg_catalog keeps that qualifier, so that an expression persisted as a string keeps it.
+	if !hasUserOverloads && (schema != "pg_catalog" || hasAggregate || len(overloadTree.AllOverloads) == 0) {
 		return nil, false, false
 	}
 	return overloadTree, hasAggregate, true
@@ -266,7 +268,11 @@ func (fp *FunctionProvider) Function(ctx *sql.Context, schema, name string) (sql
 	return sql.FunctionN{
 		Name: name,
 		Fn: func(ctx *sql.Context, params ...sql.Expression) (sql.Expression, error) {
-			return NewCompiledFunction(ctx, name, params, overloadTree, false), nil
+			function := NewCompiledFunction(ctx, name, params, overloadTree, false)
+			if schema != "" {
+				function = function.WithQualifiedName()
+			}
+			return function, nil
 		},
 	}, true
 }

@@ -32,14 +32,16 @@ import (
 	"github.com/dolthub/doltgresql/server/ast"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgnodes "github.com/dolthub/doltgresql/server/node"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// QualifyColumnDefaultRelations qualifies the relation names in the column defaults and generated columns of a table
-// that is being created or altered. Postgres resolves a constant regclass, such as the sequence given to nextval, when
-// the default is created, so the default keeps naming the same relation under any later search path. Column defaults
-// are persisted as strings, so the resolved name is written with its schema.
+// QualifyColumnDefaultRelations qualifies the relation names and built-in function calls in the column defaults,
+// generated columns, and check constraints of a table that is being created or altered. Postgres resolves a constant
+// regclass, such as the sequence given to nextval, and the function that each call names, when the expression is
+// created, so the expression keeps naming the same objects under any later search path. These expressions are persisted
+// as strings, so the resolved names are written with their schemas.
 func QualifyColumnDefaultRelations(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, _ *plan.Scope, _ analyzer.RuleSelector, _ *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	return transform.Node(ctx, n, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		// Postgres creates a table before it resolves the expressions in its columns, so those expressions may name the
@@ -58,7 +60,7 @@ func QualifyColumnDefaultRelations(ctx *sql.Context, _ *analyzer.Analyzer, n sql
 			if err != nil {
 				return nil, transform.SameTree, err
 			}
-		case *plan.AddColumn, *plan.ModifyColumn, *plan.AlterDefaultSet:
+		case *plan.AddColumn, *plan.ModifyColumn, *plan.AlterDefaultSet, *plan.CreateCheck:
 		default:
 			return n, transform.SameTree, nil
 		}
@@ -71,7 +73,12 @@ func QualifyColumnDefaultRelations(ctx *sql.Context, _ *analyzer.Analyzer, n sql
 		var newExprs []sql.Expression
 		for i, e := range exprs {
 			newExpr, same, err := transform.Expr(ctx, e, func(ctx *sql.Context, e sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
-				return qualifyRelationArgument(ctx, e, newTable)
+				e, sameRelation, err := qualifyRelationArgument(ctx, e, newTable)
+				if err != nil {
+					return nil, transform.SameTree, err
+				}
+				e, sameFunction := qualifyBuiltInFunction(e)
+				return e, sameRelation && sameFunction, nil
 			})
 			if err != nil {
 				return nil, transform.SameTree, err
@@ -95,6 +102,17 @@ func QualifyColumnDefaultRelations(ctx *sql.Context, _ *analyzer.Analyzer, n sql
 		}
 		return newNode, transform.NewTree, nil
 	})
+}
+
+// qualifyBuiltInFunction qualifies a call to a built-in function by `pg_catalog`. Postgres stores the function that a
+// call resolved to, so a later search path that puts a function of the same name ahead of `pg_catalog` does not change
+// which function the expression calls. Other functions are already qualified by the schema they resolved to.
+func qualifyBuiltInFunction(e sql.Expression) (sql.Expression, transform.TreeIdentity) {
+	function, ok := e.(*framework.CompiledFunction)
+	if !ok || function.IsOperator || function.SchemaName() != "pg_catalog" {
+		return e, transform.SameTree
+	}
+	return function.WithQualifiedName(), transform.NewTree
 }
 
 // createdTableName returns the schema and name of the table that the given node creates.

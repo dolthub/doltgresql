@@ -344,6 +344,48 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		// A built-in function in a column expression keeps being called once a search path places a function with the
+		// same name and parameter types ahead of pg_catalog
+		Name: "built-in function calls in column expressions are not shadowed by later functions",
+		SetUpScript: []string{
+			"CREATE TABLE t (a int PRIMARY KEY, b text DEFAULT upper('q'), c text GENERATED ALWAYS AS (upper(b)) STORED, CHECK (length('abc') = 3));",
+			"ALTER TABLE t ADD COLUMN d text DEFAULT upper('r');",
+			"ALTER TABLE t ADD CONSTRAINT chk_abs CHECK (abs(a) >= 0);",
+			"CREATE FUNCTION public.upper(text) RETURNS text AS $$ SELECT 'shadowed' $$ LANGUAGE sql;",
+			"CREATE FUNCTION public.length(text) RETURNS int AS $$ SELECT 0 $$ LANGUAGE sql;",
+			"CREATE FUNCTION public.abs(int) RETURNS int AS $$ SELECT -1 $$ LANGUAGE sql;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SET search_path = public, pg_catalog;",
+			},
+			{
+				Query:    "SELECT upper('q');",
+				Expected: []sql.Row{{"shadowed"}},
+			},
+			{
+				Query: "INSERT INTO t (a) VALUES (1);",
+			},
+			{
+				Query:    "SELECT * FROM t;",
+				Expected: []sql.Row{{1, "Q", "Q", "R"}},
+			},
+			{
+				Query: "RESET search_path;",
+			},
+			{
+				// TODO: Postgres shows the generation expression as upper(b)
+				Query: "SELECT column_name, column_default, generation_expression FROM information_schema.columns WHERE table_name = 't' ORDER BY ordinal_position;",
+				Expected: []sql.Row{
+					{"a", nil, nil},
+					{"b", "upper('q'::text)", nil},
+					{"c", nil, `(upper("b"))`},
+					{"d", "upper('r'::text)", nil},
+				},
+			},
+		},
+	},
+	{
 		Name: "search path returns user table before public table",
 		SetUpScript: []string{
 			"create schema postgres",

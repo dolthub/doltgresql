@@ -171,7 +171,11 @@ func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName,
 		if unresolved, isUnresolved := col.Generated.Expr.(*sql.UnresolvedColumnDefault); isUnresolved {
 			generationExpression = unresolved.String()
 		} else {
-			generationExpression = col.Generated.String()
+			displayedGenerated, err := postgresColumnDefault(ctx, col.Generated)
+			if err != nil {
+				return nil, err
+			}
+			generationExpression = displayedGenerated.String()
 		}
 	}
 
@@ -486,8 +490,8 @@ func postgresDefaultString(ctx *sql.Context, expr sql.Expression, columnType *pg
 	return expr.String(), nil
 }
 
-// postgresColumnDefault returns the given column default with its function calls shown as Postgres shows them. Column
-// defaults are persisted with the schema of every function outside pg_catalog, while Postgres shows a function's schema
+// postgresColumnDefault returns the given column default or generated column expression with its function calls shown
+// as Postgres shows them. Column defaults are persisted with the schema of every function outside pg_catalog, while Postgres shows a function's schema
 // only when the function is not visible on the search path, and shows the type of the constants passed to it.
 func postgresColumnDefault(ctx *sql.Context, columnDefault *sql.ColumnDefaultValue) (*sql.ColumnDefaultValue, error) {
 	if columnDefault == nil || columnDefault.Expr == nil {
