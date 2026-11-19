@@ -69,6 +69,20 @@ async function main() {
   );
   await client.query("ROLLBACK");
 
+  // The same conflict with row-level locking off: neither UPDATE waits for the
+  // other, and the losing COMMIT must report 40001.
+  await client.query("SET dolt_row_level_locking = 0");
+  await client.query("BEGIN");
+  await client.query("UPDATE err_test SET val = 11 WHERE id = 1");
+  await client2.query("UPDATE err_test SET val = 21 WHERE id = 1");
+  await expectCode(
+    client,
+    "COMMIT",
+    "40001",
+    "serialization failure without row-level locking"
+  );
+  await client.query("SET dolt_row_level_locking = 1");
+
   // ... and the session must be usable again immediately.
   await client.query("UPDATE err_test SET val = 30 WHERE id = 1");
   const after = await client.query("SELECT val FROM err_test WHERE id = 1");

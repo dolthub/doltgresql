@@ -196,6 +196,32 @@ await using (var conn2 = new NpgsqlConnection(connStr))
     await tx.RollbackAsync();
 }
 
+// The same conflict with row-level locking off: neither UPDATE waits for the
+// other, and the losing COMMIT must report 40001.
+await using (var cmd = new NpgsqlCommand("SET dolt_row_level_locking = 0", conn))
+    await cmd.ExecuteNonQueryAsync();
+await using (var conn2 = new NpgsqlConnection(connStr))
+{
+    await conn2.OpenAsync();
+    await using var tx = await conn.BeginTransactionAsync();
+    await using (var cmd = new NpgsqlCommand("UPDATE test SET value = 11 WHERE pk = 0", conn))
+        await cmd.ExecuteNonQueryAsync();
+    await using (var cmd = new NpgsqlCommand("UPDATE test SET value = 21 WHERE pk = 0", conn2))
+        await cmd.ExecuteNonQueryAsync();
+    try
+    {
+        await tx.CommitAsync();
+        throw new Exception("expected serialization failure on conflicting commit");
+    }
+    catch (PostgresException e)
+    {
+        if (e.SqlState != "40001")
+            throw new Exception($"expected SQLSTATE 40001 on conflicting commit, got {e.SqlState}");
+    }
+}
+await using (var cmd = new NpgsqlCommand("SET dolt_row_level_locking = 1", conn))
+    await cmd.ExecuteNonQueryAsync();
+
 // ... and the session must be usable again immediately.
 await using (var cmd = new NpgsqlCommand("SELECT COUNT(*) FROM test", conn))
 {

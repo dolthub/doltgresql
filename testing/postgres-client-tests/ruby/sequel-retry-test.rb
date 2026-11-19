@@ -72,6 +72,45 @@ unless row[:val] == 100 && row[:who] == 'txn1'
   raise "expected the retried transaction's write to win, got #{row}"
 end
 
+# Parts 3 and 4: the same with row-level locking off. Neither write waits for the
+# other, and Doltgres reports the losing COMMIT with SQLSTATE 40001.
+db1.run("SET dolt_row_level_locking = 0")
+db1[:retry_test].where(id: 1).update(val: 0, who: 'nobody')
+
+begin
+  db1.transaction do
+    db1[:retry_test].where(id: 1).update(val: 100, who: 'txn1')
+    # conflicting write from a second connection, autocommitted while txn1 is open
+    db2[:retry_test].where(id: 1).update(val: 200, who: 'txn2')
+  end
+  raise "expected the conflicting transaction to raise, but it committed"
+rescue Sequel::SerializationFailure => e
+  puts "conflict surfaced as #{e.class} (driver: #{e.wrapped_exception.class})"
+end
+
+# The session must remain usable after the failed commit.
+one = db1["SELECT 1 AS one"].first[:one]
+raise "connection unusable after serialization failure" unless one == 1
+
+db1[:retry_test].where(id: 1).update(val: 0, who: 'nobody')
+commit_attempts = 0
+db1.transaction(retry_on: Sequel::SerializationFailure, num_retries: 5) do
+  commit_attempts += 1
+  db1[:retry_test].where(id: 1).update(val: 100, who: 'txn1')
+  if commit_attempts == 1
+    db2[:retry_test].where(id: 1).update(val: 200, who: 'txn2')
+  end
+end
+
+raise "expected the transaction to be attempted twice, got #{commit_attempts}" unless commit_attempts == 2
+
+row = db1[:retry_test].where(id: 1).first
+unless row[:val] == 100 && row[:who] == 'txn1'
+  raise "expected the retried transaction's write to win, got #{row}"
+end
+
+db1.run("SET dolt_row_level_locking = 1")
+
 db1.disconnect
 db2.disconnect
 puts "Sequel serialization-failure retry test passed (attempts=#{attempts})"

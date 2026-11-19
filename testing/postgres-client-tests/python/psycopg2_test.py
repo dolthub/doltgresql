@@ -145,6 +145,26 @@ def error_code_test(user, port):
     cur_a.execute("SELECT COUNT(*) FROM err_test")
     if cur_a.fetchone()[0] != 1:
         raise AssertionError("connection unusable after serialization failure")
+
+    # The same conflict with row-level locking off: neither UPDATE waits for
+    # the other, and the losing commit must raise SerializationFailure.
+    conn_a.rollback()
+    cur.execute("SET dolt_row_level_locking = 0")
+    cur_a.execute("UPDATE err_test SET val = 11 WHERE id = 1")
+    cur.execute("UPDATE err_test SET val = 21 WHERE id = 1")
+    try:
+        conn_a.commit()
+        raise AssertionError("expected SerializationFailure on conflicting commit")
+    except errors.SerializationFailure as e:
+        if e.pgcode != "40001":
+            raise AssertionError(f"expected pgcode 40001, got {e.pgcode}")
+
+    # ... and the session must be usable again immediately
+    conn_a.rollback()
+    cur.execute("SET dolt_row_level_locking = 1")
+    cur_a.execute("SELECT COUNT(*) FROM err_test")
+    if cur_a.fetchone()[0] != 1:
+        raise AssertionError("connection unusable after serialization failure")
     conn_a.close()
 
     print("Error code tests OK.", flush=True)
