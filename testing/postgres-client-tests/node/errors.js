@@ -54,13 +54,20 @@ async function main() {
     throw new Error(`expected 1 row after failed statements, got ${res.rows[0].n}`);
   }
 
-  // Conflicting concurrent transactions: the losing COMMIT must report 40001
+  // Conflicting concurrent transactions: a write to a row that another
+  // transaction changed after this one's snapshot must report 40001
   // (serialization_failure), the code retry logic dispatches on.
   const client2 = await newClient();
   await client.query("BEGIN");
-  await client.query("UPDATE err_test SET val = 10 WHERE id = 1");
+  await client.query("SELECT val FROM err_test WHERE id = 1");
   await client2.query("UPDATE err_test SET val = 20 WHERE id = 1");
-  await expectCode(client, "COMMIT", "40001", "serialization failure");
+  await expectCode(
+    client,
+    "UPDATE err_test SET val = 10 WHERE id = 1",
+    "40001",
+    "serialization failure"
+  );
+  await client.query("ROLLBACK");
 
   // ... and the session must be usable again immediately.
   await client.query("UPDATE err_test SET val = 30 WHERE id = 1");

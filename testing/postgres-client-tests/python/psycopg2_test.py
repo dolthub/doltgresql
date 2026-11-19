@@ -123,17 +123,19 @@ def error_code_test(user, port):
     if cur.fetchone()[0] != 1:
         raise AssertionError("unexpected row count after failed statements")
 
-    # Conflicting concurrent transactions: the losing commit must raise
+    # Conflicting concurrent transactions: a write to a row that another
+    # transaction changed after this one's snapshot must raise
     # SerializationFailure (SQLSTATE 40001), which retry logic dispatches on.
     conn_a = connect(user, port)
     conn_a.autocommit = False
     conn_b = conn  # autocommit, plays the concurrent writer
     cur_a = conn_a.cursor()
-    cur_a.execute("UPDATE err_test SET val = 10 WHERE id = 1")
+    cur_a.execute("SELECT val FROM err_test WHERE id = 1")
+    cur_a.fetchall()
     cur.execute("UPDATE err_test SET val = 20 WHERE id = 1")
     try:
-        conn_a.commit()
-        raise AssertionError("expected SerializationFailure on conflicting commit")
+        cur_a.execute("UPDATE err_test SET val = 10 WHERE id = 1")
+        raise AssertionError("expected SerializationFailure on conflicting update")
     except errors.SerializationFailure as e:
         if e.pgcode != "40001":
             raise AssertionError(f"expected pgcode 40001, got {e.pgcode}")
