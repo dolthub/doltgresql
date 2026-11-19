@@ -17,6 +17,7 @@ package core
 import (
 	"bytes"
 	"fmt"
+	"time"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/merge"
@@ -33,11 +34,28 @@ import (
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
+// rowLockWaitTimeout returns how long a statement waits for a row lock before giving up, which the lock_timeout
+// setting gives in milliseconds. Zero waits indefinitely.
+func rowLockWaitTimeout(ctx *sql.Context) time.Duration {
+	val, err := ctx.GetSessionVariable(ctx, "lock_timeout")
+	if err != nil {
+		return 0
+	}
+
+	millis, ok := val.(int64)
+	if !ok || millis <= 0 {
+		return 0
+	}
+
+	return time.Duration(millis) * time.Millisecond
+}
+
 // Init initializes this package.
 func Init() {
 	doltdb.EmptyRootValue = emptyRootValue
 	doltdb.NewRootValue = newRootValue
 	dsess.TransactionRowMergePolicy = transactionRowMergePolicy
+	dsess.RowLockWaitTimeout = rowLockWaitTimeout
 	types.DoltgresRootValueHumanReadableStringAtIndentationLevel = rootValueHumanReadableStringAtIndentationLevel
 	types.DoltgresRootValueWalkAddrs = rootValueWalkAddrs
 	plpgsql.GetTypesCollectionFromContext = GetTypesCollectionFromContext

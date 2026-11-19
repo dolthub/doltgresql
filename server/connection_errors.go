@@ -139,6 +139,8 @@ func castSQLError(err error) *pgconn.PgError {
 	// error a client can provoke should be mapped to its proper SQLSTATE here.
 	// TODO: should update the error message to match Postgres
 	var code pgcode.Code
+	// message replaces the error's own text, for errors whose wording clients match on.
+	var message string
 	switch {
 	// Class 42 — Syntax Error or Access Rule Violation
 	case sql.ErrInsertConflictTarget.Is(err):
@@ -195,9 +197,20 @@ func castSQLError(err error) *pgconn.PgError {
 		code = pgcode.DuplicateSchema
 	case sql.ErrDatabaseSchemaNotFound.Is(err):
 		code = pgcode.UndefinedSchema
-	// Class 40 — Transaction Rollback. Dolt reports commit-time transaction conflicts as ErrLockDeadlock.
+	// Class 40 — Transaction Rollback. Dolt reports commit-time transaction conflicts as ErrLockDeadlock, and also a
+	// row that a concurrent transaction changed before this one could lock it.
 	case sql.ErrLockDeadlock.Is(err):
 		code = pgcode.SerializationFailure
+	case sql.ErrRowLockDeadlock.Is(err):
+		code = pgcode.DeadlockDetected
+		message = "deadlock detected"
+	// Class 55 — Object Not In Prerequisite State
+	case sql.ErrRowLockWaitTimeout.Is(err):
+		code = pgcode.LockNotAvailable
+		message = "canceling statement due to lock timeout"
+	case sql.ErrRowLockNotAvailable.Is(err):
+		code = pgcode.LockNotAvailable
+		message = "could not obtain lock on row"
 	// Class 42 — Syntax or Access Rule Violation
 	case sql.ErrSyntaxError.Is(err), sql.ErrInvalidSyntax.Is(err), sql.ErrColValCountMismatch.Is(err),
 		sql.ErrInsertIntoMismatchValueCount.Is(err), sql.ErrColumnNumberDoesNotMatch.Is(err):
@@ -232,9 +245,13 @@ func castSQLError(err error) *pgconn.PgError {
 		code = pgcode.Internal
 	}
 
+	if message == "" {
+		message = err.Error()
+	}
+
 	return &pgconn.PgError{
 		Severity: string(ErrorResponseSeverity_Error),
 		Code:     code.String(),
-		Message:  err.Error(),
+		Message:  message,
 	}
 }

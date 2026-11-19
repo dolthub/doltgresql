@@ -223,3 +223,9 @@ require (
 	gopkg.in/go-jose/go-jose.v2 v2.6.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/dolthub/dolt/go => ../../../dolt/zachmu/row-level-locks/go
+
+replace github.com/dolthub/go-mysql-server => ../../../go-mysql-server/zachmu/row-level-locks
+
+replace github.com/dolthub/vitess => ../../../vitess/zachmu/row-level-locks

@@ -109,7 +109,9 @@ type ScriptTestAssertion struct {
 
 	// ExpectedBlocking starts the query asynchronously and asserts that it has
 	// not completed after 200ms. Transaction tests keep the query running so a
-	// later assertion from another named client can unblock it.
+	// later assertion from another named client can unblock it. When the query
+	// does complete, it must succeed, unless ExpectedErr or ExpectedErrCode is
+	// set, in which case it must fail with that error.
 	ExpectedBlocking bool
 	// CloseClient closes the named client's connection without executing Query.
 	// This is only supported by transaction tests using named clients.
@@ -490,17 +492,36 @@ func RunTransactionTest(t *testing.T, script ScriptTest) {
 				_ = client.Close(ctx)
 			}
 		}()
-		blocking := make(map[string]<-chan error)
+		// blockedQuery is a query started by an ExpectedBlocking assertion that has not been seen to complete.
+		type blockedQuery struct {
+			done      <-chan error
+			assertion ScriptTestAssertion
+		}
+		blocking := make(map[string]blockedQuery)
 
 		waitForClient := func(t *testing.T, clientName string) {
-			done, ok := blocking[clientName]
+			blocked, ok := blocking[clientName]
 			if !ok {
 				return
 			}
 			select {
-			case err := <-done:
-				require.NoError(t, err, "blocked query for client %s failed", clientName)
+			case err := <-blocked.done:
 				delete(blocking, clientName)
+				if blocked.assertion.ExpectedErr == "" && blocked.assertion.ExpectedErrCode == "" {
+					require.NoError(t, err, "blocked query for client %s failed", clientName)
+					return
+				}
+
+				require.Error(t, err, "blocked query for client %s should have failed", clientName)
+				if blocked.assertion.ExpectedErr != "" {
+					require.Contains(t, err.Error(), blocked.assertion.ExpectedErr)
+				}
+
+				if blocked.assertion.ExpectedErrCode != "" {
+					var pgErr *pgconn.PgError
+					require.True(t, errors.As(err, &pgErr), "blocked query for client %s failed with an error that has no code: %v", clientName, err)
+					require.Equal(t, blocked.assertion.ExpectedErrCode, pgErr.Code, "blocked query for client %s: %v", clientName, err)
+				}
 			case <-time.After(5 * time.Second):
 				t.Fatalf("blocked query for client %s did not complete", clientName)
 			}
@@ -539,10 +560,9 @@ func RunTransactionTest(t *testing.T, script ScriptTest) {
 					}()
 					select {
 					case err := <-done:
-						require.NoError(t, err)
-						t.Fatalf("query completed before blocking timeout")
+						t.Fatalf("query completed before blocking timeout, with error: %v", err)
 					case <-time.After(expectedBlockingTimeout):
-						blocking[clientName] = done
+						blocking[clientName] = blockedQuery{done: done, assertion: assertion}
 					}
 					return
 				}
