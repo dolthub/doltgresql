@@ -210,7 +210,6 @@ func castSQLError(err error) *pgconn.PgError {
 		message = "canceling statement due to lock timeout"
 	case sql.ErrRowLockNotAvailable.Is(err):
 		code = pgcode.LockNotAvailable
-		message = "could not obtain lock on row"
 	// Class 42 — Syntax or Access Rule Violation
 	case sql.ErrSyntaxError.Is(err), sql.ErrInvalidSyntax.Is(err), sql.ErrColValCountMismatch.Is(err),
 		sql.ErrInsertIntoMismatchValueCount.Is(err), sql.ErrColumnNumberDoesNotMatch.Is(err):

@@ -109,7 +109,9 @@ func (h *ConnectionHandler) sendClientStartupMessages() error {
 		}
 	}
 	return h.send(&pgproto3.BackendKeyData{
-		ProcessID: processID,
+		// Clients expect this to be the value that pg_backend_pid returns in this session, and pass it to functions
+		// such as pg_blocking_pids to ask about the session.
+		ProcessID: h.mysqlConn.ConnectionID,
 		SecretKey: make([]byte, 4), // TODO: this should represent an ID that can uniquely identify this connection, so that CancelRequest will work
 	})
 }
