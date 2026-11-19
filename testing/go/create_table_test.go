@@ -369,6 +369,47 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "generated column naming the table being created",
+			SetUpScript: []string{
+				"CREATE SCHEMA s2;",
+				"CREATE TABLE gself (a int PRIMARY KEY, b regclass GENERATED ALWAYS AS (CASE WHEN a > 0 THEN 'gself'::regclass END) STORED);",
+				"CREATE TABLE s2.gself (a int PRIMARY KEY, b regclass GENERATED ALWAYS AS (CASE WHEN a > 0 THEN 'gself'::regclass END) STORED);",
+				"SET search_path = s2, public;",
+				"CREATE TABLE s2.gself2 (a int PRIMARY KEY, b regclass GENERATED ALWAYS AS (CASE WHEN a > 0 THEN 'gself2'::regclass END) STORED);",
+				"SET search_path = public;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "INSERT INTO gself (a) VALUES (1);",
+				},
+				{
+					Query:    "SELECT * FROM gself;",
+					Expected: []sql.Row{{1, "gself"}},
+				},
+				{
+					// The search path did not include s2 when this table was created, so its own name resolved to
+					// public.gself
+					Query: "INSERT INTO s2.gself (a) VALUES (1);",
+				},
+				{
+					Query:    "SELECT * FROM s2.gself;",
+					Expected: []sql.Row{{1, "gself"}},
+				},
+				{
+					Query: "INSERT INTO s2.gself2 (a) VALUES (1);",
+				},
+				{
+					Query:    "SELECT * FROM s2.gself2;",
+					Expected: []sql.Row{{1, "s2.gself2"}},
+				},
+				{
+					// The table being created is only found when its schema is on the search path
+					Query:       "CREATE TABLE s2.gself3 (a int PRIMARY KEY, b regclass GENERATED ALWAYS AS (CASE WHEN a > 0 THEN 'gself3'::regclass END) STORED);",
+					ExpectedErr: `relation "gself3" does not exist`,
+				},
+			},
+		},
+		{
 			Name: "primary key GENERATED ALWAYS AS IDENTITY",
 			SetUpScript: []string{
 				`create table t1 (
