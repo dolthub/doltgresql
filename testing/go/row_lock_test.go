@@ -74,6 +74,22 @@ func TestRowLocks(t *testing.T) {
 			},
 		},
 		{
+			Name:        "an update that sets a row to the values it has locks the row, and counts as a change to it",
+			SetUpScript: rowLockSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN", Expected: []sql.Row{}},
+				{Query: "/* client a */ UPDATE t SET v = 10 WHERE pk = 1", Expected: []sql.Row{}},
+				{
+					Query:            "/* client b */ UPDATE t SET v = v + 5 WHERE pk = 1",
+					ExpectedBlocking: true,
+					ExpectedErr:      "could not serialize access due to concurrent update",
+					ExpectedErrCode:  "40001",
+				},
+				{Query: "/* client a */ COMMIT", Expected: []sql.Row{}},
+				{Query: "/* client b */ SELECT v FROM t WHERE pk = 1", Expected: []sql.Row{{10}}},
+			},
+		},
+		{
 			Name:        "a row changed since the transaction began can't be locked or changed",
 			SetUpScript: rowLockSetup,
 			Assertions: []ScriptTestAssertion{
