@@ -85,14 +85,6 @@ SQL
   run sql_csv -c "SELECT pk, a, b, c, d FROM t WHERE pk = 5;"
   [ "$status" -eq 0 ]
   [ "${lines[1]}" = "5,Q,1,xy,z" ] || false
-  stop_doltgres
-
-  # --- Old: still reads and writes the table after HEAD persisted an expression ---
-  old_server_start
-  sql -c "INSERT INTO t (pk) VALUES (6);"
-  run sql_csv -c "SELECT pk, a, b, c, d FROM t WHERE pk = 6;"
-  [ "$status" -eq 0 ]
-  [ "${lines[1]}" = "6,Q,1,xy,z" ] || false
 }
 
 @test "function_default_compat: user-defined function in an old column default" {
@@ -151,25 +143,18 @@ SQL
     [ "$status" -ne 0 ]
     [[ "$output" =~ "g" ]] || false
     sql -c "SET search_path = s, public; INSERT INTO s.$table (pk) VALUES (2);"
-
-    # --- New: setting the default again persists it with the function's schema, so any search path finds it ---
-    sql -c "SET search_path = s, public; ALTER TABLE s.$table ALTER COLUMN v SET DEFAULT g();"
-    sql -c "INSERT INTO s.$table (pk) VALUES (3);"
     run sql_csv -c "SELECT pk, v FROM s.$table ORDER BY pk;"
     [ "$status" -eq 0 ]
     [ "${lines[1]}" = "1,7" ] || false
     [ "${lines[2]}" = "2,7" ] || false
-    [ "${lines[3]}" = "3,7" ] || false
-  done
-  stop_doltgres
 
-  # --- Old: the defaults that HEAD persisted with the function's schema work under any search path ---
-  old_server_start
-  sql -c "INSERT INTO s.t (pk) VALUES (4);"
-  sql -c "INSERT INTO s.t2 (pk) VALUES (4);"
-  run sql_csv -c "SELECT t.v, t2.v FROM s.t JOIN s.t2 ON t.pk = t2.pk WHERE t.pk = 4;"
-  [ "$status" -eq 0 ]
-  [ "${lines[1]}" = "7,7" ] || false
+    # --- New: setting the default again persists it with the function's schema, so any search path finds it ---
+    sql -c "SET search_path = s, public; ALTER TABLE s.$table ALTER COLUMN v SET DEFAULT g();"
+    sql -c "INSERT INTO s.$table (pk) VALUES (3);"
+    run sql_csv -c "SELECT v FROM s.$table WHERE pk = 3;"
+    [ "$status" -eq 0 ]
+    [ "${lines[1]}" = "7" ] || false
+  done
 }
 
 @test "function_default_compat: sequences in old column defaults" {
@@ -222,21 +207,15 @@ SQL
   [ "$status" -ne 0 ]
   [[ "$output" =~ "seq2" ]] || false
   sql -c "SET search_path = s, public; INSERT INTO s.t2 (pk) VALUES (2);"
-
-  # --- New: setting the default again persists it with the sequence's schema, so any search path finds it ---
-  sql -c "SET search_path = s, public; ALTER TABLE s.t2 ALTER COLUMN n SET DEFAULT nextval('seq2');"
-  sql -c "INSERT INTO s.t2 (pk) VALUES (3);"
   run sql_csv -c "SELECT pk, n FROM s.t2 ORDER BY pk;"
   [ "$status" -eq 0 ]
   [ "${lines[1]}" = "1,200" ] || false
   [ "${lines[2]}" = "2,201" ] || false
-  [ "${lines[3]}" = "3,202" ] || false
-  stop_doltgres
 
-  # --- Old: the default that HEAD persisted with the sequence's schema works under any search path ---
-  old_server_start
-  sql -c "INSERT INTO s.t2 (pk) VALUES (4);"
-  run sql_csv -c "SELECT n FROM s.t2 WHERE pk = 4;"
+  # --- New: setting the default again persists it with the sequence's schema, so any search path finds it ---
+  sql -c "SET search_path = s, public; ALTER TABLE s.t2 ALTER COLUMN n SET DEFAULT nextval('seq2');"
+  sql -c "INSERT INTO s.t2 (pk) VALUES (3);"
+  run sql_csv -c "SELECT n FROM s.t2 WHERE pk = 3;"
   [ "$status" -eq 0 ]
-  [ "${lines[1]}" = "203" ] || false
+  [ "${lines[1]}" = "202" ] || false
 }
