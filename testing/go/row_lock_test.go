@@ -287,3 +287,30 @@ func TestRowLocks(t *testing.T) {
 		},
 	})
 }
+
+// TestTransactionIDs tests that every transaction has an ID, and that IDs ascend in the order transactions start.
+func TestTransactionIDs(t *testing.T) {
+	RunTransactionTests(t, []ScriptTest{
+		{
+			Name: "txid_current returns the ID of the current transaction",
+			SetUpScript: []string{
+				"CREATE TABLE ids (name TEXT PRIMARY KEY, id BIGINT)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN", Expected: []sql.Row{}},
+				{Query: "/* client a */ INSERT INTO ids VALUES ('a1', txid_current())", Expected: []sql.Row{}},
+				{Query: "/* client b */ INSERT INTO ids VALUES ('b', txid_current())", Expected: []sql.Row{}},
+				{Query: "/* client a */ INSERT INTO ids VALUES ('a2', txid_current())", Expected: []sql.Row{}},
+				{Query: "/* client a */ COMMIT", Expected: []sql.Row{}},
+				{Query: "/* client a */ INSERT INTO ids VALUES ('a3', txid_current())", Expected: []sql.Row{}},
+				{
+					// A transaction keeps its ID for as long as it runs, and one that starts later has a higher ID.
+					Query: `/* client a */ SELECT a1.id > 0, a1.id = a2.id, b.id > a1.id, a3.id > b.id
+						FROM ids a1, ids a2, ids a3, ids b
+						WHERE a1.name = 'a1' AND a2.name = 'a2' AND a3.name = 'a3' AND b.name = 'b'`,
+					Expected: []sql.Row{{"t", "t", "t", "t"}},
+				},
+			},
+		},
+	})
+}
