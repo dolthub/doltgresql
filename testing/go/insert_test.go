@@ -193,6 +193,69 @@ ON CONFLICT (id) do update set c1 = $4`,
 			},
 		},
 		{
+			// https://github.com/dolthub/doltgresql/issues/3917
+			Name: "insert with a table alias",
+			SetUpScript: []string{
+				"CREATE TABLE ai_t (id int PRIMARY KEY, version int NOT NULL)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO ai_t AS stored (id, version) VALUES (1, 1)",
+					ExpectedTag: "INSERT 0 1",
+				},
+				{
+					Query:    "INSERT INTO ai_t AS stored (id, version) VALUES (1, 1) ON CONFLICT (id) DO UPDATE SET version = stored.version + 1 RETURNING version",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "INSERT INTO ai_t AS stored VALUES (1, 10), (2, 5) ON CONFLICT (id) DO UPDATE SET version = stored.version + excluded.version WHERE stored.version < 3 RETURNING stored.id, stored.version",
+					Expected: []sql.Row{{1, 12}, {2, 5}},
+				},
+				{
+					Query:    "INSERT INTO ai_t AS stored VALUES (1, 10) ON CONFLICT (id) DO UPDATE SET version = excluded.version WHERE stored.version > 100 RETURNING *",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO public.ai_t AS s VALUES (3, 1) RETURNING s.*",
+					Expected: []sql.Row{{3, 1}},
+				},
+				{
+					Query:    "INSERT INTO ai_t AS s VALUES (3, 1) ON CONFLICT DO NOTHING RETURNING s.id",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO ai_t AS s SELECT id + 10, version FROM ai_t WHERE id < 3 RETURNING s.id",
+					Expected: []sql.Row{{11}, {12}},
+				},
+				{
+					Query:    "INSERT INTO ai_t AS s VALUES (1, 0) ON CONFLICT (id) DO UPDATE SET version = s.version * 2 RETURNING s.version",
+					Expected: []sql.Row{{24}},
+				},
+				{
+					Query:    "INSERT INTO ai_t AS s SELECT 2, 7 ON CONFLICT (id) DO UPDATE SET version = s.version + excluded.version WHERE s.version < excluded.version RETURNING s.id, s.version",
+					Expected: []sql.Row{{2, 12}},
+				},
+				{
+					Query:       "INSERT INTO ai_t AS s VALUES (1, 0) ON CONFLICT (id) DO UPDATE SET version = ai_t.version + 1",
+					ExpectedErr: "ai_t",
+				},
+				{
+					Query:       "INSERT INTO ai_t AS s VALUES (50, 0) RETURNING ai_t.id",
+					ExpectedErr: "ai_t",
+				},
+				{
+					Query: "SELECT * FROM ai_t ORDER BY id",
+					Expected: []sql.Row{
+						{1, 24},
+						{2, 12},
+						{3, 1},
+						{11, 12},
+						{12, 5},
+					},
+				},
+			},
+		},
+		{
 			Name: "on conflict update returning with check constraint",
 			SetUpScript: []string{
 				"CREATE TABLE checked_upsert (id INT PRIMARY KEY, a TEXT CHECK (a <> ''), b TEXT, c TEXT)",
