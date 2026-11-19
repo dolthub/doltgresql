@@ -53,4 +53,58 @@ var StatsTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		// https://github.com/dolthub/doltgresql/issues/3918
+		Name: "ANALYZE options and column lists",
+		SetUpScript: []string{
+			"CREATE TABLE an_t (id int PRIMARY KEY, version int NOT NULL);",
+			"CREATE TABLE an_u (id int PRIMARY KEY);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "ANALYZE (SKIP_LOCKED) an_t;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "ANALYZE (VERBOSE) an_t;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "ANALYZE (SKIP_LOCKED false, VERBOSE false) an_t, an_u (id);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "ANALYZE VERBOSE an_t;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "ANALYZE an_t (version);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "ANALYSE (BUFFER_USAGE_LIMIT '256kB') an_t;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "ANALYZE (BUFFER_USAGE_LIMIT 1024) an_t;",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "ANALYZE (SKIP_LOCKED);",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:       "ANALYZE (FULL) an_t;",
+				ExpectedErr: `unrecognized ANALYZE option "full"`,
+			},
+			{
+				Query:       "ANALYZE (FREEZE) an_t;",
+				ExpectedErr: `unrecognized ANALYZE option "freeze"`,
+			},
+			{
+				Query:       "ANALYZE an_t, nope;",
+				ExpectedErr: "nope",
+			},
+		},
+	},
 }
