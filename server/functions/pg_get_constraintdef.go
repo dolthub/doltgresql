@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core/id"
@@ -77,7 +78,9 @@ func getConstraintDef(ctx *sql.Context, oidVal id.Id) (string, error) {
 			if !check.Item.Enforced {
 				not = "not "
 			}
-			result = fmt.Sprintf("%sCHECK %s %sENFORCED", name, check.Item.CheckExpression, not)
+			tableName := doltdb.TableName{Schema: schema.Item.SchemaName(), Name: table.Item.Name()}
+			checkExpression := DisplayCheckExpression(ctx, tableName, check.Item.CheckExpression)
+			result = fmt.Sprintf("%sCHECK %s %sENFORCED", name, checkExpression, not)
 			return false, nil
 		},
 		ForeignKey: func(ctx *sql.Context, schema ItemSchema, table ItemTable, fk ItemForeignKey) (cont bool, err error) {

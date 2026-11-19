@@ -348,7 +348,7 @@ var SchemaTests = []ScriptTest{
 		// same name and parameter types ahead of pg_catalog
 		Name: "built-in function calls in column expressions are not shadowed by later functions",
 		SetUpScript: []string{
-			"CREATE TABLE t (a int PRIMARY KEY, b text DEFAULT upper('q'), c text GENERATED ALWAYS AS (upper(b)) STORED, CHECK (length('abc') = 3));",
+			"CREATE TABLE t (a int PRIMARY KEY, b text DEFAULT upper('q'), c text GENERATED ALWAYS AS (upper(b)) STORED, CONSTRAINT chk_len CHECK (length('abc') = 3));",
 			"ALTER TABLE t ADD COLUMN d text DEFAULT upper('r');",
 			"ALTER TABLE t ADD CONSTRAINT chk_abs CHECK (abs(a) >= 0);",
 			"CREATE FUNCTION public.upper(text) RETURNS text AS $$ SELECT 'shadowed' $$ LANGUAGE sql;",
@@ -382,6 +382,63 @@ var SchemaTests = []ScriptTest{
 					{"c", nil, `(upper("b"))`},
 					{"d", "upper('r'::text)", nil},
 				},
+			},
+			{
+				// TODO: Postgres shows check clauses in parentheses, without quoting column names
+				Query: "SELECT constraint_name, check_clause FROM information_schema.check_constraints ORDER BY constraint_name;",
+				Expected: []sql.Row{
+					{"chk_abs", `abs("a") >= 0`},
+					{"chk_len", "length('abc'::text) = 3"},
+				},
+			},
+			{
+				Query: "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE contype = 'c' ORDER BY conname;",
+				Expected: []sql.Row{
+					{"chk_abs", `chk_abs CHECK abs("a") >= 0 ENFORCED`},
+					{"chk_len", "chk_len CHECK length('abc'::text) = 3 ENFORCED"},
+				},
+			},
+			{
+				Query: "SHOW CREATE TABLE t;",
+				Expected: []sql.Row{{"t", "CREATE TABLE \"t\" (\n" +
+					"  \"a\" integer NOT NULL,\n" +
+					"  \"b\" text DEFAULT (upper('q'::text)),\n" +
+					"  \"c\" text GENERATED ALWAYS AS (upper(\"b\")) STORED,\n" +
+					"  \"d\" text DEFAULT (upper('r'::text)),\n" +
+					"  PRIMARY KEY (\"a\"),\n" +
+					"  CONSTRAINT \"chk_abs\" CHECK (abs(\"a\") >= 0),\n" +
+					"  CONSTRAINT \"chk_len\" CHECK (length('abc'::text) = 3)\n" +
+					")"}},
+			},
+			{
+				// A built-in function is shown with its schema when the search path hides it, as Postgres does
+				Query: "SET search_path = public, pg_catalog;",
+			},
+			{
+				Query: "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = 't' AND column_default IS NOT NULL ORDER BY ordinal_position;",
+				Expected: []sql.Row{
+					{"b", "pg_catalog.upper('q'::text)"},
+					{"d", "pg_catalog.upper('r'::text)"},
+				},
+			},
+			{
+				Query: "SELECT constraint_name, check_clause FROM information_schema.check_constraints ORDER BY constraint_name;",
+				Expected: []sql.Row{
+					{"chk_abs", `pg_catalog.abs("a") >= 0`},
+					{"chk_len", "pg_catalog.length('abc'::text) = 3"},
+				},
+			},
+			{
+				Query: "SHOW CREATE TABLE t;",
+				Expected: []sql.Row{{"t", "CREATE TABLE \"t\" (\n" +
+					"  \"a\" integer NOT NULL,\n" +
+					"  \"b\" text DEFAULT (pg_catalog.upper('q'::text)),\n" +
+					"  \"c\" text GENERATED ALWAYS AS (pg_catalog.upper(\"b\")) STORED,\n" +
+					"  \"d\" text DEFAULT (pg_catalog.upper('r'::text)),\n" +
+					"  PRIMARY KEY (\"a\"),\n" +
+					"  CONSTRAINT \"chk_abs\" CHECK (pg_catalog.abs(\"a\") >= 0),\n" +
+					"  CONSTRAINT \"chk_len\" CHECK (pg_catalog.length('abc'::text) = 3)\n" +
+					")"}},
 			},
 		},
 	},
