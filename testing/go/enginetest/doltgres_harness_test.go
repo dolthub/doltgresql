@@ -138,6 +138,7 @@ var defaultSkippedQueries = []string{
 	"<=>",           // null-safe equality (PostgreSQL uses IS NOT DISTINCT FROM)
 	"modify column", // MySQL ALTER TABLE MODIFY COLUMN syntax
 	"column first",  // MySQL ADD COLUMN ... FIRST positioning
+	") against(",    // MySQL MATCH ... AGAINST full-text search
 }
 
 // Setup sets the setup scripts for this DoltHarness's engine
