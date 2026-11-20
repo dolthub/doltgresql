@@ -318,6 +318,74 @@ func TestAggregateFunctions(t *testing.T) {
 					},
 				},
 				{
+					// an integer constant in an aggregate's ORDER BY is a constant, not a column ordinal
+					Query: `SELECT array_agg(pk ORDER BY 1) FROM t1;`,
+					Expected: []sql.Row{
+						{"{1,2,3}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(pk ORDER BY 1, pk DESC) FROM t1;`,
+					Expected: []sql.Row{
+						{"{3,2,1}"},
+					},
+				},
+				{
+					Query: `SELECT array_agg(v ORDER BY 'x', pk DESC) FROM t1;`,
+					Expected: []sql.Row{
+						{"{c,b,a}"},
+					},
+				},
+				{
+					Query: `SELECT string_agg(v, ',' ORDER BY 1, pk DESC) FROM t1;`,
+					Expected: []sql.Row{
+						{"c,b,a"},
+					},
+				},
+				{
+					Query: `SELECT group_concat(v ORDER BY pk DESC) FROM t1;`,
+					Expected: []sql.Row{
+						{"c,b,a"},
+					},
+				},
+				{
+					Query: `SELECT GROUP_CONCAT(pk ORDER BY pk) FROM t1;`,
+					Expected: []sql.Row{
+						{"1,2,3"},
+					},
+				},
+				{
+					Query: `SELECT group_concat(v ORDER BY 1, pk DESC) FROM t1;`,
+					Expected: []sql.Row{
+						{"c,b,a"},
+					},
+				},
+				{
+					Query: `SELECT group_concat(DISTINCT x ORDER BY x) FROM (VALUES ('b'), ('a'), ('b')) AS t(x);`,
+					Expected: []sql.Row{
+						{"a,b"},
+					},
+				},
+				{
+					Query: `SELECT group_concat(v ORDER BY pk) FILTER (WHERE pk > 1) FROM t1;`,
+					Expected: []sql.Row{
+						{"b,c"},
+					},
+				},
+				{
+					Query: `SELECT pk > 1 AS g, group_concat(v ORDER BY pk DESC) FROM t1 GROUP BY 1 ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"f", "a"},
+						{"t", "c,b"},
+					},
+				},
+				{
+					Query: `SELECT group_concat(v) FROM t1 WHERE pk > 10;`,
+					Expected: []sql.Row{
+						{nil},
+					},
+				},
+				{
 					Skip:  true, // Higher-level arrays don't work because they panic during output
 					Query: `SELECT array_agg(f) FROM t1;`,
 					Expected: []sql.Row{

@@ -95,7 +95,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 
 		var orderBy vitess.OrderBy
 		if len(node.OrderBy) > 0 {
-			orderBy, err = nodeOrderBy(ctx, node.OrderBy)
+			orderBy, err = nodeAggregateOrderBy(ctx, node.OrderBy)
 			if err != nil {
 				return nil, err
 			}
@@ -109,10 +109,31 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 			OrderBy: orderBy,
 			Filter:  filter,
 		}, nil
+	// group_concat is not a PostgreSQL function, but MySQL-oriented clients (such as the Dolt Workbench) use it, so it
+	// maps directly to the GMS aggregate with MySQL's default "," separator.
+	case "group_concat":
+		var orderBy vitess.OrderBy
+		if len(node.OrderBy) > 0 {
+			orderBy, err = nodeAggregateOrderBy(ctx, node.OrderBy)
+			if err != nil {
+				return nil, err
+			}
+		}
+		distinctStr := ""
+		if distinct {
+			distinctStr = vitess.DistinctStr
+		}
+		return &vitess.GroupConcatExpr{
+			Distinct:  distinctStr,
+			Exprs:     exprs,
+			Separator: vitess.Separator{DefaultSeparator: true},
+			OrderBy:   orderBy,
+			Filter:    filter,
+		}, nil
 	case "array_agg":
 		var orderBy vitess.OrderBy
 		if len(node.OrderBy) > 0 {
-			orderBy, err = nodeOrderBy(ctx, node.OrderBy)
+			orderBy, err = nodeAggregateOrderBy(ctx, node.OrderBy)
 			if err != nil {
 				return nil, err
 			}

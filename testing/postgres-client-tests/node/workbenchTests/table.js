@@ -154,7 +154,6 @@ export const tableTests = [
     },
   },
   {
-    skip: true, // TODO: ORDER BY is not yet supported
     q: `SELECT 
     table_name, index_name, comment, non_unique, GROUP_CONCAT(column_name ORDER BY seq_in_index) AS COLUMNS 
   FROM information_schema.statistics 
