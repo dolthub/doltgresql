@@ -361,7 +361,7 @@ $$ LANGUAGE plpgsql;`,
 				{
 					Query: `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", "f", "modified"},
+						{"public.interpreted_example(text)", "f", "modified procedure"},
 					},
 				},
 				{
