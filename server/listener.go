@@ -18,7 +18,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
-	"os"
 
 	"github.com/dolthub/go-mysql-server/server"
 	"github.com/dolthub/vitess/go/mysql"
@@ -27,7 +26,6 @@ import (
 
 var (
 	connectionIDCounter uint32
-	processID           = uint32(os.Getpid())
 	certificate         tls.Certificate //TODO: move this into the mysql.ListenerConfig
 )
 

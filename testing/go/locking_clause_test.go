@@ -27,41 +27,45 @@ func TestLockingClauses(t *testing.T) {
 	permissiveConfig, err := servercfg.ConfigFromYamlData([]byte("behavior:\n  permit_unsupported_locking_statements: true\n"))
 	require.NoError(t, err)
 
-	RunScripts(t, []ScriptTest{
+	lockingAssertions := []ScriptTestAssertion{
 		{
-			Name: "locking clauses are rejected by default",
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:       "SELECT 1 FOR UPDATE",
-					ExpectedErr: "locking clauses are not yet supported",
-				},
-			},
+			Query:    "SELECT 1 FOR UPDATE",
+			Expected: []sql.Row{{1}},
 		},
 		{
-			Name:         "unsupported locking clauses are permitted",
+			Query:    "SELECT * FROM locking_test ORDER BY pk FOR UPDATE",
+			Expected: []sql.Row{{1}, {2}},
+		},
+		{
+			Query:    "SELECT * FROM locking_test ORDER BY pk FOR NO KEY UPDATE NOWAIT",
+			Expected: []sql.Row{{1}, {2}},
+		},
+		{
+			Query:    "SELECT * FROM locking_test ORDER BY pk FOR SHARE SKIP LOCKED",
+			Expected: []sql.Row{{1}, {2}},
+		},
+		{
+			Query:    "SELECT * FROM locking_test ORDER BY pk FOR KEY SHARE OF locking_test",
+			Expected: []sql.Row{{1}, {2}},
+		},
+	}
+	setup := []string{
+		"CREATE TABLE locking_test (pk INT PRIMARY KEY)",
+		"INSERT INTO locking_test VALUES (1), (2)",
+	}
+
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "locking clauses are accepted",
+			SetUpScript: setup,
+			Assertions:  lockingAssertions,
+		},
+		{
+			// The setting dates from when locking clauses had no effect, and could only be refused or ignored.
+			Name:         "locking clauses are accepted with permit_unsupported_locking_statements",
 			ServerConfig: permissiveConfig,
-			SetUpScript: []string{
-				"CREATE TABLE locking_test (pk INT PRIMARY KEY)",
-				"INSERT INTO locking_test VALUES (1), (2)",
-			},
-			Assertions: []ScriptTestAssertion{
-				{
-					Query:    "SELECT * FROM locking_test ORDER BY pk FOR UPDATE",
-					Expected: []sql.Row{{1}, {2}},
-				},
-				{
-					Query:    "SELECT * FROM locking_test ORDER BY pk FOR NO KEY UPDATE NOWAIT",
-					Expected: []sql.Row{{1}, {2}},
-				},
-				{
-					Query:    "SELECT * FROM locking_test ORDER BY pk FOR SHARE SKIP LOCKED",
-					Expected: []sql.Row{{1}, {2}},
-				},
-				{
-					Query:    "SELECT * FROM locking_test ORDER BY pk FOR KEY SHARE OF locking_test",
-					Expected: []sql.Row{{1}, {2}},
-				},
-			},
+			SetUpScript:  setup,
+			Assertions:   lockingAssertions,
 		},
 	})
 }

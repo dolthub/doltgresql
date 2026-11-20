@@ -27,6 +27,10 @@ var partialIndexMergeSetup = []string{
 	"CREATE UNIQUE INDEX t_partial ON t (p, m) WHERE slot IS NULL;",
 }
 
+// partialIndexMergeSetupWithoutRowLocks is partialIndexMergeSetup with row-level locking turned off, so that
+// transactions don't wait for each other and their changes to the same rows are merged when the later one commits.
+var partialIndexMergeSetupWithoutRowLocks = append([]string{"SET dolt_row_level_locking = 0;"}, partialIndexMergeSetup...)
+
 // TestPartialIndexTransactionMerge checks that the merge run when a transaction commits on top of a working set
 // changed by a concurrent transaction respects the predicate of partial indexes.
 func TestPartialIndexTransactionMerge(t *testing.T) {
@@ -171,6 +175,34 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 				{Query: "/* client a */ BEGIN;"},
 				{Query: "/* client b */ BEGIN;"},
 				{Query: "/* client a */ UPDATE t SET m = 2 WHERE id = 1;"},
+				{
+					Query:            "/* client b */ UPDATE t SET slot = 5 WHERE id = 1;",
+					ExpectedBlocking: true,
+					ExpectedErr:      "could not serialize access due to concurrent update",
+					ExpectedErrCode:  "40001",
+				},
+				{Query: "/* client a */ COMMIT;"},
+				{Query: "/* client b */ ROLLBACK;"},
+				// Trying again, the statement runs against what the other transaction committed.
+				{Query: "/* client b */ UPDATE t SET slot = 5 WHERE id = 1;"},
+				{
+					Query:    "/* client a */ SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 1, 2, 5}},
+				},
+				{Query: "/* client a */ INSERT INTO t VALUES (2, 1, 2, NULL);"},
+				{Query: "/* client a */ INSERT INTO t VALUES (3, 1, 1, NULL);"},
+			},
+		},
+		{
+			// The same script with row-level locking off: no statement waits, and the changes are merged at commit.
+			Name: "concurrent updates of the same row that merge to a row outside the predicate, without row-level locking",
+			SetUpScript: append(partialIndexMergeSetupWithoutRowLocks,
+				"INSERT INTO t VALUES (1, 1, 1, NULL);",
+			),
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN;"},
+				{Query: "/* client b */ BEGIN;"},
+				{Query: "/* client a */ UPDATE t SET m = 2 WHERE id = 1;"},
 				{Query: "/* client b */ UPDATE t SET slot = 5 WHERE id = 1;"},
 				{Query: "/* client a */ COMMIT;"},
 				{Query: "/* client b */ COMMIT;"},
@@ -268,6 +300,42 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 				{Query: "/* client a */ BEGIN;"},
 				{Query: "/* client b */ BEGIN;"},
 				{Query: "/* client a */ ALTER TABLE t DROP COLUMN extra;"},
+				{
+					Query:            "/* client b */ INSERT INTO t VALUES (2, 0, 1, 1, 5);",
+					ExpectedBlocking: true,
+					ExpectedErr:      "could not serialize access due to concurrent update",
+					ExpectedErrCode:  "40001",
+				},
+				{Query: "/* client a */ COMMIT;"},
+				{Query: "/* client b */ ROLLBACK;"},
+				// Trying again, the statement runs against what the other transaction committed.
+				{Query: "/* client b */ INSERT INTO t VALUES (2, 1, 1, 5);"},
+				{
+					Query:    "/* client a */ SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 1, 1, nil}, {2, 1, 1, 5}},
+				},
+				{
+					Query:       "/* client a */ INSERT INTO t VALUES (3, 1, 1, NULL);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{Query: "/* client a */ INSERT INTO t VALUES (3, 2, 2, NULL);"},
+				{Query: "/* client a */ DELETE FROM t WHERE id = 1;"},
+				{Query: "/* client a */ INSERT INTO t VALUES (4, 1, 1, NULL);"},
+			},
+		},
+		{
+			// The same script with row-level locking off: no statement waits, and the changes are merged at commit.
+			Name: "concurrent insert outside the predicate and a column drop, without row-level locking",
+			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
+				"CREATE TABLE t (id INT PRIMARY KEY, extra INT, p INT, m INT, slot INT);",
+				"CREATE UNIQUE INDEX t_partial ON t (p, m) WHERE slot IS NULL;",
+				"INSERT INTO t VALUES (1, 0, 1, 1, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN;"},
+				{Query: "/* client b */ BEGIN;"},
+				{Query: "/* client a */ ALTER TABLE t DROP COLUMN extra;"},
 				{Query: "/* client b */ INSERT INTO t VALUES (2, 0, 1, 1, 5);"},
 				{Query: "/* client a */ COMMIT;"},
 				{Query: "/* client b */ COMMIT;"},
@@ -295,6 +363,38 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 				{Query: "/* client a */ ALTER TABLE t ADD COLUMN slot INT DEFAULT 10;"},
 				{Query: "/* client a */ CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot > 5;"},
 				{Query: "/* client b */ BEGIN;"},
+				{
+					Query:            "/* client b */ INSERT INTO t VALUES (2, 5);",
+					ExpectedBlocking: true,
+					ExpectedErr:      "could not serialize access due to concurrent update",
+					ExpectedErrCode:  "40001",
+				},
+				{Query: "/* client a */ COMMIT;"},
+				{Query: "/* client b */ ROLLBACK;"},
+				{
+					// Trying again, the statement runs against what the other transaction committed.
+					Query:       "/* client b */ INSERT INTO t (id, p) VALUES (2, 5);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "/* client a */ SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 5, 10}},
+				},
+			},
+		},
+		{
+			// The same script with row-level locking off: no statement waits, and the changes are merged at commit.
+			Name: "concurrent insert on the old schema of a row whose new column default is inside the predicate, without row-level locking",
+			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
+				"CREATE TABLE t (id INT PRIMARY KEY, p INT);",
+				"INSERT INTO t VALUES (1, 5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN;"},
+				{Query: "/* client a */ ALTER TABLE t ADD COLUMN slot INT DEFAULT 10;"},
+				{Query: "/* client a */ CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot > 5;"},
+				{Query: "/* client b */ BEGIN;"},
 				{Query: "/* client b */ INSERT INTO t VALUES (2, 5);"},
 				{Query: "/* client a */ COMMIT;"},
 				{
@@ -310,6 +410,40 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 		{
 			Name: "concurrent insert on the old schema of a row whose new column default is outside the predicate",
 			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, p INT);",
+				"INSERT INTO t VALUES (1, 5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN;"},
+				{Query: "/* client a */ ALTER TABLE t ADD COLUMN slot INT DEFAULT 1;"},
+				{Query: "/* client a */ UPDATE t SET slot = 10 WHERE id = 1;"},
+				{Query: "/* client a */ CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot > 5;"},
+				{Query: "/* client b */ BEGIN;"},
+				{
+					Query:            "/* client b */ INSERT INTO t VALUES (2, 5);",
+					ExpectedBlocking: true,
+					ExpectedErr:      "could not serialize access due to concurrent update",
+					ExpectedErrCode:  "40001",
+				},
+				{Query: "/* client a */ COMMIT;"},
+				{Query: "/* client b */ ROLLBACK;"},
+				// Trying again, the statement runs against what the other transaction committed.
+				{Query: "/* client b */ INSERT INTO t (id, p) VALUES (2, 5);"},
+				{
+					Query:    "/* client a */ SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 5, 10}, {2, 5, 1}},
+				},
+				{
+					Query:       "/* client a */ INSERT INTO t VALUES (3, 5, 6);",
+					ExpectedErr: "duplicate unique key given",
+				},
+			},
+		},
+		{
+			// The same script with row-level locking off: no statement waits, and the changes are merged at commit.
+			Name: "concurrent insert on the old schema of a row whose new column default is outside the predicate, without row-level locking",
+			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT);",
 				"INSERT INTO t VALUES (1, 5);",
 			},
@@ -366,6 +500,36 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 				{Query: "/* client a */ BEGIN;"},
 				{Query: "/* client b */ BEGIN;"},
 				{Query: "/* client a */ CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;"},
+				{
+					Query:            "/* client b */ INSERT INTO t VALUES (2, 2, 5);",
+					ExpectedBlocking: true,
+					ExpectedErr:      "could not serialize access due to concurrent update",
+					ExpectedErrCode:  "40001",
+				},
+				{Query: "/* client a */ COMMIT;"},
+				{Query: "/* client b */ ROLLBACK;"},
+				// Trying again, the statement runs against what the other transaction committed.
+				{Query: "/* client b */ INSERT INTO t VALUES (2, 2, 5);"},
+				{Query: "/* client a */ INSERT INTO t VALUES (3, 1, NULL);"},
+				{Query: "/* client a */ INSERT INTO t VALUES (4, 2, NULL);"},
+				{
+					Query:       "/* client a */ INSERT INTO t VALUES (5, 2, NULL);",
+					ExpectedErr: "duplicate unique key given",
+				},
+			},
+		},
+		{
+			// The same script with row-level locking off: no statement waits, and the changes are merged at commit.
+			Name: "partial index created concurrently with an insert outside the predicate, without row-level locking",
+			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
+				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
+				"INSERT INTO t VALUES (1, 1, 5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN;"},
+				{Query: "/* client b */ BEGIN;"},
+				{Query: "/* client a */ CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;"},
 				{Query: "/* client b */ INSERT INTO t VALUES (2, 2, 5);"},
 				{Query: "/* client a */ COMMIT;"},
 				{Query: "/* client b */ COMMIT;"},
@@ -380,6 +544,33 @@ func TestPartialIndexTransactionMerge(t *testing.T) {
 		{
 			Name: "partial index created by the last committer while another transaction inserts outside the predicate",
 			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
+				"INSERT INTO t VALUES (1, 1, 5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN;"},
+				{Query: "/* client b */ BEGIN;"},
+				{Query: "/* client a */ INSERT INTO t VALUES (2, 2, 5);"},
+				{
+					// Creating the index waits for the transaction that changed rows of the table.
+					Query:            "/* client b */ CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
+					ExpectedBlocking: true,
+				},
+				{Query: "/* client a */ COMMIT;"},
+				{Query: "/* client b */ COMMIT;"},
+				{Query: "/* client a */ INSERT INTO t VALUES (3, 1, NULL);"},
+				{Query: "/* client a */ INSERT INTO t VALUES (4, 2, NULL);"},
+				{
+					Query:       "/* client a */ INSERT INTO t VALUES (5, 2, NULL);",
+					ExpectedErr: "duplicate unique key given",
+				},
+			},
+		},
+		{
+			// The same script with row-level locking off: no statement waits, and the changes are merged at commit.
+			Name: "partial index created by the last committer while another transaction inserts outside the predicate, without row-level locking",
+			SetUpScript: []string{
+				"SET dolt_row_level_locking = 0;",
 				"CREATE TABLE t (id INT PRIMARY KEY, p INT, slot INT);",
 				"INSERT INTO t VALUES (1, 1, 5);",
 			},

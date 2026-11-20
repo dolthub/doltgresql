@@ -15,19 +15,61 @@
 package _go
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
 )
 
-// TestConcurrentWrites tests that a transaction writing a column of a row that another transaction changed and committed
-// first fails with a serialization failure, rather than losing the other transaction's write, while changes to different
-// rows or different columns of the same row merge.
+// TestConcurrentWrites tests concurrent writes of the same rows. A statement that changes a row waits for a
+// transaction that has already changed it. If that transaction commits, the statement fails with a serialization
+// failure, since what it read of the row is out of date; if it rolls back, the statement goes ahead. Each script
+// that depends on this is followed by a version of it that runs with row-level locking off, where a transaction
+// writing a column of a row that another transaction changed and committed first fails with a serialization failure
+// when it commits, while changes to different columns of the same row merge.
 func TestConcurrentWrites(t *testing.T) {
-	RunScripts(t, []ScriptTest{
+	counterSetup := []string{
+		`CREATE TABLE c (k TEXT, w INT, n INT NOT NULL, PRIMARY KEY (k, w));`,
+		`INSERT INTO c VALUES ('x', 1, 0), ('y', 1, 0);`,
+	}
+	tableSetup := []string{
+		`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
+		`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
+	}
+	const concurrentUpdate = "could not serialize access due to concurrent update"
+	const concurrentDelete = "could not serialize access due to concurrent delete"
+
+	scripts := []ScriptTest{
 		{
-			Name: "concurrent increments of the same row",
+			Name:        "concurrent increments of the same row",
+			SetUpScript: counterSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client a */ BEGIN;`, Expected: []sql.Row{}},
+				{
+					Query:    `/* client a */ INSERT INTO c (k, w, n) VALUES ('x', 1, 1) ON CONFLICT (k, w) DO UPDATE SET n = c.n + 1 RETURNING n;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:            `/* client b */ INSERT INTO c (k, w, n) VALUES ('x', 1, 1) ON CONFLICT (k, w) DO UPDATE SET n = c.n + 1 RETURNING n;`,
+					ExpectedBlocking: true,
+					ExpectedErr:      concurrentUpdate,
+					ExpectedErrCode:  "40001",
+				},
+				{Query: `/* client a */ COMMIT;`, Expected: []sql.Row{}},
+				{
+					// Trying again, the statement sees the committed increment and adds its own.
+					Query:    `/* client b */ INSERT INTO c (k, w, n) VALUES ('x', 1, 1) ON CONFLICT (k, w) DO UPDATE SET n = c.n + 1 RETURNING n;`,
+					Expected: []sql.Row{{2}},
+				},
+				{Query: `/* client a */ SELECT k, n FROM c ORDER BY k;`, Expected: []sql.Row{{"x", 2}, {"y", 0}}},
+			},
+		},
+		{
+			// The script above with row-level locking off: no statement waits for another, and conflicting changes
+			// are found when the later transaction commits.
+			Name: "concurrent increments of the same row, without row-level locking",
 			SetUpScript: []string{
+				`SET dolt_row_level_locking = 0;`,
 				`CREATE USER user1 PASSWORD 'password';`,
 				`CREATE TABLE c (k TEXT, w INT, n INT NOT NULL, PRIMARY KEY (k, w));`,
 				`INSERT INTO c VALUES ('x', 1, 0), ('y', 1, 0);`,
@@ -95,8 +137,28 @@ func TestConcurrentWrites(t *testing.T) {
 			},
 		},
 		{
-			Name: "concurrent increments of the same column",
+			Name:        "concurrent increments of the same column",
+			SetUpScript: tableSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client a */ BEGIN;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ UPDATE t SET a = a + 1 WHERE pk = 1;`, Expected: []sql.Row{}},
+				{
+					Query:            `/* client b */ UPDATE t SET a = a + 1 WHERE pk = 1;`,
+					ExpectedBlocking: true,
+					ExpectedErr:      concurrentUpdate,
+					ExpectedErrCode:  "40001",
+				},
+				{Query: `/* client a */ COMMIT;`, Expected: []sql.Row{}},
+				{Query: `/* client b */ UPDATE t SET a = a + 1 WHERE pk = 1;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ SELECT * FROM t ORDER BY pk;`, Expected: []sql.Row{{1, 2, 0}, {2, 0, 0}}},
+			},
+		},
+		{
+			// The script above with row-level locking off: no statement waits for another, and conflicting changes
+			// are found when the later transaction commits.
+			Name: "concurrent increments of the same column, without row-level locking",
 			SetUpScript: []string{
+				`SET dolt_row_level_locking = 0;`,
 				`CREATE USER user1 PASSWORD 'password';`,
 				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
 				`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
@@ -130,8 +192,27 @@ func TestConcurrentWrites(t *testing.T) {
 			},
 		},
 		{
-			Name: "concurrent updates of the same column to different values",
+			Name:        "concurrent updates of the same column to different values",
+			SetUpScript: tableSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client a */ BEGIN;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ UPDATE t SET a = 5 WHERE pk = 1;`, Expected: []sql.Row{}},
+				{
+					Query:            `/* client b */ UPDATE t SET a = 7 WHERE pk = 1;`,
+					ExpectedBlocking: true,
+					ExpectedErr:      concurrentUpdate,
+					ExpectedErrCode:  "40001",
+				},
+				{Query: `/* client a */ COMMIT;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ SELECT * FROM t ORDER BY pk;`, Expected: []sql.Row{{1, 5, 0}, {2, 0, 0}}},
+			},
+		},
+		{
+			// The script above with row-level locking off: no statement waits for another, and conflicting changes
+			// are found when the later transaction commits.
+			Name: "concurrent updates of the same column to different values, without row-level locking",
 			SetUpScript: []string{
+				`SET dolt_row_level_locking = 0;`,
 				`CREATE USER user1 PASSWORD 'password';`,
 				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
 				`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
@@ -165,8 +246,38 @@ func TestConcurrentWrites(t *testing.T) {
 			},
 		},
 		{
-			Name: "concurrent updates that agree on a shared column but differ in another",
+			Name:        "concurrent updates of the same row proceed when the first rolls back",
+			SetUpScript: tableSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client a */ BEGIN;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ UPDATE t SET a = 5 WHERE pk = 1;`, Expected: []sql.Row{}},
+				{Query: `/* client b */ UPDATE t SET a = 7 WHERE pk = 1;`, ExpectedBlocking: true},
+				{Query: `/* client a */ ROLLBACK;`, Expected: []sql.Row{}},
+				{Query: `/* client b */ SELECT * FROM t ORDER BY pk;`, Expected: []sql.Row{{1, 7, 0}, {2, 0, 0}}},
+			},
+		},
+		{
+			Name:        "concurrent updates that agree on a shared column but differ in another",
+			SetUpScript: tableSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client a */ BEGIN;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ UPDATE t SET a = a + 1, b = 5 WHERE pk = 1;`, Expected: []sql.Row{}},
+				{
+					Query:            `/* client b */ UPDATE t SET a = a + 1 WHERE pk = 1;`,
+					ExpectedBlocking: true,
+					ExpectedErr:      concurrentUpdate,
+					ExpectedErrCode:  "40001",
+				},
+				{Query: `/* client a */ COMMIT;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ SELECT * FROM t ORDER BY pk;`, Expected: []sql.Row{{1, 1, 5}, {2, 0, 0}}},
+			},
+		},
+		{
+			// The script above with row-level locking off: no statement waits for another, and conflicting changes
+			// are found when the later transaction commits.
+			Name: "concurrent updates that agree on a shared column but differ in another, without row-level locking",
 			SetUpScript: []string{
+				`SET dolt_row_level_locking = 0;`,
 				`CREATE USER user1 PASSWORD 'password';`,
 				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
 				`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
@@ -200,8 +311,30 @@ func TestConcurrentWrites(t *testing.T) {
 			},
 		},
 		{
-			Name: "concurrent updates of different columns in the same row",
+			// Without row locks these changes are merged, because they are to different columns. With them, the
+			// second statement can't know that until it has waited, and by then its view of the row is out of date.
+			Name:        "concurrent updates of different columns in the same row",
+			SetUpScript: tableSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client a */ BEGIN;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ UPDATE t SET b = a + 1 WHERE pk = 1;`, Expected: []sql.Row{}},
+				{
+					Query:            `/* client b */ UPDATE t SET a = a + 1 WHERE pk = 1;`,
+					ExpectedBlocking: true,
+					ExpectedErr:      concurrentUpdate,
+					ExpectedErrCode:  "40001",
+				},
+				{Query: `/* client a */ COMMIT;`, Expected: []sql.Row{}},
+				{Query: `/* client b */ UPDATE t SET a = a + 1 WHERE pk = 1;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ SELECT * FROM t ORDER BY pk;`, Expected: []sql.Row{{1, 1, 1}, {2, 0, 0}}},
+			},
+		},
+		{
+			// The script above with row-level locking off: no statement waits for another, and conflicting changes
+			// are found when the later transaction commits.
+			Name: "concurrent updates of different columns in the same row, without row-level locking",
 			SetUpScript: []string{
+				`SET dolt_row_level_locking = 0;`,
 				`CREATE USER user1 PASSWORD 'password';`,
 				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
 				`INSERT INTO t VALUES (1, 0, 0);`,
@@ -234,8 +367,28 @@ func TestConcurrentWrites(t *testing.T) {
 			},
 		},
 		{
-			Name: "concurrent deletes of the same row",
+			Name:        "concurrent deletes of the same row",
+			SetUpScript: tableSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client a */ BEGIN;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ DELETE FROM t WHERE pk = 1 RETURNING *;`, Expected: []sql.Row{{1, 0, 0}}},
+				{
+					Query:            `/* client b */ DELETE FROM t WHERE pk = 1 RETURNING *;`,
+					ExpectedBlocking: true,
+					ExpectedErr:      concurrentDelete,
+					ExpectedErrCode:  "40001",
+				},
+				{Query: `/* client a */ COMMIT;`, Expected: []sql.Row{}},
+				{Query: `/* client b */ DELETE FROM t WHERE pk = 1 RETURNING *;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ SELECT * FROM t;`, Expected: []sql.Row{{2, 0, 0}}},
+			},
+		},
+		{
+			// The script above with row-level locking off: no statement waits for another, and conflicting changes
+			// are found when the later transaction commits.
+			Name: "concurrent deletes of the same row, without row-level locking",
 			SetUpScript: []string{
+				`SET dolt_row_level_locking = 0;`,
 				`CREATE USER user1 PASSWORD 'password';`,
 				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
 				`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
@@ -269,8 +422,27 @@ func TestConcurrentWrites(t *testing.T) {
 			},
 		},
 		{
-			Name: "concurrent delete and update of the same row",
+			Name:        "concurrent delete and update of the same row",
+			SetUpScript: tableSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client a */ BEGIN;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ DELETE FROM t WHERE pk = 1;`, Expected: []sql.Row{}},
+				{
+					Query:            `/* client b */ UPDATE t SET b = 1 WHERE pk = 1;`,
+					ExpectedBlocking: true,
+					ExpectedErr:      concurrentDelete,
+					ExpectedErrCode:  "40001",
+				},
+				{Query: `/* client a */ COMMIT;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ SELECT * FROM t ORDER BY pk;`, Expected: []sql.Row{{2, 0, 0}}},
+			},
+		},
+		{
+			// The script above with row-level locking off: no statement waits for another, and conflicting changes
+			// are found when the later transaction commits.
+			Name: "concurrent delete and update of the same row, without row-level locking",
 			SetUpScript: []string{
+				`SET dolt_row_level_locking = 0;`,
 				`CREATE USER user1 PASSWORD 'password';`,
 				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
 				`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
@@ -304,8 +476,28 @@ func TestConcurrentWrites(t *testing.T) {
 			},
 		},
 		{
-			Name: "concurrent inserts of the same row",
+			Name:        "concurrent inserts of the same row",
+			SetUpScript: tableSetup,
+			Assertions: []ScriptTestAssertion{
+				{Query: `/* client a */ BEGIN;`, Expected: []sql.Row{}},
+				{Query: `/* client a */ INSERT INTO t VALUES (3, 0, 0);`, Expected: []sql.Row{}},
+				{
+					Query:            `/* client b */ INSERT INTO t VALUES (3, 1, 1);`,
+					ExpectedBlocking: true,
+					ExpectedErr:      "could not serialize access due to concurrent insert of the same key",
+					ExpectedErrCode:  "40001",
+				},
+				{Query: `/* client a */ COMMIT;`, Expected: []sql.Row{}},
+				{Query: `/* client b */ INSERT INTO t VALUES (3, 1, 1);`, ExpectedErr: "duplicate"},
+				{Query: `/* client a */ SELECT * FROM t ORDER BY pk;`, Expected: []sql.Row{{1, 0, 0}, {2, 0, 0}, {3, 0, 0}}},
+			},
+		},
+		{
+			// The script above with row-level locking off: no statement waits for another, and conflicting changes
+			// are found when the later transaction commits.
+			Name: "concurrent inserts of the same row, without row-level locking",
 			SetUpScript: []string{
+				`SET dolt_row_level_locking = 0;`,
 				`CREATE USER user1 PASSWORD 'password';`,
 				`CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT);`,
 				`INSERT INTO t VALUES (1, 0, 0), (2, 0, 0);`,
@@ -338,5 +530,15 @@ func TestConcurrentWrites(t *testing.T) {
 				},
 			},
 		},
-	})
+	}
+
+	for _, script := range scripts {
+		// Scripts that name the client of each statement keep a connection open per client, which lets a statement of
+		// one client wait while those of another run.
+		if strings.HasPrefix(script.Assertions[0].Query, "/* client") {
+			RunTransactionTest(t, script)
+		} else {
+			RunScript(t, script, true)
+		}
+	}
 }

@@ -15,6 +15,7 @@
 package functions
 
 import (
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/server/functions/framework"
@@ -26,14 +27,19 @@ func initTxidCurrent() {
 	framework.RegisterFunction(txid_current)
 }
 
-// txid_current represents the PostgreSQL date/time function, taking {interval, timestamp with time zone}
+// txid_current represents the PostgreSQL function of the same name, which returns the ID of the current transaction.
+// IDs ascend in the order transactions start, for as long as the server runs.
 var txid_current = framework.Function0{
 	Name:               "txid_current",
 	Return:             pgtypes.Int64,
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context) (any, error) {
-		// TODO: current transaction ID
-		return int64(0), nil
+		tx, ok := ctx.GetTransaction().(*dsess.DoltTransaction)
+		if !ok {
+			return int64(0), nil
+		}
+
+		return int64(tx.ID()), nil
 	},
 }

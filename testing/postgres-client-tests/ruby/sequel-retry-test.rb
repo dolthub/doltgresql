@@ -2,8 +2,9 @@
 
 # Tests that Sequel's built-in transaction retry semantics work against Doltgres.
 #
-# When two transactions modify the same row concurrently, Doltgres reports the losing
-# COMMIT with SQLSTATE 40001 (serialization_failure). The pg driver surfaces that
+# When a transaction modifies a row that another transaction changed after its snapshot
+# was taken, Doltgres fails the statement with SQLSTATE 40001 (serialization_failure).
+# The pg driver surfaces that
 # SQLSTATE as PG::TRSerializationFailure, Sequel maps it to Sequel::SerializationFailure,
 # and Sequel's `transaction(retry_on: ...)` re-runs the block — the standard ORM recipe
 # for handling optimistic-concurrency conflicts. All three layers key off the SQLSTATE,
@@ -32,9 +33,50 @@ db1.run("DROP TABLE IF EXISTS retry_test")
 db1.run("CREATE TABLE retry_test (id INT PRIMARY KEY, val INT, who TEXT)")
 db1[:retry_test].insert(id: 1, val: 0, who: 'nobody')
 
-# Part 1: interpretation. A conflicting concurrent commit must surface as
+# Part 1: interpretation. A write that conflicts with a concurrent commit must surface as
 # Sequel::SerializationFailure — the exception class Sequel documents for
 # retry_on — which it derives from SQLSTATE 40001.
+begin
+  db1.transaction do
+    db1[:retry_test].where(id: 1).first
+    # conflicting write from a second connection, autocommitted while txn1 is open
+    db2[:retry_test].where(id: 1).update(val: 200, who: 'txn2')
+    db1[:retry_test].where(id: 1).update(val: 100, who: 'txn1')
+  end
+  raise "expected the conflicting transaction to raise, but it committed"
+rescue Sequel::SerializationFailure => e
+  puts "conflict surfaced as #{e.class} (driver: #{e.wrapped_exception.class})"
+end
+
+# The session must remain usable after the failed transaction.
+one = db1["SELECT 1 AS one"].first[:one]
+raise "connection unusable after serialization failure" unless one == 1
+
+# Part 2: retry. Sequel re-runs the block on Sequel::SerializationFailure; the
+# second attempt has no concurrent writer, so it must commit.
+db1[:retry_test].where(id: 1).update(val: 0, who: 'nobody')
+attempts = 0
+db1.transaction(retry_on: Sequel::SerializationFailure, num_retries: 5) do
+  attempts += 1
+  db1[:retry_test].where(id: 1).first
+  if attempts == 1
+    db2[:retry_test].where(id: 1).update(val: 200, who: 'txn2')
+  end
+  db1[:retry_test].where(id: 1).update(val: 100, who: 'txn1')
+end
+
+raise "expected the transaction to be attempted twice, got #{attempts}" unless attempts == 2
+
+row = db1[:retry_test].where(id: 1).first
+unless row[:val] == 100 && row[:who] == 'txn1'
+  raise "expected the retried transaction's write to win, got #{row}"
+end
+
+# Parts 3 and 4: the same with row-level locking off. Neither write waits for the
+# other, and Doltgres reports the losing COMMIT with SQLSTATE 40001.
+db1.run("SET dolt_row_level_locking = 0")
+db1[:retry_test].where(id: 1).update(val: 0, who: 'nobody')
+
 begin
   db1.transaction do
     db1[:retry_test].where(id: 1).update(val: 100, who: 'txn1')
@@ -50,24 +92,24 @@ end
 one = db1["SELECT 1 AS one"].first[:one]
 raise "connection unusable after serialization failure" unless one == 1
 
-# Part 2: retry. Sequel re-runs the block on Sequel::SerializationFailure; the
-# second attempt has no concurrent writer, so it must commit.
 db1[:retry_test].where(id: 1).update(val: 0, who: 'nobody')
-attempts = 0
+commit_attempts = 0
 db1.transaction(retry_on: Sequel::SerializationFailure, num_retries: 5) do
-  attempts += 1
+  commit_attempts += 1
   db1[:retry_test].where(id: 1).update(val: 100, who: 'txn1')
-  if attempts == 1
+  if commit_attempts == 1
     db2[:retry_test].where(id: 1).update(val: 200, who: 'txn2')
   end
 end
 
-raise "expected the transaction to be attempted twice, got #{attempts}" unless attempts == 2
+raise "expected the transaction to be attempted twice, got #{commit_attempts}" unless commit_attempts == 2
 
 row = db1[:retry_test].where(id: 1).first
 unless row[:val] == 100 && row[:who] == 'txn1'
   raise "expected the retried transaction's write to win, got #{row}"
 end
+
+db1.run("SET dolt_row_level_locking = 1")
 
 db1.disconnect
 db2.disconnect

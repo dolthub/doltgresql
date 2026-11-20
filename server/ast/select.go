@@ -54,8 +54,11 @@ func nodeSelect(ctx *Context, node *tree.Select) (vitess.SelectStatement, error)
 	if err != nil {
 		return nil, err
 	}
-	_, err = nodeLockingClause(ctx, node.Locking)
+	lock, err := nodeLockingClause(ctx, node.Locking)
 	if err != nil {
+		return nil, err
+	}
+	if err = applyLockingClause(node.Locking, lock, selectStmt); err != nil {
 		return nil, err
 	}
 

@@ -19,6 +19,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/rowjournal"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
@@ -32,6 +33,7 @@ type identityTestProvider struct{ dsess.DoltDatabaseProvider }
 
 func (identityTestProvider) DoltDatabases() []dsess.SqlDatabase { return nil }
 func (identityTestProvider) FileSystem() filesys.Filesys        { return nil }
+func (identityTestProvider) RowJournal() *rowjournal.Journal    { return nil }
 
 func TestExplicitIdentityInitialization(t *testing.T) {
 	newContext := func() *sql.Context {

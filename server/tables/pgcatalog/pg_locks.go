@@ -15,10 +15,15 @@
 package pgcatalog
 
 import (
+	"fmt"
 	"io"
+	"sort"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/rowjournal"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/tables"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -43,9 +48,72 @@ func (p PgLocksHandler) Name() string {
 
 // RowIter implements the interface tables.Handler.
 func (p PgLocksHandler) RowIter(ctx *sql.Context, partition sql.Partition) (sql.RowIter, error) {
-	// pg_locks is currently empty, since lock introspection is not exposed by the engine.
-	// TODO: fill this in when lock information is available
-	return emptyRowIter()
+	journal := functions.RowJournal(ctx)
+	if journal == nil {
+		return emptyRowIter()
+	}
+
+	// Row locks and the locks that DDL and version control operations take on whole tables are reported. Other kinds
+	// of lock that Postgres reports here, such as advisory locks, are not.
+	locks := journal.Locks()
+	sort.Slice(locks, func(i, j int) bool {
+		if locks[i].Txn != locks[j].Txn {
+			return locks[i].Txn < locks[j].Txn
+		}
+
+		return locks[i].Granted && !locks[j].Granted
+	})
+
+	rows := make([]sql.Row, len(locks))
+	for i, lock := range locks {
+		lockType := "tuple"
+		if lock.Target.WholeTable {
+			lockType = "relation"
+		}
+
+		schemaName := lock.Relation.Table.Schema
+		if schemaName == "" {
+			schemaName = "public"
+		}
+
+		rows[i] = sql.Row{
+			lockType, // locktype
+			nil,      // database
+			id.NewTable(schemaName, lock.Relation.Table.Name).AsId(), // relation
+			nil,              // page
+			nil,              // tuple
+			nil,              // virtualxid
+			uint32(lock.Txn), // transactionid
+			nil,              // classid
+			nil,              // objid
+			nil,              // objsubid
+			fmt.Sprintf("%d/%d", lock.SessionID, lock.Txn), // virtualtransaction
+			int32(lock.SessionID),                          // pid
+			pgLockModeName(lock.Mode),                      // mode
+			lock.Granted,                                   // granted
+			false,                                          // fastpath
+			nil,                                            // waitstart
+		}
+	}
+
+	return sql.RowsToRowIter(rows...), nil
+}
+
+// pgLockModeName returns the name Postgres reports for the lock on a row that a row lock of the mode given
+// corresponds to.
+func pgLockModeName(mode rowjournal.LockMode) string {
+	switch mode {
+	case rowjournal.LockKeyShare:
+		return "AccessShareLock"
+	case rowjournal.LockShare:
+		return "RowShareLock"
+	case rowjournal.LockNoKeyUpdate:
+		return "ExclusiveLock"
+	case rowjournal.LockUpdate:
+		return "AccessExclusiveLock"
+	default:
+		return mode.String()
+	}
 }
 
 // PkSchema implements the interface tables.Handler.

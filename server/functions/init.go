@@ -182,6 +182,7 @@ func Init() {
 	initParseIdent()
 	initPgAvailableExtensionVersions()
 	initPgBackendPid()
+	initPgBlockingPids()
 	initPgCharToEncoding()
 	initPgCollationIsVisible()
 	initPgConversionIsVisible()

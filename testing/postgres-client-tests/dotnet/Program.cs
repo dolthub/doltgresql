@@ -171,15 +171,42 @@ await using (var cmd = new NpgsqlCommand("SELECT COUNT(*) FROM test WHERE pk = 1
         throw new Exception($"expected rolled-back insert to leave 0 rows, got {count}");
 }
 
-// Conflicting concurrent transactions: the losing COMMIT must report 40001
+// Conflicting concurrent transactions: a write to a row that another
+// transaction changed after this one's snapshot must report 40001
 // (serialization_failure), the code retry logic dispatches on.
 await using (var conn2 = new NpgsqlConnection(connStr))
 {
     await conn2.OpenAsync();
     await using var tx = await conn.BeginTransactionAsync();
-    await using (var cmd = new NpgsqlCommand("UPDATE test SET value = 10 WHERE pk = 0", conn))
-        await cmd.ExecuteNonQueryAsync();
+    await using (var cmd = new NpgsqlCommand("SELECT value FROM test WHERE pk = 0", conn))
+        await cmd.ExecuteScalarAsync();
     await using (var cmd = new NpgsqlCommand("UPDATE test SET value = 20 WHERE pk = 0", conn2))
+        await cmd.ExecuteNonQueryAsync();
+    try
+    {
+        await using (var cmd = new NpgsqlCommand("UPDATE test SET value = 10 WHERE pk = 0", conn))
+            await cmd.ExecuteNonQueryAsync();
+        throw new Exception("expected serialization failure on conflicting update");
+    }
+    catch (PostgresException e)
+    {
+        if (e.SqlState != "40001")
+            throw new Exception($"expected SQLSTATE 40001 on conflicting update, got {e.SqlState}");
+    }
+    await tx.RollbackAsync();
+}
+
+// The same conflict with row-level locking off: neither UPDATE waits for the
+// other, and the losing COMMIT must report 40001.
+await using (var cmd = new NpgsqlCommand("SET dolt_row_level_locking = 0", conn))
+    await cmd.ExecuteNonQueryAsync();
+await using (var conn2 = new NpgsqlConnection(connStr))
+{
+    await conn2.OpenAsync();
+    await using var tx = await conn.BeginTransactionAsync();
+    await using (var cmd = new NpgsqlCommand("UPDATE test SET value = 11 WHERE pk = 0", conn))
+        await cmd.ExecuteNonQueryAsync();
+    await using (var cmd = new NpgsqlCommand("UPDATE test SET value = 21 WHERE pk = 0", conn2))
         await cmd.ExecuteNonQueryAsync();
     try
     {
@@ -192,6 +219,8 @@ await using (var conn2 = new NpgsqlConnection(connStr))
             throw new Exception($"expected SQLSTATE 40001 on conflicting commit, got {e.SqlState}");
     }
 }
+await using (var cmd = new NpgsqlCommand("SET dolt_row_level_locking = 1", conn))
+    await cmd.ExecuteNonQueryAsync();
 
 // ... and the session must be usable again immediately.
 await using (var cmd = new NpgsqlCommand("SELECT COUNT(*) FROM test", conn))
