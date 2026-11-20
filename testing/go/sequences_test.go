@@ -743,16 +743,18 @@ func TestSequences(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "CREATE TABLE myschema.test (pk INTEGER DEFAULT (nextval('seq1')), v1 INTEGER);",
+					Query:       "CREATE TABLE myschema.test (pk INTEGER DEFAULT (nextval('seq1')), v1 INTEGER);",
+					ExpectedErr: `relation "seq1" does not exist`,
+				},
+				{
+					Query:    "CREATE TABLE myschema.test (pk INTEGER DEFAULT (nextval('myschema.seq1')), v1 INTEGER);",
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:     true, // TODO: relation "seq1" does not exist
 					Query:    "INSERT INTO myschema.test (v1) VALUES (2), (3), (5), (7), (11);",
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:  true, // TODO: unskip when INSERT above is unskipped
 					Query: "SELECT * FROM myschema.test ORDER BY v1;",
 					Expected: []sql.Row{
 						{1, 2},
@@ -761,6 +763,51 @@ func TestSequences(t *testing.T) {
 						{4, 7},
 						{5, 11},
 					},
+				},
+			},
+		},
+		{
+			// A sequence named in a column default resolves through the search path when the default is created, so
+			// the default keeps using that sequence under any later search path.
+			Name: "sequence in a column default resolves when the default is created",
+			SetUpScript: []string{
+				"CREATE SCHEMA s2;",
+				"CREATE SEQUENCE public.seq;",
+				"CREATE SEQUENCE s2.seq START 100;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE TABLE s2.t (x int, a int DEFAULT nextval('seq'), b int DEFAULT nextval('seq'::regclass));",
+				},
+				{
+					Query: "ALTER TABLE s2.t ADD COLUMN d int DEFAULT nextval('seq');",
+				},
+				{
+					Query: "ALTER TABLE s2.t ALTER COLUMN x SET DEFAULT nextval('seq');",
+				},
+				{
+					Query: "SET search_path = s2, public;",
+				},
+				{
+					Query: "INSERT INTO s2.t DEFAULT VALUES;",
+				},
+				{
+					Query: "SET search_path = '';",
+				},
+				{
+					Query: "INSERT INTO s2.t DEFAULT VALUES;",
+				},
+				{
+					Query:    "SELECT x < 100, a < 100, b < 100, d < 100 FROM s2.t;",
+					Expected: []sql.Row{{"t", "t", "t", "t"}, {"t", "t", "t", "t"}},
+				},
+				{
+					Query:    "SELECT nextval('s2.seq');",
+					Expected: []sql.Row{{100}},
+				},
+				{
+					Query:       "CREATE TABLE s2.u (x int DEFAULT nextval('nosuchseq'));",
+					ExpectedErr: `relation "nosuchseq" does not exist`,
 				},
 			},
 		},
