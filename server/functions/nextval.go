@@ -33,13 +33,8 @@ func initNextVal() {
 	framework.RegisterFunction(nextval_regclass)
 }
 
+// nextval advances the sequence with the given name, which is resolved through the search path when it is unqualified.
 func nextval(ctx *sql.Context, ait *sequences.SequenceTracker, relationName string) (int64, error) {
-	// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
-	collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
-	if err != nil {
-		return 0, err
-	}
-
 	db, err := getDb(ctx)
 	if err != nil {
 		return 0, err
@@ -64,6 +59,16 @@ func nextval(ctx *sql.Context, ait *sequences.SequenceTracker, relationName stri
 		if !found {
 			return 0, errors.Errorf(`sequence "%s" does not exist`, relationName)
 		}
+	}
+	return nextvalOfSequence(ctx, ait, sequenceName)
+}
+
+// nextvalOfSequence advances the given sequence.
+func nextvalOfSequence(ctx *sql.Context, ait *sequences.SequenceTracker, sequenceName doltdb.TableName) (int64, error) {
+	// TODO: this needs a database name to support inserts into other databases (including inserts on other branches than the current one)
+	collection, err := core.GetSequencesCollectionFromContext(ctx, ctx.GetCurrentDatabase())
+	if err != nil {
+		return 0, err
 	}
 	sequenceId := id.NewSequence(sequenceName.Schema, sequenceName.Name)
 
@@ -112,13 +117,18 @@ var nextval_regclass = framework.Function1{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context, _ [2]*pgtypes.DoltgresType, val any) (any, error) {
-		relationName, err := pgtypes.Regclass.IoOutput(ctx, val)
-		if err != nil {
-			return nil, err
-		}
 		ait, err := getSequenceTracker(ctx)
 		if err != nil {
 			return 0, err
+		}
+		// A regclass already identifies its sequence, which its name may not under the current search path
+		if relationID, ok := val.(id.Id); ok && relationID.Section() == id.Section_Sequence {
+			sequenceID := id.Sequence(relationID)
+			return nextvalOfSequence(ctx, ait, doltdb.TableName{Schema: sequenceID.SchemaName(), Name: sequenceID.SequenceName()})
+		}
+		relationName, err := pgtypes.Regclass.IoOutput(ctx, val)
+		if err != nil {
+			return nil, err
 		}
 		return nextval(ctx, ait, relationName)
 	},

@@ -144,6 +144,7 @@ RUN apt-get install -y \
     r-base \
     libyaml-dev \
     libpq-dev \
+    libcurl4-openssl-dev \
     odbc-postgresql \
     g++ make libpqxx-dev pkg-config \
     gcc make unixodbc-dev \
