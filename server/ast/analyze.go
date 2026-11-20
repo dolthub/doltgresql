@@ -15,10 +15,12 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
+	"strings"
 
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 )
 
@@ -28,22 +30,25 @@ func nodeAnalyze(ctx *Context, node *tree.Analyze) (vitess.Statement, error) {
 		return nil, nil
 	}
 
-	// If no tables were specified, return an empty Analyze statement, and the analyzer
-	// will populate all tables to be analyzed.
-	if node.Table == nil {
-		return &vitess.Analyze{}, nil
+	// None of the options affect how statistics are collected here, so they are validated and then ignored.
+	for _, option := range node.Options {
+		switch option.Option {
+		case "VERBOSE", "SKIP_LOCKED", "BUFFER_USAGE_LIMIT":
+		default:
+			return nil, pgerror.Newf(pgcode.Syntax, `unrecognized ANALYZE option "%s"`, strings.ToLower(option.Option))
+		}
 	}
 
-	objectName, ok := node.Table.(*tree.UnresolvedObjectName)
-	if !ok {
-		return nil, errors.Errorf("unsupported table type in Analyze node: %T", node.Table)
+	// If no tables were specified, return an empty Analyze statement, and the analyzer will populate all tables to be
+	// analyzed. A column list still analyzes the whole table.
+	tables := make(vitess.TableNames, len(node.TablesAndCols))
+	for i, table := range node.TablesAndCols {
+		tables[i] = vitess.TableName{
+			Name:            vitess.NewTableIdent(table.Name.Object()),
+			SchemaQualifier: vitess.NewTableIdent(table.Name.Schema()),
+			DbQualifier:     vitess.NewTableIdent(table.Name.Catalog()),
+		}
 	}
 
-	return &vitess.Analyze{Tables: []vitess.TableName{
-		{
-			Name:            vitess.NewTableIdent(objectName.Object()),
-			SchemaQualifier: vitess.NewTableIdent(objectName.Schema()),
-			DbQualifier:     vitess.NewTableIdent(objectName.Catalog()),
-		},
-	}}, nil
+	return &vitess.Analyze{Tables: tables}, nil
 }
