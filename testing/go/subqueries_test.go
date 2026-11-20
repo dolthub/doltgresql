@@ -326,3 +326,153 @@ func TestExistSubquery(t *testing.T) {
 		},
 	})
 }
+
+func TestInSubqueryUnnesting(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "IN subquery unnests into an indexed semi join",
+			SetUpScript: []string{
+				`CREATE TABLE parent (id int PRIMARY KEY, name text NOT NULL);`,
+				`CREATE TABLE child (id int NOT NULL, parent_id int NOT NULL REFERENCES parent (id), n int NOT NULL, PRIMARY KEY (id, parent_id));`,
+				`INSERT INTO parent (id, name) SELECT g, 'parent ' || g FROM generate_series(1, 5) AS g;`,
+				`INSERT INTO child (id, parent_id, n) SELECT i, p, i * p FROM generate_series(1, 200) AS i, generate_series(1, 5) AS p;`,
+				`ANALYZE child;`,
+				`ANALYZE parent;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `EXPLAIN SELECT * FROM child WHERE id IN (SELECT v FROM (VALUES (42), (142)) AS ids(v));`,
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [child.id, child.parent_id, child.n]"},
+						{" └─ LookupJoin"},
+						{"     ├─ Distinct"},
+						{"     │   └─ Values() as ids"},
+						{"     │       ├─ Row("},
+						{"     │       │  42)"},
+						{"     │       └─ Row("},
+						{"     │          142)"},
+						{"     └─ IndexedTableAccess(child)"},
+						{"         ├─ index: [child.id,child.parent_id]"},
+						{"         └─ keys: ids.v"},
+					},
+				},
+				{
+					Query:    `SELECT * FROM child WHERE id IN (SELECT v FROM (VALUES (42), (142)) AS ids(v)) ORDER BY id, parent_id;`,
+					Expected: []sql.Row{{42, 1, 42}, {42, 2, 84}, {42, 3, 126}, {42, 4, 168}, {42, 5, 210}, {142, 1, 142}, {142, 2, 284}, {142, 3, 426}, {142, 4, 568}, {142, 5, 710}},
+				},
+				{
+					Query:    `SELECT * FROM child WHERE id IN (SELECT v FROM (VALUES (42), (42), (142), (142)) AS ids(v)) ORDER BY id, parent_id;`,
+					Expected: []sql.Row{{42, 1, 42}, {42, 2, 84}, {42, 3, 126}, {42, 4, 168}, {42, 5, 210}, {142, 1, 142}, {142, 2, 284}, {142, 3, 426}, {142, 4, 568}, {142, 5, 710}},
+				},
+				{
+					Query:    `SELECT count(*) FROM child WHERE id NOT IN (SELECT v FROM (VALUES (42), (142)) AS ids(v));`,
+					Expected: []sql.Row{{990}},
+				},
+				{
+					Query: `EXPLAIN SELECT * FROM parent WHERE id IN (SELECT parent_id FROM child WHERE n = 40);`,
+					Expected: []sql.Row{
+						{"SemiLookupJoin"},
+						{" ├─ Table"},
+						{" │   └─ name: parent"},
+						{" └─ Project"},
+						{"     ├─ columns: [child.parent_id]"},
+						{"     └─ Filter"},
+						{"         ├─ child.n = 40"},
+						{"         └─ IndexedTableAccess(child)"},
+						{"             ├─ index: [child.parent_id]"},
+						{"             └─ keys: parent.id"},
+					},
+				},
+				{
+					Query:    `SELECT * FROM parent WHERE id IN (SELECT parent_id FROM child WHERE n = 40) ORDER BY id;`,
+					Expected: []sql.Row{{1, "parent 1"}, {2, "parent 2"}, {4, "parent 4"}, {5, "parent 5"}},
+				},
+			},
+		},
+		{
+			Name: "unnested IN subquery semantics",
+			SetUpScript: []string{
+				`CREATE TABLE a (id INT PRIMARY KEY, x INT, t TEXT);`,
+				`CREATE TABLE b (id INT PRIMARY KEY, x INT, big BIGINT, num NUMERIC, t VARCHAR(10));`,
+				`CREATE TABLE empty (x INT);`,
+				`INSERT INTO a VALUES (1, 1, 'one'), (2, 2, 'two'), (3, 3, 'three'), (4, NULL, NULL);`,
+				`INSERT INTO b VALUES (1, 1, 1, 1.0, 'one'), (2, 1, 2, 2.5, 'two'), (3, NULL, NULL, NULL, NULL);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT id FROM a WHERE x IN (SELECT x FROM b) ORDER BY id;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT id FROM a WHERE x IN (SELECT x FROM b WHERE x IS NOT NULL) ORDER BY id;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT id FROM a WHERE x NOT IN (SELECT x FROM b) ORDER BY id;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT id FROM a WHERE x NOT IN (SELECT x FROM b WHERE x IS NOT NULL) ORDER BY id;`,
+					Expected: []sql.Row{{2}, {3}},
+				},
+				{
+					Query:    `SELECT id FROM a WHERE x NOT IN (SELECT x FROM empty) ORDER BY id;`,
+					Expected: []sql.Row{{1}, {2}, {3}, {4}},
+				},
+				{
+					Query:    `SELECT id FROM a WHERE x IN (SELECT big FROM b) ORDER BY id;`,
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    `SELECT id FROM a WHERE x IN (SELECT num FROM b) ORDER BY id;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT id FROM a WHERE t IN (SELECT t FROM b) ORDER BY id;`,
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    `SELECT id FROM a WHERE x IN (SELECT b.x FROM b WHERE b.id = a.id) ORDER BY id;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT id FROM a WHERE x IN (SELECT x FROM b) AND id IN (SELECT id FROM b) ORDER BY id;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT id, x IN (SELECT x FROM b) FROM a ORDER BY id;`,
+					Expected: []sql.Row{{1, "t"}, {2, nil}, {3, nil}, {4, nil}},
+				},
+				{
+					Query:    `SELECT id FROM a WHERE x IN (SELECT x FROM b) OR id = 3 ORDER BY id;`,
+					Expected: []sql.Row{{1}, {3}},
+				},
+				{
+					Query:    `CREATE TABLE keyless (x INT, t TEXT);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `INSERT INTO keyless VALUES (1, 'one'), (1, 'one'), (2, 'two'), (2, 'two'), (3, 'three');`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `UPDATE keyless SET t = 'z' WHERE x IN (SELECT big FROM b);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM keyless ORDER BY x, t;`,
+					Expected: []sql.Row{{1, "z"}, {1, "z"}, {2, "z"}, {2, "z"}, {3, "three"}},
+				},
+				{
+					Query:    `UPDATE a SET t = 'z' WHERE x IN (SELECT big FROM b);`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT * FROM a ORDER BY id;`,
+					Expected: []sql.Row{{1, 1, "z"}, {2, 2, "z"}, {3, 3, "three"}, {4, nil, nil}},
+				},
+			},
+		},
+	})
+}

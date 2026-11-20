@@ -45,6 +45,7 @@ type InSubquery struct {
 var _ vitess.Injectable = (*InSubquery)(nil)
 var _ sql.Expression = (*InSubquery)(nil)
 var _ expression.BinaryExpression = (*InSubquery)(nil)
+var _ plan.InSubqueryExpression = (*InSubquery)(nil)
 
 // nilKey is the hash of a row with a single nil value.
 var nilKey, _ = hash.HashOf(nil, nil, sql.NewRow(nil))
@@ -145,6 +146,27 @@ func (in *InSubquery) valuesEqual(ctx *sql.Context, left interface{}, row sql.Ro
 		}
 	}
 	return true, nil
+}
+
+// NewJoinFilter implements the plan.InSubqueryExpression interface. This allows the analyzer to unnest the subquery into
+// a semi join (or anti join for NOT IN), which can then use indexes on the left-hand side.
+func (in *InSubquery) NewJoinFilter(ctx *sql.Context, left, right sql.Expression) (sql.Expression, bool, error) {
+	// We only unnest single-column comparisons whose equality function has already been resolved
+	if len(in.compFuncs) != 1 {
+		return nil, false, nil
+	}
+	if _, ok := left.(expression.Tuple); ok {
+		return nil, false, nil
+	}
+	if _, ok := right.(expression.Tuple); ok {
+		return nil, false, nil
+	}
+	filter, err := NewBinaryOperator(framework.Operator_BinaryEqual).WithChildren(ctx, left, right)
+	if err != nil {
+		// Leave the IN expression as a filter, which will evaluate (and report errors) as usual
+		return nil, false, nil
+	}
+	return filter, true, nil
 }
 
 // IsNullable implements the sql.Expression interface.
