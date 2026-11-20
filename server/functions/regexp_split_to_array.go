@@ -70,7 +70,7 @@ func regexpSplitToArray(ctx *sql.Context, input, pattern, flags any) (any, error
 	if err != nil {
 		return nil, err
 	}
-	re, err := compileSplitRegexp(patternText, flagText)
+	re, err := compilePostgresRegexp(patternText, flagText, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -86,14 +86,14 @@ func regexpSplitToArray(ctx *sql.Context, input, pattern, flags any) (any, error
 	return append(result, text[previousEnd:]), nil
 }
 
-// compileSplitRegexp translates PostgreSQL options into Go regex parser flags.
+// compilePostgresRegexp translates PostgreSQL options into Go regex parser flags.
 // TODO: Support PostgreSQL ARE features absent from Go's regex engine, including
 // backreferences, lookarounds, and locale-dependent character classes.
-func compileSplitRegexp(pattern, options string) (*regexp.Regexp, error) {
+func compilePostgresRegexp(pattern, options string, global *bool) (*regexp.Regexp, error) {
 	flags := syntax.Perl | syntax.DotNL
 	expanded := false
 	mode := byte('a') // advanced, extended, basic, or quoted
-	apply := func(options string) error {
+	apply := func(options string, embedded bool) error {
 		for _, option := range options {
 			switch option {
 			case 'b', 'e', 'q':
@@ -117,6 +117,15 @@ func compileSplitRegexp(pattern, options string) (*regexp.Regexp, error) {
 			case 'x':
 				expanded = true
 			case 'g':
+				// The "g" option is only accepted when |global| is non-nil, in which case it is
+				// set to whether the option was given; split functions pass nil to reject it.
+				if embedded {
+					return pgerror.Newf(pgcode.InvalidRegularExpression, "invalid regular expression: invalid embedded option")
+				}
+				if global != nil {
+					*global = true
+					continue
+				}
 				// PostgreSQL rejects this flag for split functions, which already
 				// process all matches; it is not accepted as a no-op.
 				return pgerror.New(pgcode.InvalidParameterValue, "regexp_split_to_array() does not support the \"global\" option")
@@ -126,7 +135,7 @@ func compileSplitRegexp(pattern, options string) (*regexp.Regexp, error) {
 		}
 		return nil
 	}
-	if err := apply(options); err != nil {
+	if err := apply(options, false); err != nil {
 		return nil, err
 	}
 	// Quoted mode treats the entire pattern literally, including directors.
@@ -141,7 +150,7 @@ func compileSplitRegexp(pattern, options string) (*regexp.Regexp, error) {
 			if end := strings.IndexByte(pattern, ')'); end > 2 {
 				embedded := pattern[2:end]
 				if strings.IndexFunc(embedded, func(r rune) bool { return r < 'a' || r > 'z' }) == -1 {
-					if err := apply(embedded); err != nil {
+					if err := apply(embedded, true); err != nil {
 						return nil, err
 					}
 					pattern = pattern[end+1:]

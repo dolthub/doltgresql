@@ -233,6 +233,7 @@ func Init() {
 	initQuoteIdent()
 	initRadians()
 	initRandom()
+	initRegexpReplace()
 	initRegexpSplitToArray()
 	initRepeat()
 	initReplace()
