@@ -23,6 +23,7 @@ import (
 	doltdtables "github.com/dolthub/dolt/go/libraries/doltcore/sqle/dtables"
 	"github.com/dolthub/go-mysql-server/sql"
 
+	"github.com/dolthub/doltgresql/core/rootobject/objinterface"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
@@ -38,6 +39,7 @@ func (a DoltgresDoltStatusTableAdapter) NewTable(ctx *sql.Context, tableName str
 	doltTable := doltdtables.NewStatusTableWithNoAdapter(ctx, tableName, ddb, ws, rp)
 	return &doltgresDoltStatusTable{
 		srcDoltStatus: doltTable.(*doltdtables.StatusTable),
+		rootsProvider: rp,
 	}
 }
 
@@ -54,6 +56,7 @@ const DoltgresDoltStatusTableName = "status"
 // doltgresDoltStatusTable implements the [sql.Table] and [sql.StatisticsTable] interfaces.
 type doltgresDoltStatusTable struct {
 	srcDoltStatus *doltdtables.StatusTable
+	rootsProvider env.RootsProvider[*sql.Context]
 }
 
 var _ sql.Table = (*doltgresDoltStatusTable)(nil)
@@ -96,7 +99,50 @@ func (w *doltgresDoltStatusTable) PartitionRows(ctx *sql.Context, partition sql.
 	if err != nil {
 		return nil, err
 	}
-	return &doltgresDoltStatusRowIter{w, iter}, nil
+	rootObjects, err := w.loadStatusRootObjects(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &doltgresDoltStatusRowIter{w, iter, rootObjects}, nil
+}
+
+// loadStatusRootObjects loads the root object kinds from each of the roots that the Dolt status table compares.
+func (w *doltgresDoltStatusTable) loadStatusRootObjects(ctx *sql.Context) (statusRootObjects, error) {
+	if w.rootsProvider == nil {
+		return statusRootObjects{}, nil
+	}
+	roots, err := w.rootsProvider.GetRoots(ctx)
+	if err != nil {
+		return statusRootObjects{}, err
+	}
+	head, err := loadRootObjectIDs(ctx, roots.Head)
+	if err != nil {
+		return statusRootObjects{}, err
+	}
+	staged, err := loadRootObjectIDs(ctx, roots.Staged)
+	if err != nil {
+		return statusRootObjects{}, err
+	}
+	working, err := loadRootObjectIDs(ctx, roots.Working)
+	if err != nil {
+		return statusRootObjects{}, err
+	}
+	return statusRootObjects{head: head, staged: staged, working: working}, nil
+}
+
+// loadRootObjectIDs returns the root object ID of each root object in |root|, keyed by the root object's name.
+func loadRootObjectIDs(ctx *sql.Context, root doltdb.RootValue) (map[string]objinterface.RootObjectID, error) {
+	rootObjectIDs := make(map[string]objinterface.RootObjectID)
+	if root == nil {
+		return rootObjectIDs, nil
+	}
+	err := root.IterRootObjects(ctx, func(name doltdb.TableName, rootObj doltdb.RootObject) (stop bool, err error) {
+		if doltgresRootObj, ok := rootObj.(objinterface.RootObject); ok {
+			rootObjectIDs[name.String()] = doltgresRootObj.GetRootObjectID()
+		}
+		return false, nil
+	})
+	return rootObjectIDs, err
 }
 
 // DataLength returns the length of the data in bytes from [doltdtables.StatusTable].
@@ -114,12 +160,21 @@ func (w *doltgresDoltStatusTable) RowCount(ctx *sql.Context) (uint64, bool, erro
 type doltgresDoltStatusRowIter struct {
 	doltStatusTable sql.Table
 	rowIter         sql.RowIter
+	rootObjects     statusRootObjects
+}
+
+// statusRootObjects holds the root object IDs, keyed by name, for each root that the Dolt status table compares.
+type statusRootObjects struct {
+	head    map[string]objinterface.RootObjectID
+	staged  map[string]objinterface.RootObjectID
+	working map[string]objinterface.RootObjectID
 }
 
 var _ sql.RowIter = (*doltgresDoltStatusRowIter)(nil)
 
 // Next converts the 'staged' column from [doltdtables.StatusTable.Schema] from a byte into a bool since, unlike the
-// MySQL wire protocol, Doltgres has a real bool type.
+// MySQL wire protocol, Doltgres has a real bool type. It also replaces the table statuses that Dolt reports for root
+// objects with statuses naming the kind of root object, such as "new function".
 func (i *doltgresDoltStatusRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	row, err := i.rowIter.Next(ctx)
 	if err != nil {
@@ -135,7 +190,72 @@ func (i *doltgresDoltStatusRowIter) Next(ctx *sql.Context) (sql.Row, error) {
 	}
 	row[stagedIndex] = stagedVal != 0
 
+	nameIndex := i.doltStatusTable.Schema(ctx).IndexOfColName("table_name")
+	statusIndex := i.doltStatusTable.Schema(ctx).IndexOfColName("status")
+	name, nameOk := row[nameIndex].(string)
+	status, statusOk := row[statusIndex].(string)
+	if nameOk && statusOk {
+		// Deleted root objects only exist in the "from" root, while all others exist in the "to" root.
+		var rootObjectIDs map[string]objinterface.RootObjectID
+		switch {
+		case stagedVal != 0 && status == statusDeleted:
+			rootObjectIDs = i.rootObjects.head
+		case stagedVal != 0 || status == statusDeleted:
+			rootObjectIDs = i.rootObjects.staged
+		default:
+			rootObjectIDs = i.rootObjects.working
+		}
+		if rootObjectID, ok := rootObjectIDs[name]; ok {
+			row[statusIndex] = rootObjectStatus(status, rootObjectID)
+		}
+	}
+
 	return row, nil
+}
+
+// These are the statuses that Dolt reports for tables, which are also reported for root objects.
+const (
+	statusNewTable = "new table"
+	statusDeleted  = "deleted"
+	statusModified = "modified"
+)
+
+// rootObjectStatus returns the status for a root object of the given kind, replacing the given table status. Statuses
+// that do not apply to a single root object, such as conflicts, are returned unchanged.
+func rootObjectStatus(status string, rootObjectID objinterface.RootObjectID) string {
+	var kind string
+	switch rootObjectID {
+	case objinterface.RootObjectID_Sequences:
+		kind = "sequence"
+	case objinterface.RootObjectID_Types:
+		kind = "type"
+	case objinterface.RootObjectID_Functions:
+		kind = "function"
+	case objinterface.RootObjectID_Triggers:
+		kind = "trigger"
+	case objinterface.RootObjectID_Extensions:
+		kind = "extension"
+	case objinterface.RootObjectID_Procedures:
+		kind = "procedure"
+	case objinterface.RootObjectID_Casts:
+		kind = "cast"
+	case objinterface.RootObjectID_Operators:
+		kind = "operator"
+	case objinterface.RootObjectID_Aggregates:
+		kind = "aggregate"
+	default:
+		return status
+	}
+	switch status {
+	case statusNewTable:
+		return "new " + kind
+	case statusDeleted:
+		return "deleted " + kind
+	case statusModified:
+		return "modified " + kind
+	default:
+		return status
+	}
 }
 
 // Close closes the wrapped [doltdtables.StatusTable] [sql.RowIter].
