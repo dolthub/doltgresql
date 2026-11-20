@@ -61,6 +61,8 @@ const (
 	Operator_BinaryArrayOverlap                        // &&
 	Operator_BinaryRegexInsensitive                    // ~*
 	Operator_BinaryNotRegexInsensitive                 // !~*
+	Operator_BinaryILike                               // ~~*
+	Operator_BinaryNotILike                            // !~~*
 	Operator_UnaryBitNot                               // ~
 	// NOTE: Any new operator should also be added to Operator.String() and GetOperatorFromString() functions.
 )
@@ -227,6 +229,10 @@ func (o Operator) String() string {
 		return "~*"
 	case Operator_BinaryNotRegexInsensitive:
 		return "!~*"
+	case Operator_BinaryILike:
+		return "~~*"
+	case Operator_BinaryNotILike:
+		return "!~~*"
 	case Operator_UnaryBitNot:
 		return "~"
 	default:
@@ -324,6 +330,10 @@ func GetOperatorFromString(op string) (Operator, error) {
 		return Operator_BinaryRegexInsensitive, nil
 	case "!~*":
 		return Operator_BinaryNotRegexInsensitive, nil
+	case "~~*":
+		return Operator_BinaryILike, nil
+	case "!~~*":
+		return Operator_BinaryNotILike, nil
 	case "~":
 		return Operator_UnaryBitNot, nil
 	default:
