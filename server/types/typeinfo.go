@@ -30,7 +30,6 @@ type typeInfo struct {
 }
 
 var _ typeinfo.TypeInfo = (*typeInfo)(nil)
-var _ typeinfo.EncodingPreserver = (*typeInfo)(nil)
 
 // Equals implements typeinfo.TypeInfo.
 func (t typeInfo) Equals(other typeinfo.TypeInfo) bool {
@@ -87,38 +86,15 @@ func (t typeInfo) Encoding() val.Encoding {
 	case "bpchar", "text", "xml":
 		return val.StringAdaptiveEnc
 	default:
-		return t.extendedEncoding()
+		switch t.Type.MaxSerializedWidth() {
+		case sql.ExtendedTypeSerializedWidth_64K:
+			return val.ExtendedEnc
+		case sql.ExtendedTypeSerializedWidth_Unbounded:
+			return val.ExtendedAdaptiveEnc
+		default:
+			panic(fmt.Errorf("unknown extended type serialization width"))
+		}
 	}
-}
-
-// extendedEncoding returns the extended encoding for this type, which is able to store values of any type. Before
-// v0.56.3, every column used this encoding.
-func (t typeInfo) extendedEncoding() val.Encoding {
-	switch t.Type.MaxSerializedWidth() {
-	case sql.ExtendedTypeSerializedWidth_64K:
-		return val.ExtendedEnc
-	case sql.ExtendedTypeSerializedWidth_Unbounded:
-		return val.ExtendedAdaptiveEnc
-	default:
-		panic(fmt.Errorf("unknown extended type serialization width"))
-	}
-}
-
-// PreserveEncoding implements typeinfo.EncodingPreserver. Columns created before v0.56.3 store their values with an
-// extended encoding, while newer columns of many types use a native encoding instead. An ALTER TABLE statement that
-// doesn't rewrite the table must keep the column on the encoding its existing values were written with, so this keeps
-// the old extended encoding whenever it's also the extended encoding for this type.
-func (t typeInfo) PreserveEncoding(oldTI typeinfo.TypeInfo) typeinfo.TypeInfo {
-	ot, ok := oldTI.(typeInfo)
-	if !ok {
-		return t
-	}
-
-	oldEncoding := ot.Encoding()
-	if oldEncoding == t.Encoding() || oldEncoding != t.extendedEncoding() {
-		return t
-	}
-	return t.WithEncoding(oldEncoding)
 }
 
 // WithEncoding implements typeinfo.TypeInfo.
