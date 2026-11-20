@@ -93,7 +93,7 @@ func TestPreserveEncoding(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			preserved := typeinfo.PreserveAdaptiveEncoding(test.old, test.new)
+			preserved := typeinfo.PreserveOldEncoding(test.old, test.new)
 			require.Equal(t, test.expected, preserved.Encoding())
 			require.True(t, preserved.ToSqlType().Equals(test.new.ToSqlType()))
 		})
