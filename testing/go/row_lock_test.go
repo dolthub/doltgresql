@@ -202,6 +202,33 @@ func TestRowLocks(t *testing.T) {
 			},
 		},
 		{
+			Name: "a join locks the rows it reads from every table",
+			SetUpScript: append(append([]string{}, rowLockSetup...),
+				"CREATE TABLE w (name TEXT PRIMARY KEY, t_pk INT)",
+				"CREATE INDEX w_t_pk ON w (t_pk)",
+				"INSERT INTO w VALUES ('a', 1), ('b', 2), ('c', 3)",
+			),
+			Assertions: []ScriptTestAssertion{
+				{Query: "/* client a */ BEGIN", Expected: []sql.Row{}},
+				{
+					Query:    "/* client a */ SELECT t.pk, u.pk FROM t JOIN u ON u.t_pk = t.pk ORDER BY 1 FOR UPDATE",
+					Expected: []sql.Row{{1, 11}, {2, 12}, {3, 13}},
+				},
+				{Query: "/* client b */ UPDATE u SET t_pk = 3 WHERE pk = 13", ExpectedBlocking: true},
+				{Query: "/* client a */ COMMIT", Expected: []sql.Row{}},
+				{Query: "/* client a */ BEGIN", Expected: []sql.Row{}},
+				{
+					Query:    "/* client a */ SELECT t.pk, w.name FROM t JOIN w ON w.t_pk = t.pk ORDER BY 1 FOR UPDATE",
+					Expected: []sql.Row{{1, "a"}, {2, "b"}, {3, "c"}},
+				},
+				{Query: "/* client b */ SELECT name FROM w WHERE name = 'b' FOR UPDATE NOWAIT", ExpectedErr: "could not obtain lock on row", ExpectedErrCode: "55P03"},
+				{Query: "/* client b */ SELECT pk FROM t WHERE pk = 3 FOR UPDATE SKIP LOCKED", Expected: []sql.Row{}},
+				{Query: "/* client b */ UPDATE w SET t_pk = 1 WHERE name = 'c'", ExpectedBlocking: true},
+				{Query: "/* client a */ COMMIT", Expected: []sql.Row{}},
+				{Query: "/* client b */ SELECT t_pk FROM w WHERE name = 'c'", Expected: []sql.Row{{1}}},
+			},
+		},
+		{
 			Name:        "a locking clause is refused where rows of the result aren't rows of a table",
 			SetUpScript: rowLockSetup,
 			Assertions: []ScriptTestAssertion{
