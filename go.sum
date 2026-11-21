@@ -250,12 +250,15 @@ github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12 h1:I
 github.com/dolthub/aws-sdk-go-ini-parser v0.0.0-20250305001723-2821c37f6c12/go.mod h1:rN7X8BHwkjPcfMQQ2QTAq/xM3leUSGLfb+1Js7Y6TVo=
 github.com/dolthub/dolt v2.7.5+incompatible/go.mod h1:xg0iVm2hIFWuJbngpS+86vL9HKkGBo6hmHBB45cxFmY=
 github.com/dolthub/dolt v2.7.6-0.20261120235944-5162da798c34+incompatible h1:uF2UaXWcok5nIS+csEVjSG9/gJExFGwqm8AyRm8SL18=
+github.com/dolthub/dolt v2.7.6-0.20261121005143-5e937262aa5f+incompatible h1:a1uFeLnN8JO6UNI7MGe09H1yucfVH5JMJdZ/RZlP9Fo=
 github.com/dolthub/dolt-mcp v0.3.4 h1:AyG5cw+fNWXDHXujtQnqUPZrpWtPg6FN6yYtjv1pP44=
 github.com/dolthub/dolt-mcp v0.3.4/go.mod h1:bCZ7KHvDYs+M0e+ySgmGiNvLhcwsN7bbf5YCyillLrk=
 github.com/dolthub/dolt/go v0.40.5-0.20261120182051-1473c98350dd h1:9NVueAxczBNEmdeVg00wD9YEAs0s+zxFONMqBhEA0F8=
 github.com/dolthub/dolt/go v0.40.5-0.20261120182051-1473c98350dd/go.mod h1:G7vgWuGBbFpm/LupyGm9ZfSuMJI8/YUrFC+ZWcR2EPo=
 github.com/dolthub/dolt/go v0.40.5-0.20261120235944-5162da798c34 h1:bpaKDQ9jvDmDJvtE0mu/XWo1sk6eNhvmUc7Xfg2VCv4=
 github.com/dolthub/dolt/go v0.40.5-0.20261120235944-5162da798c34/go.mod h1:G7vgWuGBbFpm/LupyGm9ZfSuMJI8/YUrFC+ZWcR2EPo=
+github.com/dolthub/dolt/go v0.40.5-0.20261121005143-5e937262aa5f h1:clk/X/alsZM8scW3uZzEr9C6Hjg1QWcx/xSC99eI4nA=
+github.com/dolthub/dolt/go v0.40.5-0.20261121005143-5e937262aa5f/go.mod h1:G7vgWuGBbFpm/LupyGm9ZfSuMJI8/YUrFC+ZWcR2EPo=
 github.com/dolthub/eventsapi_schema v0.0.0-20261119125135-6b30707d614f h1:RrpwiZGxoZBFJFn8JuHHPJtGsugf2yWL2MMlNoTp0AI=
 github.com/dolthub/eventsapi_schema v0.0.0-20261119125135-6b30707d614f/go.mod h1:SSLraQS/jGLYFgff3vuZ+JbVUct6vyEeMzjLBqWqoyM=
 github.com/dolthub/file-locks v0.1.2 h1:D0eaII+636hkk7uJu++qaUT/XqDtRTQArWBQ6vEHfJU=
