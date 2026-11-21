@@ -28,6 +28,10 @@ import (
 func TestPreserveEncoding(t *testing.T) {
 	varChar10, err := NewVarCharType(10)
 	require.NoError(t, err)
+	varChar20, err := NewVarCharType(20)
+	require.NoError(t, err)
+	char70000, err := NewCharType(70000)
+	require.NoError(t, err)
 
 	tests := []struct {
 		name     string
@@ -42,10 +46,16 @@ func TestPreserveEncoding(t *testing.T) {
 			expected: val.ExtendedEnc,
 		},
 		{
-			name:     "legacy int4 to int8 stays extended",
+			name:     "legacy int4 to int8 uses the new encoding",
 			old:      Int32.TypeInfo().WithEncoding(val.ExtendedEnc),
 			new:      Int64.TypeInfo(),
-			expected: val.ExtendedEnc,
+			expected: val.Int64Enc,
+		},
+		{
+			name:     "legacy bool to int4 uses the new encoding",
+			old:      Bool.TypeInfo().WithEncoding(val.ExtendedEnc),
+			new:      Int32.TypeInfo(),
+			expected: val.Int32Enc,
 		},
 		{
 			name:     "legacy jsonb stays extended",
@@ -76,6 +86,18 @@ func TestPreserveEncoding(t *testing.T) {
 			old:      Int32.TypeInfo(),
 			new:      Int64.TypeInfo(),
 			expected: val.Int64Enc,
+		},
+		{
+			name:     "date to char(70000) uses the new encoding",
+			old:      Date.TypeInfo(),
+			new:      char70000.TypeInfo(),
+			expected: val.StringAdaptiveEnc,
+		},
+		{
+			name:     "legacy varchar(10) to varchar(20) uses the new encoding",
+			old:      varChar10.TypeInfo().WithEncoding(val.ExtendedEnc),
+			new:      varChar20.TypeInfo(),
+			expected: val.StringEnc,
 		},
 		{
 			name:     "timestamp stays extended",
