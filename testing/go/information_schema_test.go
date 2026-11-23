@@ -672,6 +672,68 @@ func TestInfoSchemaColumns(t *testing.T) {
 				},
 			},
 		},
+		{
+			// A function, or a relation passed to a sequence function, is shown with its schema only when it is not
+			// visible on the search path, and the constants passed to a function are shown with their types.
+			Name: "function calls in column defaults",
+			SetUpScript: []string{
+				"CREATE SCHEMA s2;",
+				"CREATE FUNCTION public.myf(x int) RETURNS int AS $$ SELECT x + 1 $$ LANGUAGE sql;",
+				"CREATE FUNCTION s2.g(x int) RETURNS int AS $$ SELECT x + 2 $$ LANGUAGE sql;",
+				"CREATE FUNCTION public.h(x text, y date) RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;",
+				"CREATE SEQUENCE public.seq;",
+				"CREATE SEQUENCE s2.seq2;",
+				"CREATE TABLE public.t (id serial, a int DEFAULT myf(1), b int DEFAULT s2.g(1), c text DEFAULT upper('q'), d int DEFAULT length(upper('q')) + 1, e int DEFAULT nextval('seq'), f int DEFAULT nextval('s2.seq2'), g int DEFAULT h('a', '2020-01-01'), k text DEFAULT lower(upper('q')));",
+				"CREATE TABLE s2.u (id serial);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT table_name, column_name, column_default FROM information_schema.columns WHERE table_name IN ('t', 'u') ORDER BY table_name, ordinal_position;",
+					Expected: []sql.Row{
+						{"t", "id", "nextval('t_id_seq'::regclass)"},
+						{"t", "a", "myf(1)"},
+						{"t", "b", "s2.g(1)"},
+						{"t", "c", "upper('q'::text)"},
+						{"t", "d", "(length(upper('q'::text)) + 1)"},
+						{"t", "e", "nextval('seq'::regclass)"},
+						{"t", "f", "nextval('s2.seq2'::regclass)"},
+						{"t", "g", "h('a'::text, '2020-01-01'::date)"},
+						{"t", "k", "lower(upper('q'::text))"},
+						{"u", "id", "nextval('s2.u_id_seq'::regclass)"},
+					},
+				},
+				{
+					Query: "SET search_path = s2, public;",
+				},
+				{
+					Query: "SELECT table_name, column_name, column_default FROM information_schema.columns WHERE table_name IN ('t', 'u') AND column_name IN ('id', 'b', 'f') ORDER BY table_name, ordinal_position;",
+					Expected: []sql.Row{
+						{"t", "id", "nextval('t_id_seq'::regclass)"},
+						{"t", "b", "g(1)"},
+						{"t", "f", "nextval('seq2'::regclass)"},
+						{"u", "id", "nextval('u_id_seq'::regclass)"},
+					},
+				},
+				{
+					Query: "SET search_path = '';",
+				},
+				{
+					Query: "SELECT table_name, column_name, column_default FROM information_schema.columns WHERE table_name IN ('t', 'u') ORDER BY table_name, ordinal_position;",
+					Expected: []sql.Row{
+						{"t", "id", "nextval('public.t_id_seq'::regclass)"},
+						{"t", "a", "public.myf(1)"},
+						{"t", "b", "s2.g(1)"},
+						{"t", "c", "upper('q'::text)"},
+						{"t", "d", "(length(upper('q'::text)) + 1)"},
+						{"t", "e", "nextval('public.seq'::regclass)"},
+						{"t", "f", "nextval('s2.seq2'::regclass)"},
+						{"t", "g", "public.h('a'::text, '2020-01-01'::date)"},
+						{"t", "k", "lower(upper('q'::text))"},
+						{"u", "id", "nextval('s2.u_id_seq'::regclass)"},
+					},
+				},
+			},
+		},
 	})
 }
 

@@ -217,7 +217,6 @@ func TestCreateExtension(t *testing.T) {
 				{
 					Query:    `INSERT INTO goals (note) VALUES ('first');`,
 					Expected: []sql.Row{},
-					Skip:     true, // Column defaults drop the schema of the functions they call
 				},
 				{
 					Query:           `DROP SCHEMA extensions;`,
@@ -238,8 +237,8 @@ func TestCreateExtension(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    `SELECT note, length(id::text) FROM goals;`,
-					Expected: []sql.Row{{"second", 36}},
+					Query:    `SELECT note, length(id::text) FROM goals ORDER BY note;`,
+					Expected: []sql.Row{{"first", 36}, {"second", 36}},
 				},
 				{
 					Query:    `DROP TABLE goals;`,

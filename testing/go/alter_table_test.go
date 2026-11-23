@@ -349,6 +349,24 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Add identity column",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ADD COLUMN b INT GENERATED ALWAYS AS IDENTITY;",
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: ADD COLUMN does not yet create the sequence for an identity column
+					Query:    "INSERT INTO test1 (a) VALUES (10) RETURNING b;",
+					Expected: []sql.Row{{1}},
+					Skip:     true,
+				},
+			},
+		},
+		{
 			Name: "Drop Column",
 			SetUpScript: []string{
 				"CREATE TABLE test1 (a INT, b INT, c INT, d INT);",
