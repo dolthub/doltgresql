@@ -619,6 +619,33 @@ func TestUpdateAssignmentSemantics(t *testing.T) {
 			},
 		},
 		{
+			Name: "WHERE IN subquery on keyless table with duplicate rows",
+			SetUpScript: []string{
+				"CREATE TABLE t_dup (a int, b int)",
+				"INSERT INTO t_dup VALUES (1, 0), (1, 0), (2, 0), (3, 0)",
+				"CREATE TABLE src (x int)",
+				"INSERT INTO src VALUES (1), (1), (2)",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "UPDATE t_dup SET b = 5 WHERE a IN (SELECT x FROM src)",
+					ExpectedTag: "UPDATE 3",
+				},
+				{
+					Query:    "SELECT a, b FROM t_dup ORDER BY a, b",
+					Expected: []sql.Row{{1, 5}, {1, 5}, {2, 5}, {3, 0}},
+				},
+				{
+					Query:       "DELETE FROM t_dup WHERE a IN (SELECT x FROM src)",
+					ExpectedTag: "DELETE 3",
+				},
+				{
+					Query:    "SELECT a, b FROM t_dup ORDER BY a, b",
+					Expected: []sql.Row{{3, 0}},
+				},
+			},
+		},
+		{
 			Name: "assignment conversion",
 			SetUpScript: []string{
 				"CREATE TABLE t_seq (a int, b int)",

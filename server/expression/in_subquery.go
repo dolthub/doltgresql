@@ -45,6 +45,7 @@ type InSubquery struct {
 var _ vitess.Injectable = (*InSubquery)(nil)
 var _ sql.Expression = (*InSubquery)(nil)
 var _ expression.BinaryExpression = (*InSubquery)(nil)
+var _ plan.InSubqueryExpression = (*InSubquery)(nil)
 
 // nilKey is the hash of a row with a single nil value.
 var nilKey, _ = hash.HashOf(nil, nil, sql.NewRow(nil))
@@ -152,6 +153,27 @@ func (in *InSubquery) IsNullable(ctx *sql.Context) bool {
 	return true
 }
 
+// NewJoinFilter implements the plan.InSubqueryExpression interface.
+func (in *InSubquery) NewJoinFilter(ctx *sql.Context, left, right sql.Expression) (sql.Expression, bool, error) {
+	// We only handle single-column comparisons, since tuple comparisons may require semantics that the equality
+	// operator does not provide.
+	if len(in.rightExpr.Query.Schema(ctx)) != 1 {
+		return nil, false, nil
+	}
+
+	switch left.(type) {
+	case expression.Tuple, *RecordExpr:
+		return nil, false, nil
+	}
+
+	// If we can't resolve an equality operator for these operands, then we leave the expression as-is.
+	filter, err := NewBinaryOperator(framework.Operator_BinaryEqual).WithChildren(ctx, left, right)
+	if err != nil {
+		return nil, false, nil
+	}
+	return filter, true, nil
+}
+
 // Resolved implements the sql.Expression interface.
 func (in *InSubquery) Resolved() bool {
 	if in.leftExpr == nil || !in.leftExpr.Resolved() || in.rightExpr == nil || !in.rightExpr.Resolved() || len(in.compFuncs) == 0 {
@@ -212,10 +234,12 @@ func (in *InSubquery) WithChildren(ctx *sql.Context, children ...sql.Expression)
 				break
 			}
 			rightLiterals[i] = expression.NewLiteral(nil, rightType)
-			compFuncs[i] = framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "internal_in_comparison", leftLiteral, rightLiterals[i])
-			if compFuncs[i] == nil {
+			compFunc := framework.GetBinaryFunction(framework.Operator_BinaryEqual).Compile(ctx, "internal_in_comparison", leftLiteral, rightLiterals[i])
+			if compFunc == nil || compFunc.StashedError() != nil {
 				return nil, errors.Errorf("operator does not exist: %s = %s", leftType.String(), rightType.String())
 			}
+
+			compFuncs[i] = compFunc
 			if compFuncs[i].Type(ctx).(*pgtypes.DoltgresType).ID != pgtypes.Bool.ID {
 				// This should never happen, but this is just to be safe
 				return nil, errors.Errorf("%T: found equality comparison that does not return a bool", in)

@@ -53,6 +53,26 @@ func ResolveValuesTypes(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, s
 		return nil, transform.SameTree, err
 	}
 
+	// Subquery expressions are analyzed separately, but some rules (such as the one unnesting IN subqueries into joins)
+	// move a subquery's contents into the outer scope before that happens, so we resolve the VALUES types within
+	// subqueries here as well.
+	node, sameSubqueries, err := pgtransform.NodeExprsWithOpaque(ctx, node, func(ctx *sql.Context, expr sql.Expression) (sql.Expression, transform.TreeIdentity, error) {
+		sq, ok := expr.(*plan.Subquery)
+		if !ok {
+			return expr, transform.SameTree, nil
+		}
+
+		newQuery, same, err := ResolveValuesTypes(ctx, a, sq.Query, scope, selector, qFlags)
+		if err != nil || same {
+			return expr, transform.SameTree, err
+		}
+		return sq.WithQuery(newQuery), transform.NewTree, nil
+	})
+	if err != nil {
+		return nil, transform.SameTree, err
+	}
+	same = same && sameSubqueries
+
 	// Now, fix GetField types that reference a transformed VDT. For example,
 	// after wrapping VALUES(1),(2.5) with ImplicitCast to numeric, any
 	// GetField reading column "n" from that VDT still says int4 and needs
