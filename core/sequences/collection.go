@@ -487,6 +487,11 @@ func (sequence *Sequence) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Sequences
 }
 
+// KindName implements the interface objinterface.RootObject.
+func (sequence *Sequence) KindName() string {
+	return "sequence"
+}
+
 // HashOf implements the interface rootobject.RootObject.
 func (sequence *Sequence) HashOf(ctx context.Context) (hash.Hash, error) {
 	data, err := sequence.Serialize(ctx)

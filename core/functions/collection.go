@@ -326,6 +326,11 @@ func (function Function) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Functions
 }
 
+// KindName implements the interface objinterface.RootObject.
+func (function Function) KindName() string {
+	return "function"
+}
+
 // HashOf implements the interface objinterface.RootObject.
 func (function Function) HashOf(ctx context.Context) (hash.Hash, error) {
 	data, err := function.Serialize(ctx)

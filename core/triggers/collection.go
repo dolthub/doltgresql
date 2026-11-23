@@ -320,6 +320,11 @@ func (trigger Trigger) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Triggers
 }
 
+// KindName implements the interface objinterface.RootObject.
+func (trigger Trigger) KindName() string {
+	return "trigger"
+}
+
 // HashOf implements the interface objinterface.RootObject.
 func (trigger Trigger) HashOf(ctx context.Context) (hash.Hash, error) {
 	data, err := trigger.Serialize(ctx)

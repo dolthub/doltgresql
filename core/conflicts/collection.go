@@ -218,6 +218,12 @@ func (conflict Conflict) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Conflicts
 }
 
+// KindName implements the interface objinterface.RootObject. Conflicts are described as tables, since they are not
+// a single kind of root object.
+func (conflict Conflict) KindName() string {
+	return ""
+}
+
 // HashOf implements the interface objinterface.RootObject.
 func (conflict Conflict) HashOf(ctx context.Context) (hash.Hash, error) {
 	data, err := conflict.Serialize(ctx)

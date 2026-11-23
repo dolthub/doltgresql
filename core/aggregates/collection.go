@@ -234,6 +234,11 @@ func (aggregate Aggregate) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Aggregates
 }
 
+// KindName implements the interface objinterface.RootObject.
+func (aggregate Aggregate) KindName() string {
+	return "aggregate"
+}
+
 // HashOf implements the interface objinterface.RootObject.
 func (aggregate Aggregate) HashOf(ctx context.Context) (hash.Hash, error) {
 	data, err := aggregate.Serialize(ctx)

@@ -365,6 +365,11 @@ func (procedure Procedure) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Procedures
 }
 
+// KindName implements the interface objinterface.RootObject.
+func (procedure Procedure) KindName() string {
+	return "procedure"
+}
+
 // HashOf implements the interface objinterface.RootObject.
 func (procedure Procedure) HashOf(ctx context.Context) (hash.Hash, error) {
 	data, err := procedure.Serialize(ctx)

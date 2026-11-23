@@ -83,7 +83,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", "f", "modified function"},
+						{"public.interpreted_example(text)", "f", "modified"},
 					},
 				},
 				{
@@ -185,7 +185,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", "f", "modified function"},
+						{"public.interpreted_example(text)", "f", "modified"},
 					},
 				},
 				{
@@ -291,7 +291,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", "f", "modified function"},
+						{"public.interpreted_example(text)", "f", "modified"},
 					},
 				},
 				{
@@ -397,7 +397,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", "f", "modified function"},
+						{"public.interpreted_example(text)", "f", "modified"},
 					},
 				},
 				{
@@ -511,7 +511,7 @@ func TestConflictsRootObject(t *testing.T) {
 				{
 					Query: `SELECT * FROM dolt_status;`,
 					Expected: []sql.Row{
-						{"public.interpreted_example(text)", "f", "modified function"},
+						{"public.interpreted_example(text)", "f", "modified"},
 					},
 				},
 				{

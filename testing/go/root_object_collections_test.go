@@ -175,7 +175,7 @@ func TestRootObjectCollections(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM dolt_status ORDER BY table_name;`,
-					Expected: []sql.Row{{"public.f1()", "f", "modified function"}, {"public.s1", "f", "deleted sequence"}},
+					Expected: []sql.Row{{"public.f1()", "f", "modified"}, {"public.s1", "f", "deleted"}},
 				},
 				{
 					Query:            `SELECT dolt_add('.');`,
@@ -183,7 +183,7 @@ func TestRootObjectCollections(t *testing.T) {
 				},
 				{
 					Query:    `SELECT * FROM dolt_status ORDER BY table_name;`,
-					Expected: []sql.Row{{"public.f1()", "t", "modified function"}, {"public.s1", "t", "deleted sequence"}},
+					Expected: []sql.Row{{"public.f1()", "t", "modified"}, {"public.s1", "t", "deleted"}},
 				},
 			},
 		},
