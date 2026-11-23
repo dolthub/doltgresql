@@ -159,3 +159,47 @@ SQL
   [ "$status" -eq 0 ]
   [ "${lines[1]}" = "2,NaN,10,1,43,5" ] || false
 }
+
+@test "alter_column_compat: changing the types of columns converts existing values" {
+  [ -n "$DOLTGRES_LEGACY_BIN" ] || skip "requires DOLTGRES_LEGACY_BIN"
+  [ -n "$DOLTGRES_NEW_BIN"    ] || skip "requires DOLTGRES_NEW_BIN"
+
+  old_server_start
+  sql <<SQL
+CREATE TABLE c (k INT PRIMARY KEY, d DATE, big DATE, i INT, b BOOLEAN, n NUMERIC, v VARCHAR(10));
+INSERT INTO c VALUES (1, '2026-01-01', '2026-01-02', 7, true, 22.5, 'abc'), (2, '2026-03-04', '2026-03-05', -8, false, 1.25, 'abcdefgh');
+CREATE TABLE p (k BOOLEAN PRIMARY KEY);
+INSERT INTO p VALUES (true);
+SQL
+  stop_doltgres
+
+  new_server_start
+  sql <<SQL
+ALTER TABLE c ALTER COLUMN d TYPE TEXT;
+ALTER TABLE c ALTER COLUMN big TYPE CHAR(70000) USING repeat(big::text, 7000)::CHAR(70000);
+ALTER TABLE c ALTER COLUMN i TYPE BIGINT;
+ALTER TABLE c ALTER COLUMN b TYPE INTEGER USING b::INTEGER;
+ALTER TABLE c ALTER COLUMN n TYPE NUMERIC(10, 1);
+ALTER TABLE c ALTER COLUMN v TYPE VARCHAR(20);
+ALTER TABLE p ALTER COLUMN k TYPE INTEGER USING 1;
+SQL
+  run sql_csv -c "SELECT k, d, length(big), substr(big, 1, 10), i, b, n, v FROM c ORDER BY k;"
+  [ "$status" -eq 0 ]
+  [ "${lines[1]}" = "1,2026-01-01,70000,2026-01-02,7,1,22.5,abc" ] || false
+  [ "${lines[2]}" = "2,2026-03-04,70000,2026-03-05,-8,0,1.3,abcdefgh" ] || false
+
+  run sql -c "ALTER TABLE c ALTER COLUMN v TYPE VARCHAR(5);"
+  [ "$status" -ne 0 ]
+
+  sql <<SQL
+INSERT INTO c VALUES (3, 'x', repeat('y', 70000), 9000000000, 5, 3.14, 'abcdefghijklmnop');
+CREATE TABLE f (k INTEGER REFERENCES p(k));
+INSERT INTO f VALUES (1);
+SQL
+  run sql_csv -c "SELECT k, d, length(big), i, b, n, v FROM c WHERE k = 3;"
+  [ "$status" -eq 0 ]
+  [ "${lines[1]}" = "3,x,70000,9000000000,5,3.1,abcdefghijklmnop" ] || false
+  run sql_csv -c "SELECT dolt_verify_constraints('--all');"
+  [ "$status" -eq 0 ]
+  [ "${lines[1]}" = "0" ] || false
+}
