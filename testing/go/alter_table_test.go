@@ -349,6 +349,24 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Add identity column",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ADD COLUMN b INT GENERATED ALWAYS AS IDENTITY;",
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: ADD COLUMN does not yet create the sequence for an identity column
+					Query:    "INSERT INTO test1 (a) VALUES (10) RETURNING b;",
+					Expected: []sql.Row{{1}},
+					Skip:     true,
+				},
+			},
+		},
+		{
 			Name: "Drop Column",
 			SetUpScript: []string{
 				"CREATE TABLE test1 (a INT, b INT, c INT, d INT);",
@@ -624,6 +642,55 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:    `SELECT count(*) FROM app_event WHERE created > '2024-12-31 00:00:00+00'::timestamptz;`,
 					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "Alter Column Type with USING uses the encoding of the new type",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id int PRIMARY KEY, v date);",
+				"INSERT INTO t1 VALUES (1, '2026-01-01');",
+				"CREATE TABLE p (k boolean PRIMARY KEY);",
+				"INSERT INTO p VALUES (true);",
+				"CREATE TABLE t2 (id int PRIMARY KEY, v varchar(10));",
+				"INSERT INTO t2 VALUES (1, 'abc'), (2, 'abcdefgh');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t1 ALTER COLUMN v TYPE char(70000) USING repeat('x', 70000)::char(70000);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT length(v) FROM t1;",
+					Expected: []sql.Row{{70000}},
+				},
+				{
+					Query:    "ALTER TABLE p ALTER COLUMN k TYPE integer USING 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE c (k integer REFERENCES p(k));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO c VALUES (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT dolt_verify_constraints('--all');",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:       "ALTER TABLE t2 ALTER COLUMN v TYPE varchar(5);",
+					ExpectedErr: "out of range for varchar(5)",
+				},
+				{
+					Query:    "ALTER TABLE t2 ALTER COLUMN v TYPE varchar(20);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, v FROM t2 ORDER BY id;",
+					Expected: []sql.Row{{1, "abc"}, {2, "abcdefgh"}},
 				},
 			},
 		},
@@ -2012,6 +2079,83 @@ ORDER BY schema_name, table_name;`,
 				{
 					Query:    "SELECT conname, condeferrable, condeferred FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND condeferrable ORDER BY conname;",
 					Expected: []sql.Row{{"c2_pk", "t", "t"}, {"c_fk", "t", "f"}, {"c_u", "t", "f"}, {"c_y_fkey", "t", "f"}, {"c_z_key", "t", "f"}},
+				},
+			},
+		},
+		{
+			Name: "UNIQUE NULLS NOT DISTINCT",
+			SetUpScript: []string{
+				"CREATE TABLE at1 (id INT PRIMARY KEY, a INT, b INT);",
+				"INSERT INTO at1 VALUES (1, 1, NULL), (2, 1, NULL), (3, NULL, NULL);",
+				"CREATE TABLE at2 (id INT PRIMARY KEY);",
+				"INSERT INTO at2 VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "ALTER TABLE at1 ADD CONSTRAINT at1_a_b_key UNIQUE NULLS NOT DISTINCT (a, b);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD UNIQUE NULLS NOT DISTINCT (a);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD CONSTRAINT at1_a_b_key UNIQUE NULLS DISTINCT (a, b);",
+				},
+				{
+					Query: "DELETE FROM at1 WHERE id = 2;",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD CONSTRAINT at1_b_key UNIQUE NULLS NOT DISTINCT (b, a);",
+				},
+				{
+					Query:           "INSERT INTO at1 VALUES (4, NULL, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD COLUMN c INT UNIQUE NULLS NOT DISTINCT;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD COLUMN d INT;",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD CONSTRAINT at1_d_key UNIQUE NULLS NOT DISTINCT (d);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'at1'::regclass AND contype = 'u' ORDER BY 1;",
+					Expected: []sql.Row{
+						{"at1_a_b_key", "UNIQUE (a, b)"},
+						{"at1_b_key", "UNIQUE NULLS NOT DISTINCT (b, a)"},
+					},
+				},
+				{
+					Query: "UPDATE at1 SET d = 1 WHERE id = 1;",
+				},
+				{
+					Query:    "SELECT * FROM at1 ORDER BY id;",
+					Expected: []sql.Row{{1, 1, nil, 1}, {3, nil, nil, nil}},
+				},
+				{
+					Query: "ALTER TABLE at2 ADD COLUMN c INT UNIQUE NULLS NOT DISTINCT;",
+				},
+				{
+					Query:           "INSERT INTO at2 (id) VALUES (2);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO at2 VALUES (2, 1);",
+				},
+				{
+					Query:    "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'at2'::regclass AND contype = 'u';",
+					Expected: []sql.Row{{"at2_c_key", "UNIQUE NULLS NOT DISTINCT (c)"}},
 				},
 			},
 		},

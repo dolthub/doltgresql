@@ -2494,3 +2494,163 @@ func TestHasFunctionPrivilegeOwner(t *testing.T) {
 		},
 	}})
 }
+
+func TestHasTablePrivilege(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "has_table_privilege",
+		SetUpScript: []string{
+			`CREATE TABLE priv_tbl (pk INT PRIMARY KEY, v INT)`,
+			`CREATE TABLE other_tbl (pk INT PRIMARY KEY)`,
+			`CREATE VIEW priv_view AS SELECT pk FROM priv_tbl`,
+			`CREATE SEQUENCE priv_seq`,
+			`CREATE SCHEMA priv_schema`,
+			`CREATE TABLE priv_schema.schema_tbl (pk INT PRIMARY KEY)`,
+			`CREATE ROLE tbl_reader`,
+			`CREATE ROLE tbl_member`,
+			`CREATE ROLE tbl_noinherit NOINHERIT`,
+			`CREATE ROLE tbl_outsider`,
+			`GRANT tbl_reader TO tbl_member, tbl_noinherit`,
+			`CREATE USER tbl_user PASSWORD 'pw'`,
+			`GRANT SELECT ON priv_tbl TO tbl_reader`,
+			`GRANT INSERT ON priv_tbl TO tbl_reader WITH GRANT OPTION`,
+			`GRANT SELECT ON priv_view TO tbl_reader`,
+			`GRANT DELETE ON other_tbl TO PUBLIC`,
+			`GRANT USAGE ON SCHEMA priv_schema TO tbl_reader`,
+			`GRANT SELECT ON ALL TABLES IN SCHEMA priv_schema TO tbl_reader`,
+			`GRANT UPDATE ON SEQUENCE priv_seq TO tbl_reader`,
+			`GRANT SELECT ON priv_tbl TO tbl_user`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: `SELECT has_table_privilege('priv_tbl', 'SELECT'), has_table_privilege('priv_tbl', 'DELETE WITH GRANT OPTION')`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT has_table_privilege('tbl_reader', 'priv_tbl', 'SELECT'), has_table_privilege('tbl_reader', 'priv_tbl', 'DELETE'), has_table_privilege('tbl_outsider', 'priv_tbl', 'select')`, Expected: []sql.Row{{"t", "f", "f"}}},
+			{Query: `SELECT has_table_privilege('tbl_member', 'priv_tbl', 'SELECT'), has_table_privilege('tbl_noinherit', 'priv_tbl', 'SELECT')`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT has_table_privilege('tbl_reader', 'priv_tbl', 'INSERT WITH GRANT OPTION'), has_table_privilege('tbl_reader', 'priv_tbl', 'select with grant option'), has_table_privilege('tbl_member', 'priv_tbl', 'INSERT WITH GRANT OPTION')`, Expected: []sql.Row{{"t", "f", "t"}}},
+			{Query: `SELECT has_table_privilege('tbl_outsider', 'priv_tbl', ' UPDATE , select '), has_table_privilege('tbl_reader', 'priv_tbl', 'UPDATE, select')`, Expected: []sql.Row{{"f", "t"}}},
+			{Query: `SELECT has_table_privilege('tbl_outsider', 'other_tbl', 'DELETE'), has_table_privilege('public', 'other_tbl', 'DELETE'), has_table_privilege('public', 'priv_tbl', 'SELECT'), has_table_privilege(0::oid, 'other_tbl', 'DELETE')`, Expected: []sql.Row{{"t", "t", "f", "t"}}},
+			{Query: `SELECT has_table_privilege('tbl_reader', 'priv_view', 'SELECT'), has_table_privilege('tbl_outsider', 'priv_view', 'SELECT')`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT has_table_privilege('tbl_reader', 'priv_schema.schema_tbl', 'SELECT'), has_table_privilege('tbl_reader', 'priv_schema.schema_tbl', 'INSERT')`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT has_table_privilege('tbl_reader', 'priv_seq', 'UPDATE'), has_table_privilege('tbl_reader', 'priv_seq', 'SELECT'), has_table_privilege('tbl_reader', 'priv_seq', 'INSERT'), has_table_privilege('priv_seq', 'INSERT')`, Expected: []sql.Row{{"t", "f", "f", "t"}}},
+			{Query: `SELECT has_table_privilege('tbl_outsider', 'pg_catalog.pg_class', 'SELECT'), has_table_privilege('tbl_outsider', 'pg_class', 'INSERT')`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT has_table_privilege('tbl_reader', 'priv_tbl_pkey', 'SELECT'), has_table_privilege('priv_tbl_pkey', 'SELECT')`, Expected: []sql.Row{{"f", "t"}}},
+			{Query: `SELECT has_table_privilege('tbl_reader'::name, 'priv_tbl'::regclass::oid, 'SELECT'), has_table_privilege(oid, 'priv_tbl', 'SELECT') FROM pg_roles WHERE rolname = 'tbl_reader'`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT has_table_privilege(r.oid, c.oid, 'SELECT'), has_table_privilege(r.oid, c.oid, 'UPDATE') FROM pg_roles r CROSS JOIN pg_class c WHERE r.rolname = 'tbl_reader' AND c.relname = 'priv_tbl'`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT has_table_privilege('priv_tbl'::regclass::oid, 'SELECT')`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_table_privilege(99999::oid, 'SELECT'), has_table_privilege('tbl_reader', 99999::oid, 'SELECT'), has_table_privilege(99999::oid, 'priv_tbl', 'SELECT'), has_table_privilege(99999::oid, 'other_tbl', 'DELETE')`, Expected: []sql.Row{{nil, nil, "f", "t"}}},
+			{Query: `SELECT has_table_privilege(NULL::text, 'SELECT'), has_table_privilege('priv_tbl', NULL), has_table_privilege(NULL::name, 'priv_tbl', 'SELECT')`, Expected: []sql.Row{{nil, nil, nil}}},
+			{Query: `SELECT has_table_privilege('missing_tbl', 'SELECT')`, ExpectedErr: "does not exist", ExpectedErrCode: "42P01"},
+			{Query: `SELECT has_table_privilege('99999', 'SELECT')`, ExpectedErr: "does not exist", ExpectedErrCode: "42P01"},
+			{Query: `SELECT has_table_privilege('missing_role', 'priv_tbl', 'SELECT')`, ExpectedErr: "does not exist", ExpectedErrCode: "42704"},
+			{Query: `SELECT has_table_privilege('priv_tbl', 'USAGE')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT has_table_privilege('priv_tbl', 'SELECT,')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT has_table_privilege('priv_tbl', 'SELECT WITH  GRANT OPTION')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT has_table_privilege('priv_tbl', 'SELECT'), has_table_privilege('priv_tbl', 'INSERT')`, Username: `tbl_user`, Password: `pw`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT has_table_privilege(current_user, 'priv_tbl', 'SELECT'), has_table_privilege(current_user, 'other_tbl', 'SELECT')`, Username: `tbl_user`, Password: `pw`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `CREATE TABLE dropped_tbl (pk INT PRIMARY KEY)`},
+			{Query: `CREATE TABLE saved_oid AS SELECT 'dropped_tbl'::regclass::oid AS oid`},
+			{Query: `DROP TABLE dropped_tbl`},
+			{Query: `SELECT has_table_privilege(oid, 'SELECT') FROM saved_oid`, Expected: []sql.Row{{nil}}},
+			{Query: `REVOKE SELECT ON priv_tbl FROM tbl_reader`},
+			{Query: `SELECT has_table_privilege('tbl_member', 'priv_tbl', 'SELECT'), has_table_privilege('tbl_member', 'priv_tbl', 'INSERT')`, Expected: []sql.Row{{"f", "t"}}},
+			{Query: `SET ROLE tbl_member`},
+			{Query: `SELECT has_table_privilege('priv_tbl', 'INSERT'), has_table_privilege('priv_tbl', 'SELECT')`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `RESET ROLE`},
+		},
+	}, {
+		// GRANT ... ON <sequence> without the SEQUENCE keyword is recorded as a table privilege, which the sequence
+		// privilege checks do not consult. PostgreSQL keeps a single ACL per relation, so both syntaxes grant the same
+		// privilege on a sequence.
+		Name: "has_table_privilege on a sequence granted with table syntax",
+		SetUpScript: []string{
+			`CREATE SEQUENCE acl_seq`,
+			`CREATE ROLE seq_reader`,
+			`GRANT SELECT ON acl_seq TO seq_reader`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT has_table_privilege('seq_reader', 'acl_seq', 'SELECT'), has_any_column_privilege('seq_reader', 'acl_seq', 'SELECT'), has_table_privilege('seq_reader', 'acl_seq', 'UPDATE')`,
+				Expected: []sql.Row{{"t", "t", "f"}},
+				Skip:     true, // GRANT ON TABLE does not record sequence privileges
+			},
+			{Query: `GRANT SELECT ON SEQUENCE acl_seq TO seq_reader`},
+			{Query: `SELECT has_table_privilege('seq_reader', 'acl_seq', 'SELECT'), has_any_column_privilege('seq_reader', 'acl_seq', 'SELECT'), has_table_privilege('seq_reader', 'acl_seq', 'UPDATE')`, Expected: []sql.Row{{"t", "t", "f"}}},
+		},
+	}, {
+		// Temporary tables cannot yet be resolved as relations by name (regclass), and do not appear in pg_class.
+		Name: "has_table_privilege on a temporary table",
+		SetUpScript: []string{
+			`CREATE ROLE temp_reader`,
+			`CREATE TEMP TABLE tmp_tbl (pk INT PRIMARY KEY)`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT has_table_privilege('tmp_tbl', 'SELECT'), has_table_privilege('temp_reader', 'tmp_tbl', 'SELECT')`,
+				Expected: []sql.Row{{"t", "f"}},
+				Skip:     true, // temporary tables cannot be resolved by regclass
+			},
+			{Query: `GRANT SELECT ON tmp_tbl TO temp_reader`},
+			{
+				Query:    `SELECT has_table_privilege('temp_reader', 'tmp_tbl', 'SELECT'), has_any_column_privilege('temp_reader', 'tmp_tbl', 'INSERT')`,
+				Expected: []sql.Row{{"t", "f"}},
+				Skip:     true, // temporary tables cannot be resolved by regclass
+			},
+		},
+	}})
+}
+
+func TestHasAnyColumnPrivilege(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "has_any_column_privilege",
+		SetUpScript: []string{
+			`CREATE TABLE priv_tbl (pk INT PRIMARY KEY, v INT)`,
+			`CREATE TABLE other_tbl (pk INT PRIMARY KEY)`,
+			`CREATE VIEW priv_view AS SELECT pk FROM priv_tbl`,
+			`CREATE ROLE col_reader`,
+			`CREATE ROLE col_member`,
+			`CREATE ROLE col_noinherit NOINHERIT`,
+			`CREATE ROLE col_outsider`,
+			`GRANT col_reader TO col_member, col_noinherit`,
+			`CREATE USER col_user PASSWORD 'pw'`,
+			`GRANT SELECT ON priv_tbl TO col_reader`,
+			`GRANT INSERT ON priv_tbl TO col_reader WITH GRANT OPTION`,
+			`GRANT SELECT ON priv_view TO col_reader`,
+			`GRANT UPDATE ON other_tbl TO PUBLIC`,
+			`GRANT SELECT ON priv_tbl TO col_user`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{Query: `SELECT has_any_column_privilege('priv_tbl', 'SELECT'), has_any_column_privilege('priv_tbl', 'REFERENCES WITH GRANT OPTION')`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT has_any_column_privilege('col_reader', 'priv_tbl', 'SELECT'), has_any_column_privilege('col_reader', 'priv_tbl', 'UPDATE'), has_any_column_privilege('col_outsider', 'priv_tbl', 'SELECT')`, Expected: []sql.Row{{"t", "f", "f"}}},
+			{Query: `SELECT has_any_column_privilege('col_member', 'priv_tbl', 'insert with grant option'), has_any_column_privilege('col_reader', 'priv_tbl', 'select with grant option'), has_any_column_privilege('col_noinherit', 'priv_tbl', 'SELECT')`, Expected: []sql.Row{{"t", "f", "f"}}},
+			{Query: `SELECT has_any_column_privilege('public', 'priv_tbl', 'SELECT'), has_any_column_privilege('col_outsider', 'other_tbl', 'UPDATE'), has_any_column_privilege('col_outsider', 'other_tbl', 'SELECT')`, Expected: []sql.Row{{"f", "t", "f"}}},
+			{Query: `SELECT has_any_column_privilege('col_reader', 'priv_view', 'SELECT'), has_any_column_privilege('col_outsider', 'priv_view', 'SELECT'), has_any_column_privilege('col_reader', 'priv_tbl', 'update, insert')`, Expected: []sql.Row{{"t", "f", "t"}}},
+			{Query: `SELECT has_any_column_privilege('col_reader'::name, 'priv_tbl'::regclass::oid, 'SELECT'), has_any_column_privilege(oid, 'priv_tbl', 'UPDATE') FROM pg_roles WHERE rolname = 'col_reader'`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT has_any_column_privilege(r.oid, c.oid, 'SELECT') FROM pg_roles r CROSS JOIN pg_class c WHERE r.rolname = 'col_reader' AND c.relname = 'priv_tbl'`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_any_column_privilege('priv_tbl'::regclass::oid, 'SELECT')`, Expected: []sql.Row{{"t"}}},
+			{Query: `SELECT has_any_column_privilege(99999::oid, 'SELECT'), has_any_column_privilege(NULL::text, 'SELECT'), has_any_column_privilege(NULL::name, 'priv_tbl', 'SELECT')`, Expected: []sql.Row{{nil, nil, nil}}},
+			{Query: `SELECT has_any_column_privilege('missing_tbl', 'SELECT')`, ExpectedErr: "does not exist", ExpectedErrCode: "42P01"},
+			{Query: `SELECT has_any_column_privilege('missing_role', 'priv_tbl', 'SELECT')`, ExpectedErr: "does not exist", ExpectedErrCode: "42704"},
+			{Query: `SELECT has_any_column_privilege('priv_tbl', 'DELETE')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT has_any_column_privilege('priv_tbl', 'TRUNCATE')`, ExpectedErr: "unrecognized privilege type", ExpectedErrCode: "22023"},
+			{Query: `SELECT has_any_column_privilege('priv_tbl', 'SELECT'), has_any_column_privilege('priv_tbl', 'UPDATE')`, Username: `col_user`, Password: `pw`, Expected: []sql.Row{{"t", "f"}}},
+			{
+				// The privilege query that Metabase issues during its schema sync
+				Query: `SELECT t.tablename,
+       pg_catalog.has_any_column_privilege(current_user, '"' || t.schemaname || '"."' || t.tablename || '"', 'update') AS update,
+       pg_catalog.has_any_column_privilege(current_user, '"' || t.schemaname || '"."' || t.tablename || '"', 'select') AS select,
+       pg_catalog.has_any_column_privilege(current_user, '"' || t.schemaname || '"."' || t.tablename || '"', 'insert') AS insert,
+       pg_catalog.has_table_privilege(current_user, '"' || t.schemaname || '"."' || t.tablename || '"', 'delete') AS delete
+FROM pg_catalog.pg_tables t WHERE t.schemaname = 'public' ORDER BY t.tablename`,
+				Username: `col_user`,
+				Password: `pw`,
+				Expected: []sql.Row{
+					{"other_tbl", "t", "f", "f", "f"},
+					{"priv_tbl", "f", "t", "f", "f"},
+				},
+			},
+			{Query: `REVOKE SELECT ON priv_tbl FROM col_reader`},
+			{Query: `SELECT has_any_column_privilege('col_member', 'priv_tbl', 'SELECT'), has_any_column_privilege('col_member', 'priv_tbl', 'INSERT')`, Expected: []sql.Row{{"f", "t"}}},
+			{Query: `SET ROLE col_member`},
+			{Query: `SELECT has_any_column_privilege('priv_tbl', 'INSERT'), has_any_column_privilege('priv_tbl', 'SELECT')`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `RESET ROLE`},
+		},
+	}})
+}

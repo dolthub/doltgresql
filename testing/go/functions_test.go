@@ -688,6 +688,30 @@ func TestAggregateFunctions(t *testing.T) {
 					},
 				},
 				{
+					Query: `SELECT grp,
+						sum(coalesce(amount, 0)) FILTER (WHERE amount IS NOT NULL),
+						pg_typeof(sum(coalesce(amount, 0)) FILTER (WHERE amount IS NOT NULL))
+					FROM numeric_sum_values GROUP BY grp ORDER BY grp;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), "numeric"},
+						{2, nil, "numeric"},
+						{3, Numeric("100000000.00"), "numeric"},
+					},
+				},
+				{
+					Query: `SELECT grp, amount,
+						sum(coalesce(amount, 0)) FILTER (WHERE amount > 1) OVER (PARTITION BY grp ORDER BY amount),
+						pg_typeof(sum(coalesce(amount, 0)) FILTER (WHERE amount > 1) OVER (PARTITION BY grp ORDER BY amount))
+					FROM numeric_sum_values ORDER BY grp, amount;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), Numeric("12.50"), "numeric"},
+						{1, nil, Numeric("12.50"), "numeric"},
+						{2, nil, nil, "numeric"},
+						{3, Numeric("0.01"), nil, "numeric"},
+						{3, Numeric("99999999.99"), Numeric("99999999.99"), "numeric"},
+					},
+				},
+				{
 					Query: `SELECT id,
 						(SELECT sum(coalesce(amount, 0)) FROM numeric_sum_values WHERE grp = numeric_sum_groups.id),
 						pg_typeof((SELECT sum(coalesce(amount, 0)) FROM numeric_sum_values WHERE grp = numeric_sum_groups.id))
@@ -737,6 +761,175 @@ func TestAggregateFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{1.25, 1.6666666666666667, 1.118033988749895, 1.2909944487358056},
 					},
+				},
+			},
+		},
+		{
+			Name: "aggregate FILTER (WHERE ...)",
+			SetUpScript: []string{
+				"CREATE TABLE posts (id INT PRIMARY KEY, grp TEXT, status TEXT, n INT);",
+				`INSERT INTO posts VALUES
+					(1, 'a', 'published', 1),
+					(2, 'a', 'draft', 2),
+					(3, 'a', 'published', NULL),
+					(4, 'b', 'published', 4),
+					(5, 'b', 'draft', 5);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'published') FROM posts;",
+					Expected:         []sql.Row{{5, 3}},
+					ExpectedColNames: []string{"count", "count"},
+				},
+				{
+					Query:    "SELECT COUNT(n) FILTER (WHERE status = 'published') FROM posts;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT grp) FILTER (WHERE status = 'draft') FROM posts;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT MIN(n) FILTER (WHERE status = 'draft'), MAX(n) FILTER (WHERE status = 'published') FROM posts;",
+					Expected: []sql.Row{{2, 4}},
+				},
+				{
+					Query: "SELECT grp, COUNT(*) FILTER (WHERE status = 'published'), COUNT(*) FROM posts GROUP BY grp ORDER BY grp;",
+					Expected: []sql.Row{
+						{"a", 2, 3},
+						{"b", 1, 2},
+					},
+				},
+				{
+					Query:    "SELECT COUNT(*) FILTER (WHERE status = 'archived'), MAX(n) FILTER (WHERE status = 'archived') FROM posts;",
+					Expected: []sql.Row{{0, nil}},
+				},
+				{
+					Query:    "SELECT string_agg(status, ',') FILTER (WHERE id = 4) FROM posts;",
+					Expected: []sql.Row{{"published"}},
+				},
+				{
+					Query:    "SELECT array_agg(n ORDER BY id) FILTER (WHERE status = 'draft') FROM posts;",
+					Expected: []sql.Row{{"{2,5}"}},
+				},
+			},
+		},
+		{
+			Name: "aggregate FILTER keeps the aggregate's NULL handling",
+			SetUpScript: []string{
+				"CREATE TABLE filtered (id INT PRIMARY KEY, g TEXT, x INT, s TEXT, b BOOL);",
+				"INSERT INTO filtered VALUES (1, 'a', 1, 'p', true), (2, 'a', NULL, 'q', false), (3, 'b', 3, NULL, true), (4, 'b', 4, 'r', NULL), (5, 'a', 5, 'p', true);",
+				"CREATE FUNCTION count_all_step(int8, int4) RETURNS int8 LANGUAGE SQL AS 'SELECT $1 + 1';",
+				"CREATE AGGREGATE count_all(int4) (SFUNC = count_all_step, STYPE = int8, INITCOND = '0');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT array_agg(x ORDER BY id) FILTER (WHERE id > 1) FROM filtered;",
+					Expected:         []sql.Row{{"{NULL,3,4,5}"}},
+					ExpectedColNames: []string{"array_agg"},
+				},
+				{
+					Query:    "SELECT json_agg(x) FILTER (WHERE id > 3) FROM filtered;",
+					Expected: []sql.Row{{"[4, 5]"}},
+				},
+				{
+					Query: "SELECT g, array_agg(x ORDER BY id) FILTER (WHERE b) FROM filtered GROUP BY g ORDER BY g;",
+					Expected: []sql.Row{
+						{"a", "{1,5}"},
+						{"b", "{3}"},
+					},
+				},
+				{
+					// The step function is not strict, so this aggregate counts NULL inputs too
+					Query:    "SELECT count_all(x) FILTER (WHERE id > 1), count_all(x) FROM filtered;",
+					Expected: []sql.Row{{4, 5}},
+				},
+				{
+					Query:    "SELECT xmlagg(xmlelement(name e, x)) FILTER (WHERE id > 3) FROM filtered;",
+					Expected: []sql.Row{{"<e>4</e><e>5</e>"}},
+				},
+				{
+					Query:    "SELECT bool_and(b) FILTER (WHERE id < 3), bool_or(b) FILTER (WHERE id > 3), stddev(x) FILTER (WHERE id > 2) FROM filtered;",
+					Expected: []sql.Row{{"f", "t", Numeric("1.00000000000000000000")}},
+				},
+				{
+					Query:    "SELECT string_agg(s, ',' ORDER BY s) FILTER (WHERE id > 1) FROM filtered;",
+					Expected: []sql.Row{{"p,q,r"}},
+				},
+				{
+					// The filter is applied before the aggregate's argument is evaluated
+					Query:    "SELECT sum(10 / x) FILTER (WHERE x <> 0 AND x IS NOT NULL) FROM filtered;",
+					Expected: []sql.Row{{17}},
+				},
+				{
+					Query:    "SELECT count(DISTINCT g) FILTER (WHERE x > 2), min(x) FILTER (WHERE id > 1), max(x) FILTER (WHERE id < 5) FROM filtered;",
+					Expected: []sql.Row{{2, 3, 4}},
+				},
+				{
+					Query:    "SELECT count(*) FILTER (WHERE false), max(x) FILTER (WHERE false), sum(x) FILTER (WHERE NULL) FROM filtered;",
+					Expected: []sql.Row{{0, nil, nil}},
+				},
+				{
+					Query:    "SELECT g FROM filtered GROUP BY g HAVING count(*) FILTER (WHERE b) > 1;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT g, count(*) FILTER (WHERE b) FROM filtered GROUP BY g ORDER BY count(*) FILTER (WHERE b), g;",
+					Expected: []sql.Row{{"b", 1}, {"a", 2}},
+				},
+				{
+					Query: "SELECT f.id, (SELECT count(*) FILTER (WHERE f2.x > f.id) FROM filtered f2) FROM filtered f ORDER BY f.id;",
+					Expected: []sql.Row{
+						{1, 3},
+						{2, 3},
+						{3, 2},
+						{4, 1},
+						{5, 0},
+					},
+				},
+				{
+					Query:    "SELECT count(*) FILTER (WHERE x IN (SELECT max(x) FROM filtered)) FROM filtered;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query: "SELECT id, sum(x) FILTER (WHERE x > 2) OVER (ORDER BY id), count(*) FILTER (WHERE b) OVER (ORDER BY id) FROM filtered ORDER BY id;",
+					Expected: []sql.Row{
+						{1, nil, 1},
+						{2, nil, 1},
+						{3, 3, 2},
+						{4, 7, 2},
+						{5, 12, 3},
+					},
+				},
+				{
+					Query: "SELECT id, sum(x) FILTER (WHERE b) OVER (PARTITION BY g ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM filtered ORDER BY id;",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 1},
+						{3, 3},
+						{4, 3},
+						{5, 5},
+					},
+				},
+				{
+					Query:       "SELECT abs(x) FILTER (WHERE id > 1) FROM filtered;",
+					ExpectedErr: "FILTER specified, but abs is not an aggregate function",
+				},
+				{
+					Query:       "SELECT row_number() FILTER (WHERE id > 1) OVER () FROM filtered;",
+					ExpectedErr: "FILTER is not implemented for non-aggregate window functions",
+				},
+				{
+					Query:       "SELECT count(*) FILTER (WHERE sum(x) > 1) FROM filtered;",
+					ExpectedErr: "aggregate functions are not allowed in FILTER",
+				},
+				{
+					Query:       "SELECT array_agg(x) FILTER (WHERE count(*) > 1) FROM filtered;",
+					ExpectedErr: "aggregate functions are not allowed in FILTER",
+				},
+				{
+					Query:       "SELECT count(*) FILTER (WHERE row_number() OVER () > 1) FROM filtered;",
+					ExpectedErr: "window functions are not allowed in FILTER",
 				},
 			},
 		},
@@ -5689,6 +5882,63 @@ func TestDateAndTimeFunction(t *testing.T) {
 
 func TestStringFunction(t *testing.T) {
 	RunScripts(t, []ScriptTest{
+		{
+			Name: "regexp_replace",
+			SetUpScript: []string{
+				`CREATE TABLE tt (s text);`,
+				`INSERT INTO tt VALUES ('555-123-4567'), ('John Smith');`,
+				`UPDATE tt SET s = regexp_replace(s, '(\w+) (\w+)', '\2, \1');`,
+				`UPDATE tt SET s = regexp_replace(s, '-', '');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT s FROM tt ORDER BY s;`, Expected: []sql.Row{{"555123-4567"}, {"Smith, John"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b..', 'X');`, Expected: []sql.Row{{"fooXbaz"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b..', 'X', 'g');`, Expected: []sql.Row{{"fooXX"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b(..)', 'X\1Y', 'g');`, Expected: []sql.Row{{"fooXarYXazY"}}},
+				{Query: `SELECT regexp_replace('fooBARbaz', 'bar', 'X', 'i');`, Expected: []sql.Row{{"fooXbaz"}}},
+				{Query: `SELECT regexp_replace('fooBARbaz', 'b..', 'X', 'gi');`, Expected: []sql.Row{{"fooXX"}}},
+				{Query: `SELECT regexp_replace('abc', 'b', '[\&]');`, Expected: []sql.Row{{"a[b]c"}}},
+				{Query: `SELECT regexp_replace('abc', 'b', '\\');`, Expected: []sql.Row{{`a\c`}}},
+				{Query: `SELECT regexp_replace('abc', 'b', '\q');`, Expected: []sql.Row{{`a\qc`}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'x\');`, Expected: []sql.Row{{`ax\c`}}},
+				{Query: `SELECT regexp_replace('abc', '(b)', '<\2>');`, Expected: []sql.Row{{"a<>c"}}},
+				{Query: `SELECT regexp_replace('abc', '(b)', '$1');`, Expected: []sql.Row{{"a$1c"}}},
+				{Query: `SELECT regexp_replace('abc', 'x*', '-', 'g');`, Expected: []sql.Row{{"-a-b-c-"}}},
+				{Query: `SELECT regexp_replace('abc', 'b*', '-', 'g');`, Expected: []sql.Row{{"-a-c-"}}},
+				{Query: `SELECT regexp_replace('abc', 'x', 'y');`, Expected: []sql.Row{{"abc"}}},
+				{Query: `SELECT regexp_replace('a.b', '.', 'x', 'gq');`, Expected: []sql.Row{{"axb"}}},
+				{Query: `SELECT regexp_replace(NULL, 'b', 'x');`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'x', NULL);`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'x', 'z');`, ExpectedErr: `invalid regular expression option: "z"`},
+				{Query: `SELECT regexp_replace('abc', '(?i)B', 'x');`, Expected: []sql.Row{{"axc"}}},
+				{Query: `SELECT regexp_replace('abc', '(?g)b', 'x');`, ExpectedErr: `invalid embedded option`},
+				{Query: `SELECT regexp_replace('a.b.c', '\.', '-', 'g');`, Expected: []sql.Row{{"a-b-c"}}},
+				{Query: `SELECT regexp_replace('a.b.c', '***=.', '-', 'g');`, Expected: []sql.Row{{"a-b-c"}}},
+				{Query: `SELECT regexp_replace('foobar', 'o b  # comment', '_', 'x');`, Expected: []sql.Row{{"fo_ar"}}},
+				{Query: `SELECT regexp_replace('日本語日本語', '本', 'X', 'g');`, Expected: []sql.Row{{"日X語日X語"}}},
+				{Query: `SELECT regexp_replace('aaa', 'a', '\&\&', 'g');`, Expected: []sql.Row{{"aaaaaa"}}},
+				{Query: `SELECT regexp_replace('2026-11-20', '(\d+)-(\d+)-(\d+)', '\3/\2/\1');`, Expected: []sql.Row{{"20/11/2026"}}},
+				{Query: `SELECT regexp_replace('ab', '(a)|(b)', '[\1\2]', 'g');`, Expected: []sql.Row{{"[a][b]"}}},
+				{Query: `SELECT regexp_replace('', 'x*', '-');`, Expected: []sql.Row{{"-"}}},
+				{Query: `SELECT regexp_replace('abc', '(', 'x');`, ExpectedErr: `invalid regular expression`},
+				{Query: `SELECT regexp_split_to_array('a,b', ',', 'g');`, ExpectedErr: `does not support the "global" option`},
+				{Query: `SELECT regexp_replace(s, '\s+', '', 'g') FROM (VALUES ('a b  c'), (' d ')) v(s) ORDER BY 1;`, Expected: []sql.Row{{"abc"}, {"d"}}},
+				{Query: `SELECT regexp_replace('A PostgreSQL function', 'A|e|i|o|u', 'X', 1, 2);`, Expected: []sql.Row{{"A PXstgreSQL function"}}},
+				{Query: `SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 3, 'i');`, Expected: []sql.Row{{"A PostgrXSQL function"}}},
+				{Query: `SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 0, 'i');`, Expected: []sql.Row{{"X PXstgrXSQL fXnctXXn"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b..', 'X', 1);`, Expected: []sql.Row{{"fooXbaz"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b..', 'X', 5);`, Expected: []sql.Row{{"foobarX"}}},
+				{Query: `SELECT regexp_replace('aaa', 'a', 'X', 2, 0);`, Expected: []sql.Row{{"aXX"}}},
+				{Query: `SELECT regexp_replace('aaa', 'a', 'X', 1, 1, 'g');`, Expected: []sql.Row{{"Xaa"}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'X', 1, 2);`, Expected: []sql.Row{{"abc"}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'X', 10);`, Expected: []sql.Row{{"abc"}}},
+				{Query: `SELECT regexp_replace('日本語日本語', '本', 'X', 3);`, Expected: []sql.Row{{"日本語日X語"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b(..)', '<\1>', 1, 2);`, Expected: []sql.Row{{"foobar<az>"}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'X', NULL, 1);`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'X', 0);`, ExpectedErr: `invalid value for parameter "start": 0`},
+				{Query: `SELECT regexp_replace('abc', 'b', 'X', 1, -1);`, ExpectedErr: `invalid value for parameter "n": -1`},
+			},
+		},
 		{Name: "regexp_split_to_array", Assertions: []ScriptTestAssertion{
 			{Query: `SELECT regexp_split_to_array('statement_timeout=1000', '=');`, Expected: []sql.Row{{"{statement_timeout,1000}"}}},
 			{Query: `SELECT (regexp_split_to_array((regexp_split_to_array('default_transaction_isolation=read committed,serializable', '='))[2], ','))[1];`, Expected: []sql.Row{{"read committed"}}},
@@ -6099,6 +6349,23 @@ func TestStringFunction(t *testing.T) {
 					Expected: []sql.Row{
 						{"1a82b83c84d85e"},
 					},
+				},
+			},
+		},
+		{
+			Name: "string_agg is not cut at 1024 characters",
+			SetUpScript: []string{
+				"CREATE TABLE parts (id INT PRIMARY KEY, s TEXT);",
+				"INSERT INTO parts SELECT g, repeat('x', 100) FROM generate_series(1, 50) AS g;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT length(string_agg(s, '')) FROM parts;",
+					Expected: []sql.Row{{5000}},
+				},
+				{
+					Query:    "SELECT length(string_agg(s, ',' ORDER BY id)) FROM parts;",
+					Expected: []sql.Row{{5049}},
 				},
 			},
 		},

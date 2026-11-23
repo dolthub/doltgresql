@@ -1269,7 +1269,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <[]string> schema_name_list role_spec_list opt_role_list opt_owned_by_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star
-%type <tree.TableExpr> insert_target create_stats_target analyze_target
+%type <tree.TableExpr> insert_target create_stats_target
 
 %type <*tree.UnresolvedObjectName> opt_handler_inline opt_handler_validator
 %type <*tree.LanguageHandler> opt_language_handler
@@ -1432,6 +1432,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Expr> opt_changefeed_sink
 
 %type <str> explain_option_name explain_option_value
+%type <str> analyze_verb
 %type <[]string> explain_option_list opt_enum_val_list enum_val_list
 
 %type <tree.ResolvableTypeReference> typename simple_typename cast_target
@@ -5635,34 +5636,31 @@ table_name_list:
 // %Help: ANALYZE - collect table statistics
 // %Category: Misc
 // %Text:
-// ANALYZE [<tablename>]
+// ANALYZE [ ( <option> [, ...] ) ] [ <tablename> [ ( <colname> [, ...] ) ] [, ...] ]
+// ANALYZE [ VERBOSE ] [ <tablename> [ ( <colname> [, ...] ) ] [, ...] ]
 //
 // %SeeAlso: CREATE STATISTICS
 analyze_stmt:
-  ANALYZE
-  {
-    $$.val = &tree.Analyze{}
-  }
-| ANALYZE analyze_target
+  analyze_verb opt_vacuum_option_list opt_vacuum_table_and_cols_list
   {
     $$.val = &tree.Analyze{
-      Table: $2.tblExpr(),
+      Options: $2.vacuumOptions(),
+      TablesAndCols: $3.vacuumTableAndColsList(),
+    }
+  }
+| analyze_verb VERBOSE opt_vacuum_table_and_cols_list
+  {
+    $$.val = &tree.Analyze{
+      Options: tree.VacuumOptions{&tree.VacuumOption{Option: "VERBOSE", Value: true}},
+      TablesAndCols: $3.vacuumTableAndColsList(),
     }
   }
 | ANALYZE error // SHOW HELP: ANALYZE
-| ANALYSE analyze_target
-  {
-    $$.val = &tree.Analyze{
-      Table: $2.tblExpr(),
-    }
-  }
 | ANALYSE error // SHOW HELP: ANALYZE
 
-analyze_target:
-  table_name
-  {
-    $$.val = $1.unresolvedObjectName()
-  }
+analyze_verb:
+  ANALYZE
+| ANALYSE
 
 explain_verb:
   EXPLAIN
@@ -7081,6 +7079,13 @@ vacuum_option:
     	Value:  $2,
     }
   }
+| BUFFER_USAGE_LIMIT SCONST
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "BUFFER_USAGE_LIMIT",
+    	Value:  $2,
+    }
+  }
 
 // Boolean constants for vacuum options. An empty value here is considered true
 boolean_value_for_vacuum_opt:
@@ -7159,8 +7164,7 @@ opt_vacuum_table_and_cols_list:
   }
 | vacuum_table_and_cols ',' opt_vacuum_table_and_cols_list
   {
-    list := $3.vacuumTableAndColsList()
-    $$.val = append(list, $1.vacuumTableAndCols())
+    $$.val = append(tree.VacuumTableAndColsList{$1.vacuumTableAndCols()}, $3.vacuumTableAndColsList()...)
   }
   
 vacuum_table_and_cols:
@@ -8856,6 +8860,7 @@ table_constraint_elem:
         Columns: $4.idxElems(),
         IndexParams: $6.constraintIdxParams(),
       },
+      NullsNotDistinct: !$2.bool(),
     }
   }
 | PRIMARY KEY '(' index_params ')' constraint_index_params

@@ -243,6 +243,206 @@ var SchemaTests = []ScriptTest{
 		},
 	},
 	{
+		// An unqualified function name resolves through the search path, and not through the schema of a table that
+		// the statement references. Column defaults keep the schema of the function they resolved to.
+		Name: "unqualified function calls resolve through the search path, not the table's schema",
+		SetUpScript: []string{
+			"CREATE SCHEMA s2;",
+			"CREATE TABLE s2.n (x int);",
+			"INSERT INTO s2.n VALUES (1);",
+			"CREATE FUNCTION public.myf(x int) RETURNS int AS $$ SELECT x + 1 $$ LANGUAGE sql;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT myf(x) FROM s2.n;",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query: "CREATE FUNCTION s2.myf(x int) RETURNS int AS $$ SELECT x + 100 $$ LANGUAGE sql;",
+			},
+			{
+				Query:    "SELECT myf(x) FROM s2.n;",
+				Expected: []sql.Row{{2}},
+			},
+			{
+				Query:            "SELECT s2.myf(x) FROM s2.n;",
+				Expected:         []sql.Row{{101}},
+				ExpectedColNames: []string{"myf"},
+			},
+			{
+				Query:    "SELECT x FROM s2.n WHERE myf(x) = 2;",
+				Expected: []sql.Row{{1}},
+			},
+			{
+				Query: "ALTER TABLE s2.n ADD COLUMN y int DEFAULT myf(1);",
+			},
+			{
+				Query:    "SELECT x, y FROM s2.n;",
+				Expected: []sql.Row{{1, 2}},
+			},
+			{
+				Query: "SET search_path = s2, public;",
+			},
+			{
+				Query:    "SELECT myf(x) FROM s2.n;",
+				Expected: []sql.Row{{101}},
+			},
+			{
+				Query: "INSERT INTO s2.n (x) VALUES (5);",
+			},
+			{
+				Query: "SET search_path = '';",
+			},
+			{
+				Query: "INSERT INTO s2.n (x) VALUES (6);",
+			},
+			{
+				Query:    "SELECT x, y FROM s2.n ORDER BY x;",
+				Expected: []sql.Row{{1, 2}, {5, 2}, {6, 2}},
+			},
+		},
+	},
+	{
+		// An unqualified name matches the overloads in every schema on the search path, where pg_catalog comes first
+		// unless the path places it later. An overload hides any with the same parameter types later on the path.
+		Name: "unqualified function calls match overloads across the search path",
+		SetUpScript: []string{
+			"CREATE SCHEMA s2;",
+			"CREATE FUNCTION public.upper(x text) RETURNS text AS $$ SELECT 'shadowed' $$ LANGUAGE sql;",
+			"CREATE FUNCTION public.myf(x int) RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;",
+			"CREATE FUNCTION s2.myf(x bigint) RETURNS int AS $$ SELECT 2 $$ LANGUAGE sql;",
+			"CREATE FUNCTION public.myg(x int) RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;",
+			"CREATE FUNCTION s2.myg(x int) RETURNS int AS $$ SELECT 2 $$ LANGUAGE sql;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    "SELECT upper('q');",
+				Expected: []sql.Row{{"Q"}},
+			},
+			{
+				Query:    "SELECT public.upper('q');",
+				Expected: []sql.Row{{"shadowed"}},
+			},
+			{
+				Query:    "SELECT myf(1), myg(1);",
+				Expected: []sql.Row{{1, 1}},
+			},
+			{
+				Query: "SET search_path = s2, public;",
+			},
+			{
+				Query:    "SELECT myf(1), myf(1::bigint), myg(1);",
+				Expected: []sql.Row{{1, 2, 2}},
+			},
+			{
+				Query: "SET search_path = public, pg_catalog;",
+			},
+			{
+				Query:    "SELECT upper('q');",
+				Expected: []sql.Row{{"shadowed"}},
+			},
+		},
+	},
+	{
+		// A built-in function in a column expression keeps being called once a search path places a function with the
+		// same name and parameter types ahead of pg_catalog
+		Name: "built-in function calls in column expressions are not shadowed by later functions",
+		SetUpScript: []string{
+			"CREATE TABLE t (a int PRIMARY KEY, b text DEFAULT upper('q'), c text GENERATED ALWAYS AS (upper(b)) STORED, CONSTRAINT chk_len CHECK (length('abc') = 3));",
+			"ALTER TABLE t ADD COLUMN d text DEFAULT upper('r');",
+			"ALTER TABLE t ADD CONSTRAINT chk_abs CHECK (abs(a) >= 0);",
+			"CREATE FUNCTION public.upper(text) RETURNS text AS $$ SELECT 'shadowed' $$ LANGUAGE sql;",
+			"CREATE FUNCTION public.length(text) RETURNS int AS $$ SELECT 0 $$ LANGUAGE sql;",
+			"CREATE FUNCTION public.abs(int) RETURNS int AS $$ SELECT -1 $$ LANGUAGE sql;",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query: "SET search_path = public, pg_catalog;",
+			},
+			{
+				Query:    "SELECT upper('q');",
+				Expected: []sql.Row{{"shadowed"}},
+			},
+			{
+				Query: "INSERT INTO t (a) VALUES (1);",
+			},
+			{
+				Query:    "SELECT * FROM t;",
+				Expected: []sql.Row{{1, "Q", "Q", "R"}},
+			},
+			{
+				Query: "RESET search_path;",
+			},
+			{
+				// TODO: Postgres shows the generation expression as upper(b)
+				Query: "SELECT column_name, column_default, generation_expression FROM information_schema.columns WHERE table_name = 't' ORDER BY ordinal_position;",
+				Expected: []sql.Row{
+					{"a", nil, nil},
+					{"b", "upper('q'::text)", nil},
+					{"c", nil, `(upper("b"))`},
+					{"d", "upper('r'::text)", nil},
+				},
+			},
+			{
+				// TODO: Postgres shows check clauses in parentheses, without quoting column names
+				Query: "SELECT constraint_name, check_clause FROM information_schema.check_constraints ORDER BY constraint_name;",
+				Expected: []sql.Row{
+					{"chk_abs", `abs("a") >= 0`},
+					{"chk_len", "length('abc'::text) = 3"},
+				},
+			},
+			{
+				Query: "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE contype = 'c' ORDER BY conname;",
+				Expected: []sql.Row{
+					{"chk_abs", `chk_abs CHECK abs("a") >= 0 ENFORCED`},
+					{"chk_len", "chk_len CHECK length('abc'::text) = 3 ENFORCED"},
+				},
+			},
+			{
+				Query: "SHOW CREATE TABLE t;",
+				Expected: []sql.Row{{"t", "CREATE TABLE \"t\" (\n" +
+					"  \"a\" integer NOT NULL,\n" +
+					"  \"b\" text DEFAULT (upper('q'::text)),\n" +
+					"  \"c\" text GENERATED ALWAYS AS (upper(\"b\")) STORED,\n" +
+					"  \"d\" text DEFAULT (upper('r'::text)),\n" +
+					"  PRIMARY KEY (\"a\"),\n" +
+					"  CONSTRAINT \"chk_abs\" CHECK (abs(\"a\") >= 0),\n" +
+					"  CONSTRAINT \"chk_len\" CHECK (length('abc'::text) = 3)\n" +
+					")"}},
+			},
+			{
+				// A built-in function is shown with its schema when the search path hides it, as Postgres does
+				Query: "SET search_path = public, pg_catalog;",
+			},
+			{
+				Query: "SELECT column_name, column_default FROM information_schema.columns WHERE table_name = 't' AND column_default IS NOT NULL ORDER BY ordinal_position;",
+				Expected: []sql.Row{
+					{"b", "pg_catalog.upper('q'::text)"},
+					{"d", "pg_catalog.upper('r'::text)"},
+				},
+			},
+			{
+				Query: "SELECT constraint_name, check_clause FROM information_schema.check_constraints ORDER BY constraint_name;",
+				Expected: []sql.Row{
+					{"chk_abs", `pg_catalog.abs("a") >= 0`},
+					{"chk_len", "pg_catalog.length('abc'::text) = 3"},
+				},
+			},
+			{
+				Query: "SHOW CREATE TABLE t;",
+				Expected: []sql.Row{{"t", "CREATE TABLE \"t\" (\n" +
+					"  \"a\" integer NOT NULL,\n" +
+					"  \"b\" text DEFAULT (pg_catalog.upper('q'::text)),\n" +
+					"  \"c\" text GENERATED ALWAYS AS (pg_catalog.upper(\"b\")) STORED,\n" +
+					"  \"d\" text DEFAULT (pg_catalog.upper('r'::text)),\n" +
+					"  PRIMARY KEY (\"a\"),\n" +
+					"  CONSTRAINT \"chk_abs\" CHECK (pg_catalog.abs(\"a\") >= 0),\n" +
+					"  CONSTRAINT \"chk_len\" CHECK (pg_catalog.length('abc'::text) = 3)\n" +
+					")"}},
+			},
+		},
+	},
+	{
 		Name: "search path returns user table before public table",
 		SetUpScript: []string{
 			"create schema postgres",

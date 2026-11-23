@@ -580,6 +580,7 @@ func TestJoinsScripts(t *testing.T) {
 	h := newDoltgresServerHarness(t).WithSkippedQueries([]string{
 		"filter pushdown through join uppercase name", // syntax error (join without on)
 		"join index lookups do not handle filters",    // need a different join syntax (no ON clause not supported in postgres)
+		"keyless table anti-join",                     // compares a boolean to a string, which postgres rejects
 	})
 	defer h.Close()
 	enginetest.TestJoinsScripts(t, h)
@@ -943,6 +944,12 @@ func TestForeignKeys(t *testing.T) {
 		"foreign key naming",
 		"Naming automatically created FK indexes",
 		"partial foreign key update",
+		"UPDATE only checks the foreign keys over the columns it changes",
+		"UPDATE checks a foreign key over a column that a BEFORE UPDATE trigger assigns",
+		"UPDATE checks a foreign key over a generated column of the columns it assigns",
+		"UPDATE checks a foreign key over a column with an ON UPDATE expression",
+		"UPDATE JOIN only checks the foreign keys over the columns it changes",
+		"RESTRICT doesn't depend on the child's other foreign keys",
 		"ON UPDATE CASCADE maintains an index over a virtual column",
 		"ON UPDATE CASCADE recomputes chained virtual columns",
 		"ON DELETE CASCADE maintains an index over a virtual column, self-referential",
@@ -1371,6 +1378,7 @@ func TestStoredProcedures(t *testing.T) {
 		"FETCH captures state at OPEN",
 		"FETCH implicitly closes",
 		"SQLEXCEPTION declare handler",
+		"IF and IF/ELSE blocks inside EXIT HANDLER",
 		"Test cursor continue-handler checksum loops",
 		"DECLARE HANDLERs exit according to the block they were declared in",
 		"Labeled BEGIN...END",
@@ -1608,6 +1616,7 @@ func TestDoltMerge(t *testing.T) {
 		"merge with new triggers defined",                                                                                // triggers
 		"try to merge a nullable field into a non-null column",                                                           // alter table
 		"merge fulltext with renamed table",                                                                              // alter table
+		"MATCH(a) AGAINST(",                                                                                              // MySQL full-text search has no Postgres equivalent
 		"select * from dolt_status",                                                                                      // table_name column includes schema name,
 		"dolt_merge() (3way) works with no auto increment overlap",                                                       // sequencing doesn't work globally after merge, need to decide product behavior
 		"dolt_merge() (3way) with a gap in an auto increment key",                                                        // sequencing doesn't work globally after merge, need to decide product behavior

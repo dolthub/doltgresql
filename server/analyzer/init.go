@@ -56,6 +56,7 @@ const (
 	ruleId_ResolveTableForDDL                                            // resolveTableForDDL
 	ruleId_AddLikePrefixRanges                                           // addLikePrefixRanges
 	ruleId_ParenthesizeColumnDefaults                                    // parenthesizeColumnDefaults
+	ruleId_QualifyColumnDefaultRelations                                 // qualifyColumnDefaultRelations
 	ruleId_HoistInsertTriggers                                           // hoistInsertTriggers
 	ruleId_SplitRowComparisons                                           // splitRowComparisons
 	ruleId_RemoveIdentityUpdates                                         // removeIdentityUpdates
@@ -120,6 +121,7 @@ func Init() {
 	// We also should optimize functions last, since other rules may change the underlying expressions, potentially changing their return types.
 	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.QuoteDefaultColumnValueNamesId, false,
 		analyzer.Rule{Id: ruleId_ParenthesizeColumnDefaults, Apply: ParenthesizeColumnDefaults},
+		analyzer.Rule{Id: ruleId_QualifyColumnDefaultRelations, Apply: QualifyColumnDefaultRelations},
 		analyzer.Rule{Id: ruleId_OptimizeFunctions, Apply: OptimizeFunctions},
 		// AddDomainConstraintsToCasts needs to run after 'assignExecIndexes' rule in GMS.
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},

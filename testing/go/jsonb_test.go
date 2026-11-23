@@ -252,7 +252,7 @@ func requireNoInternalJsonTypes(t *testing.T, val any) {
 			requireNoInternalJsonTypes(t, item)
 		}
 	case types.JsonValueNumber:
-		t.Errorf("number leaked as internal JsonValueNumber; expected *apd.Decimal")
+		t.Errorf("number leaked as internal JsonValueNumber; expected float64")
 	case types.JsonValueString:
 		t.Errorf("string leaked as internal JsonValueString; expected string")
 	case types.JsonValueBoolean:
@@ -266,8 +266,8 @@ func requireNoInternalJsonTypes(t *testing.T, val any) {
 	}
 }
 
-// requireJsonEqual recursively compares an expected JSON value tree against actual,
-// using string comparison for *apd.Decimal to avoid representation sensitivity.
+// requireJsonEqual recursively compares an expected JSON value tree against actual, comparing expected *apd.Decimal
+// values to the float64 values that numbers are deserialized as.
 func requireJsonEqual(t *testing.T, expected, actual any) {
 	t.Helper()
 	if expected == nil {
@@ -276,9 +276,12 @@ func requireJsonEqual(t *testing.T, expected, actual any) {
 	}
 	switch e := expected.(type) {
 	case *apd.Decimal:
-		a, ok := actual.(*apd.Decimal)
-		require.True(t, ok, "expected *apd.Decimal, got %T: %v", actual, actual)
-		require.Equal(t, e.String(), a.String())
+		// Numbers are deserialized as float64, as they are for JSONB documents stored with the current format.
+		a, ok := actual.(float64)
+		require.True(t, ok, "expected float64, got %T: %v", actual, actual)
+		f, err := e.Float64()
+		require.NoError(t, err)
+		require.Equal(t, f, a)
 	case map[string]any:
 		a, ok := actual.(map[string]any)
 		require.True(t, ok, "expected map[string]any, got %T", actual)

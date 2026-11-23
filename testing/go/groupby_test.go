@@ -71,5 +71,201 @@ func TestGroupBy(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Equal values with different representations are grouped together",
+			SetUpScript: []string{
+				"CREATE TABLE waits (id INT, w INTERVAL);",
+				"INSERT INTO waits VALUES (1, INTERVAL '1 day'), (2, '2024-01-02 00:00'::TIMESTAMP - '2024-01-01 00:00'::TIMESTAMP), (3, INTERVAL '24 hours'), (4, INTERVAL '1 month'), (5, INTERVAL '30 days'), (6, INTERVAL '25 hours');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT COUNT(*) FROM waits GROUP BY w ORDER BY 1;",
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+				{
+					Query:    "SELECT MIN(id), COUNT(*) FROM waits GROUP BY w ORDER BY 1;",
+					Expected: []sql.Row{{1, 3}, {4, 2}, {6, 1}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT w) FROM waits;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (SELECT DISTINCT w FROM waits) t;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT id FROM waits WHERE w IN (SELECT INTERVAL '1 day') ORDER BY id;",
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+				{
+					Query:    "SELECT id FROM waits WHERE w IN (SELECT w FROM waits WHERE id IN (3, 5)) ORDER BY id;",
+					Expected: []sql.Row{{1}, {2}, {3}, {4}, {5}},
+				},
+				{
+					Query:    "SELECT id FROM waits WHERE w NOT IN (SELECT INTERVAL '24 hours') ORDER BY id;",
+					Expected: []sql.Row{{4}, {5}, {6}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (SELECT w FROM waits WHERE id = 1 UNION SELECT w FROM waits WHERE id IN (2, 3)) t;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (SELECT INTERVAL '1 day' UNION SELECT INTERVAL '24 hours' UNION SELECT INTERVAL '1440 minutes') t;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT a.id, b.id FROM waits a JOIN waits b ON a.w = b.w WHERE a.id < b.id ORDER BY 1, 2;",
+					Expected: []sql.Row{{1, 2}, {1, 3}, {2, 3}, {4, 5}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (SELECT DISTINCT x FROM (VALUES (ARRAY[1.0]), (ARRAY[1.00]), (ARRAY[1])) t(x)) s;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (VALUES (ARRAY[1.0, 2.50]), (ARRAY[1.00, 2.5]), (ARRAY[1.0, 2.51])) t(x) GROUP BY x ORDER BY 1;",
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT x) FROM (VALUES (ARRAY[INTERVAL '1 day']), (ARRAY[INTERVAL '24 hours'])) t(x);",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (VALUES (1.0), (1.00), (1)) t(x) GROUP BY x;",
+					Expected: []sql.Row{{3}},
+				},
+			},
+		},
+		{
+			Name: "Equal stored values with different representations are grouped together",
+			SetUpScript: []string{
+				"CREATE TABLE iv_pk (w INTERVAL PRIMARY KEY);",
+				"INSERT INTO iv_pk VALUES ('1 day');",
+				"CREATE TABLE iv_uq (id INT PRIMARY KEY, w INTERVAL UNIQUE);",
+				"INSERT INTO iv_uq VALUES (1, '1 mon');",
+				"CREATE TABLE iv_idx (id INT PRIMARY KEY, w INTERVAL);",
+				"CREATE INDEX ON iv_idx (w);",
+				"INSERT INTO iv_idx VALUES (1, '1 day'), (2, '24 hours'), (3, '1440 minutes'), (4, '2 days');",
+				"CREATE TABLE iv_arr (id INT PRIMARY KEY, a INTERVAL[]);",
+				"INSERT INTO iv_arr VALUES (1, ARRAY[INTERVAL '1 day']), (2, ARRAY[INTERVAL '24 hours']), (3, ARRAY['1 mon'::INTERVAL, '1 day']), (4, ARRAY['30 days'::INTERVAL, '24 hours']);",
+				"CREATE TABLE nums (id INT PRIMARY KEY, n NUMERIC);",
+				"INSERT INTO nums VALUES (1, 1.0), (2, 1.00), (3, 1), (4, 'NaN'), (5, 'NaN'), (6, 2.50), (7, 2.5);",
+				"CREATE TABLE num_arr (id INT PRIMARY KEY, a NUMERIC[]);",
+				"INSERT INTO num_arr VALUES (1, ARRAY[1.0, 2]), (2, ARRAY[1.00, 2.0]), (3, ARRAY[1, 2.000]);",
+				"CREATE TABLE floats (id INT PRIMARY KEY, f FLOAT8);",
+				"INSERT INTO floats VALUES (1, 0.0), (2, '-0'), (3, 'NaN'), (4, 'NaN');",
+				"CREATE TABLE js (id INT PRIMARY KEY, j JSONB);",
+				`INSERT INTO js VALUES (1, '{"a": 1.0}'), (2, '{"a": 1}'), (3, '{"a": 1.00}'), (4, '[1.0, 2]'), (5, '[1, 2.00]');`,
+				"CREATE TABLE tz (id INT PRIMARY KEY, t TIMESTAMPTZ);",
+				"INSERT INTO tz VALUES (1, '2024-01-01 00:00:00+00'), (2, '2024-01-01 01:00:00+01'), (3, '2023-12-31 19:00:00-05');",
+				"CREATE TABLE tz_arr (id INT PRIMARY KEY, a TIMESTAMPTZ[]);",
+				"INSERT INTO tz_arr VALUES (1, ARRAY['2024-01-01 00:00:00+00'::TIMESTAMPTZ]), (2, ARRAY['2024-01-01 01:00:00+01'::TIMESTAMPTZ]);",
+				"CREATE TYPE pair AS (n NUMERIC, w INTERVAL);",
+				"CREATE TABLE comp (id INT PRIMARY KEY, p pair);",
+				"INSERT INTO comp VALUES (1, ROW(1.0, '1 day')), (2, ROW(1.00, '24 hours')), (3, ROW(2, '1 day'));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "INSERT INTO iv_pk VALUES ('24 hours');",
+					ExpectedErr: "duplicate primary key",
+				},
+				{
+					Query:       "INSERT INTO iv_uq VALUES (2, '30 days');",
+					ExpectedErr: "duplicate unique key",
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM iv_idx GROUP BY w ORDER BY 1;",
+					Expected: []sql.Row{{1}, {3}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT w) FROM iv_idx;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM iv_idx WHERE w = '24 hours';",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM iv_idx WHERE w IN (SELECT INTERVAL '1 day');",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM iv_arr GROUP BY a ORDER BY 1;",
+					Expected: []sql.Row{{2}, {2}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM nums GROUP BY n ORDER BY 1;",
+					Expected: []sql.Row{{2}, {2}, {3}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT n) FROM nums;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM nums WHERE n IN (SELECT 1.000);",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (SELECT n FROM nums WHERE id = 1 UNION SELECT n FROM nums WHERE id IN (2, 3)) t;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM num_arr GROUP BY a;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM floats GROUP BY f ORDER BY 1;",
+					Expected: []sql.Row{{2}, {2}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM js GROUP BY j ORDER BY 1;",
+					Expected: []sql.Row{{2}, {3}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT j) FROM js;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM tz GROUP BY t;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT t) FROM tz;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM tz WHERE t IN (SELECT '2024-01-01 02:00:00+02'::TIMESTAMPTZ);",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (SELECT t FROM tz WHERE id = 1 UNION SELECT t FROM tz WHERE id = 2) s;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (VALUES ('2024-01-01 00:00:00+00'::TIMESTAMPTZ), ('2024-01-01 01:00:00+01'::TIMESTAMPTZ)) v(x) GROUP BY x;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT a) FROM tz_arr;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM comp GROUP BY p ORDER BY 1;",
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT p) FROM comp;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (SELECT DISTINCT r FROM (VALUES (ROW(1.0, INTERVAL '1 day')), (ROW(1.00, INTERVAL '24 hours'))) t(r)) s;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT COUNT(*) FROM (VALUES ('12:00:00+01'::TIMETZ), ('11:00:00+00'::TIMETZ)) v(x) GROUP BY x;",
+					Expected: []sql.Row{{1}, {1}},
+				},
+			},
+		},
 	})
 }
