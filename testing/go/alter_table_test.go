@@ -646,6 +646,55 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Alter Column Type with USING uses the encoding of the new type",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id int PRIMARY KEY, v date);",
+				"INSERT INTO t1 VALUES (1, '2026-01-01');",
+				"CREATE TABLE p (k boolean PRIMARY KEY);",
+				"INSERT INTO p VALUES (true);",
+				"CREATE TABLE t2 (id int PRIMARY KEY, v varchar(10));",
+				"INSERT INTO t2 VALUES (1, 'abc'), (2, 'abcdefgh');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t1 ALTER COLUMN v TYPE char(70000) USING repeat('x', 70000)::char(70000);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT length(v) FROM t1;",
+					Expected: []sql.Row{{70000}},
+				},
+				{
+					Query:    "ALTER TABLE p ALTER COLUMN k TYPE integer USING 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE c (k integer REFERENCES p(k));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO c VALUES (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT dolt_verify_constraints('--all');",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:       "ALTER TABLE t2 ALTER COLUMN v TYPE varchar(5);",
+					ExpectedErr: "out of range for varchar(5)",
+				},
+				{
+					Query:    "ALTER TABLE t2 ALTER COLUMN v TYPE varchar(20);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, v FROM t2 ORDER BY id;",
+					Expected: []sql.Row{{1, "abc"}, {2, "abcdefgh"}},
+				},
+			},
+		},
+		{
 			Name: "Alter Column Type with USING error cases",
 			SetUpScript: []string{
 				"CREATE TABLE t1 (id INT PRIMARY KEY, c TEXT);",
