@@ -608,6 +608,21 @@ func TestOperators(t *testing.T) {
 					Query:    `select interval '20 days' * 2.3`,
 					Expected: []sql.Row{{"46 days"}},
 				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 * (-1)::int8;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 * (-1)::int4;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 * (-1)::int2;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
 			},
 		},
 		{
@@ -839,6 +854,36 @@ func TestOperators(t *testing.T) {
 				{
 					Query:    `select interval '20 days' / 2.3`,
 					Expected: []sql.Row{{"8 days 16:41:44.347826"}},
+				},
+				{
+					Query:           `SELECT (-32768)::int2 / (-1)::int2;`,
+					ExpectedErr:     "smallint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-2147483648)::int4 / (-1)::int4;`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-2147483648)::int4 / (-1)::int2;`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 / (-1)::int8;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 / (-1)::int4;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT (-9223372036854775808)::int8 / (-1)::int2;`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
 				},
 			},
 		},
@@ -3680,6 +3725,21 @@ func TestOperators(t *testing.T) {
 					Query:    `select - interval '20 days -11:00:00';`,
 					Expected: []sql.Row{{"-20 days +11:00:00"}},
 				},
+				{
+					Query:           `SELECT -((-32768)::int2);`,
+					ExpectedErr:     "smallint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT -((-2147483648)::int4);`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT -((-9223372036854775808)::int8);`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
 			},
 		},
 		{
@@ -4036,5 +4096,65 @@ func TestOperators(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Timestamp subtraction justifies hours into days",
+			SetUpScript: []string{
+				"SET timezone TO 'UTC';",
+				"CREATE TABLE orders (id INT PRIMARY KEY, placed TIMESTAMP, shipped TIMESTAMP);",
+				"INSERT INTO orders VALUES (1, '2024-01-01 09:00', '2024-01-04 15:00'), (2, '2024-01-04 15:00', '2024-01-01 09:00'), (3, '2024-01-01 09:00', '2024-01-01 20:30');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// https://github.com/dolthub/doltgresql/issues/3714
+					Query: `SELECT id, shipped - placed AS waited, EXTRACT(DAY FROM shipped - placed) AS days, DATE_PART('day', shipped - placed) AS dp FROM orders ORDER BY id;`,
+					Expected: []sql.Row{
+						{int32(1), "3 days 06:00:00", Numeric("3"), float64(3)},
+						{int32(2), "-3 days -06:00:00", Numeric("-3"), float64(-3)},
+						{int32(3), "11:30:00", Numeric("0"), float64(0)},
+					},
+				},
+				{
+					Query:    `SELECT id FROM orders WHERE DATE_PART('day', shipped - placed) >= 3;`,
+					Expected: []sql.Row{{int32(1)}},
+				},
+				{
+					Query:    `SELECT '2024-01-04 15:00+00'::timestamptz - '2024-01-01 09:00+00'::timestamptz, EXTRACT(DAY FROM '2024-01-04 15:00+00'::timestamptz - '2024-01-01 09:00+00'::timestamptz);`,
+					Expected: []sql.Row{{"3 days 06:00:00", Numeric("3")}},
+				},
+				{
+					Query:    `SELECT '2024-01-01 09:00+00'::timestamptz - '2024-01-04 15:00+00'::timestamptz;`,
+					Expected: []sql.Row{{"-3 days -06:00:00"}},
+				},
+			},
+		},
 	})
+}
+
+func TestCaseInsensitiveRegex(t *testing.T) {
+	RunScripts(t, []ScriptTest{{
+		Name: "case-insensitive regex",
+		Assertions: []ScriptTestAssertion{
+			{Query: `SELECT 'AbC' ~* '^abc$', 'AbC' !~* '^abc$';`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT 'AbC' ~* '^xyz$', 'AbC' !~* '^xyz$';`, Expected: []sql.Row{{"f", "t"}}},
+			{Query: `SELECT 'xxAbCyy' ~* 'abc', 'xxAbCyy' ~* '^abc$';`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT '' ~* '', 'abc' ~* '', '' !~* '', '' ~* 'a';`, Expected: []sql.Row{{"t", "t", "f", "f"}}},
+			{Query: `SELECT NULL ~* 'abc', 'abc' ~* NULL, NULL !~* 'abc', 'abc' !~* NULL;`, Expected: []sql.Row{{nil, nil, nil, nil}}},
+			{Query: `SELECT NULL::text ~* '[', NULL::text !~* '[';`, Expected: []sql.Row{{nil, nil}}},
+			{Query: `SELECT 'AbC123' ~* '^[a-z]+[[:digit:]]+$', 'AbC' ~* '^(xyz|abc)$';`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT E'A\nB' ~* '^a.b$', E'A\nB' !~* '^a.b$';`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT 'Éclair' ~* '^é', '日本語' ~* '^日本';`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT 'AbC'::varchar ~* '^abc$', 'AbC'::name ~* '^abc$';`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT 'pg_catalog'::name ~* '^PG_', 'public'::name !~* '^PG_';`, Expected: []sql.Row{{"t", "t"}}},
+			{Query: `SELECT texticregexeq('AbC', '^abc$'), texticregexne('AbC', '^abc$');`, Expected: []sql.Row{{"t", "f"}}},
+			{Query: `SELECT 'Application/JSON'::name ~* '^[A-Za-z0-9.-]+/[A-Za-z0-9.\+-]+$', 'application/ld+json'::name ~* '^[A-Za-z0-9.-]+/[A-Za-z0-9.\+-]+$', 'bad type'::name ~* '^[A-Za-z0-9.-]+/[A-Za-z0-9.\+-]+$';`, Expected: []sql.Row{{"t", "t", "f"}}},
+			{Query: `CREATE TABLE regex_inputs (id int PRIMARY KEY, value text, pattern text);`},
+			{Query: `INSERT INTO regex_inputs VALUES (1, 'AbC', '^abc$'), (2, 'AbC', '^xyz$'), (3, NULL, '['), (4, 'text', NULL);`},
+			{Query: `SELECT id, value ~* pattern, value !~* pattern FROM regex_inputs ORDER BY id;`, Expected: []sql.Row{{int32(1), "t", "f"}, {int32(2), "f", "t"}, {int32(3), nil, nil}, {int32(4), nil, nil}}},
+			{Query: `SELECT id FROM regex_inputs WHERE value ~* pattern ORDER BY id;`, Expected: []sql.Row{{int32(1)}}},
+			{Query: `SELECT 'abc' ~* '[';`, ExpectedErr: "regular expression", ExpectedErrCode: "2201B"},
+			{Query: `SELECT 'abc' !~* '(';`, ExpectedErr: "regular expression", ExpectedErrCode: "2201B"},
+			{Query: `SELECT 123 ~* 'abc';`, ExpectedErr: "operator does not exist"},
+			{Query: `SELECT 'abc' !~* 123;`, ExpectedErr: "operator does not exist"},
+		},
+	}})
 }

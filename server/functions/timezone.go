@@ -69,7 +69,7 @@ var timezone_text_timestamptz = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		return timeVal.UTC().Add(time.Duration(-int64(newOffset) * NanosPerSec)), nil
+		return timeVal.UTC().Add(time.Duration(int64(newOffset) * NanosPerSec)), nil
 	},
 }
 

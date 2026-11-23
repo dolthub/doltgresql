@@ -39,6 +39,6 @@ var repeat_text_int32 = framework.Function2{
 		if err != nil {
 			return nil, err
 		}
-		return strings.Repeat(strStr, int(num.(int32))), nil
+		return strings.Repeat(strStr, int(max(num.(int32), 0))), nil
 	},
 }

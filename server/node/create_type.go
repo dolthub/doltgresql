@@ -25,6 +25,8 @@ import (
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
+	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/auth"
 	"github.com/dolthub/doltgresql/server/types"
 )
@@ -119,6 +121,9 @@ func (c *CreateType) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	case types.TypeType_Enum:
 		enumLabelMap := make(map[string]types.EnumLabel)
 		for i, l := range c.Labels {
+			if err := validateEnumLabel(l); err != nil {
+				return nil, err
+			}
 			if _, ok := enumLabelMap[l]; ok {
 				// DETAIL:  Key (enumtypid, enumlabel)=(16702, ok) already exists.
 				return nil, errors.Errorf(`duplicate key value violates unique constraint "pg_enum_typid_label_index"`)
@@ -182,4 +187,12 @@ func (c *CreateType) WithResolvedChildren(ctx context.Context, children []any) (
 		return nil, ErrVitessChildCount.New(0, len(children))
 	}
 	return c, nil
+}
+
+// validateEnumLabel applies the byte limit shared by CREATE TYPE and ALTER TYPE.
+func validateEnumLabel(label string) error {
+	if len(label) > 63 {
+		return pgerror.New(pgcode.InvalidName, "invalid enum label: labels must be 63 bytes or less")
+	}
+	return nil
 }

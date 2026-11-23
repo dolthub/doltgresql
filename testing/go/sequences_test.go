@@ -743,16 +743,18 @@ func TestSequences(t *testing.T) {
 					Expected: []sql.Row{},
 				},
 				{
-					Query:    "CREATE TABLE myschema.test (pk INTEGER DEFAULT (nextval('seq1')), v1 INTEGER);",
+					Query:       "CREATE TABLE myschema.test (pk INTEGER DEFAULT (nextval('seq1')), v1 INTEGER);",
+					ExpectedErr: `relation "seq1" does not exist`,
+				},
+				{
+					Query:    "CREATE TABLE myschema.test (pk INTEGER DEFAULT (nextval('myschema.seq1')), v1 INTEGER);",
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:     true, // TODO: relation "seq1" does not exist
 					Query:    "INSERT INTO myschema.test (v1) VALUES (2), (3), (5), (7), (11);",
 					Expected: []sql.Row{},
 				},
 				{
-					Skip:  true, // TODO: unskip when INSERT above is unskipped
 					Query: "SELECT * FROM myschema.test ORDER BY v1;",
 					Expected: []sql.Row{
 						{1, 2},
@@ -761,6 +763,51 @@ func TestSequences(t *testing.T) {
 						{4, 7},
 						{5, 11},
 					},
+				},
+			},
+		},
+		{
+			// A sequence named in a column default resolves through the search path when the default is created, so
+			// the default keeps using that sequence under any later search path.
+			Name: "sequence in a column default resolves when the default is created",
+			SetUpScript: []string{
+				"CREATE SCHEMA s2;",
+				"CREATE SEQUENCE public.seq;",
+				"CREATE SEQUENCE s2.seq START 100;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE TABLE s2.t (x int, a int DEFAULT nextval('seq'), b int DEFAULT nextval('seq'::regclass));",
+				},
+				{
+					Query: "ALTER TABLE s2.t ADD COLUMN d int DEFAULT nextval('seq');",
+				},
+				{
+					Query: "ALTER TABLE s2.t ALTER COLUMN x SET DEFAULT nextval('seq');",
+				},
+				{
+					Query: "SET search_path = s2, public;",
+				},
+				{
+					Query: "INSERT INTO s2.t DEFAULT VALUES;",
+				},
+				{
+					Query: "SET search_path = '';",
+				},
+				{
+					Query: "INSERT INTO s2.t DEFAULT VALUES;",
+				},
+				{
+					Query:    "SELECT x < 100, a < 100, b < 100, d < 100 FROM s2.t;",
+					Expected: []sql.Row{{"t", "t", "t", "t"}, {"t", "t", "t", "t"}},
+				},
+				{
+					Query:    "SELECT nextval('s2.seq');",
+					Expected: []sql.Row{{100}},
+				},
+				{
+					Query:       "CREATE TABLE s2.u (x int DEFAULT nextval('nosuchseq'));",
+					ExpectedErr: `relation "nosuchseq" does not exist`,
 				},
 			},
 		},
@@ -1407,6 +1454,155 @@ ORDER BY 1,2;`,
 				{
 					Query:       "SELECT nextval('test');",
 					ExpectedErr: "unable to advance sequence state, possibly due to having incompatible state on different branches",
+				},
+			},
+		},
+		{
+			Name: "nextval follows setval, and dropped sequences leave no state (issue 3690)",
+			SetUpScript: []string{
+				"CREATE SEQUENCE a;",
+				"CREATE SEQUENCE b;",
+				"CREATE SEQUENCE c AS smallint;",
+				"CREATE SEQUENCE d AS integer;",
+				"CREATE TABLE t (id SERIAL PRIMARY KEY, v INT);",
+				"INSERT INTO t (v) VALUES (1), (2), (3);",
+				"CREATE TABLE u (id BIGSERIAL PRIMARY KEY, v INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT setval('a', 100);",
+					Expected: []sql.Row{{100}},
+				},
+				{
+					Query:    "SELECT setval('a', 300);",
+					Expected: []sql.Row{{300}},
+				},
+				{
+					Query:    "SELECT last_value FROM pg_sequences WHERE sequencename = 'a';",
+					Expected: []sql.Row{{300}},
+				},
+				{
+					Query:    "SELECT nextval('a');",
+					Expected: []sql.Row{{301}},
+				},
+				{
+					Query:    "SELECT setval('b', 500);",
+					Expected: []sql.Row{{500}},
+				},
+				{
+					Query:    "SELECT setval('b', 600);",
+					Expected: []sql.Row{{600}},
+				},
+				{
+					Query:    "SELECT nextval('b');",
+					Expected: []sql.Row{{601}},
+				},
+				{
+					Query:    "SELECT nextval('b');",
+					Expected: []sql.Row{{602}},
+				},
+				{
+					Query:    "DROP SEQUENCE b;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE SEQUENCE b;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT nextval('b');",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT setval('b', 50, false);",
+					Expected: []sql.Row{{50}},
+				},
+				{
+					Query:    "SELECT nextval('b');",
+					Expected: []sql.Row{{50}},
+				},
+				{
+					Query:    "SELECT setval('b', 10);",
+					Expected: []sql.Row{{10}},
+				},
+				{
+					Query:    "SELECT nextval('b');",
+					Expected: []sql.Row{{11}},
+				},
+				{
+					Query:    "SELECT setval('c', 30000);",
+					Expected: []sql.Row{{30000}},
+				},
+				{
+					Query:    "SELECT nextval('c');",
+					Expected: []sql.Row{{30001}},
+				},
+				{
+					Query:    "SELECT setval('d', 2000000000);",
+					Expected: []sql.Row{{2000000000}},
+				},
+				{
+					Query:    "SELECT nextval('d');",
+					Expected: []sql.Row{{2000000001}},
+				},
+				{
+					Query:    "DROP TABLE t;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE t (id SERIAL PRIMARY KEY, v INT);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t (v) VALUES (1) RETURNING id;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT setval('u_id_seq', 1000);",
+					Expected: []sql.Row{{1000}},
+				},
+				{
+					Query:    "INSERT INTO u (v) VALUES (1) RETURNING id;",
+					Expected: []sql.Row{{1001}},
+				},
+			},
+		},
+		{
+			Name: "dropped sequences keep their values on other branches (issue 3690)",
+			SetUpScript: []string{
+				"CREATE SEQUENCE s;",
+				"SELECT setval('s', 100);",
+				"SELECT dolt_commit('-Am', 'initial');",
+				"SELECT dolt_branch('other');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT dolt_checkout('other');",
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
+				},
+				{
+					Query:    "SELECT nextval('s');",
+					Expected: []sql.Row{{101}},
+				},
+				{
+					Query:    "SELECT dolt_checkout('main');",
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'main'"}}},
+				},
+				{
+					Query:    "SELECT nextval('s');",
+					Expected: []sql.Row{{102}},
+				},
+				{
+					Query:    "DROP SEQUENCE s;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT dolt_checkout('other');",
+					Expected: []sql.Row{{[]any{int64(0), "Switched to branch 'other'"}}},
+				},
+				{
+					Query:    "SELECT nextval('s');",
+					Expected: []sql.Row{{102}},
 				},
 			},
 		},

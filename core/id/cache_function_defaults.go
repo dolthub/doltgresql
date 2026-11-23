@@ -732,7 +732,7 @@ func init() {
 	globalCache.setBuiltIn(NewId(Section_Function, "pg_catalog", "pg_char_to_encoding", string(NewId(Section_Type, "pg_catalog", "name"))), 1264)
 	globalCache.setBuiltIn(NewId(Section_Function, "pg_catalog", "tidne", string(NewId(Section_Type, "pg_catalog", "tid")), string(NewId(Section_Type, "pg_catalog", "tid"))), 1265)
 	globalCache.setBuiltIn(NewId(Section_Function, "pg_catalog", "cidr_in", string(NewId(Section_Type, "pg_catalog", "cstring"))), 1267)
-	globalCache.setBuiltIn(NewId(Section_Function, "pg_catalog", "parse_ident", string(NewId(Section_Type, "pg_catalog", "bool")), string(NewId(Section_Type, "pg_catalog", "text"))), 1268)
+	globalCache.setBuiltIn(NewId(Section_Function, "pg_catalog", "parse_ident", string(NewId(Section_Type, "pg_catalog", "text")), string(NewId(Section_Type, "pg_catalog", "bool"))), 1268)
 	globalCache.setBuiltIn(NewId(Section_Function, "pg_catalog", "pg_column_size", string(NewId(Section_Type, "pg_catalog", "any"))), 1269)
 	globalCache.setBuiltIn(NewId(Section_Function, "pg_catalog", "overlaps", string(NewId(Section_Type, "pg_catalog", "timetz")), string(NewId(Section_Type, "pg_catalog", "timetz")), string(NewId(Section_Type, "pg_catalog", "timetz")), string(NewId(Section_Type, "pg_catalog", "timetz"))), 1271)
 	globalCache.setBuiltIn(NewId(Section_Function, "pg_catalog", "datetime_pl", string(NewId(Section_Type, "pg_catalog", "date")), string(NewId(Section_Type, "pg_catalog", "time"))), 1272)

@@ -32,6 +32,7 @@ import (
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/core/sequences"
+	"github.com/dolthub/doltgresql/server/auth"
 	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/server/tables"
@@ -240,6 +241,12 @@ func (c *CreateSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, erro
 		if err != nil {
 			return nil, err
 		}
+	}
+	err = applyDefaultPrivilegesForNewObject(ctx, func(owner auth.RoleID) bool {
+		return auth.ApplyDefaultPrivilegesForNewSequence(owner, c.sequence.Id.SchemaName(), c.sequence.Id.SequenceName())
+	})
+	if err != nil {
+		return nil, err
 	}
 	return sql.RowsToRowIter(), nil
 }

@@ -1419,6 +1419,124 @@ func TestDoltDiff(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Tables of the same name in different schemas",
+			SetUpScript: []string{
+				"CREATE SCHEMA a;",
+				"CREATE TABLE t (id INT PRIMARY KEY, v INT);",
+				"CREATE TABLE a.t (id INT PRIMARY KEY, v INT);",
+				"INSERT INTO t VALUES (1, 0);",
+				"INSERT INTO a.t VALUES (1, 0);",
+				"SELECT dolt_commit('-Am', 'base');",
+				"UPDATE a.t SET v = 5;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_stat('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "UPDATE t SET v = 6;",
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{{0, 6}},
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 'public.t');",
+					Expected: []sql.Row{{0, 6}},
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 'a.t');",
+					Expected: []sql.Row{{0, 5}},
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff_t WHERE to_commit = 'WORKING';",
+					Expected: []sql.Row{{0, 6}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{{"public.t", "public.t", "modified", "t", "f"}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 'public.t');",
+					Expected: []sql.Row{{"public.t", "public.t", "modified", "t", "f"}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 'a.t');",
+					Expected: []sql.Row{{"a.t", "a.t", "modified", "t", "f"}},
+				},
+				{
+					Query:    "SELECT table_name, rows_modified FROM dolt_diff_stat('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{{"public.t", 1}},
+				},
+				{
+					Query:    "SELECT table_name, rows_modified FROM dolt_diff_stat('HEAD', 'WORKING', 'public.t');",
+					Expected: []sql.Row{{"public.t", 1}},
+				},
+				{
+					Query:    "SELECT table_name, rows_modified FROM dolt_diff_stat('HEAD', 'WORKING', 'a.t');",
+					Expected: []sql.Row{{"a.t", 1}},
+				},
+				{
+					Query:    "SELECT table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{{"public.t", "data", "UPDATE \"t\" SET \"v\"=6 WHERE \"id\"=1;"}},
+				},
+				{
+					Query:    "SELECT table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 'public.t');",
+					Expected: []sql.Row{{"public.t", "data", "UPDATE \"t\" SET \"v\"=6 WHERE \"id\"=1;"}},
+				},
+				{
+					Query:    "SELECT table_name, diff_type, statement FROM dolt_patch('HEAD', 'WORKING', 'a.t');",
+					Expected: []sql.Row{{"a.t", "data", "UPDATE \"t\" SET \"v\"=5 WHERE \"id\"=1;"}},
+				},
+				{
+					Query: "SET search_path = a, public;",
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 't');",
+					Expected: []sql.Row{{0, 5}},
+				},
+				{
+					Query:           "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 'b.t');",
+					ExpectedErr:     "table not found",
+					ExpectedErrCode: "42P01",
+				},
+				{
+					Query:    "SELECT from_v, to_v FROM dolt_diff('HEAD', 'WORKING', 'A.T');",
+					Expected: []sql.Row{{0, 5}},
+				},
+				{
+					Query: "CREATE TABLE public.\"x.y\" (id INT PRIMARY KEY);",
+				},
+				{
+					Query: "INSERT INTO public.\"x.y\" VALUES (1);",
+				},
+				{
+					Query:    "SELECT diff_type, to_id FROM dolt_diff('HEAD', 'WORKING', 'x.y');",
+					Expected: []sql.Row{{"added", 1}},
+				},
+				{
+					Query: "CREATE SEQUENCE public.s1;",
+				},
+				{
+					Query:    "SELECT * FROM dolt_diff_summary('HEAD', 'WORKING', 'public.s1');",
+					Expected: []sql.Row{{"", "public.s1", "added", "t", "t"}},
+				},
+			},
+		},
 	})
 }
 
@@ -1848,7 +1966,7 @@ func TestDoltMerge(t *testing.T) {
 				"INSERT INTO t_serial VALUES (4, 3);",
 				"INSERT INTO t_generated (pk, v1) VALUES (3, 3);",
 				"INSERT INTO t_trigger VALUES (3, 3);",
-				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT4 AS $$ BEGIN RETURN 33; END; $$ LANGUAGE plpgsql;",
+				"CREATE OR REPLACE FUNCTION f_default() RETURNS INT8 AS $$ BEGIN RETURN 33; END; $$ LANGUAGE plpgsql;",
 				"INSERT INTO t_default_func (pk, v2) VALUES (3, 3);",
 				"SELECT length(DOLT_COMMIT('-A', '-m', 'initial')::text) = 32;",
 			},
@@ -2675,6 +2793,137 @@ func TestDoltTag(t *testing.T) {
 				{
 					Query:       "SELECT DOLT_CHECKOUT('tagged_commit');",
 					ExpectedErr: "detached head",
+				},
+			},
+		},
+	})
+}
+
+// TestDoltVerifyConstraints tests DOLT_VERIFY_CONSTRAINTS with and without named tables.
+func TestDoltVerifyConstraints(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "Merged foreign key violation",
+			SetUpScript: []string{
+				"CREATE TABLE parent (pk INT PRIMARY KEY);",
+				"CREATE TABLE child (pk INT PRIMARY KEY, parent_fk INT REFERENCES parent (pk));",
+				"INSERT INTO parent VALUES (1);",
+				"SELECT dolt_commit('-Am', 'setup');",
+				"SELECT dolt_checkout('-b', 'b');",
+				"INSERT INTO child VALUES (1, 1);",
+				"SELECT dolt_commit('-am', 'add child');",
+				"SELECT dolt_checkout('main');",
+				"DELETE FROM parent WHERE pk = 1;",
+				"SELECT dolt_commit('-am', 'delete parent');",
+				"SET dolt_force_transaction_commit TO ON;",
+				"SELECT dolt_merge('b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints();",
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints('--all');",
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_constraint_violations;",
+					Expected: []sql.Row{{"child", Numeric("1")}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints('child');",
+					Expected: []sql.Row{{int64(1)}},
+				},
+			},
+		},
+		{
+			Name: "Merged UNIQUE NULLS NOT DISTINCT violation",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk INT PRIMARY KEY, a INT, b INT, UNIQUE NULLS NOT DISTINCT (a, b));",
+				"INSERT INTO t VALUES (1, 1, NULL);",
+				"SELECT dolt_commit('-Am', 'setup');",
+				"SELECT dolt_checkout('-b', 'b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "INSERT INTO t VALUES (2, 1, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:    "SELECT indnullsnotdistinct FROM pg_index WHERE indexrelid = 't_a_b_key'::regclass;",
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query: "INSERT INTO t VALUES (2, NULL, NULL);",
+				},
+				{
+					Query:            "SELECT dolt_commit('-am', 'insert on b');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:            "SELECT dolt_checkout('main');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "INSERT INTO t VALUES (3, NULL, NULL);",
+				},
+				{
+					Query:            "SELECT dolt_commit('-am', 'insert on main');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query: "SET dolt_force_transaction_commit TO ON;",
+				},
+				{
+					Query:            "SELECT dolt_merge('b');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    "SELECT violation_type, pk, a, b FROM dolt_constraint_violations_t ORDER BY pk;",
+					Expected: []sql.Row{{"unique index", 2, nil, nil}, {"unique index", 3, nil, nil}},
+				},
+				{
+					Query:    "SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 't_a_b_key';",
+					Expected: []sql.Row{{"UNIQUE NULLS NOT DISTINCT (a, b)"}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints('--all');",
+					Expected: []sql.Row{{int64(1)}},
+				},
+			},
+		},
+		{
+			Name: "Merged foreign key violation in a schema on the search path",
+			SetUpScript: []string{
+				"CREATE SCHEMA s2;",
+				"SET search_path TO s2;",
+				"CREATE TABLE parent (pk INT PRIMARY KEY);",
+				"CREATE TABLE child (pk INT PRIMARY KEY, parent_fk INT REFERENCES parent (pk));",
+				"INSERT INTO parent VALUES (1);",
+				"SELECT dolt_commit('-Am', 'setup');",
+				"SELECT dolt_checkout('-b', 'b');",
+				"INSERT INTO child VALUES (1, 1);",
+				"SELECT dolt_commit('-am', 'add child');",
+				"SELECT dolt_checkout('main');",
+				"DELETE FROM parent WHERE pk = 1;",
+				"SELECT dolt_commit('-am', 'delete parent');",
+				"SET dolt_force_transaction_commit TO ON;",
+				"SELECT dolt_merge('b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints();",
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_verify_constraints('--all');",
+					Expected: []sql.Row{{int64(1)}},
+				},
+				{
+					Query:    "SELECT * FROM dolt_constraint_violations;",
+					Expected: []sql.Row{{"child", Numeric("1")}},
 				},
 			},
 		},

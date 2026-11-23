@@ -38,7 +38,6 @@ var pg_show_all_settings = framework.Function0{
 	IsNonDeterministic: true,
 	Strict:             true,
 	Callable: func(ctx *sql.Context) (any, error) {
-		//sysVarMap := sql.SystemVariables.GetAllSystemVariables()
 		// TODO add all config parameters
 		//  only bytea_output is added to support pgAdmin4 workbench
 		row := sql.Row{

@@ -16,7 +16,7 @@ package node
 
 import (
 	"github.com/cockroachdb/errors"
-
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/plan"
 
@@ -55,36 +55,53 @@ func (c *DropTable) Resolved() bool {
 
 // BuildRowIter implements the interface sql.ExecBuilderNode.
 func (c *DropTable) BuildRowIter(ctx *sql.Context, b sql.NodeExecBuilder, r sql.Row) (sql.RowIter, error) {
+	dbNames := make([]string, len(c.gmsDropTable.Tables))
+	tableIDs := make([]id.Table, len(c.gmsDropTable.Tables))
+	var sequenceDbNames []string
+	var sequenceIDs []id.Sequence
+	for i, table := range c.gmsDropTable.Tables {
+		resolvedTable, ok := table.(*plan.ResolvedTable)
+		if !ok {
+			return nil, errors.Errorf("encountered unexpected table type `%T` during DROP TABLE", table)
+		}
+		schemaName, err := core.GetSchemaName(ctx, resolvedTable.Database(), "")
+		if err != nil {
+			return nil, err
+		}
+		dbNames[i] = resolvedTable.Database().Name()
+		tableIDs[i] = id.NewTable(schemaName, resolvedTable.Name())
+		collection, err := core.GetSequencesCollectionFromContext(ctx, dbNames[i])
+		if err != nil {
+			return nil, err
+		}
+		ownedSequences, err := collection.GetSequencesWithTable(ctx, doltdb.TableName{Name: resolvedTable.Name(), Schema: schemaName})
+		if err != nil {
+			return nil, err
+		}
+		for _, sequence := range ownedSequences {
+			sequenceDbNames = append(sequenceDbNames, dbNames[i])
+			sequenceIDs = append(sequenceIDs, sequence.Id)
+		}
+	}
+
 	dropTableIter, err := b.Build(ctx, c.gmsDropTable, r)
 	if err != nil {
 		return nil, err
 	}
-
-	for _, table := range c.gmsDropTable.Tables {
-		var dbName string
-		var schemaName string
-		var tableName string
-		switch table := table.(type) {
-		case *plan.ResolvedTable:
-			schemaName, err = core.GetSchemaName(ctx, table.Database(), "")
-			if err != nil {
-				return nil, err
-			}
-			tableName = table.Name()
-			dbName = table.Database().Name()
-		default:
-			return nil, errors.Errorf("encountered unexpected table type `%T` during DROP TABLE", table)
-		}
-
-		tableID := id.NewTable(schemaName, tableName).AsId()
-		if err = id.ValidateOperation(ctx, id.Section_Table, id.Operation_Delete, dbName, tableID, id.Null); err != nil {
+	for i, tableID := range tableIDs {
+		if err = id.ValidateOperation(ctx, id.Section_Table, id.Operation_Delete, dbNames[i], tableID.AsId(), id.Null); err != nil {
 			return nil, err
 		}
-		if err = id.PerformOperation(ctx, id.Section_Table, id.Operation_Delete, dbName, tableID, id.Null); err != nil {
+		if err = id.PerformOperation(ctx, id.Section_Table, id.Operation_Delete, dbNames[i], tableID.AsId(), id.Null); err != nil {
 			return nil, err
 		}
 	}
-	return dropTableIter, err
+	for i, sequenceID := range sequenceIDs {
+		if err = core.DropSequenceFromTracker(ctx, sequenceDbNames[i], sequenceID); err != nil {
+			return nil, err
+		}
+	}
+	return dropTableIter, nil
 }
 
 // Schema implements the interface sql.ExecBuilderNode.

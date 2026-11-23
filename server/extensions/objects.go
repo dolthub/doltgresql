@@ -47,6 +47,20 @@ func CreateObjects(ctx *sql.Context, ext *extdef.Extension, schemaName string) e
 	return extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl}.materialize(ctx)
 }
 
+// UpdateObjects rewrites every object that the given extension declares in the given schema to match the declaration,
+// creating the objects that are missing and removing the extension's functions that it no longer declares.
+func UpdateObjects(ctx *sql.Context, ext *extdef.Extension, schemaName string) error {
+	typColl, err := core.GetTypesCollectionFromContext(ctx, "")
+	if err != nil {
+		return err
+	}
+	objects := extensionObjects{ext: ext, schemaName: schemaName, typColl: typColl, replace: true}
+	if err = objects.materialize(ctx); err != nil {
+		return err
+	}
+	return objects.dropUndeclaredRoutines(ctx)
+}
+
 // CheckDependents returns an error if a table, a domain, a CHECK constraint, or a view depends on an object that the
 // given extension declares in the given schema.
 func CheckDependents(ctx *sql.Context, ext *extdef.Extension, schemaName string) error {
@@ -71,6 +85,8 @@ type extensionObjects struct {
 	ext        *extdef.Extension
 	schemaName string
 	typColl    *typecollection.TypeCollection
+	// replace is whether materializing removes an existing object before writing the declared one.
+	replace bool
 }
 
 // materialize writes every object that the extension declares.
@@ -117,6 +133,11 @@ func (e extensionObjects) materializeTypes(ctx *sql.Context) error {
 			return err
 		}
 		newType := pgtypes.NewBaseType(ctx, id.NewType(e.schemaName, declared.Name), def)
+		if e.replace && e.typColl.HasType(ctx, newType.ID) {
+			if err = e.typColl.DropType(ctx, newType.ID, id.NewType(e.schemaName, "_"+declared.Name)); err != nil {
+				return err
+			}
+		}
 		if err = e.typColl.CreateType(ctx, newType); err != nil {
 			return err
 		}
@@ -149,8 +170,14 @@ func (e extensionObjects) materializeRoutines(ctx *sql.Context) error {
 		for i, param := range routine.Parameters {
 			allParams[i] = procedures.Parameter{Name: param.Name, Type: paramTypes[i]}
 		}
+		funcID := id.NewFunction(e.schemaName, routine.Name, paramTypes...)
+		if e.replace && funcCollection.HasFunction(ctx, funcID) {
+			if err = funcCollection.DropFunction(ctx, funcID); err != nil {
+				return err
+			}
+		}
 		err = funcCollection.AddFunction(ctx, functions.Function{
-			ID:                 id.NewFunction(e.schemaName, routine.Name, paramTypes...),
+			ID:                 funcID,
 			ReturnType:         returnType,
 			AllParams:          allParams,
 			IsNonDeterministic: true,
@@ -195,8 +222,14 @@ func (e extensionObjects) materializeOperators(ctx *sql.Context) error {
 		if err != nil {
 			return err
 		}
+		operatorID := id.NewOperator(e.schemaName, declared.Symbol, leftType, rightType)
+		if e.replace && opCollection.HasOperator(ctx, operatorID) {
+			if err = opCollection.DropOperator(ctx, operatorID); err != nil {
+				return err
+			}
+		}
 		err = opCollection.AddOperator(ctx, operators.Operator{
-			ID:         id.NewOperator(e.schemaName, declared.Symbol, leftType, rightType),
+			ID:         operatorID,
 			Function:   funcID,
 			ReturnType: returnType,
 			Commutator: declared.Commutator,
@@ -233,8 +266,14 @@ func (e extensionObjects) materializeCasts(ctx *sql.Context) error {
 		if err != nil {
 			return err
 		}
+		castID := id.NewCast(sourceType, targetType)
+		if e.replace && castCollection.HasCast(ctx, castID) {
+			if err = castCollection.DropCast(ctx, castID); err != nil {
+				return err
+			}
+		}
 		err = castCollection.AddCast(ctx, casts.Cast{
-			ID:       id.NewCast(sourceType, targetType),
+			ID:       castID,
 			CastType: declared.CastType,
 			Function: funcID,
 			UseInOut: !funcID.IsValid(),
@@ -280,8 +319,14 @@ func (e extensionObjects) materializeAggregates(ctx *sql.Context) error {
 		if err != nil {
 			return err
 		}
+		aggregateID := id.NewFunction(e.schemaName, declared.Name, paramTypes...)
+		if e.replace && aggCollection.HasAggregate(ctx, aggregateID) {
+			if err = aggCollection.DropAggregate(ctx, aggregateID); err != nil {
+				return err
+			}
+		}
 		err = aggCollection.AddAggregate(ctx, aggregates.Aggregate{
-			ID:          id.NewFunction(e.schemaName, declared.Name, paramTypes...),
+			ID:          aggregateID,
 			ReturnType:  returnType,
 			SFunc:       transitionFunc,
 			SType:       stateType,
@@ -380,13 +425,15 @@ func (e extensionObjects) dropAggregates(ctx *sql.Context) error {
 	if err != nil {
 		return err
 	}
-	aggregateIDs := make([]id.Function, len(e.ext.Aggregates))
-	for i, declared := range e.ext.Aggregates {
+	var aggregateIDs []id.Function
+	for _, declared := range e.ext.Aggregates {
 		paramTypes, err := e.parameterTypes(ctx, declared.Parameters)
 		if err != nil {
 			return err
 		}
-		aggregateIDs[i] = id.NewFunction(e.schemaName, declared.Name, paramTypes...)
+		if aggregateID := id.NewFunction(e.schemaName, declared.Name, paramTypes...); aggCollection.HasAggregate(ctx, aggregateID) {
+			aggregateIDs = append(aggregateIDs, aggregateID)
+		}
 	}
 	return aggCollection.DropAggregate(ctx, aggregateIDs...)
 }
@@ -400,8 +447,8 @@ func (e extensionObjects) dropCasts(ctx *sql.Context) error {
 	if err != nil {
 		return err
 	}
-	castIDs := make([]id.Cast, len(e.ext.Casts))
-	for i, declared := range e.ext.Casts {
+	var castIDs []id.Cast
+	for _, declared := range e.ext.Casts {
 		sourceType, err := e.typeID(ctx, declared.Source)
 		if err != nil {
 			return err
@@ -410,7 +457,9 @@ func (e extensionObjects) dropCasts(ctx *sql.Context) error {
 		if err != nil {
 			return err
 		}
-		castIDs[i] = id.NewCast(sourceType, targetType)
+		if castID := id.NewCast(sourceType, targetType); castCollection.HasCast(ctx, castID) {
+			castIDs = append(castIDs, castID)
+		}
 	}
 	return castCollection.DropCast(ctx, castIDs...)
 }
@@ -424,8 +473,8 @@ func (e extensionObjects) dropOperators(ctx *sql.Context) error {
 	if err != nil {
 		return err
 	}
-	operatorIDs := make([]id.Operator, len(e.ext.Operators))
-	for i, declared := range e.ext.Operators {
+	var operatorIDs []id.Operator
+	for _, declared := range e.ext.Operators {
 		leftType, err := e.typeID(ctx, declared.Left)
 		if err != nil {
 			return err
@@ -434,25 +483,47 @@ func (e extensionObjects) dropOperators(ctx *sql.Context) error {
 		if err != nil {
 			return err
 		}
-		operatorIDs[i] = id.NewOperator(e.schemaName, declared.Symbol, leftType, rightType)
+		if operatorID := id.NewOperator(e.schemaName, declared.Symbol, leftType, rightType); opCollection.HasOperator(ctx, operatorID) {
+			operatorIDs = append(operatorIDs, operatorID)
+		}
 	}
 	return opCollection.DropOperator(ctx, operatorIDs...)
 }
 
-// dropRoutines removes the declared routines from the functions collection.
+// dropRoutines removes every function that belongs to the extension from the functions collection, including the
+// functions that an earlier declaration created.
 func (e extensionObjects) dropRoutines(ctx *sql.Context) error {
-	if len(e.ext.Routines) == 0 {
-		return nil
+	return e.dropRoutinesExcept(ctx, nil)
+}
+
+// dropUndeclaredRoutines removes the functions that belong to the extension but that its declaration no longer has.
+func (e extensionObjects) dropUndeclaredRoutines(ctx *sql.Context) error {
+	declared := make(map[id.Function]struct{}, len(e.ext.Routines))
+	for _, routine := range e.ext.Routines {
+		funcID, err := e.routineID(ctx, routine)
+		if err != nil {
+			return err
+		}
+		declared[funcID] = struct{}{}
 	}
+	return e.dropRoutinesExcept(ctx, declared)
+}
+
+// dropRoutinesExcept removes the functions that belong to the extension in its schema, other than the given ones.
+func (e extensionObjects) dropRoutinesExcept(ctx *sql.Context, kept map[id.Function]struct{}) error {
 	funcCollection, err := core.GetFunctionsCollectionFromContext(ctx, "")
 	if err != nil {
 		return err
 	}
-	funcIDs := make([]id.Function, len(e.ext.Routines))
-	for i, routine := range e.ext.Routines {
-		if funcIDs[i], err = e.routineID(ctx, routine); err != nil {
-			return err
+	var funcIDs []id.Function
+	err = funcCollection.IterateFunctions(ctx, func(f functions.Function) (stop bool, err error) {
+		if _, ok := kept[f.ID]; !ok && f.ExtensionName == e.ext.Name && f.ID.SchemaName() == e.schemaName {
+			funcIDs = append(funcIDs, f.ID)
 		}
+		return false, nil
+	})
+	if err != nil {
+		return err
 	}
 	return funcCollection.DropFunction(ctx, funcIDs...)
 }
@@ -462,7 +533,13 @@ func (e extensionObjects) dropTypes(ctx *sql.Context) error {
 	if len(e.ext.Types) == 0 {
 		return nil
 	}
-	return e.typColl.DropType(ctx, e.declaredTypeIDs()...)
+	var typeIDs []id.Type
+	for _, typeID := range e.declaredTypeIDs() {
+		if e.typColl.HasType(ctx, typeID) {
+			typeIDs = append(typeIDs, typeID)
+		}
+	}
+	return e.typColl.DropType(ctx, typeIDs...)
 }
 
 // declaredTypeIDs returns the IDs of the declared types and their array types.

@@ -452,9 +452,9 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		case tree.NotRegMatch:
 			operator = vitess.NotRegexpStr
 		case tree.RegIMatch:
-			return nil, errors.Errorf("~* is not yet supported")
+			return vitess.InjectedExpr{Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryRegexInsensitive), Children: vitess.Exprs{left, right}}, nil
 		case tree.NotRegIMatch:
-			return nil, errors.Errorf("!~* is not yet supported")
+			return vitess.InjectedExpr{Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryNotRegexInsensitive), Children: vitess.Exprs{left, right}}, nil
 		case tree.TextSearchMatch:
 			return nil, errors.Errorf("@@ is not yet supported")
 		case tree.IsDistinctFrom:
@@ -559,20 +559,17 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 	case *tree.DGeometry:
 		return nil, errors.Errorf("the statement is not yet supported")
 	case *tree.DIPAddr:
-		return nil, errors.Errorf("the statement is not yet supported")
+		return vitess.InjectedExpr{
+			Expression: pgexprs.NewRawLiteralInet(node.IPAddr),
+		}, nil
 	case *tree.DInt:
 		return vitess.InjectedExpr{
 			Expression: pgexprs.NewRawLiteralInt64(int64(*node)),
 		}, nil
 	case *tree.DInterval:
-		cast, err := pgexprs.NewExplicitCastInjectable(pgtypes.Interval)
-		if err != nil {
-			return nil, err
-		}
-		expr := pgexprs.NewIntervalLiteral(node.Duration)
+		// Interval formats its duration as a quoted SQL literal so stored defaults can be reparsed.
 		return vitess.InjectedExpr{
-			Expression: cast,
-			Children:   vitess.Exprs{vitess.InjectedExpr{Expression: expr}},
+			Expression: pgexprs.NewInterval(node.Duration),
 		}, nil
 	case *tree.DJSON:
 		// JSON type is handled in string format
@@ -855,10 +852,7 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 		case tree.UnaryMinus:
 			operator = framework.Operator_UnaryMinus
 		case tree.UnaryComplement:
-			return &vitess.UnaryExpr{
-				Operator: vitess.TildaStr,
-				Expr:     expr,
-			}, nil
+			operator = framework.Operator_UnaryBitNot
 		case tree.UnarySqrt:
 			// TODO: replace with a function
 			return nil, errors.Errorf("square root operator is not yet supported")

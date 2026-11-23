@@ -362,6 +362,8 @@ tests:
     - exec: "create table vals (i int primary key)"
     - exec: "insert into vals values (1)"
     - exec: "create function routine_vals() returns integer as $$ begin return 1; end; $$ language plpgsql"
+    # New functions grant EXECUTE to PUBLIC by default, so revoke it to only allow access through the doomed role.
+    - exec: "revoke execute on function routine_vals() from public"
     - exec: "create role doomed"
     - exec: "create user member password 'memberpass'"
     - exec: "grant select on vals to doomed"

@@ -26,6 +26,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/compare"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -206,7 +207,11 @@ var date_eq_timestamp = framework.Function2{
 
 // date_eq_timestamptz_callable is the callable logic for the date_eq_timestamptz function.
 func date_eq_timestamptz_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res := val1.(time.Time).Compare(val2.(time.Time))
+	date, err := functions.DateToTimestampTZ(ctx, val1.(time.Time))
+	if err != nil {
+		return nil, err
+	}
+	res := date.Compare(val2.(time.Time))
 	return res == 0, nil
 }
 
@@ -687,7 +692,11 @@ var timestamp_eq_timestamptz = framework.Function2{
 
 // timestamptz_eq_date_callable is the callable logic for the timestamptz_eq_date function.
 func timestamptz_eq_date_callable(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-	res := val1.(time.Time).Compare(val2.(time.Time))
+	date, err := functions.DateToTimestampTZ(ctx, val2.(time.Time))
+	if err != nil {
+		return nil, err
+	}
+	res := val1.(time.Time).Compare(date)
 	return res == 0, nil
 }
 

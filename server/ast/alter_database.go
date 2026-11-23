@@ -31,5 +31,15 @@ func nodeAlterDatabase(ctx *Context, node *tree.AlterDatabase) (vitess.Statement
 		return NewNoOp("OWNER TO is unsupported and ignored"), nil
 	}
 
+	if node.SetVar != nil || node.ResetAll {
+		setting, err := nodeAlterRoleSetting(node.SetVar, node.ResetAll)
+		if err != nil {
+			return nil, err
+		}
+		setting.AllRoles = true
+		setting.Database = string(node.Name)
+		return alterRoleSettingStatement(setting), nil
+	}
+
 	return NotYetSupportedError("ALTER DATABASE is not yet supported")
 }

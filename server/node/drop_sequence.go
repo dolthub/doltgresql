@@ -102,6 +102,9 @@ func (c *DropSequence) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error)
 	if err = collection.DropSequence(ctx, sequenceID); err != nil {
 		return nil, err
 	}
+	if err = core.DropSequenceFromTracker(ctx, ctx.GetCurrentDatabase(), sequenceID); err != nil {
+		return nil, err
+	}
 	return sql.RowsToRowIter(), nil
 }
 

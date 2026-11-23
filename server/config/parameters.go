@@ -18,51 +18,74 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 
+	"github.com/cockroachdb/apd/v3"
 	cerrors "github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/variables"
 	"gopkg.in/src-d/go-errors.v1"
 )
 
-// doltConfigParameters is a list of Dolt-specific configuration parameters that can be used in SET statement.
-var doltConfigParameters = make(map[string]sql.SystemVariable)
+// InitWithRegistry registers fresh PostgreSQL definitions in a registry from
+// sqle.NewEngineVariables. A name Dolt also defines keeps Dolt's definition.
+func InitWithRegistry(vars sql.SystemVariableRegistry) {
+	addPostgresParameters(vars, doltVariableNames())
+}
 
-// Init initializes or appends to SystemVariables as it functions as a global variable.
-// Currently, we append all of postgres configuration parameters to sql.SystemVariables.
-// This means that all of mysql system variables and postgres config parameters will be stored together.
-// TODO: get rid of me, use an integration point to define new sysvars
-func Init() {
-	// There are two postgres parameters have the same name as mysql variables
-	// TODO: issue with this approach is that those parameters will override the mysql variables.
-	if sql.SystemVariables == nil {
-		// unlikely this would happen since init() in gms package is executed first
-		variables.InitSystemVariables()
+func addPostgresParameters(vars sql.SystemVariableRegistry, skip map[string]struct{}) {
+	params := freshPostgresParameters()
+	kept := params[:0]
+	for _, param := range params {
+		if _, ok := skip[strings.ToLower(param.GetName())]; !ok {
+			kept = append(kept, param)
+		}
 	}
-	// Regression tests assume the Los Angeles timezone, so we'll set that here if the env var is set
-	if _, ok := os.LookupEnv("REGRESSION_TESTING"); ok {
-		timezone := postgresConfigParameters["timezone"].(*Parameter)
-		timezone.Default = "America/Los_Angeles"
-		timezone.ResetVal = "America/Los_Angeles"
+	vars.AddSystemVariables(kept)
+}
+
+// doltVariableNames returns the lowercase names Dolt registers in an engine.
+var doltVariableNames = sync.OnceValue(func() map[string]struct{} {
+	names := nameRecorder{names: make(map[string]struct{})}
+	sqle.AddDoltSystemVariablesToRegistry(names)
+	return names.names
+})
+
+// nameRecorder only records the names passed to AddSystemVariables.
+type nameRecorder struct {
+	sql.SystemVariableRegistry
+	names map[string]struct{}
+}
+
+func (r nameRecorder) AddSystemVariables(defs []sql.SystemVariable) {
+	for _, def := range defs {
+		if def != nil {
+			r.names[strings.ToLower(def.GetName())] = struct{}{}
+		}
 	}
-	params := make([]sql.SystemVariable, len(postgresConfigParameters))
-	i := 0
-	for _, sysVar := range postgresConfigParameters {
-		params[i] = sysVar
-		i++
+}
+
+func freshPostgresParameters() []sql.SystemVariable {
+	templates := postgresConfigParameters()
+	params := make([]sql.SystemVariable, 0, len(templates))
+	_, regression := os.LookupEnv("REGRESSION_TESTING")
+	for _, param := range templates {
+		param.BootVal = param.Default
+		if regression && strings.EqualFold(param.Name, "timezone") {
+			param.Default = "America/Los_Angeles"
+			param.BootVal = param.Default
+			param.ResetVal = param.Default
+		}
+		params = append(params, param)
 	}
-	for _, doltSysVar := range sqle.DoltSystemVariables {
-		doltConfigParameters[doltSysVar.GetName()] = doltSysVar
-	}
-	sql.SystemVariables.AddSystemVariables(params)
-	sqle.AddDoltSystemVariables()
+	return params
 }
 
 var (
@@ -75,6 +98,8 @@ var _ sql.SystemVariable = (*Parameter)(nil)
 type Parameter struct {
 	Name         string
 	Default      any
+	Unit         string
+	BootVal      any // immutable startup default for pg_settings
 	Category     string
 	ShortDesc    string
 	Context      ParameterContext
@@ -108,7 +133,9 @@ func (p *Parameter) GetLocalScope() sql.SystemVariableScope {
 
 // SetDefault implements sql.SystemVariable.
 func (p *Parameter) SetDefault(a any) {
-	if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
+	if p.ValidateFunc == nil {
+		p.Default = a
+	} else if validatedVal, ok := p.ValidateFunc(p.Default, a); ok {
 		p.Default = validatedVal
 	}
 }
@@ -122,6 +149,9 @@ func (p *Parameter) GetDefault() any {
 func (p *Parameter) InitValue(ctx *sql.Context, val any, global bool) (sql.SystemVarValue, error) {
 	convertedVal, _, err := p.Type.Convert(ctx, val)
 	if err != nil {
+		if sql.ErrInvalidSystemVariableValue.Is(err) {
+			return sql.SystemVarValue{}, p.invalidValueError(fmt.Sprint(val), "")
+		}
 		return sql.SystemVarValue{}, err
 	}
 	currVal, err := ctx.GetSessionVariable(ctx, p.Name)
@@ -147,7 +177,33 @@ func (p *Parameter) SetValue(ctx *sql.Context, val any, global bool) (sql.System
 	if p.IsReadOnly() {
 		return sql.SystemVarValue{}, pgerror.Newf(pgcode.CantChangeRuntimeParam, `parameter "%s" cannot be changed now`, p.Name)
 	}
-	// TODO: Do parsing of units for memory and time parameters
+	// Integer parameters accept fractional values, which are rounded, so we parse those the same way as strings
+	if p.Type.String() == "system_int" {
+		switch v := val.(type) {
+		case float32:
+			val = strconv.FormatFloat(float64(v), 'g', -1, 32)
+		case float64:
+			val = strconv.FormatFloat(v, 'g', -1, 64)
+		case *apd.Decimal:
+			val = v.String()
+		}
+	}
+	if str, ok := val.(string); ok {
+		switch p.Type.String() {
+		case "system_int":
+			parsed, err := p.parseNumericValue(str, true)
+			if err != nil {
+				return sql.SystemVarValue{}, err
+			}
+			val = parsed
+		case "system_double":
+			parsed, err := p.parseNumericValue(str, false)
+			if err != nil {
+				return sql.SystemVarValue{}, err
+			}
+			val = parsed
+		}
+	}
 	return p.InitValue(ctx, val, global)
 }
 
@@ -242,8 +298,11 @@ func (p *PgsqlScope) SetValue(ctx *sql.Context, name string, val any) error {
 // projecting it into the session store used by query execution.
 func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) error {
 	name = strings.ToLower(name)
-	variable, ok := postgresConfigParameters[name]
+	variable, _, ok := ctx.SystemVariables().GetGlobal(name)
 	if !ok {
+		return sql.ErrUnknownSystemVariable.New(name)
+	}
+	if _, ok := variable.(*Parameter); !ok {
 		return sql.ErrUnknownSystemVariable.New(name)
 	}
 	validated, err := variable.SetValue(ctx, val, false)
@@ -253,13 +312,24 @@ func SetPostgresParameter(ctx *sql.Context, name string, val any, local bool) er
 	return core.SetPostgresSetting(ctx, name, validated.Val, local)
 }
 
-// FormatPostgresParameterValue renders values as PostgreSQL reports them in
-// SHOW and current_setting, including boolean on/off spelling.
-func FormatPostgresParameterValue(name string, val any) string {
+// FormatPostgresParameterValueInRegistry renders values as PostgreSQL reports them in
+// SHOW and current_setting, including boolean on/off spelling and the units of
+// integer and real parameters.
+func FormatPostgresParameterValueInRegistry(vars sql.SystemVariableRegistry, name string, val any) string {
+	definition, _, _ := vars.GetGlobal(strings.ToLower(name))
+	return formatPostgresParameterValue(definition, val)
+}
+
+func formatPostgresParameterValue(definition sql.SystemVariable, val any) string {
 	if val == nil {
 		return ""
 	}
-	if variable, ok := postgresConfigParameters[strings.ToLower(name)]; ok && variable.GetType().String() == "system_bool" {
+	if param, ok := definition.(*Parameter); ok {
+		if formatted, ok := param.formatWithUnit(val); ok {
+			return formatted
+		}
+	}
+	if p, ok := definition.(*Parameter); ok && p.GetType().String() == "system_bool" {
 		switch v := val.(type) {
 		case bool:
 			if v {
@@ -343,4 +413,20 @@ func TzOffsetToDuration(d string) (time.Duration, error) {
 	} else {
 		return -1, cerrors.Errorf("error: unable to process time")
 	}
+}
+
+// ValidatePostgresParameterValue validates that the built-in parameter may be set to the given value, without changing
+// the session's value. This is used by ALTER ROLE ... SET and ALTER DATABASE ... SET, which store the value to be
+// applied when later sessions start. Returns the canonical name of the parameter, and whether only superusers may set
+// it.
+func ValidatePostgresParameterValue(ctx *sql.Context, name string, value string) (string, bool, error) {
+	definition, _, _ := ctx.SystemVariables().GetGlobal(strings.ToLower(name))
+	variable, ok := definition.(*Parameter)
+	if !ok {
+		return "", false, pgerror.Newf(pgcode.UndefinedObject, `unrecognized configuration parameter "%s"`, name)
+	}
+	if _, err := variable.SetValue(ctx, value, false); err != nil {
+		return "", false, err
+	}
+	return variable.Name, variable.Context == ParameterContextSuperUser, nil
 }

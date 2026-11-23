@@ -126,8 +126,10 @@ func jsonValueToInterface(value JsonValue) any {
 	case JsonValueString:
 		return string(v)
 	case JsonValueNumber:
+		// Numbers are returned as float64, as they are for JSON documents that aren't stored with the legacy format.
 		d := apd.Decimal(v)
-		return &d
+		f, _ := d.Float64()
+		return f
 	case JsonValueBoolean:
 		return bool(v)
 	case JsonValueNull:

@@ -22,7 +22,7 @@ import (
 )
 
 // nodeUpdateExpr handles *tree.UpdateExpr nodes.
-func nodeUpdateExpr(ctx *Context, node *tree.UpdateExpr) (vitess.AssignmentExprs, error) {
+func nodeUpdateExpr(ctx *Context, node *tree.UpdateExpr, target vitess.TableName) (vitess.AssignmentExprs, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -33,7 +33,7 @@ func nodeUpdateExpr(ctx *Context, node *tree.UpdateExpr) (vitess.AssignmentExprs
 	var assignmentExprs []*vitess.AssignmentExpr
 	for _, name := range node.Names {
 		if len(node.Indirection) > 0 {
-			sub, err := subscriptExpr(ctx, &vitess.ColName{Name: vitess.NewColIdent(string(name))}, node.Indirection)
+			sub, err := subscriptExpr(ctx, &vitess.ColName{Qualifier: target, Name: vitess.NewColIdent(string(name))}, node.Indirection)
 			if err != nil {
 				return nil, err
 			}
@@ -45,7 +45,8 @@ func nodeUpdateExpr(ctx *Context, node *tree.UpdateExpr) (vitess.AssignmentExprs
 
 		assignmentExprs = append(assignmentExprs, &vitess.AssignmentExpr{
 			Name: &vitess.ColName{
-				Name: vitess.NewColIdent(string(name)),
+				Qualifier: target,
+				Name:      vitess.NewColIdent(string(name)),
 			},
 			Expr: expr,
 		})
@@ -54,13 +55,13 @@ func nodeUpdateExpr(ctx *Context, node *tree.UpdateExpr) (vitess.AssignmentExprs
 }
 
 // nodeUpdateExprs handles tree.UpdateExprs nodes.
-func nodeUpdateExprs(ctx *Context, node tree.UpdateExprs) (vitess.AssignmentExprs, error) {
+func nodeUpdateExprs(ctx *Context, node tree.UpdateExprs, target vitess.TableName) (vitess.AssignmentExprs, error) {
 	if len(node) == 0 {
 		return nil, nil
 	}
 	var assignmentExprs vitess.AssignmentExprs
 	for i := range node {
-		newAssignmentExprs, err := nodeUpdateExpr(ctx, node[i])
+		newAssignmentExprs, err := nodeUpdateExpr(ctx, node[i], target)
 		if err != nil {
 			return nil, err
 		}

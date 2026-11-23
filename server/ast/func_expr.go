@@ -30,9 +30,6 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 	if node == nil {
 		return nil, nil
 	}
-	if node.Filter != nil {
-		return nil, errors.Errorf("function filters are not yet supported")
-	}
 	if node.AggType == tree.OrderedSetAgg {
 		return nil, errors.Errorf("WITHIN GROUP is not yet supported")
 	}
@@ -69,6 +66,13 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 	if err != nil {
 		return nil, err
 	}
+	filter, err := nodeExpr(ctx, node.Filter)
+	if err != nil {
+		return nil, err
+	}
+	for i, expr := range exprs {
+		exprs[i] = catalogRowArgument(ctx, expr)
+	}
 
 	switch strings.ToLower(name.String()) {
 	// special case for string_agg, which maps to the mysql aggregate function group_concat
@@ -103,6 +107,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 				SeparatorString: sepString,
 			},
 			OrderBy: orderBy,
+			Filter:  filter,
 		}, nil
 	case "array_agg":
 		var orderBy vitess.OrderBy
@@ -120,6 +125,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 				Auth:               vitess.AuthInformation{},
 			},
 			OrderBy: orderBy,
+			Filter:  filter,
 		}, nil
 	case "greatest":
 		return vitess.InjectedExpr{
@@ -147,6 +153,7 @@ func nodeFuncExpr(ctx *Context, node *tree.FuncExpr) (vitess.Expr, error) {
 		Name:      name,
 		Distinct:  distinct,
 		Exprs:     exprs,
+		Filter:    filter,
 		Over:      (*vitess.Over)(windowDef),
 		Auth: vitess.AuthInformation{
 			AuthType:    auth.AuthType_EXECUTE,

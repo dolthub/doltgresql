@@ -18,22 +18,57 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/types"
 )
 
-// IsValidPostgresConfigParameter returns true if the given parameter name is a valid postgres configuration parameter.
-func IsValidPostgresConfigParameter(name string) bool {
-	_, ok := postgresConfigParameters[strings.ToLower(name)]
-	return ok
+// PostgresConfigParametersForRegistry returns PostgreSQL definitions owned by
+// this registry. The returned map is a snapshot of references to its definitions.
+func PostgresConfigParametersForRegistry(vars sql.SystemVariableRegistry) map[string]sql.SystemVariable {
+	params := make(map[string]sql.SystemVariable)
+	for name := range vars.GetAllGlobalVariables() {
+		if definition, _, ok := vars.GetGlobal(name); ok {
+			if _, isPostgres := definition.(*Parameter); isPostgres {
+				params[name] = definition
+			}
+		}
+	}
+	return params
 }
 
-// PostgresConfigParameters returns the full set of Postgres configuration parameters, keyed by lowercase
-// parameter name. The returned map is shared, so callers must not modify it (or the parameters within it).
-func PostgresConfigParameters() map[string]sql.SystemVariable {
-	return postgresConfigParameters
+func IsValidPostgresConfigParameterInRegistry(vars sql.SystemVariableRegistry, name string) bool {
+	definition, _, ok := vars.GetGlobal(strings.ToLower(name))
+	if !ok {
+		return false
+	}
+	_, isPostgres := definition.(*Parameter)
+	return isPostgres
+}
+
+// doltExportedVariableNames holds the lowercase names in Dolt's exported variable catalog.
+var doltExportedVariableNames = sync.OnceValue(func() map[string]struct{} {
+	names := make(map[string]struct{})
+	for _, name := range sqle.DoltSystemVariableNames() {
+		names[strings.ToLower(name)] = struct{}{}
+	}
+	return names
+})
+
+func IsValidDoltConfigParameterInRegistry(vars sql.SystemVariableRegistry, name string) bool {
+	name = strings.ToLower(name)
+	if _, listed := doltExportedVariableNames()[name]; !listed {
+		return false
+	}
+	definition, _, ok := vars.GetGlobal(name)
+	if !ok {
+		return false
+	}
+	_, isDolt := definition.(*sql.MysqlSystemVariable)
+	return isDolt
 }
 
 // listQuoteConfigParameters are the parameters whose value is a comma separated list of identifiers rather than a
@@ -56,25 +91,8 @@ func IsListQuoteConfigParameter(name string) bool {
 	return ok
 }
 
-// IsValidDoltConfigParameter returns true if the given parameter name is a valid Dolt configuration parameter.
-func IsValidDoltConfigParameter(name string) bool {
-	_, ok := doltConfigParameters[strings.ToLower(name)]
-	return ok
-}
-
-// IsGlobalOnlySystemVariable returns true if the given name refers to a registered system variable that has no
-// session scope (e.g. Dolt's cluster replication variables such as dolt_cluster_role). Such variables can only
-// meaningfully be read from and written to the global scope: sessions snapshot system variables at creation time,
-// so a session copy would go stale (on read) or be invisible to the rest of the server (on write).
-func IsGlobalOnlySystemVariable(name string) bool {
-	_, ok := GlobalOnlySystemVariableScope(name)
-	return ok
-}
-
-// GlobalOnlySystemVariableScope returns the declared scope of the given system variable and true if the variable
-// is registered and has no session scope (Global, Persist, or PersistOnly). See IsGlobalOnlySystemVariable.
-func GlobalOnlySystemVariableScope(name string) (sql.MysqlSVScopeType, bool) {
-	sysVar, _, ok := sql.SystemVariables.GetGlobal(strings.ToLower(name))
+func GlobalOnlySystemVariableScopeInRegistry(vars sql.SystemVariableRegistry, name string) (sql.MysqlSVScopeType, bool) {
+	sysVar, _, ok := vars.GetGlobal(strings.ToLower(name))
 	if !ok {
 		return 0, false
 	}
@@ -90,8 +108,26 @@ func GlobalOnlySystemVariableScope(name string) (sql.MysqlSVScopeType, bool) {
 	}
 }
 
-// postgresConfigParameters is a list of configuration parameters that can be used in SET statement.
-var postgresConfigParameters = map[string]sql.SystemVariable{
+// newPostgresCatalog keeps its templates private and returns fresh definitions.
+// Runtime code can only access definitions through an engine registry.
+func newPostgresCatalog(templates map[string]*Parameter) func() map[string]*Parameter {
+	return func() map[string]*Parameter {
+		params := make(map[string]*Parameter, len(templates))
+		for name, original := range templates {
+			param := *original
+			if scope, ok := original.Scope.(*PgsqlScope); ok {
+				copyScope := *scope
+				param.Scope = &copyScope
+			}
+			params[name] = &param
+		}
+		return params
+	}
+}
+
+// postgresConfigParameters constructs the parameter catalog anew for each
+// registration. Its templates are private to the factory closure.
+var postgresConfigParameters = newPostgresCatalog(map[string]*Parameter{
 	"allow_in_place_tablespaces": &Parameter{
 		Name:      "allow_in_place_tablespaces",
 		Default:   int8(0),
@@ -170,9 +206,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"archive_timeout": &Parameter{
-		Name:    "archive_timeout",
-		Default: int64(0),
-		// Unit: "s",
+		Name:      "archive_timeout",
+		Default:   int64(0),
+		Unit:      "s",
 		Category:  "Write-Ahead Log / Archiving",
 		ShortDesc: "Sets the amount of time to wait before forcing a switch to the next WAL file.",
 		Context:   ParameterContextSighup,
@@ -193,9 +229,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"authentication_timeout": &Parameter{
-		Name:    "authentication_timeout",
-		Default: int64(60),
-		// Unit: "s",
+		Name:      "authentication_timeout",
+		Default:   int64(60),
+		Unit:      "s",
 		Category:  "Connections and Authentication / Authentication",
 		ShortDesc: "Sets the maximum allowed time to complete client authentication.",
 		Context:   ParameterContextSighup,
@@ -271,9 +307,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_naptime": &Parameter{
-		Name:    "autovacuum_naptime",
-		Default: int64(60),
-		// Unit: "s",
+		Name:      "autovacuum_naptime",
+		Default:   int64(60),
+		Unit:      "s",
 		Category:  "Autovacuum",
 		ShortDesc: "Time to sleep between autovacuum runs.",
 		Context:   ParameterContextSighup,
@@ -283,9 +319,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_vacuum_cost_delay": &Parameter{
-		Name:    "autovacuum_vacuum_cost_delay",
-		Default: float64(2),
-		// Unit: "ms",
+		Name:      "autovacuum_vacuum_cost_delay",
+		Default:   float64(2),
+		Unit:      "ms",
 		Category:  "Autovacuum",
 		ShortDesc: "Vacuum cost delay in milliseconds, for autovacuum.",
 		Context:   ParameterContextSighup,
@@ -350,9 +386,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"autovacuum_work_mem": &Parameter{
-		Name:    "autovacuum_work_mem",
-		Default: int64(-1),
-		// Unit: "kB",
+		Name:      "autovacuum_work_mem",
+		Default:   int64(-1),
+		Unit:      "kB",
 		Category:  "Resource Usage / Memory",
 		ShortDesc: "Sets the maximum memory to be used by each autovacuum worker process.",
 		Context:   ParameterContextSighup,
@@ -362,9 +398,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"backend_flush_after": &Parameter{
-		Name:    "backend_flush_after",
-		Default: int64(0),
-		// Unit: "8kB",
+		Name:      "backend_flush_after",
+		Default:   int64(0),
+		Unit:      "8kB",
 		Category:  "Resource Usage / Asynchronous Behavior",
 		ShortDesc: "Number of pages after which previously performed writes are flushed to disk.",
 		Context:   ParameterContextUser,
@@ -407,9 +443,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"bgwriter_flush_after": &Parameter{
-		Name:    "bgwriter_flush_after",
-		Default: int64(0),
-		// Unit: "8kB",
+		Name:      "bgwriter_flush_after",
+		Default:   int64(0),
+		Unit:      "8kB",
 		Category:  "Resource Usage / Background Writer",
 		ShortDesc: "Number of pages after which previously performed writes are flushed to disk.",
 		Context:   ParameterContextSighup,
@@ -507,9 +543,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"checkpoint_flush_after": &Parameter{
-		Name:    "checkpoint_flush_after",
-		Default: int64(0),
-		// Unit: "8kB",
+		Name:      "checkpoint_flush_after",
+		Default:   int64(0),
+		Unit:      "8kB",
 		Category:  "Write-Ahead Log / Checkpoints",
 		ShortDesc: "Number of pages after which previously performed writes are flushed to disk.",
 		Context:   ParameterContextSighup,
@@ -519,9 +555,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"checkpoint_timeout": &Parameter{
-		Name:    "checkpoint_timeout",
-		Default: int64(300),
-		// Unit: "s",
+		Name:      "checkpoint_timeout",
+		Default:   int64(300),
+		Unit:      "s",
 		Category:  "Write-Ahead Log / Checkpoints",
 		ShortDesc: "Sets the maximum time between automatic WAL checkpoints.",
 		Context:   ParameterContextSighup,
@@ -531,9 +567,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"checkpoint_warning": &Parameter{
-		Name:    "checkpoint_warning",
-		Default: int64(30),
-		// Unit: "s",
+		Name:      "checkpoint_warning",
+		Default:   int64(30),
+		Unit:      "s",
 		Category:  "Write-Ahead Log / Checkpoints",
 		ShortDesc: "Sets the maximum time before warning if checkpoints triggered by WAL volume happen too frequently.",
 		Context:   ParameterContextSighup,
@@ -543,9 +579,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"client_connection_check_interval": &Parameter{
-		Name:    "client_connection_check_interval",
-		Default: int64(0),
-		// Unit: "ms",
+		Name:      "client_connection_check_interval",
+		Default:   int64(0),
+		Unit:      "ms",
 		Category:  "Connections and Authentication / TCP Settings",
 		ShortDesc: "Sets the time interval between checks for disconnection while running queries.",
 		Context:   ParameterContextUser,
@@ -840,9 +876,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"deadlock_timeout": &Parameter{
-		Name:    "deadlock_timeout",
-		Default: int64(1000),
-		// Unit: "ms",
+		Name:      "deadlock_timeout",
+		Default:   int64(1000),
+		Unit:      "ms",
 		Category:  "Lock Management",
 		ShortDesc: "Sets the time to wait on a lock before checking for deadlock.",
 		Context:   ParameterContextSuperUser,
@@ -1073,9 +1109,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"effective_cache_size": &Parameter{
-		Name:    "effective_cache_size",
-		Default: int64(524288),
-		// Unit: "8kB",
+		Name:      "effective_cache_size",
+		Default:   int64(524288),
+		Unit:      "8kB",
 		Category:  "Query Tuning / Planner Cost Constants",
 		ShortDesc: "Sets the planner's assumption about the total size of the data caches.",
 		Context:   ParameterContextUser,
@@ -1503,9 +1539,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"gin_pending_list_limit": &Parameter{
-		Name:    "gin_pending_list_limit",
-		Default: int64(4096),
-		// Unit: "kB",
+		Name:      "gin_pending_list_limit",
+		Default:   int64(4096),
+		Unit:      "kB",
 		Category:  "Client Connection Defaults / Statement Behavior",
 		ShortDesc: "Sets the maximum size of the pending list for GIN index.",
 		Context:   ParameterContextUser,
@@ -1570,9 +1606,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"huge_page_size": &Parameter{
-		Name:    "huge_page_size",
-		Default: int64(0),
-		// Unit: "kB",
+		Name:      "huge_page_size",
+		Default:   int64(0),
+		Unit:      "kB",
 		Category:  "Resource Usage / Memory",
 		ShortDesc: "The size of huge page that should be requested.",
 		Context:   ParameterContextPostmaster,
@@ -1615,9 +1651,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"idle_in_transaction_session_timeout": &Parameter{
-		Name:    "idle_in_transaction_session_timeout",
-		Default: int64(0),
-		// Unit: "ms",
+		Name:      "idle_in_transaction_session_timeout",
+		Default:   int64(0),
+		Unit:      "ms",
 		Category:  "Client Connection Defaults / Statement Behavior",
 		ShortDesc: "Sets the maximum allowed idle time between queries, when in a transaction.",
 		Context:   ParameterContextUser,
@@ -1627,9 +1663,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"idle_session_timeout": &Parameter{
-		Name:    "idle_session_timeout",
-		Default: int64(0),
-		// Unit: "ms",
+		Name:      "idle_session_timeout",
+		Default:   int64(0),
+		Unit:      "ms",
 		Category:  "Client Connection Defaults / Statement Behavior",
 		ShortDesc: "Sets the maximum allowed idle time between queries, when not in a transaction.",
 		Context:   ParameterContextUser,
@@ -1950,9 +1986,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"lock_timeout": &Parameter{
-		Name:    "lock_timeout",
-		Default: int64(0),
-		// Unit: "ms",
+		Name:      "lock_timeout",
+		Default:   int64(0),
+		Unit:      "ms",
 		Category:  "Client Connection Defaults / Statement Behavior",
 		ShortDesc: "Sets the maximum allowed duration of any wait for a lock.",
 		Context:   ParameterContextUser,
@@ -2117,9 +2153,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_min_duration_sample": &Parameter{
-		Name:    "log_min_duration_sample",
-		Default: int64(-1),
-		// Unit: "ms",
+		Name:      "log_min_duration_sample",
+		Default:   int64(-1),
+		Unit:      "ms",
 		Category:  "Reporting and Logging / When to Log",
 		ShortDesc: "Sets the minimum execution time above which a sample of statements will be logged. Sampling is determined by log_statement_sample_rate.",
 		Context:   ParameterContextSuperUser,
@@ -2129,9 +2165,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_min_duration_statement": &Parameter{
-		Name:    "log_min_duration_statement",
-		Default: int64(-1),
-		// Unit: "ms",
+		Name:      "log_min_duration_statement",
+		Default:   int64(-1),
+		Unit:      "ms",
 		Category:  "Reporting and Logging / When to Log",
 		ShortDesc: "Sets the minimum execution time above which all statements will be logged.",
 		Context:   ParameterContextSuperUser,
@@ -2163,9 +2199,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_parameter_max_length": &Parameter{
-		Name:    "log_parameter_max_length",
-		Default: int64(-1),
-		// Unit: "B",
+		Name:      "log_parameter_max_length",
+		Default:   int64(-1),
+		Unit:      "B",
 		Category:  "Reporting and Logging / What to Log",
 		ShortDesc: "Sets the maximum length in bytes of data logged for bind parameter values when logging statements.",
 		Context:   ParameterContextSuperUser,
@@ -2175,9 +2211,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_parameter_max_length_on_error": &Parameter{
-		Name:    "log_parameter_max_length_on_error",
-		Default: int64(0),
-		// Unit: "B",
+		Name:      "log_parameter_max_length_on_error",
+		Default:   int64(0),
+		Unit:      "B",
 		Category:  "Reporting and Logging / What to Log",
 		ShortDesc: "Sets the maximum length in bytes of data logged for bind parameter values when logging statements, on error.",
 		Context:   ParameterContextUser,
@@ -2231,9 +2267,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_rotation_age": &Parameter{
-		Name:    "log_rotation_age",
-		Default: int64(1440),
-		// Unit: "min",
+		Name:      "log_rotation_age",
+		Default:   int64(1440),
+		Unit:      "min",
 		Category:  "Reporting and Logging / Where to Log",
 		ShortDesc: "Sets the amount of time to wait before forcing log file rotation.",
 		Context:   ParameterContextSighup,
@@ -2243,9 +2279,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_rotation_size": &Parameter{
-		Name:    "log_rotation_size",
-		Default: int64(10240),
-		// Unit: "kB",
+		Name:      "log_rotation_size",
+		Default:   int64(10240),
+		Unit:      "kB",
 		Category:  "Reporting and Logging / Where to Log",
 		ShortDesc: "Sets the maximum size a log file can reach before being rotated.",
 		Context:   ParameterContextSighup,
@@ -2299,9 +2335,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"log_temp_files": &Parameter{
-		Name:    "log_temp_files",
-		Default: int64(-1),
-		// Unit: "kB",
+		Name:      "log_temp_files",
+		Default:   int64(-1),
+		Unit:      "kB",
 		Category:  "Reporting and Logging / What to Log",
 		ShortDesc: "Log the use of temporary files larger than this number of kilobytes.",
 		Context:   ParameterContextSuperUser,
@@ -2356,9 +2392,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"logical_decoding_work_mem": &Parameter{
-		Name:    "logical_decoding_work_mem",
-		Default: int64(65536),
-		// Unit: "kB",
+		Name:      "logical_decoding_work_mem",
+		Default:   int64(65536),
+		Unit:      "kB",
 		Category:  "Resource Usage / Memory",
 		ShortDesc: "Sets the maximum memory to be used for logical decoding.",
 		Context:   ParameterContextUser,
@@ -2379,9 +2415,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"maintenance_work_mem": &Parameter{
-		Name:    "maintenance_work_mem",
-		Default: int64(65536),
-		// Unit: "kB",
+		Name:      "maintenance_work_mem",
+		Default:   int64(65536),
+		Unit:      "kB",
 		Category:  "Resource Usage / Memory",
 		ShortDesc: "Sets the maximum memory to be used for maintenance operations.",
 		Context:   ParameterContextUser,
@@ -2567,9 +2603,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_slot_wal_keep_size": &Parameter{
-		Name:    "max_slot_wal_keep_size",
-		Default: int64(-1),
-		// Unit: "MB",
+		Name:      "max_slot_wal_keep_size",
+		Default:   int64(-1),
+		Unit:      "MB",
 		Category:  "Replication / Sending Servers",
 		ShortDesc: "Sets the maximum WAL size that can be reserved by replication slots.",
 		Context:   ParameterContextSighup,
@@ -2579,9 +2615,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_stack_depth": &Parameter{
-		Name:    "max_stack_depth",
-		Default: int64(2048),
-		// Unit: "kB",
+		Name:      "max_stack_depth",
+		Default:   int64(2048),
+		Unit:      "kB",
 		Category:  "Resource Usage / Memory",
 		ShortDesc: "Sets the maximum stack depth, in kilobytes.",
 		Context:   ParameterContextSuperUser,
@@ -2591,9 +2627,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_standby_archive_delay": &Parameter{
-		Name:    "max_standby_archive_delay",
-		Default: int64(30000),
-		// Unit: "ms",
+		Name:      "max_standby_archive_delay",
+		Default:   int64(30000),
+		Unit:      "ms",
 		Category:  "Replication / Sending Servers",
 		ShortDesc: "Sets the maximum delay before canceling queries when a hot standby server is processing archived WAL data.",
 		Context:   ParameterContextSighup,
@@ -2603,9 +2639,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_standby_streaming_delay": &Parameter{
-		Name:    "max_standby_streaming_delay",
-		Default: int64(30000),
-		// Unit: "ms",
+		Name:      "max_standby_streaming_delay",
+		Default:   int64(30000),
+		Unit:      "ms",
 		Category:  "Replication / Standby Servers",
 		ShortDesc: "Sets the maximum delay before canceling queries when a hot standby server is processing streamed WAL data.",
 		Context:   ParameterContextSighup,
@@ -2637,9 +2673,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"max_wal_size": &Parameter{
-		Name:    "max_wal_size",
-		Default: int64(1024),
-		// Unit: "MB",
+		Name:      "max_wal_size",
+		Default:   int64(1024),
+		Unit:      "MB",
 		Category:  "Write-Ahead Log / Checkpoints",
 		ShortDesc: "Sets the WAL size that triggers a checkpoint.",
 		Context:   ParameterContextSighup,
@@ -2671,21 +2707,21 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"min_parallel_index_scan_size": &Parameter{
-		Name:    "min_parallel_index_scan_size",
-		Default: int64(1024),
-		// Unit: "8kB",
+		Name:      "min_parallel_index_scan_size",
+		Default:   int64(64),
+		Unit:      "8kB",
 		Category:  "Query Tuning / Planner Cost Constants",
-		ShortDesc: "Sets the minimum amount of table data for a parallel scan.",
+		ShortDesc: "Sets the minimum amount of index data for a parallel scan.",
 		Context:   ParameterContextUser,
 		Type:      types.NewSystemIntType("min_parallel_index_scan_size", 0, 715827882, false),
 		Source:    ParameterSourceDefault,
-		ResetVal:  int64(1024),
+		ResetVal:  int64(64),
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"min_parallel_table_scan_size": &Parameter{
-		Name:    "min_parallel_table_scan_size",
-		Default: int64(1024),
-		// Unit: "8kB",
+		Name:      "min_parallel_table_scan_size",
+		Default:   int64(1024),
+		Unit:      "8kB",
 		Category:  "Query Tuning / Planner Cost Constants",
 		ShortDesc: "Sets the minimum amount of table data for a parallel scan.",
 		Context:   ParameterContextUser,
@@ -2695,9 +2731,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"min_wal_size": &Parameter{
-		Name:    "min_wal_size",
-		Default: int64(80),
-		// Unit: "MB",
+		Name:      "min_wal_size",
+		Default:   int64(80),
+		Unit:      "MB",
 		Category:  "Write-Ahead Log / Checkpoints",
 		ShortDesc: "Sets the minimum size to shrink the WAL to.",
 		Context:   ParameterContextSighup,
@@ -2784,9 +2820,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"post_auth_delay": &Parameter{
-		Name:    "post_auth_delay",
-		Default: int64(0),
-		// Unit: "s",
+		Name:      "post_auth_delay",
+		Default:   int64(0),
+		Unit:      "s",
 		Category:  "Developer Options",
 		ShortDesc: "Sets the amount of time to wait after authentication on connection startup.",
 		Context:   ParameterContextBackend,
@@ -2796,9 +2832,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"pre_auth_delay": &Parameter{
-		Name:    "pre_auth_delay",
-		Default: int64(0),
-		// Unit: "s",
+		Name:      "pre_auth_delay",
+		Default:   int64(0),
+		Unit:      "s",
 		Category:  "Developer Options",
 		ShortDesc: "Sets the amount of time to wait before authentication on connection startup.",
 		Context:   ParameterContextSighup,
@@ -2874,9 +2910,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"recovery_min_apply_delay": &Parameter{
-		Name:    "recovery_min_apply_delay",
-		Default: int64(0),
-		// Unit: "ms",
+		Name:      "recovery_min_apply_delay",
+		Default:   int64(0),
+		Unit:      "ms",
 		Category:  "Replication / Standby Servers",
 		ShortDesc: "Sets the minimum delay for applying changes during recovery.",
 		Context:   ParameterContextSighup,
@@ -3076,9 +3112,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"segment_size": &Parameter{
-		Name:    "segment_size",
-		Default: int64(131072),
-		// Unit: "8kB",
+		Name:      "segment_size",
+		Default:   int64(131072),
+		Unit:      "8kB",
 		Category:  "Preset Options",
 		ShortDesc: "Shows the number of pages per disk file.",
 		Context:   ParameterContextInternal,
@@ -3177,9 +3213,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"shared_buffers": &Parameter{
-		Name:    "shared_buffers",
-		Default: int64(16384),
-		// Unit: "8kB",
+		Name:      "shared_buffers",
+		Default:   int64(16384),
+		Unit:      "8kB",
 		Category:  "Resource Usage / Memory",
 		ShortDesc: "Sets the number of shared memory buffers used by the server.",
 		Context:   ParameterContextPostmaster,
@@ -3189,9 +3225,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"shared_memory_size": &Parameter{
-		Name:    "shared_memory_size",
-		Default: int64(143),
-		// Unit: "MB",
+		Name:      "shared_memory_size",
+		Default:   int64(143),
+		Unit:      "MB",
 		Category:  "Preset Options",
 		ShortDesc: "Shows the size of the server's main shared memory area (rounded up to the nearest MB).",
 		Context:   ParameterContextInternal,
@@ -3411,9 +3447,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"statement_timeout": &Parameter{
-		Name:    "statement_timeout",
-		Default: int64(0),
-		// Unit: "ms",
+		Name:      "statement_timeout",
+		Default:   int64(0),
+		Unit:      "ms",
 		Category:  "Client Connection Defaults / Statement Behavior",
 		ShortDesc: "Sets the maximum allowed duration of any statement.",
 		Context:   ParameterContextUser,
@@ -3533,9 +3569,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"tcp_keepalives_idle": &Parameter{
-		Name:    "tcp_keepalives_idle",
-		Default: int64(0),
-		// Unit: "s",
+		Name:      "tcp_keepalives_idle",
+		Default:   int64(0),
+		Unit:      "s",
 		Category:  "Connections and Authentication / TCP Settings",
 		ShortDesc: "Time between issuing TCP keepalives.",
 		Context:   ParameterContextUser,
@@ -3545,9 +3581,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"tcp_keepalives_interval": &Parameter{
-		Name:    "tcp_keepalives_interval",
-		Default: int64(0),
-		// Unit: "s",
+		Name:      "tcp_keepalives_interval",
+		Default:   int64(0),
+		Unit:      "s",
 		Category:  "Connections and Authentication / TCP Settings",
 		ShortDesc: "Time between TCP keepalive retransmits.",
 		Context:   ParameterContextUser,
@@ -3557,9 +3593,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"tcp_user_timeout": &Parameter{
-		Name:    "tcp_user_timeout",
-		Default: int64(0),
-		// Unit: "ms",
+		Name:      "tcp_user_timeout",
+		Default:   int64(0),
+		Unit:      "ms",
 		Category:  "Connections and Authentication / TCP Settings",
 		ShortDesc: "TCP user timeout.",
 		Context:   ParameterContextUser,
@@ -3569,9 +3605,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"temp_buffers": &Parameter{
-		Name:    "temp_buffers",
-		Default: int64(1024),
-		// Unit: "8kB",
+		Name:      "temp_buffers",
+		Default:   int64(1024),
+		Unit:      "8kB",
 		Category:  "Resource Usage / Memory",
 		ShortDesc: "Sets the maximum number of temporary buffers used by each session.",
 		Context:   ParameterContextUser,
@@ -3581,9 +3617,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"temp_file_limit": &Parameter{
-		Name:    "temp_file_limit",
-		Default: int64(-1),
-		// Unit: "kB",
+		Name:      "temp_file_limit",
+		Default:   int64(-1),
+		Unit:      "kB",
 		Category:  "Resource Usage / Disk",
 		ShortDesc: "Limits the total size of all temporary files used by each process.",
 		Context:   ParameterContextSuperUser,
@@ -3718,9 +3754,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"track_activity_query_size": &Parameter{
-		Name:    "track_activity_query_size",
-		Default: int64(1024),
-		// Unit: "B",
+		Name:      "track_activity_query_size",
+		Default:   int64(1024),
+		Unit:      "B",
 		Category:  "Statistics / Cumulative Query and Index Statistics",
 		ShortDesc: "Sets the size reserved for pg_stat_activity.query, in bytes.",
 		Context:   ParameterContextPostmaster,
@@ -3819,7 +3855,8 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 	},
 	"transaction_timeout": &Parameter{
 		Name:      "transaction_timeout",
-		Default:   int64(0), // Unit: "ms"
+		Default:   int64(0),
+		Unit:      "ms",
 		Category:  "Client Connection Defaults / Statement Behavior",
 		ShortDesc: "Sets the maximum allowed duration of any transaction within a session (not a prepared transaction).",
 		Context:   ParameterContextUser,
@@ -3884,9 +3921,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_buffer_usage_limit": &Parameter{
-		Name:    "vacuum_buffer_usage_limit",
-		Default: int64(256),
-		// Unit: "kB",
+		Name:      "vacuum_buffer_usage_limit",
+		Default:   int64(256),
+		Unit:      "kB",
 		Category:  "Resource Usage / Memory",
 		ShortDesc: "Sets the buffer pool size for VACUUM, ANALYZE, and autovacuum.",
 		Context:   ParameterContextUser,
@@ -3896,9 +3933,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"vacuum_cost_delay": &Parameter{
-		Name:    "vacuum_cost_delay",
-		Default: float64(0),
-		// Unit: "ms",
+		Name:      "vacuum_cost_delay",
+		Default:   float64(0),
+		Unit:      "ms",
 		Category:  "Resource Usage / Cost-Based Vacuum Delay",
 		ShortDesc: "Vacuum cost delay in milliseconds.",
 		Context:   ParameterContextUser,
@@ -4029,9 +4066,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_buffers": &Parameter{
-		Name:    "wal_buffers",
-		Default: int64(512),
-		// Unit: "8kB",
+		Name:      "wal_buffers",
+		Default:   int64(512),
+		Unit:      "8kB",
 		Category:  "Write-Ahead Log / Settings",
 		ShortDesc: "Sets the number of disk-page buffers in shared memory for WAL.",
 		Context:   ParameterContextPostmaster,
@@ -4064,9 +4101,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_decode_buffer_size": &Parameter{
-		Name:    "wal_decode_buffer_size",
-		Default: int64(524288),
-		// Unit: "B",
+		Name:      "wal_decode_buffer_size",
+		Default:   int64(524288),
+		Unit:      "B",
 		Category:  "Write-Ahead Log / Recovery",
 		ShortDesc: "Buffer size for reading ahead in the WAL during recovery.",
 		Context:   ParameterContextPostmaster,
@@ -4087,9 +4124,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_keep_size": &Parameter{
-		Name:    "wal_keep_size",
-		Default: int64(0),
-		// Unit: "MB",
+		Name:      "wal_keep_size",
+		Default:   int64(0),
+		Unit:      "MB",
 		Category:  "Replication / Sending Servers",
 		ShortDesc: "Sets the size of WAL files held for standby servers.",
 		Context:   ParameterContextSighup,
@@ -4132,9 +4169,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_receiver_status_interval": &Parameter{
-		Name:    "wal_receiver_status_interval",
-		Default: int64(10),
-		// Unit: "s",
+		Name:      "wal_receiver_status_interval",
+		Default:   int64(10),
+		Unit:      "s",
 		Category:  "Replication / Standby Servers",
 		ShortDesc: "Sets the maximum interval between WAL receiver status reports to the sending server.",
 		Context:   ParameterContextSighup,
@@ -4177,9 +4214,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_segment_size": &Parameter{
-		Name:    "wal_segment_size",
-		Default: int64(16777216),
-		// Unit: "B",
+		Name:      "wal_segment_size",
+		Default:   int64(16777216),
+		Unit:      "B",
 		Category:  "Preset Options",
 		ShortDesc: "Shows the size of write ahead log segments.",
 		Context:   ParameterContextInternal,
@@ -4189,9 +4226,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_sender_timeout": &Parameter{
-		Name:    "wal_sender_timeout",
-		Default: int64(60000),
-		// Unit: "ms",
+		Name:      "wal_sender_timeout",
+		Default:   int64(60000),
+		Unit:      "ms",
 		Category:  "Replication / Sending Servers",
 		ShortDesc: "Sets the maximum time to wait for WAL replication.",
 		Context:   ParameterContextUser,
@@ -4201,9 +4238,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_skip_threshold": &Parameter{
-		Name:    "wal_skip_threshold",
-		Default: int64(2048),
-		// Unit: "kB",
+		Name:      "wal_skip_threshold",
+		Default:   int64(2048),
+		Unit:      "kB",
 		Category:  "Write-Ahead Log / Settings",
 		ShortDesc: "Minimum size of new file to fsync instead of writing WAL.",
 		Context:   ParameterContextUser,
@@ -4224,9 +4261,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_writer_delay": &Parameter{
-		Name:    "wal_writer_delay",
-		Default: int64(200),
-		// Unit: "ms",
+		Name:      "wal_writer_delay",
+		Default:   int64(200),
+		Unit:      "ms",
 		Category:  "Write-Ahead Log / Settings",
 		ShortDesc: "Time between WAL flushes performed in the WAL writer.",
 		Context:   ParameterContextSighup,
@@ -4236,9 +4273,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"wal_writer_flush_after": &Parameter{
-		Name:    "wal_writer_flush_after",
-		Default: int64(128),
-		// Unit: "8kB",
+		Name:      "wal_writer_flush_after",
+		Default:   int64(128),
+		Unit:      "8kB",
 		Category:  "Write-Ahead Log / Settings",
 		ShortDesc: "Amount of WAL written out by WAL writer that triggers a flush.",
 		Context:   ParameterContextSighup,
@@ -4248,9 +4285,9 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
 	"work_mem": &Parameter{
-		Name:    "work_mem",
-		Default: int64(4096),
-		// Unit: "kB",
+		Name:      "work_mem",
+		Default:   int64(4096),
+		Unit:      "kB",
 		Category:  "Resource Usage / Memory",
 		ShortDesc: "Sets the maximum memory to be used for query workspaces.",
 		Context:   ParameterContextUser,
@@ -4292,4 +4329,4 @@ var postgresConfigParameters = map[string]sql.SystemVariable{
 		ResetVal:  int8(0),
 		Scope:     GetPgsqlScope(PsqlScopeSession),
 	},
-}
+})

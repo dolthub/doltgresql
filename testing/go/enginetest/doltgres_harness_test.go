@@ -32,7 +32,7 @@ import (
 	gms "github.com/dolthub/go-mysql-server"
 	"github.com/dolthub/go-mysql-server/enginetest"
 	"github.com/dolthub/go-mysql-server/enginetest/queries"
-	"github.com/dolthub/go-mysql-server/enginetest/scriptgen/setup"
+	"github.com/dolthub/go-mysql-server/enginetest/setup"
 	"github.com/dolthub/go-mysql-server/sql"
 	"github.com/dolthub/go-mysql-server/sql/analyzer"
 	gmstypes "github.com/dolthub/go-mysql-server/sql/types"
@@ -98,6 +98,11 @@ func (d *DoltgresHarness) NewHarness(t *testing.T) denginetest.DoltEnginetestHar
 	h.skippedQueries = d.skippedQueries
 	h.setupData = d.setupData
 	return h
+}
+
+func (h *DoltgresHarness) SupportsValueRow() bool {
+	// ValueRow tests are not currently supported in the DoltgresHarness
+	return false
 }
 
 // newDoltgresServerHarness creates a new harness for testing Dolt, using an in-memory filesystem and an in-memory blob store.

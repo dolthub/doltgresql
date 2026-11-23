@@ -248,6 +248,170 @@ func TestInfoSchemaPgCharMaxLength(t *testing.T) {
 	})
 }
 
+func TestInfoSchemaPgTrueTypID(t *testing.T) {
+	// PostgreSQL defines this helper in src/backend/catalog/information_schema.sql:
+	// https://github.com/postgres/postgres/blob/REL_15_STABLE/src/backend/catalog/information_schema.sql
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "information_schema._pg_truetypid catalog reproduction",
+			Assertions: []ScriptTestAssertion{
+				{
+					// Issue #3496: pg_class.relname has the name type, whose OID is 19.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'pg_catalog.pg_class'::regclass AND a.attname = 'relname';`,
+					Expected:         []sql.Row{{19}},
+					ExpectedColTypes: []id.Type{pgtypes.Oid.ID},
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(pg_attribute.*, pg_type.*)
+						FROM pg_catalog.pg_attribute
+						JOIN pg_catalog.pg_type ON pg_attribute.atttypid = pg_type.oid
+						WHERE pg_attribute.attrelid = 'pg_catalog.pg_class'::regclass AND pg_attribute.attname = 'relname';`,
+					Expected: []sql.Row{{19}},
+				},
+				{
+					Query:       `SELECT information_schema._pg_truetypid(23::oid, 23::oid);`,
+					ExpectedErr: `function _pg_truetypid(oid, oid) does not exist`,
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(t.*, a.*)
+						FROM pg_catalog.pg_attribute a CROSS JOIN pg_catalog.pg_type t;`,
+					ExpectedErr: `function _pg_truetypid(pg_type, pg_attribute) does not exist`,
+				},
+				{
+					Query:    `SELECT information_schema._pg_truetypid(NULL::pg_catalog.pg_attribute, NULL::pg_catalog.pg_type);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// A column takes precedence over a table alias with the same name.
+					Query:    `SELECT length(typname) FROM pg_catalog.pg_type typname WHERE oid = 23::oid;`,
+					Expected: []sql.Row{{4}},
+				},
+			},
+		},
+		{
+			Name: "information_schema._pg_truetypid types and domains",
+			SetUpScript: []string{
+				`CREATE TYPE truetypid_mood AS ENUM ('sad', 'happy');`,
+				`CREATE DOMAIN truetypid_integer_domain AS integer;`,
+				`CREATE DOMAIN truetypid_varchar_domain AS varchar(10);`,
+				`CREATE DOMAIN truetypid_array_domain AS integer[];`,
+				`CREATE DOMAIN truetypid_nested_domain AS truetypid_varchar_domain;`,
+				`CREATE TABLE truetypid_columns (
+					id integer PRIMARY KEY, c char(10), v varchar(10), txt text,
+					b bit(10), vb bit varying(10), va varchar(10)[], internal_c "char",
+					mood truetypid_mood, di truetypid_integer_domain, dv truetypid_varchar_domain,
+					da truetypid_array_domain, dn truetypid_nested_domain, ad truetypid_integer_domain[]
+				);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT a.attname, information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attnum BETWEEN 1 AND 8
+						ORDER BY a.attnum;`,
+					Expected: []sql.Row{
+						{"id", 23}, {"c", 1042}, {"v", 1043}, {"txt", 25},
+						{"b", 1560}, {"vb", 1562}, {"va", 1015}, {"internal_c", 18},
+					},
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*) = t.oid
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'mood';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query: `SELECT a.attname, information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname IN ('di', 'dv', 'da')
+						ORDER BY a.attnum;`,
+					Expected: []sql.Row{{"di", 23}, {"dv", 1043}, {"da", 1007}},
+				},
+				{
+					// The helper unwraps one domain level, not every domain in the chain.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*) = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'truetypid_varchar_domain')
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'dn';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					// An array of domains is an array type, not a domain to unwrap.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*) = a.atttypid
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'ad';`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					// PostgreSQL also accepts whole-row references without the star.
+					Query: `SELECT information_schema._pg_truetypid(a, t)
+						FROM pg_catalog.pg_attribute a
+						JOIN pg_catalog.pg_type t ON a.atttypid = t.oid
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'dv';`,
+					Expected: []sql.Row{{1043}},
+				},
+				{
+					// For a non-domain type row, return the attribute's type, not t.oid or t.typbasetype.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a CROSS JOIN pg_catalog.pg_type t
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id'
+						AND t.oid = 1043::oid;`,
+					Expected: []sql.Row{{23}},
+				},
+				{
+					// The supplied type row determines the domain branch, even if the attribute differs.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a CROSS JOIN pg_catalog.pg_type t
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id'
+						AND t.oid = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'truetypid_varchar_domain');`,
+					Expected: []sql.Row{{1043}},
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(NULL, t.*)
+						FROM pg_catalog.pg_type t WHERE t.oid = 23::oid;`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// STRICT applies even when the domain branch would not otherwise read the attribute.
+					Query: `SELECT information_schema._pg_truetypid(NULL, t.*)
+						FROM pg_catalog.pg_type t WHERE t.oid = (SELECT oid FROM pg_catalog.pg_type WHERE typname = 'truetypid_varchar_domain');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(a.*, NULL)
+						FROM pg_catalog.pg_attribute a
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id';`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT information_schema._pg_truetypid(NULL, NULL);`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					// An absent attribute row is NULL even if the domain branch only reads t.
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_type t LEFT JOIN pg_catalog.pg_attribute a ON false
+						WHERE t.typname = 'truetypid_varchar_domain';`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query: `SELECT information_schema._pg_truetypid(a.*, t.*)
+						FROM pg_catalog.pg_attribute a LEFT JOIN pg_catalog.pg_type t ON false
+						WHERE a.attrelid = 'truetypid_columns'::regclass AND a.attname = 'id';`,
+					Expected: []sql.Row{{nil}},
+				},
+			},
+		},
+	})
+}
+
 func TestInfoSchemaColumns(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
@@ -505,6 +669,68 @@ func TestInfoSchemaColumns(t *testing.T) {
 				{
 					Query:    "SELECT ng, nt FROM t3432_casts;",
 					Expected: []sql.Row{{-5, "-5"}},
+				},
+			},
+		},
+		{
+			// A function, or a relation passed to a sequence function, is shown with its schema only when it is not
+			// visible on the search path, and the constants passed to a function are shown with their types.
+			Name: "function calls in column defaults",
+			SetUpScript: []string{
+				"CREATE SCHEMA s2;",
+				"CREATE FUNCTION public.myf(x int) RETURNS int AS $$ SELECT x + 1 $$ LANGUAGE sql;",
+				"CREATE FUNCTION s2.g(x int) RETURNS int AS $$ SELECT x + 2 $$ LANGUAGE sql;",
+				"CREATE FUNCTION public.h(x text, y date) RETURNS int AS $$ SELECT 1 $$ LANGUAGE sql;",
+				"CREATE SEQUENCE public.seq;",
+				"CREATE SEQUENCE s2.seq2;",
+				"CREATE TABLE public.t (id serial, a int DEFAULT myf(1), b int DEFAULT s2.g(1), c text DEFAULT upper('q'), d int DEFAULT length(upper('q')) + 1, e int DEFAULT nextval('seq'), f int DEFAULT nextval('s2.seq2'), g int DEFAULT h('a', '2020-01-01'), k text DEFAULT lower(upper('q')));",
+				"CREATE TABLE s2.u (id serial);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT table_name, column_name, column_default FROM information_schema.columns WHERE table_name IN ('t', 'u') ORDER BY table_name, ordinal_position;",
+					Expected: []sql.Row{
+						{"t", "id", "nextval('t_id_seq'::regclass)"},
+						{"t", "a", "myf(1)"},
+						{"t", "b", "s2.g(1)"},
+						{"t", "c", "upper('q'::text)"},
+						{"t", "d", "(length(upper('q'::text)) + 1)"},
+						{"t", "e", "nextval('seq'::regclass)"},
+						{"t", "f", "nextval('s2.seq2'::regclass)"},
+						{"t", "g", "h('a'::text, '2020-01-01'::date)"},
+						{"t", "k", "lower(upper('q'::text))"},
+						{"u", "id", "nextval('s2.u_id_seq'::regclass)"},
+					},
+				},
+				{
+					Query: "SET search_path = s2, public;",
+				},
+				{
+					Query: "SELECT table_name, column_name, column_default FROM information_schema.columns WHERE table_name IN ('t', 'u') AND column_name IN ('id', 'b', 'f') ORDER BY table_name, ordinal_position;",
+					Expected: []sql.Row{
+						{"t", "id", "nextval('t_id_seq'::regclass)"},
+						{"t", "b", "g(1)"},
+						{"t", "f", "nextval('seq2'::regclass)"},
+						{"u", "id", "nextval('u_id_seq'::regclass)"},
+					},
+				},
+				{
+					Query: "SET search_path = '';",
+				},
+				{
+					Query: "SELECT table_name, column_name, column_default FROM information_schema.columns WHERE table_name IN ('t', 'u') ORDER BY table_name, ordinal_position;",
+					Expected: []sql.Row{
+						{"t", "id", "nextval('public.t_id_seq'::regclass)"},
+						{"t", "a", "public.myf(1)"},
+						{"t", "b", "s2.g(1)"},
+						{"t", "c", "upper('q'::text)"},
+						{"t", "d", "(length(upper('q'::text)) + 1)"},
+						{"t", "e", "nextval('public.seq'::regclass)"},
+						{"t", "f", "nextval('s2.seq2'::regclass)"},
+						{"t", "g", "public.h('a'::text, '2020-01-01'::date)"},
+						{"t", "k", "lower(upper('q'::text))"},
+						{"u", "id", "nextval('s2.u_id_seq'::regclass)"},
+					},
 				},
 			},
 		},

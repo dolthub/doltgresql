@@ -23,7 +23,6 @@ import (
 	"github.com/dolthub/go-mysql-server/sql/plan"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
-	"github.com/dolthub/doltgresql/core"
 	"github.com/dolthub/doltgresql/server/auth"
 )
 
@@ -43,7 +42,7 @@ type Grant struct {
 // GrantTable specifically handles the GRANT ... ON TABLE statement.
 type GrantTable struct {
 	Privileges []auth.Privilege
-	Tables     []doltdb.TableName
+	Tables     []PrivilegeTarget
 }
 
 // GrantSchema specifically handles the GRANT ... ON SCHEMA statement.
@@ -61,13 +60,14 @@ type GrantDatabase struct {
 // GrantSequence specifically handles the GRANT ... ON SEQUENCE statement.
 type GrantSequence struct {
 	Privileges []auth.Privilege
-	Sequences  []auth.SequencePrivilegeKey
+	Sequences  []PrivilegeTarget
 }
 
 // GrantRoutine specifically handles the GRANT ... ON FUNCTION/PROCEDURE/ROUTINE statement.
 type GrantRoutine struct {
 	Privileges []auth.Privilege
-	Routines   []auth.RoutinePrivilegeKey
+	Routines   []PrivilegeTarget
+	Kind       RoutineKind
 }
 
 // GrantRole specifically handles the GRANT <roles> TO <roles> statement.
@@ -95,32 +95,36 @@ func (g *Grant) Resolved() bool {
 
 // RowIter implements the interface sql.ExecSourceRel.
 func (g *Grant) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
-	var err error
+	// Targets are resolved before any roles, so that a missing object is reported before a missing role
+	resolved, err := g.withResolvedTargets(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var rsc doltdb.ReplicationStatusController
 	auth.LockWrite(func() {
 		switch {
-		case g.GrantTable != nil:
-			if err = g.grantTable(ctx); err != nil {
+		case resolved.GrantTable != nil:
+			if err = resolved.grantTable(ctx); err != nil {
 				return
 			}
-		case g.GrantSchema != nil:
-			if err = g.grantSchema(ctx); err != nil {
+		case resolved.GrantSchema != nil:
+			if err = resolved.grantSchema(ctx); err != nil {
 				return
 			}
-		case g.GrantDatabase != nil:
-			if err = g.grantDatabase(ctx); err != nil {
+		case resolved.GrantDatabase != nil:
+			if err = resolved.grantDatabase(ctx); err != nil {
 				return
 			}
-		case g.GrantSequence != nil:
-			if err = g.grantSequence(ctx); err != nil {
+		case resolved.GrantSequence != nil:
+			if err = resolved.grantSequence(ctx); err != nil {
 				return
 			}
-		case g.GrantRoutine != nil:
-			if err = g.grantRoutine(ctx); err != nil {
+		case resolved.GrantRoutine != nil:
+			if err = resolved.grantRoutine(ctx); err != nil {
 				return
 			}
-		case g.GrantRole != nil:
-			if err = g.grantRole(ctx); err != nil {
+		case resolved.GrantRole != nil:
+			if err = resolved.grantRole(ctx); err != nil {
 				return
 			}
 		default:
@@ -164,6 +168,42 @@ func (g *Grant) WithResolvedChildren(ctx context.Context, children []any) (any, 
 	return g, nil
 }
 
+// withResolvedTargets returns a copy of this Grant whose tables, sequences, and routines are resolved to the schemas
+// they live in. Returns an error if any target does not exist, or if a target is in another database.
+func (g *Grant) withResolvedTargets(ctx *sql.Context) (*Grant, error) {
+	resolved := *g
+	var err error
+	switch {
+	case g.GrantTable != nil:
+		grantTable := *g.GrantTable
+		if grantTable.Tables, err = resolveTableTargets(ctx, g.GrantTable.Tables); err != nil {
+			return nil, err
+		}
+		resolved.GrantTable = &grantTable
+	case g.GrantSchema != nil:
+		if err = checkSchemaTargets(ctx, g.GrantSchema.Schemas); err != nil {
+			return nil, err
+		}
+	case g.GrantDatabase != nil:
+		if err = checkDatabaseTargets(ctx, g.GrantDatabase.Databases); err != nil {
+			return nil, err
+		}
+	case g.GrantSequence != nil:
+		grantSequence := *g.GrantSequence
+		if grantSequence.Sequences, err = resolveSequenceTargets(ctx, g.GrantSequence.Sequences); err != nil {
+			return nil, err
+		}
+		resolved.GrantSequence = &grantSequence
+	case g.GrantRoutine != nil:
+		grantRoutine := *g.GrantRoutine
+		if grantRoutine.Routines, err = resolveRoutineTargets(ctx, g.GrantRoutine.Kind, g.GrantRoutine.Routines); err != nil {
+			return nil, err
+		}
+		resolved.GrantRoutine = &grantRoutine
+	}
+	return &resolved, nil
+}
+
 // common handles the initial logic for each GRANT statement. `roles` are the `ToRoles`. `userRole` is the role of the
 // session's selected user.
 func (g *Grant) common(ctx *sql.Context) (roles []auth.Role, userRole auth.Role, err error) {
@@ -201,10 +241,7 @@ func (g *Grant) grantTable(ctx *sql.Context) error {
 	}
 	for _, role := range roles {
 		for _, table := range g.GrantTable.Tables {
-			schemaName, err := core.GetSchemaName(ctx, nil, table.Schema)
-			if err != nil {
-				return err
-			}
+			schemaName := table.Schema
 			key := auth.TablePrivilegeKey{
 				Role:  userRole.ID(),
 				Table: doltdb.TableName{Name: table.Name, Schema: schemaName},
@@ -298,10 +335,7 @@ func (g *Grant) grantSequence(ctx *sql.Context) error {
 	}
 	for _, role := range roles {
 		for _, seq := range g.GrantSequence.Sequences {
-			schemaName, err := core.GetSchemaName(ctx, nil, seq.Schema)
-			if err != nil {
-				return err
-			}
+			schemaName := seq.Schema
 			key := auth.SequencePrivilegeKey{
 				Role:   userRole.ID(),
 				Schema: schemaName,
@@ -335,10 +369,7 @@ func (g *Grant) grantRoutine(ctx *sql.Context) error {
 	}
 	for _, role := range roles {
 		for _, routine := range g.GrantRoutine.Routines {
-			schemaName, err := core.GetSchemaName(ctx, nil, routine.Schema)
-			if err != nil {
-				return err
-			}
+			schemaName := routine.Schema
 			key := auth.RoutinePrivilegeKey{
 				Role:     userRole.ID(),
 				Schema:   schemaName,

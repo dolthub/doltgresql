@@ -23,6 +23,22 @@ import (
 func TestCreateFunctionsLanguageSQL(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "unknown arguments with crossed overloads",
+			SetUpScript: []string{
+				`CREATE FUNCTION crossed_overload(text, integer) RETURNS text LANGUAGE SQL AS 'SELECT ''text-int''::text';`,
+				`CREATE FUNCTION crossed_overload(integer, text) RETURNS text LANGUAGE SQL AS 'SELECT ''int-text''::text';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				// PostgreSQL also rejects this as ambiguous. Doltgres currently
+				// reports unresolved overloads as "does not exist" (42883).
+				{Query: `SELECT crossed_overload('1', '2');`, ExpectedErr: "does not exist", ExpectedErrCode: "42883"},
+				{Query: `SELECT crossed_overload('1'::text, '2');`, Expected: []sql.Row{{"text-int"}}},
+				{Query: `SELECT crossed_overload('1', '2'::text);`, Expected: []sql.Row{{"int-text"}}},
+				{Query: `SELECT crossed_overload('1', 2);`, Expected: []sql.Row{{"text-int"}}},
+				{Query: `SELECT crossed_overload(1, '2');`, Expected: []sql.Row{{"int-text"}}},
+			},
+		},
+		{
 			Name:        "unnamed parameter",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
@@ -337,6 +353,38 @@ func TestCreateFunctionsLanguageSQL(t *testing.T) {
 				{
 					Query:       `SELECT * FROM test2`,
 					ExpectedErr: `not found`,
+				},
+			},
+		},
+		{
+			// Function bodies are converted outside the connection handler, so SET and SHOW must still find the
+			// calling session's engine variables.
+			Name: "SET and SHOW in function body",
+			SetUpScript: []string{
+				`CREATE FUNCTION set_app_name() RETURNS text LANGUAGE sql AS $$
+					SET application_name = 'from_function';
+					SELECT 'set'::text;
+				$$;`,
+				`CREATE FUNCTION show_app_name() RETURNS text LANGUAGE sql AS $$
+					SHOW application_name;
+					SELECT 'shown'::text;
+				$$;`,
+				`CREATE FUNCTION show_timezone() RETURNS void LANGUAGE sql AS 'SHOW timezone';`,
+				`CREATE PROCEDURE set_app_name_proc() LANGUAGE sql AS $$ SET application_name = 'from_procedure' $$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					// Executing SET in a function body is unsupported, but the body must convert first.
+					Query:       `SELECT set_app_name();`,
+					ExpectedErr: "does not result in a single value",
+				},
+				{
+					Query:    `SELECT show_app_name();`,
+					Expected: []sql.Row{{"shown"}},
+				},
+				{
+					Query:    `SELECT show_timezone();`,
+					Expected: []sql.Row{{""}},
 				},
 			},
 		},

@@ -55,7 +55,7 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 			}
 		} else if supportedOnConflictClause(node.OnConflict) {
 			// TODO: we are ignoring the column names, which are used to infer which index under conflict is to be checked
-			updateExprs, err := nodeUpdateExprs(ctx, node.OnConflict.Exprs)
+			updateExprs, err := nodeUpdateExprs(ctx, node.OnConflict.Exprs, vitess.TableName{})
 			if err != nil {
 				return nil, err
 			}
@@ -73,9 +73,19 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 		}
 	}
 	var tableName vitess.TableName
+	var tableAlias vitess.TableIdent
 	switch node := node.Table.(type) {
 	case *tree.AliasedTableExpr:
-		return nil, errors.Errorf("aliased inserts are not yet supported")
+		aliasedTableName, ok := node.Expr.(*tree.TableName)
+		if !ok {
+			return nil, errors.Errorf("unknown aliased table name type in INSERT: `%T`", node.Expr)
+		}
+		var err error
+		tableName, err = nodeTableName(ctx, aliasedTableName)
+		if err != nil {
+			return nil, err
+		}
+		tableAlias = vitess.NewTableIdent(string(node.As.Alias))
 	case *tree.TableName:
 		var err error
 		tableName, err = nodeTableName(ctx, node)
@@ -124,6 +134,7 @@ func nodeInsert(ctx *Context, node *tree.Insert) (insert *vitess.Insert, err err
 		Action:           vitess.InsertStr,
 		Ignore:           ignore,
 		Table:            tableName,
+		TableAlias:       tableAlias,
 		Returning:        returningExprs,
 		With:             with,
 		Columns:          columns,

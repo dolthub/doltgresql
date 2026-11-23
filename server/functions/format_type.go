@@ -121,7 +121,7 @@ func visibleTypeName(ctx *sql.Context, typID id.Type) (string, error) {
 	return quoteTypeIdentifier(typID.SchemaName()) + "." + quoteTypeIdentifier(typID.TypeName()), nil
 }
 
-// quoteTypeIdentifier quotes a type or schema name when PostgreSQL would not accept it as a bare identifier.
+// quoteTypeIdentifier quotes a type, schema, or role name when PostgreSQL would not accept it as a bare identifier.
 func quoteTypeIdentifier(name string) string {
 	var buf bytes.Buffer
 	lex.EncodeRestrictedSQLIdent(&buf, name, 0)

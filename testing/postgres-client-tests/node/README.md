@@ -28,6 +28,6 @@ sh run-tests.sh workbench.js
 The tests in `workbenchTests` were written to enforce the stability of the [SQL
 workbench](https://github.com/dolthub/dolt-workbench). The workbench uses many Doltgres
 system tables, functions, and procedures, and any changes to these interfaces can break
-the workbench. @tbantle22 will be tagged in any GitHub PR that updates those files to
+the workbench. @eric-richardson1 will be tagged in any GitHub PR that updates those files to
 ensure appropriate workbench updates are made for Doltgres changes that break these
 queries.

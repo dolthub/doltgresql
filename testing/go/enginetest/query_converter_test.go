@@ -46,6 +46,10 @@ func transformAST(query string) ([]string, bool) {
 		}
 	case *sqlparser.Set:
 		return transformSet(stmt)
+	case *sqlparser.Explain:
+		if strings.EqualFold(stmt.ExplainFormat, "tree") && !stmt.Analyze {
+			return []string{"EXPLAIN " + formatNode(stmt.Statement)}, true
+		}
 	case *sqlparser.Select:
 		return transformSelect(stmt)
 	case *sqlparser.Insert:
@@ -897,7 +901,7 @@ func convertColumnAlter(statement *sqlparser.DDL) ([]string, bool) {
 			Table: tableName,
 			Cmds: []tree.AlterTableCmd{
 				&tree.AlterTableDropColumn{
-					IfExists: statement.IfExists,
+					IfExists: statement.ColumnIfExists,
 					Column:   tree.Name(statement.Column.String()),
 				},
 			},
@@ -978,9 +982,9 @@ func convertConstraintAlter(statement *sqlparser.DDL) ([]string, bool) {
 		tableName := *translateTableName(statement.Table)
 		switch d := c.Details.(type) {
 		case *sqlparser.ForeignKeyDefinition:
-			return []string{createForeignKeyStatement(tableName, d)}, true
+			return []string{createForeignKeyStatement(tableName, c.Name, d)}, true
 		case *sqlparser.CheckConstraintDefinition:
-			return []string{createCheckConstraintStatement(tableName, d)}, true
+			return []string{createCheckConstraintStatement(tableName, c.Name, d)}, true
 		default:
 			return nil, false
 		}
@@ -1102,10 +1106,11 @@ func convertIndexAlter(statement *sqlparser.DDL) ([]string, bool) {
 			}
 		}
 		createIndex := tree.CreateIndex{
-			Name:    tree.Name(statement.IndexSpec.ToName.String()),
-			Table:   *translateTableName(statement.Table),
-			Unique:  statement.IndexSpec.Type == "unique",
-			Columns: cols,
+			Name:          tree.Name(statement.IndexSpec.ToName.String()),
+			Table:         *translateTableName(statement.Table),
+			Unique:        statement.IndexSpec.Type == "unique",
+			Columns:       cols,
+			NullsDistinct: true,
 		}
 		return []string{formatNodeWithUnqualifiedTableNames(&createIndex).String()}, true
 
@@ -1432,10 +1437,11 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 			}
 
 			createIndex := tree.CreateIndex{
-				Name:    tree.Name(index.Info.Name.String()),
-				Table:   *translateTableName(stmt.Table),
-				Unique:  index.Info.Unique,
-				Columns: make(tree.IndexElemList, len(index.Fields)),
+				Name:          tree.Name(index.Info.Name.String()),
+				Table:         *translateTableName(stmt.Table),
+				Unique:        index.Info.Unique,
+				Columns:       make(tree.IndexElemList, len(index.Fields)),
+				NullsDistinct: true,
 			}
 
 			for i, col := range index.Fields {
@@ -1452,12 +1458,12 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	}
 
 	// convert constraints into separate statements as well
-	for _, c := range stmt.TableSpec.Constraints {
-		switch c := c.Details.(type) {
+	for _, constraint := range stmt.TableSpec.Constraints {
+		switch c := constraint.Details.(type) {
 		case *sqlparser.ForeignKeyDefinition:
-			queries = append(queries, createForeignKeyStatement(createTable.Table, c))
+			queries = append(queries, createForeignKeyStatement(createTable.Table, constraint.Name, c))
 		case *sqlparser.CheckConstraintDefinition:
-			queries = append(queries, createCheckConstraintStatement(createTable.Table, c))
+			queries = append(queries, createCheckConstraintStatement(createTable.Table, constraint.Name, c))
 		default:
 			// do nothing, unsupported
 		}
@@ -1466,7 +1472,7 @@ func transformCreateTable(stmt *sqlparser.DDL) ([]string, bool) {
 	return queries, true
 }
 
-func createCheckConstraintStatement(table tree.TableName, c *sqlparser.CheckConstraintDefinition) string {
+func createCheckConstraintStatement(table tree.TableName, constraintName string, c *sqlparser.CheckConstraintDefinition) string {
 	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Table(), "", ""}, 0)
 	if err != nil {
 		panic(err)
@@ -1478,6 +1484,7 @@ func createCheckConstraintStatement(table tree.TableName, c *sqlparser.CheckCons
 
 	alter.Cmds = append(alter.Cmds, &tree.AlterTableAddConstraint{
 		ConstraintDef: &tree.CheckConstraintTableDef{
+			Name: tree.Name(constraintName),
 			Expr: convertExpr(c.Expr),
 		},
 	})
@@ -1486,7 +1493,7 @@ func createCheckConstraintStatement(table tree.TableName, c *sqlparser.CheckCons
 	return ctx.String()
 }
 
-func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefinition) string {
+func createForeignKeyStatement(table tree.TableName, constraintName string, c *sqlparser.ForeignKeyDefinition) string {
 	name, err := tree.NewUnresolvedObjectName(1, [3]string{table.Table(), "", ""}, 0)
 	if err != nil {
 		panic(err)
@@ -1509,6 +1516,7 @@ func createForeignKeyStatement(table tree.TableName, c *sqlparser.ForeignKeyDefi
 
 	alter.Cmds = append(alter.Cmds, &tree.AlterTableAddConstraint{
 		ConstraintDef: &tree.ForeignKeyConstraintTableDef{
+			Name:     tree.Name(constraintName),
 			FromCols: fromCols,
 			Table:    *translateTableName(c.ReferencedTable),
 			ToCols:   toCols,
@@ -2087,7 +2095,7 @@ func TestConvertQuery(t *testing.T) {
 			input: "CREATE TABLE foo (a INT primary key, b int, key (b))",
 			expected: []string{
 				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL)",
-				"CREATE INDEX ON foo ( b ASC ) NULLS NOT DISTINCT ",
+				"CREATE INDEX ON foo ( b ASC ) NULLS DISTINCT ",
 			},
 		},
 		{
@@ -2106,16 +2114,16 @@ func TestConvertQuery(t *testing.T) {
 			input: "CREATE TABLE foo (a INT primary key, b int, c int, key (c,b))",
 			expected: []string{
 				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL, c INTEGER NULL)",
-				"CREATE INDEX ON foo ( c ASC, b ASC ) NULLS NOT DISTINCT ",
+				"CREATE INDEX ON foo ( c ASC, b ASC ) NULLS DISTINCT ",
 			},
 		},
 		{
 			input: "CREATE TABLE foo (a INT primary key, b int, c int not null, d int, key (c), key (b), key (b,c))",
 			expected: []string{
 				"CREATE TABLE foo (a INTEGER NOT NULL PRIMARY KEY, b INTEGER NULL, c INTEGER NOT NULL, d INTEGER NULL)",
-				"CREATE INDEX ON foo ( c ASC ) NULLS NOT DISTINCT ",
-				"CREATE INDEX ON foo ( b ASC ) NULLS NOT DISTINCT ",
-				"CREATE INDEX ON foo ( b ASC, c ASC ) NULLS NOT DISTINCT ",
+				"CREATE INDEX ON foo ( c ASC ) NULLS DISTINCT ",
+				"CREATE INDEX ON foo ( b ASC ) NULLS DISTINCT ",
+				"CREATE INDEX ON foo ( b ASC, c ASC ) NULLS DISTINCT ",
 			},
 		},
 		{
@@ -2326,6 +2334,14 @@ func TestQualifiedNameConversion(t *testing.T) {
 			expected: []string{"select db1.public.t1.i from db1.public.t1 where db1.public.t1.i > 0"},
 		},
 		{
+			input:    "EXPLAIN FORMAT=TREE SELECT pk FROM `mydb/feature/stats`.x",
+			expected: []string{`EXPLAIN select pk from "mydb/feature/stats".public.x`},
+		},
+		{
+			input:    "explain format=tree select pk from x",
+			expected: []string{"EXPLAIN select pk from x"},
+		},
+		{
 			input:    "DELETE FROM test.x WHERE pk = 2",
 			expected: []string{"delete from test.public.x where pk = 2"},
 		},
@@ -2441,6 +2457,21 @@ func TestAlterTableConversion(t *testing.T) {
 			expected: []string{"ALTER TABLE foo DROP COLUMN c"},
 		},
 		{
+			input:    "ALTER TABLE foo DROP COLUMN IF EXISTS c",
+			expected: []string{"ALTER TABLE foo DROP COLUMN IF EXISTS c"},
+		},
+		{
+			input:    "ALTER TABLE foo DROP IF EXISTS c",
+			expected: []string{"ALTER TABLE foo DROP COLUMN IF EXISTS c"},
+		},
+		{
+			input: "ALTER TABLE foo DROP COLUMN IF EXISTS c, DROP COLUMN d",
+			expected: []string{
+				"ALTER TABLE foo DROP COLUMN IF EXISTS c",
+				"ALTER TABLE foo DROP COLUMN d",
+			},
+		},
+		{
 			input:    "ALTER TABLE foo RENAME COLUMN c TO d",
 			expected: []string{"ALTER TABLE foo RENAME COLUMN c TO d"},
 		},
@@ -2474,16 +2505,16 @@ func TestAlterTableConversion(t *testing.T) {
 		{
 			input: "ALTER TABLE foo ADD CONSTRAINT my_fk FOREIGN KEY (a) REFERENCES bar(b)",
 			expected: []string{
-				"ALTER TABLE foo ADD FOREIGN KEY (a) REFERENCES bar (b)",
+				"ALTER TABLE foo ADD CONSTRAINT my_fk FOREIGN KEY (a) REFERENCES bar (b)",
 			},
 		},
 		{
 			input:    "ALTER TABLE foo ADD INDEX my_idx (a, b)",
-			expected: []string{"CREATE INDEX my_idx ON foo ( a ASC, b ASC ) NULLS NOT DISTINCT "},
+			expected: []string{"CREATE INDEX my_idx ON foo ( a ASC, b ASC ) NULLS DISTINCT "},
 		},
 		{
 			input:    "ALTER TABLE foo ADD UNIQUE my_uq (a)",
-			expected: []string{"CREATE UNIQUE INDEX my_uq ON foo ( a ASC ) NULLS NOT DISTINCT "},
+			expected: []string{"CREATE UNIQUE INDEX my_uq ON foo ( a ASC ) NULLS DISTINCT "},
 		},
 		{
 			input:    "ALTER TABLE foo DROP INDEX my_idx",

@@ -4,6 +4,7 @@ package lex
 
 var KeywordsCategories = map[string]string{
 	"abort":                        "U",
+	"absolute":                     "U",
 	"access":                       "U",
 	"action":                       "U",
 	"add":                          "U",
@@ -23,6 +24,7 @@ var KeywordsCategories = map[string]string{
 	"array":                        "R",
 	"as":                           "R",
 	"asc":                          "R",
+	"asensitive":                   "U",
 	"assignment":                   "U",
 	"asymmetric":                   "R",
 	"at":                           "U",
@@ -34,6 +36,7 @@ var KeywordsCategories = map[string]string{
 	"automatic":                    "U",
 	"backup":                       "U",
 	"backups":                      "U",
+	"backward":                     "U",
 	"basetype":                     "U",
 	"before":                       "U",
 	"begin":                        "U",
@@ -119,6 +122,7 @@ var KeywordsCategories = map[string]string{
 	"current_time":                 "R",
 	"current_timestamp":            "R",
 	"current_user":                 "R",
+	"cursor":                       "U",
 	"cycle":                        "U",
 	"data":                         "U",
 	"database":                     "U",
@@ -201,6 +205,7 @@ var KeywordsCategories = map[string]string{
 	"force_index":                  "U",
 	"foreign":                      "R",
 	"format":                       "U",
+	"forward":                      "U",
 	"freeze":                       "R",
 	"from":                         "R",
 	"full":                         "T",
@@ -232,6 +237,7 @@ var KeywordsCategories = map[string]string{
 	"high":                         "U",
 	"hint":                         "C",
 	"histogram":                    "U",
+	"hold":                         "U",
 	"hour":                         "U",
 	"hypothetical":                 "U",
 	"icu_locale":                   "U",
@@ -263,6 +269,7 @@ var KeywordsCategories = map[string]string{
 	"inner":                        "T",
 	"inout":                        "C",
 	"input":                        "U",
+	"insensitive":                  "U",
 	"insert":                       "U",
 	"instead":                      "U",
 	"int":                          "C",
@@ -336,6 +343,7 @@ var KeywordsCategories = map[string]string{
 	"modifyclustersetting":         "U",
 	"modulus":                      "U",
 	"month":                        "U",
+	"move":                         "U",
 	"msfunc":                       "U",
 	"mspace":                       "U",
 	"msspace":                      "U",
@@ -448,6 +456,7 @@ var KeywordsCategories = map[string]string{
 	"prepare":                      "U",
 	"preserve":                     "U",
 	"primary":                      "R",
+	"prior":                        "U",
 	"priority":                     "U",
 	"privileges":                   "U",
 	"procedural":                   "U",
@@ -474,6 +483,7 @@ var KeywordsCategories = map[string]string{
 	"referencing":                  "U",
 	"refresh":                      "U",
 	"reindex":                      "U",
+	"relative":                     "U",
 	"release":                      "U",
 	"remainder":                    "U",
 	"rename":                       "U",
@@ -513,6 +523,7 @@ var KeywordsCategories = map[string]string{
 	"schedules":                    "U",
 	"schema":                       "U",
 	"schemas":                      "U",
+	"scroll":                       "U",
 	"scrub":                        "U",
 	"search":                       "U",
 	"second":                       "U",
@@ -678,6 +689,7 @@ var KeywordsCategories = map[string]string{
 // deterministic results.
 var KeywordNames = []string{
 	"abort",
+	"absolute",
 	"access",
 	"action",
 	"add",
@@ -697,6 +709,7 @@ var KeywordNames = []string{
 	"array",
 	"as",
 	"asc",
+	"asensitive",
 	"assignment",
 	"asymmetric",
 	"at",
@@ -708,6 +721,7 @@ var KeywordNames = []string{
 	"automatic",
 	"backup",
 	"backups",
+	"backward",
 	"basetype",
 	"before",
 	"begin",
@@ -793,6 +807,7 @@ var KeywordNames = []string{
 	"current_time",
 	"current_timestamp",
 	"current_user",
+	"cursor",
 	"cycle",
 	"data",
 	"database",
@@ -875,6 +890,7 @@ var KeywordNames = []string{
 	"force_index",
 	"foreign",
 	"format",
+	"forward",
 	"freeze",
 	"from",
 	"full",
@@ -906,6 +922,7 @@ var KeywordNames = []string{
 	"high",
 	"hint",
 	"histogram",
+	"hold",
 	"hour",
 	"hypothetical",
 	"icu_locale",
@@ -937,6 +954,7 @@ var KeywordNames = []string{
 	"inner",
 	"inout",
 	"input",
+	"insensitive",
 	"insert",
 	"instead",
 	"int",
@@ -1010,6 +1028,7 @@ var KeywordNames = []string{
 	"modifyclustersetting",
 	"modulus",
 	"month",
+	"move",
 	"msfunc",
 	"mspace",
 	"msspace",
@@ -1122,6 +1141,7 @@ var KeywordNames = []string{
 	"prepare",
 	"preserve",
 	"primary",
+	"prior",
 	"priority",
 	"privileges",
 	"procedural",
@@ -1148,6 +1168,7 @@ var KeywordNames = []string{
 	"referencing",
 	"refresh",
 	"reindex",
+	"relative",
 	"release",
 	"remainder",
 	"rename",
@@ -1187,6 +1208,7 @@ var KeywordNames = []string{
 	"schedules",
 	"schema",
 	"schemas",
+	"scroll",
 	"scrub",
 	"search",
 	"second",
@@ -1358,6 +1380,8 @@ func GetKeywordID(k string) int32 {
 	switch k {
 	case "abort":
 		return ABORT
+	case "absolute":
+		return ABSOLUTE
 	case "access":
 		return ACCESS
 	case "action":
@@ -1396,6 +1420,8 @@ func GetKeywordID(k string) int32 {
 		return AS
 	case "asc":
 		return ASC
+	case "asensitive":
+		return ASENSITIVE
 	case "assignment":
 		return ASSIGNMENT
 	case "asymmetric":
@@ -1418,6 +1444,8 @@ func GetKeywordID(k string) int32 {
 		return BACKUP
 	case "backups":
 		return BACKUPS
+	case "backward":
+		return BACKWARD
 	case "basetype":
 		return BASETYPE
 	case "before":
@@ -1588,6 +1616,8 @@ func GetKeywordID(k string) int32 {
 		return CURRENT_TIMESTAMP
 	case "current_user":
 		return CURRENT_USER
+	case "cursor":
+		return CURSOR
 	case "cycle":
 		return CYCLE
 	case "data":
@@ -1752,6 +1782,8 @@ func GetKeywordID(k string) int32 {
 		return FOREIGN
 	case "format":
 		return FORMAT
+	case "forward":
+		return FORWARD
 	case "freeze":
 		return FREEZE
 	case "from":
@@ -1814,6 +1846,8 @@ func GetKeywordID(k string) int32 {
 		return HINT
 	case "histogram":
 		return HISTOGRAM
+	case "hold":
+		return HOLD
 	case "hour":
 		return HOUR
 	case "hypothetical":
@@ -1876,6 +1910,8 @@ func GetKeywordID(k string) int32 {
 		return INOUT
 	case "input":
 		return INPUT
+	case "insensitive":
+		return INSENSITIVE
 	case "insert":
 		return INSERT
 	case "instead":
@@ -2022,6 +2058,8 @@ func GetKeywordID(k string) int32 {
 		return MODULUS
 	case "month":
 		return MONTH
+	case "move":
+		return MOVE
 	case "msfunc":
 		return MSFUNC
 	case "mspace":
@@ -2246,6 +2284,8 @@ func GetKeywordID(k string) int32 {
 		return PRESERVE
 	case "primary":
 		return PRIMARY
+	case "prior":
+		return PRIOR
 	case "priority":
 		return PRIORITY
 	case "privileges":
@@ -2298,6 +2338,8 @@ func GetKeywordID(k string) int32 {
 		return REFRESH
 	case "reindex":
 		return REINDEX
+	case "relative":
+		return RELATIVE
 	case "release":
 		return RELEASE
 	case "remainder":
@@ -2376,6 +2418,8 @@ func GetKeywordID(k string) int32 {
 		return SCHEMA
 	case "schemas":
 		return SCHEMAS
+	case "scroll":
+		return SCROLL
 	case "scrub":
 		return SCRUB
 	case "search":

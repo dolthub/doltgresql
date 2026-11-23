@@ -74,14 +74,6 @@ func nodeColumnTableDef(ctx *Context, node *tree.ColumnTableDef) (*vitess.Column
 		defaultExpr = &vitess.ParenExpr{Expr: defaultExpr}
 	}
 
-	if node.References.Table != nil {
-		if len(node.References.Col) == 0 {
-			return nil, errors.Errorf("implicit primary key matching on column foreign key is not yet supported")
-		}
-		// Callers register the foreign key via the table constraint list, so ForeignKeyDef
-		// is left unset here to avoid creating the same constraint twice.
-	}
-
 	if len(node.Computed.Options) > 0 {
 		return nil, errors.Errorf("sequence options are not yet supported, create a sequence separately")
 	}

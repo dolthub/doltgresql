@@ -966,7 +966,6 @@ var ValuesStatementTests = []ScriptTest{
 	},
 	{
 		Name: "VALUES column names in a cursor",
-		Skip: true,
 		SetUpScript: []string{
 			`BEGIN;`,
 			`DECLARE c CURSOR FOR VALUES (1), (2);`,

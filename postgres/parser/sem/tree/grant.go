@@ -118,6 +118,8 @@ type TargetList struct {
 type Routine struct {
 	Name *UnresolvedObjectName
 	Args RoutineArgs
+	// ArgsOmitted is true when no argument list was given, which is distinct from an empty argument list.
+	ArgsOmitted bool
 }
 
 // Format implements the NodeFormatter interface.

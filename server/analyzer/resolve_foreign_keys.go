@@ -27,12 +27,23 @@ import (
 	"github.com/dolthub/doltgresql/server/functions"
 )
 
-// generateForeignKeyName populates a generated foreign key name, in the Postgres default foreign key name format,
-// when a foreign key is created without an explicit name specified.
-func generateForeignKeyName(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, _ *plan.Scope, _ analyzer.RuleSelector, _ *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
+// resolveForeignKeyDefinitions fills omitted referenced columns from the primary key
+// and generates PostgreSQL-style names for unnamed constraints.
+func resolveForeignKeyDefinitions(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, _ *plan.Scope, _ analyzer.RuleSelector, _ *sql.QueryFlags) (sql.Node, transform.TreeIdentity, error) {
 	return transform.Node(ctx, n, func(ctx *sql.Context, n sql.Node) (sql.Node, transform.TreeIdentity, error) {
 		switch n := n.(type) {
 		case *plan.CreateTable:
+			// An existing table makes IF NOT EXISTS a no-op, including its
+			// foreign key definitions, which need not have valid primary keys.
+			if n.IfNotExists() {
+				_, exists, err := n.Db.GetTableInsensitive(ctx, n.Name())
+				if err != nil {
+					return nil, transform.SameTree, err
+				}
+				if exists {
+					return n, transform.SameTree, nil
+				}
+			}
 			copiedForeignKeys := make([]*sql.ForeignKeyConstraint, len(n.ForeignKeys()))
 			for i := range n.ForeignKeys() {
 				fk := *n.ForeignKeys()[i]
@@ -45,6 +56,11 @@ func generateForeignKeyName(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, 
 			}
 			changedForeignKey := false
 			for _, fk := range copiedForeignKeys {
+				resolved, err := resolveImplicitForeignKey(ctx, fk, n)
+				if err != nil {
+					return nil, transform.SameTree, err
+				}
+				changedForeignKey = changedForeignKey || resolved
 				if fk.Name == "" {
 					generatedName, err := generateFkName(ctx, n.Name(), fk)
 					if err != nil {
@@ -77,20 +93,25 @@ func generateForeignKeyName(ctx *sql.Context, _ *analyzer.Analyzer, n sql.Node, 
 			}
 
 		case *plan.CreateForeignKey:
-			if n.FkDef.Name == "" {
-				copiedFk := *n.FkDef
+			copiedFk := *n.FkDef
+			changed, err := resolveImplicitForeignKey(ctx, &copiedFk, nil)
+			if err != nil {
+				return nil, transform.SameTree, err
+			}
+			if copiedFk.Name == "" {
 				generatedName, err := generateFkName(ctx, copiedFk.Table, &copiedFk)
 				if err != nil {
 					return nil, transform.SameTree, err
 				}
 				copiedFk.Name = generatedName
-				return &plan.CreateForeignKey{
-					DbProvider: n.DbProvider,
-					FkDef:      &copiedFk,
-				}, transform.NewTree, nil
-			} else {
-				return n, transform.SameTree, nil
+				changed = true
 			}
+			if changed {
+				copy := *n
+				copy.FkDef = &copiedFk
+				return &copy, transform.NewTree, nil
+			}
+			return n, transform.SameTree, nil
 
 		default:
 			return n, transform.SameTree, nil

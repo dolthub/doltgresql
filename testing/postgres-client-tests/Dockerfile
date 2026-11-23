@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.26.2-alpine AS golang_cgo
+FROM golang:1.27.3-alpine AS golang_cgo
 ENV CGO_ENABLED=1
 ENV GO_LDFLAGS="-linkmode external -extldflags '-static'"
 RUN apk add --no-cache build-base
@@ -144,6 +144,7 @@ RUN apt-get install -y \
     r-base \
     libyaml-dev \
     libpq-dev \
+    libcurl4-openssl-dev \
     odbc-postgresql \
     g++ make libpqxx-dev pkg-config \
     gcc make unixodbc-dev \

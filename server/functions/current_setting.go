@@ -78,18 +78,18 @@ func getCurSetting(ctx *sql.Context, s string, missingOk bool) (any, error) {
 	if value, ok, err := core.Setting(ctx, s); err != nil {
 		return nil, err
 	} else if ok {
-		return config.FormatPostgresParameterValue(s, value), nil
+		return config.FormatPostgresParameterValueInRegistry(ctx.SystemVariables(), s, value), nil
 	}
 
 	// System variables with no session scope (e.g. dolt_cluster_role during cluster replication) can change at
 	// runtime, but sessions snapshot system variables at creation time, so the session copy can go stale. The
 	// live global value is the effective setting for such variables, so return it directly.
-	if config.IsGlobalOnlySystemVariable(s) {
-		if _, globalVal, ok := sql.SystemVariables.GetGlobal(s); ok {
-			return config.FormatPostgresParameterValue(s, globalVal), nil
+	if _, globalOnly := config.GlobalOnlySystemVariableScopeInRegistry(ctx.SystemVariables(), s); globalOnly {
+		if _, globalVal, ok := ctx.SystemVariables().GetGlobal(s); ok {
+			return config.FormatPostgresParameterValueInRegistry(ctx.SystemVariables(), s, globalVal), nil
 		}
 	}
-	if !config.IsValidPostgresConfigParameter(s) && !config.IsValidDoltConfigParameter(s) {
+	if !config.IsValidPostgresConfigParameterInRegistry(ctx.SystemVariables(), s) && !config.IsValidDoltConfigParameterInRegistry(ctx.SystemVariables(), s) {
 		if missingOk {
 			return nil, nil
 		}
@@ -105,7 +105,7 @@ func getCurSetting(ctx *sql.Context, s string, missingOk bool) (any, error) {
 	}
 
 	if variable != nil {
-		return config.FormatPostgresParameterValue(s, variable), nil
+		return config.FormatPostgresParameterValueInRegistry(ctx.SystemVariables(), s, variable), nil
 	}
 
 	if missingOk {

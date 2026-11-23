@@ -37,7 +37,7 @@ const (
 	ruleId_AssignTriggers                                                // assignTriggers
 	ruleId_AssignUpdateCasts                                             // assignUpdateCasts
 	ruleId_ConvertDropPrimaryKeyConstraint                               // convertDropPrimaryKeyConstraint
-	ruleId_GenerateForeignKeyName                                        // generateForeignKeyName
+	ruleId_ResolveForeignKeyDefinitions                                  // resolveForeignKeyDefinitions
 	ruleId_ReplaceNode                                                   // replaceNode
 	ruleId_ReplaceSerial                                                 // replaceSerial
 	ruleId_InsertContextRootFinalizer                                    // insertContextRootFinalizer
@@ -56,8 +56,10 @@ const (
 	ruleId_ResolveTableForDDL                                            // resolveTableForDDL
 	ruleId_AddLikePrefixRanges                                           // addLikePrefixRanges
 	ruleId_ParenthesizeColumnDefaults                                    // parenthesizeColumnDefaults
+	ruleId_QualifyColumnDefaultRelations                                 // qualifyColumnDefaultRelations
 	ruleId_HoistInsertTriggers                                           // hoistInsertTriggers
 	ruleId_SplitRowComparisons                                           // splitRowComparisons
+	ruleId_RemoveIdentityUpdates                                         // removeIdentityUpdates
 )
 
 // Init adds additional rules to the analyzer to handle Doltgres-specific functionality.
@@ -79,11 +81,12 @@ func Init() {
 		analyzer.Rule{Id: ruleId_SetRunner, Apply: SetRunner},
 		analyzer.Rule{Id: ruleId_TypeSanitizer, Apply: TypeSanitizer},
 		analyzer.Rule{Id: ruleId_ResolveValuesTypes, Apply: ResolveValuesTypes},
-		analyzer.Rule{Id: ruleId_GenerateForeignKeyName, Apply: generateForeignKeyName},
+		analyzer.Rule{Id: ruleId_ResolveForeignKeyDefinitions, Apply: resolveForeignKeyDefinitions},
 		analyzer.Rule{Id: ruleId_AddDomainConstraints, Apply: AddDomainConstraints},
 		analyzer.Rule{Id: ruleId_ValidateColumnDefaults, Apply: ValidateColumnDefaults},
 		analyzer.Rule{Id: ruleId_AssignInsertCasts, Apply: AssignInsertCasts},
 		analyzer.Rule{Id: ruleId_AssignUpdateCasts, Apply: AssignUpdateCasts},
+		analyzer.Rule{Id: ruleId_RemoveIdentityUpdates, Apply: RemoveIdentityUpdates},
 		analyzer.Rule{Id: ruleId_AssignTriggers, Apply: AssignTriggers},
 		analyzer.Rule{Id: ruleId_ValidateCreateFunction, Apply: ValidateCreateFunction},
 		analyzer.Rule{Id: ruleId_ValidateCreateSchema, Apply: ValidateCreateSchema},
@@ -118,6 +121,7 @@ func Init() {
 	// We also should optimize functions last, since other rules may change the underlying expressions, potentially changing their return types.
 	analyzer.OnceAfterAll = insertAnalyzerRules(analyzer.OnceAfterAll, analyzer.QuoteDefaultColumnValueNamesId, false,
 		analyzer.Rule{Id: ruleId_ParenthesizeColumnDefaults, Apply: ParenthesizeColumnDefaults},
+		analyzer.Rule{Id: ruleId_QualifyColumnDefaultRelations, Apply: QualifyColumnDefaultRelations},
 		analyzer.Rule{Id: ruleId_OptimizeFunctions, Apply: OptimizeFunctions},
 		// AddDomainConstraintsToCasts needs to run after 'assignExecIndexes' rule in GMS.
 		analyzer.Rule{Id: ruleId_AddDomainConstraintsToCasts, Apply: AddDomainConstraintsToCasts},

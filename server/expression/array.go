@@ -20,6 +20,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/types"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/core"
@@ -108,7 +109,7 @@ func (array *Array) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 		}
 
 		values[i], err = cast.Eval(ctx, val, doltgresType, targetTyp)
-		if err != nil {
+		if err != nil && (array.explicitType == nil || !ignoresExplicitCastError(targetTyp, values[i])) {
 			return nil, err
 		}
 	}
@@ -270,10 +271,15 @@ func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) 
 	}
 
 	var childrenTypes []*pgtypes.DoltgresType
+	hasNull := false
 	for _, child := range children {
 		if child != nil {
 			childType, ok := child.Type(ctx).(*pgtypes.DoltgresType)
 			if !ok {
+				if child.Type(ctx) == types.Null {
+					hasNull = true
+					continue
+				}
 				// We use "anyarray" as the indeterminate/invalid type
 				return pgtypes.AnyArray, nil
 			}
@@ -282,6 +288,9 @@ func (array *Array) getTargetType(ctx *sql.Context, children ...sql.Expression) 
 			}
 			childrenTypes = append(childrenTypes, childType)
 		}
+	}
+	if hasNull && len(childrenTypes) == 0 {
+		return pgtypes.AnyArray, nil
 	}
 	targetType, _, err := framework.FindCommonType(ctx, childrenTypes)
 	if err != nil {

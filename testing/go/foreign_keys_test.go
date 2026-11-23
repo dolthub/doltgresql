@@ -941,6 +941,44 @@ func TestForeignKeys(t *testing.T) {
 				},
 			},
 			{
+				Name: "same constraint name on two tables",
+				SetUpScript: []string{
+					"CREATE TABLE parent (id INT PRIMARY KEY);",
+					"CREATE TABLE c1 (id INT PRIMARY KEY, pid INT, CONSTRAINT same_fk FOREIGN KEY (pid) REFERENCES parent(id));",
+					"CREATE TABLE c2 (id INT PRIMARY KEY, pid INT, CONSTRAINT same_fk FOREIGN KEY (pid) REFERENCES parent(id));",
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query:    "SELECT conrelid::regclass::text FROM pg_constraint WHERE conname = 'same_fk' ORDER BY 1;",
+						Expected: []sql.Row{{"c1"}, {"c2"}},
+					},
+					{
+						Query:    "ALTER TABLE c1 DROP CONSTRAINT same_fk;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conrelid::regclass::text FROM pg_constraint WHERE conname = 'same_fk' ORDER BY 1;",
+						Expected: []sql.Row{{"c2"}},
+					},
+					{
+						Query:    "INSERT INTO c1 VALUES (1, 2);",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:       "INSERT INTO c2 VALUES (1, 2);",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "ALTER TABLE c2 DROP CONSTRAINT same_fk;",
+						Expected: []sql.Row{},
+					},
+					{
+						Query:    "SELECT conrelid::regclass::text FROM pg_constraint WHERE conname = 'same_fk';",
+						Expected: []sql.Row{},
+					},
+				},
+			},
+			{
 				Name: "foreign key default naming, added through alter table",
 				SetUpScript: []string{
 					"CREATE TABLE webhooks (id varchar not null, primary key (id));",
@@ -1025,6 +1063,110 @@ func TestForeignKeys(t *testing.T) {
 					{
 						Query:    "SELECT * FROM public.hn_stories where title = 'test2';",
 						Expected: []sql.Row{{"test2", "test2"}},
+					},
+				},
+			},
+			{
+				Name: "UPDATE only checks the foreign keys over the columns it changes",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY, v INT)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, pid INT REFERENCES pt (id), v INT)`,
+					`INSERT INTO pt VALUES (1, 0), (2, 0)`,
+					`INSERT INTO ct VALUES (1, 1, 0)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE pt SET v = 1 WHERE id = 1",
+					},
+					{
+						Query: "UPDATE ct SET v = 1",
+					},
+					{
+						Query:       "UPDATE ct SET pid = 9",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:       "UPDATE pt SET id = 9 WHERE id = 1",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 1, 1}},
+					},
+				},
+			},
+			{
+				Name: "UPDATE checks a foreign key over a column that a BEFORE UPDATE trigger assigns",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, pid INT REFERENCES pt (id), v INT)`,
+					`INSERT INTO pt VALUES (1), (2)`,
+					`INSERT INTO ct VALUES (1, 1, 0)`,
+					`CREATE FUNCTION ct_bu() RETURNS TRIGGER AS $$ BEGIN NEW.pid := NEW.v; RETURN NEW; END; $$ LANGUAGE plpgsql`,
+					`CREATE TRIGGER ct_bu BEFORE UPDATE ON ct FOR EACH ROW EXECUTE FUNCTION ct_bu()`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE ct SET v = 2",
+					},
+					{
+						Query:       "UPDATE ct SET v = 9",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 2, 2}},
+					},
+				},
+			},
+			{
+				Name: "UPDATE checks a foreign key over a generated column of the columns it assigns",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, a INT, g INT GENERATED ALWAYS AS (a + 1) STORED REFERENCES pt (id))`,
+					`INSERT INTO pt VALUES (1), (2)`,
+					`INSERT INTO ct (id, a) VALUES (1, 0)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE ct SET a = 1",
+					},
+					{
+						Query:       "UPDATE ct SET a = 5",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 1, 2}},
+					},
+				},
+			},
+			{
+				Name: "UPDATE ... FROM only checks the foreign keys over the columns it changes",
+				SetUpScript: []string{
+					`CREATE TABLE pt (id INT PRIMARY KEY, v INT)`,
+					`CREATE TABLE ct (id INT PRIMARY KEY, pid INT REFERENCES pt (id), v INT)`,
+					`INSERT INTO pt VALUES (1, 0), (2, 0)`,
+					`INSERT INTO ct VALUES (1, 1, 0)`,
+				},
+				Assertions: []ScriptTestAssertion{
+					{
+						Query: "UPDATE ct SET v = 1 FROM pt WHERE pt.id = ct.pid",
+					},
+					{
+						Query:       "UPDATE ct SET pid = 9 FROM pt WHERE pt.id = ct.pid",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query: "UPDATE pt SET v = 3 FROM ct WHERE pt.id = ct.pid",
+					},
+					{
+						Query:       "UPDATE pt SET id = 9 FROM ct WHERE pt.id = ct.pid",
+						ExpectedErr: "Foreign key violation",
+					},
+					{
+						Query:    "SELECT * FROM ct",
+						Expected: []sql.Row{{1, 1, 1}},
 					},
 				},
 			},
@@ -2158,4 +2300,133 @@ func TestForeignKeys(t *testing.T) {
 			},
 		},
 	)
+}
+
+func TestImplicitForeignKeys(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "implicit references respect search path before self reference",
+			SetUpScript: []string{`CREATE SCHEMA other`, `CREATE TABLE parent (id int PRIMARY KEY)`, `INSERT INTO parent VALUES (1)`},
+			Assertions: []ScriptTestAssertion{
+				{Query: `CREATE TABLE other.parent (id text PRIMARY KEY, parent_id int REFERENCES parent)`},
+				{Query: `INSERT INTO other.parent VALUES ('child', 1)`},
+				{Query: `INSERT INTO other.parent VALUES ('orphan', 2)`, ExpectedErr: "Foreign key violation"},
+			},
+		},
+		{
+			Name:        "implicit references outside the search path",
+			SetUpScript: []string{`CREATE SCHEMA remote_parent`, `CREATE TABLE remote_parent.parent (id int PRIMARY KEY)`, `INSERT INTO remote_parent.parent VALUES (1)`},
+			Assertions: []ScriptTestAssertion{
+				{Query: `CREATE TABLE child (id int REFERENCES remote_parent.parent)`},
+				{Query: `INSERT INTO child VALUES (1)`},
+				{Query: `INSERT INTO child VALUES (2)`, ExpectedErr: "Foreign key violation"},
+			},
+		},
+		{
+			Name: "implicit column references",
+			SetUpScript: []string{
+				`CREATE TABLE parent (other int UNIQUE, id int PRIMARY KEY)`,
+				`INSERT INTO parent VALUES (10, 1)`,
+				`CREATE TABLE child (id int PRIMARY KEY, parent_id int CONSTRAINT implicit_fk REFERENCES parent ON DELETE CASCADE ON UPDATE CASCADE)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `INSERT INTO child VALUES (1, 1), (2, NULL)`},
+				{Query: `INSERT INTO child VALUES (3, 10)`, ExpectedErr: "Foreign key violation"},
+				{Query: `UPDATE parent SET id = 2 WHERE id = 1`},
+				{Query: `SELECT parent_id FROM child WHERE id = 1`, Expected: []sql.Row{{2}}},
+				{Query: `DELETE FROM parent WHERE id = 2`},
+				{Query: `SELECT id FROM child`, Expected: []sql.Row{{2}}},
+				{Query: `ALTER TABLE child DROP CONSTRAINT implicit_fk`},
+				{Query: `INSERT INTO child VALUES (3, 99)`},
+				{Query: `CREATE TABLE no_pk (id int UNIQUE)`},
+				{Query: `CREATE TABLE IF NOT EXISTS child (id int REFERENCES no_pk)`},
+			},
+		},
+		{
+			Name:        "implicit references in alter table",
+			SetUpScript: []string{`CREATE TABLE parent (id int PRIMARY KEY)`, `INSERT INTO parent VALUES (1)`, `CREATE TABLE child (id int PRIMARY KEY)`},
+			Assertions: []ScriptTestAssertion{
+				{Query: `ALTER TABLE child ADD COLUMN parent_id int REFERENCES parent`},
+				{Query: `INSERT INTO child VALUES (1, 1)`},
+				{Query: `INSERT INTO child VALUES (2, 2)`, ExpectedErr: "Foreign key violation"},
+				{Query: `CREATE TABLE another_child (id int PRIMARY KEY, parent_id int)`},
+				{Query: `ALTER TABLE another_child ADD CONSTRAINT fk FOREIGN KEY (parent_id) REFERENCES parent`},
+				{Query: `INSERT INTO another_child VALUES (1, 1)`},
+				{Query: `INSERT INTO another_child VALUES (2, 2)`, ExpectedErr: "Foreign key violation"},
+			},
+		},
+		{
+			Name: "implicit self reference",
+			Assertions: []ScriptTestAssertion{
+				{Query: `CREATE TABLE tree (id int PRIMARY KEY, parent_id int REFERENCES tree)`},
+				{Query: `INSERT INTO tree VALUES (1, NULL), (2, 1)`},
+				{Query: `INSERT INTO tree VALUES (3, 99)`, ExpectedErr: "Foreign key violation"},
+			},
+		},
+		{
+			Name:        "implicit primary key validation and ordering",
+			SetUpScript: []string{`CREATE TABLE no_pk (id int UNIQUE)`, `CREATE TABLE composite (a int, b int, PRIMARY KEY (b, a))`, `INSERT INTO composite VALUES (1, 2)`},
+			Assertions: []ScriptTestAssertion{
+				{Query: `CREATE TABLE invalid_child (id int REFERENCES no_pk)`, ExpectedErr: "there is no primary key", ExpectedErrCode: "42704"},
+				{Query: `CREATE TABLE invalid_child (id int REFERENCES composite)`, ExpectedErr: "number of referencing and referenced columns", ExpectedErrCode: "42830"},
+				{Query: `CREATE TABLE invalid_child (id int REFERENCES missing_parent)`, ExpectedErr: "does not exist"},
+				{Query: `CREATE TABLE invalid_child (id int, parent_id int REFERENCES invalid_child)`, ExpectedErr: "there is no primary key", ExpectedErrCode: "42704"},
+				{Query: `CREATE TABLE child (x int, y int, FOREIGN KEY (x,y) REFERENCES composite)`},
+				{Query: `INSERT INTO child VALUES (2, 1)`},
+				{Query: `INSERT INTO child VALUES (1, 2)`, ExpectedErr: "Foreign key violation"},
+				{Query: `CREATE TABLE explicit_child (id int REFERENCES no_pk(id))`},
+			},
+		},
+		{
+			Name:        "schema qualified and quoted implicit references",
+			SetUpScript: []string{`CREATE SCHEMA fkprobe`, `SET search_path TO fkprobe`, `CREATE TABLE fkprobe."Users" (other int, "ID" uuid PRIMARY KEY)`, `INSERT INTO fkprobe."Users" VALUES (1, '00000000-0000-0000-0000-000000000001')`},
+			Assertions: []ScriptTestAssertion{
+				{Query: `CREATE TABLE fkprobe.tokens (id int PRIMARY KEY, user_id uuid NOT NULL REFERENCES fkprobe."Users" ON DELETE CASCADE)`},
+				{Query: `INSERT INTO fkprobe.tokens VALUES (1, '00000000-0000-0000-0000-000000000001')`},
+				{Query: `INSERT INTO fkprobe.tokens VALUES (2, '00000000-0000-0000-0000-000000000002')`, ExpectedErr: "Foreign key violation"},
+				{Query: `DELETE FROM fkprobe."Users"`},
+				{Query: `SELECT count(*) FROM fkprobe.tokens`, Expected: []sql.Row{{0}}},
+			},
+		},
+	})
+}
+
+func TestImplicitForeignKeyRegressionCleanup(t *testing.T) {
+	for _, reference := range []string{"", "(id)"} {
+		t.Run("reference"+reference, func(t *testing.T) {
+			RunScripts(t, []ScriptTest{
+				{
+					Name:        "reject numeric references to integer keys without leaving a table",
+					SetUpScript: []string{`CREATE TABLE parent (id integer PRIMARY KEY)`, `INSERT INTO parent VALUES (42)`},
+					Assertions: []ScriptTestAssertion{
+						{Query: `CREATE TABLE child (id numeric REFERENCES parent` + reference + `)`, ExpectedErr: "incompatible types"},
+						{Query: `DROP TABLE parent`},
+						{Query: `CREATE TABLE parent (id numeric PRIMARY KEY)`},
+						{Query: `INSERT INTO parent VALUES (42)`},
+						{Query: `CREATE TABLE child (id integer REFERENCES parent` + reference + `)`},
+						{Query: `INSERT INTO child VALUES (42)`},
+						{Query: `INSERT INTO child VALUES (43)`, ExpectedErr: "Foreign key violation"},
+					},
+				},
+				{
+					Name: "drop interdependent tables in parent first order",
+					SetUpScript: []string{
+						`CREATE TABLE a (id integer PRIMARY KEY)`,
+						`CREATE TABLE c (id integer PRIMARY KEY)`,
+						`CREATE TABLE b (id integer REFERENCES a` + reference + `)`,
+						`CREATE TABLE d (id integer REFERENCES c` + reference + `)`,
+						`CREATE TABLE e (id integer REFERENCES a` + reference + `, other integer REFERENCES c` + reference + `)`,
+						`ALTER TABLE a ADD FOREIGN KEY (id) REFERENCES c` + reference,
+					},
+					Assertions: []ScriptTestAssertion{
+						{Query: `ALTER TABLE c ADD FOREIGN KEY (id) REFERENCES a` + reference},
+						{Query: `DROP TABLE a,c,b,d,e CASCADE`},
+						{Query: `CREATE TABLE a (id integer PRIMARY KEY)`},
+						{Query: `TRUNCATE a`},
+						{Query: `DROP TABLE a`},
+					},
+				},
+			})
+		})
+	}
 }
