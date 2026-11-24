@@ -15,11 +15,9 @@
 package information_schema
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/dolthub/go-mysql-server/sql"
-	"github.com/dolthub/go-mysql-server/sql/expression"
 	"github.com/dolthub/go-mysql-server/sql/information_schema"
 	"github.com/dolthub/go-mysql-server/sql/types"
 	"github.com/dolthub/vitess/go/sqltypes"
@@ -28,7 +26,6 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	partypes "github.com/dolthub/doltgresql/postgres/parser/types"
-	pgexprs "github.com/dolthub/doltgresql/server/expression"
 	"github.com/dolthub/doltgresql/server/functions"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -152,11 +149,15 @@ func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName,
 	numericPrecision, numericPrecisionRadix, numericScale := getColumnPrecisionAndScale(col.Type)
 	datetimePrecision := getDatetimePrecision(col.Type)
 
-	columnDefault := information_schema.GetColumnDefault(ctx, col.Default)
+	displayedDefault, err := postgresColumnDefault(ctx, col.Default)
+	if err != nil {
+		return nil, err
+	}
+	columnDefault := information_schema.GetColumnDefault(ctx, displayedDefault)
 	if columnDefault != nil && col.Default.IsLiteral() {
 		columnType, _ := col.Type.(*pgtypes.DoltgresType)
 		var err error
-		if columnDefault, err = postgresDefaultString(ctx, col.Default.Expr, columnType); err != nil {
+		if columnDefault, err = functions.PostgresDefaultString(ctx, displayedDefault.Expr, columnType); err != nil {
 			return nil, err
 		}
 	}
@@ -165,7 +166,11 @@ func getRowFromColumn(ctx *sql.Context, curOrdPos int, col *sql.Column, catName,
 		if unresolved, isUnresolved := col.Generated.Expr.(*sql.UnresolvedColumnDefault); isUnresolved {
 			generationExpression = unresolved.String()
 		} else {
-			generationExpression = col.Generated.String()
+			displayedGenerated, err := postgresColumnDefault(ctx, col.Generated)
+			if err != nil {
+				return nil, err
+			}
+			generationExpression = displayedGenerated.String()
 		}
 	}
 
@@ -425,83 +430,15 @@ func getDatetimePrecision(colType sql.Type) interface{} {
 	return nil
 }
 
-// postgresDefaultString returns the text that Postgres shows for a default built from constants and casts, where a string
-// constant takes on the type of `columnType`. Any other expression returns its own text.
-func postgresDefaultString(ctx *sql.Context, expr sql.Expression, columnType *pgtypes.DoltgresType) (string, error) {
-	switch expr := expr.(type) {
-	case *expression.Literal:
-		literalType, ok := expr.Type(ctx).(*pgtypes.DoltgresType)
-		if !ok {
-			break
-		}
-		if columnType != nil && literalType.ID == pgtypes.Unknown.ID {
-			return postgresDefaultString(ctx, pgexprs.NewExplicitCast(expr, columnType.WithAttTypMod(-1)), nil)
-		}
-		return postgresConstantString(ctx, expr.Value(), literalType, true)
-	case *pgexprs.ExplicitCast:
-		castType := expr.Type(ctx).(*pgtypes.DoltgresType)
-		childType, ok := expr.Child().Type(ctx).(*pgtypes.DoltgresType)
-		if !ok {
-			break
-		}
-		if childType.Equals(castType) {
-			return postgresDefaultString(ctx, expr.Child(), nil)
-		}
-		literal, isLiteral := expr.Child().(*expression.Literal)
-		var childText string
-		var err error
-		if isLiteral && childType.ID == pgtypes.Unknown.ID {
-			var val any
-			if val, err = expr.Eval(ctx, nil); err != nil {
-				return "", err
-			}
-			if castType.GetAttTypMod() < 0 {
-				return postgresConstantString(ctx, val, castType, true)
-			}
-			childText, err = postgresConstantString(ctx, val, castType, false)
-		} else if isLiteral && childType.ID == castType.ID {
-			childText, err = postgresConstantString(ctx, literal.Value(), childType, false)
-		} else {
-			childText, err = postgresDefaultString(ctx, expr.Child(), nil)
-			childText = "(" + childText + ")"
-		}
-		if err != nil {
-			return "", err
-		}
-		typeName, err := functions.FormatType(ctx, castType.ID.AsId(), castType.GetAttTypMod())
-		if err != nil {
-			return "", err
-		}
-		return childText + "::" + typeName, nil
+// postgresColumnDefault returns the given column default or generated column expression with its function calls shown
+// as Postgres shows them.
+func postgresColumnDefault(ctx *sql.Context, columnDefault *sql.ColumnDefaultValue) (*sql.ColumnDefaultValue, error) {
+	if columnDefault == nil || columnDefault.Expr == nil {
+		return columnDefault, nil
 	}
-	return expr.String(), nil
-}
-
-// postgresConstantString returns the text that Postgres shows for a constant of the given type. When `labeled` is true, the
-// type name follows any constant that would otherwise read back as a different type.
-func postgresConstantString(ctx *sql.Context, val any, typ *pgtypes.DoltgresType, labeled bool) (string, error) {
-	var text string
-	if val == nil {
-		text = "NULL"
-	} else if typ.ID == pgtypes.Bool.ID {
-		return strconv.FormatBool(val.(bool)), nil
-	} else {
-		output, err := typ.IoOutput(ctx, val)
-		if err != nil {
-			return "", err
-		}
-		if (typ.ID == pgtypes.Int32.ID && !strings.HasPrefix(output, "-")) ||
-			(typ.ID == pgtypes.Numeric.ID && output[0] >= '0' && output[0] <= '9' && strings.ContainsAny(output, ".eE")) {
-			return output, nil
-		}
-		text = "'" + strings.ReplaceAll(output, "'", "''") + "'"
-	}
-	if !labeled || typ.ID == pgtypes.Unknown.ID {
-		return text, nil
-	}
-	typeName, err := functions.FormatType(ctx, typ.ID.AsId(), typ.GetAttTypMod())
+	displayed, err := functions.DisplayExpression(ctx, columnDefault)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return text + "::" + typeName, nil
+	return displayed.(*sql.ColumnDefaultValue), nil
 }

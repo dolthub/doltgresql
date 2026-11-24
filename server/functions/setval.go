@@ -160,6 +160,20 @@ func ParseRelationBaseName(ctx *sql.Context, name string) (string, error) {
 	return strings.Trim(relation, `"`), nil
 }
 
+// sequenceFunctionNames are the functions whose first argument names a sequence. Postgres declares that argument as a
+// regclass.
+var sequenceFunctionNames = map[string]struct{}{
+	"currval": {},
+	"nextval": {},
+	"setval":  {},
+}
+
+// IsSequenceFunction returns whether the named function takes the name of a sequence as its first argument.
+func IsSequenceFunction(name string) bool {
+	_, ok := sequenceFunctionNames[strings.ToLower(name)]
+	return ok
+}
+
 // ParseRelationName parses the schema and relation name from a relation name string, including trimming any
 // identifier quotes used in the name. If the schema is not specified, an empty string is returned.
 // For example, passing in 'public."MyTable"' would return 'public' and 'MyTable'.

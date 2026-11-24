@@ -60,6 +60,11 @@ func (c *CreateTable) Expressions() []sql.Expression {
 	return c.gmsCreateTable.Expressions()
 }
 
+// GmsCreateTable returns the GMS CreateTable node that this node wraps.
+func (c *CreateTable) GmsCreateTable() *plan.CreateTable {
+	return c.gmsCreateTable
+}
+
 // IsReadOnly implements the interface sql.ExecBuilderNode.
 func (c *CreateTable) IsReadOnly() bool {
 	return false

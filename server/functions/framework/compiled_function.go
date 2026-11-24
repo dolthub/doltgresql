@@ -50,6 +50,7 @@ type CompiledFunction struct {
 	Name           string
 	Arguments      []sql.Expression
 	IsOperator     bool
+	qualified      bool
 	overloads      *Overloads
 	fnOverloads    []Overload
 	overload       overloadMatch
@@ -290,7 +291,7 @@ func (c *CompiledFunction) StashedError() error {
 // String implements the interface sql.Expression.
 func (c *CompiledFunction) String() string {
 	sb := strings.Builder{}
-	sb.WriteString(c.Name + "(")
+	sb.WriteString(c.schemaQualifiedName() + "(")
 	for i, param := range c.Arguments {
 		// Aliases will output the string "x as x", which is an artifact of how we build the AST, so we'll bypass it
 		if alias, ok := param.(*expression.Alias); ok {
@@ -303,6 +304,83 @@ func (c *CompiledFunction) String() string {
 	}
 	sb.WriteString(")")
 	return sb.String()
+}
+
+// schemaQualifiedName returns the name of the function, qualified by the schema of the overload it resolved to when
+// that schema is not `pg_catalog`, or when the function is qualified. Column defaults are persisted as this string and
+// re-parsed later, under a search path that may not reach the function's schema, or that may reach a different function
+// of the same name first.
+func (c *CompiledFunction) schemaQualifiedName() string {
+	if c.IsOperator {
+		return c.Name
+	}
+	schema := c.SchemaName()
+	if schema == "" || (schema == "pg_catalog" && !c.qualified) {
+		return c.Name
+	}
+	return schema + "." + c.Name
+}
+
+// WithQualifiedName returns a copy of this function whose string form names the schema of the overload it resolved to,
+// even when that schema is `pg_catalog`. An expression that is persisted as a string keeps calling the same built-in
+// function under a search path that puts another schema with a function of the same name ahead of `pg_catalog`.
+func (c *CompiledFunction) WithQualifiedName() *CompiledFunction {
+	nc := *c
+	nc.qualified = true
+	return &nc
+}
+
+// SchemaName returns the schema of the overload that the function resolved to, or an empty string if it has not
+// resolved to one.
+func (c *CompiledFunction) SchemaName() string {
+	if !c.overload.Valid() {
+		return ""
+	}
+	return id.Function(c.overload.Function().InternalID()).SchemaName()
+}
+
+// ResolvedParameterTypes returns the types of the parameters that the function's arguments are passed to, or nil if the
+// function has not resolved to an overload.
+func (c *CompiledFunction) ResolvedParameterTypes() []*pgtypes.DoltgresType {
+	if !c.overload.Valid() || len(c.callResolved) == 0 {
+		return nil
+	}
+	return c.callResolved[:len(c.callResolved)-1]
+}
+
+// IsVisible returns whether the overload that the function resolved to is found by its unqualified name under the
+// current search path, which is when Postgres shows the function's name without its schema. As with Postgres's
+// FunctionIsVisible, the overload must not be hidden by one with the same parameter types earlier on the path.
+func (c *CompiledFunction) IsVisible(ctx *sql.Context) bool {
+	if !c.overload.Valid() {
+		return false
+	}
+	resolved := c.overload.Function()
+	return functionIsVisible(ctx, c.Name, resolved.GetInputParameterTypes(), resolved.InternalID())
+}
+
+// functionIsVisible returns whether the function with the given name, parameter types, and ID is found by its
+// unqualified name under the current search path.
+func functionIsVisible(ctx *sql.Context, name string, paramTypes []*pgtypes.DoltgresType, functionID id.Id) bool {
+	overloadTree, _, ok := (&FunctionProvider{}).overloads(ctx, "", name)
+	if !ok {
+		// Without user-defined overloads of the name, only a built-in function is found
+		schema := id.Function(functionID).SchemaName()
+		return schema == "" || schema == "pg_catalog"
+	}
+	visible, ok := overloadTree.ByParamType[keyForParamTypes(paramTypes)]
+	return ok && visible.InternalID() == functionID
+}
+
+// BuiltInIsVisible returns whether the built-in function with the given name and parameter types is found by its
+// unqualified name under the current search path, which places pg_catalog first unless it names pg_catalog later.
+func BuiltInIsVisible(ctx *sql.Context, name string, paramTypes []*pgtypes.DoltgresType) bool {
+	overloadTree, _, ok := (&FunctionProvider{}).overloads(ctx, "", name)
+	if !ok {
+		return true
+	}
+	visible, ok := overloadTree.ByParamType[keyForParamTypes(paramTypes)]
+	return ok && id.Function(visible.InternalID()).SchemaName() == "pg_catalog"
 }
 
 // OverloadString returns the name of the function represented by the given overload.
@@ -760,6 +838,7 @@ func (c *CompiledFunction) WithChildren(ctx *sql.Context, children ...sql.Expres
 
 	// We have to re-resolve here, since the change in children may require it (e.g. we have more type info than we did)
 	nc := newCompiledFunctionInternal(ctx, c.Name, children, c.overloads, c.fnOverloads, c.IsOperator, c.runner)
+	nc.qualified = c.qualified
 	nc.distinctWindow = c.distinctWindow
 	if nc.distinctWindow != nil {
 		if err := nc.distinctWindowError(); err != nil {

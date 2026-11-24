@@ -28,11 +28,24 @@ var _ Statement = &Analyze{}
 
 // Analyze represents an ANALYZE statement.
 type Analyze struct {
-	Table TableExpr
+	Options       VacuumOptions
+	TablesAndCols VacuumTableAndColsList
 }
 
 // Format implements the NodeFormatter interface.
 func (node *Analyze) Format(ctx *FmtCtx) {
-	ctx.WriteString("ANALYZE ")
-	ctx.FormatNode(node.Table)
+	ctx.WriteString("ANALYZE")
+	for i, table := range node.TablesAndCols {
+		if i == 0 {
+			ctx.WriteString(" ")
+		} else {
+			ctx.WriteString(", ")
+		}
+		ctx.FormatNode(table.Name)
+		if len(table.Cols) > 0 {
+			ctx.WriteString(" (")
+			ctx.FormatNode(&table.Cols)
+			ctx.WriteString(")")
+		}
+	}
 }
