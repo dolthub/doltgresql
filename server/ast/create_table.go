@@ -57,7 +57,7 @@ func nodeCreateTable(ctx *Context, node *tree.CreateTable) (*vitess.DDL, error) 
 	if node.Using != "" {
 		return nil, errors.Errorf("USING is not yet supported")
 	}
-	if node.Tablespace != "" {
+	if node.Tablespace != "" && node.Tablespace != "pg_default" {
 		return nil, errors.Errorf("TABLESPACE is not yet supported")
 	}
 	if node.AsSource != nil {
