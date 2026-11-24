@@ -1921,6 +1921,102 @@ WHERE to_commit = dolt_hashof('HEAD')
 			},
 		},
 		{
+			Name: "dolt_status hides tables ignored by dolt_ignore",
+			SetUpScript: []string{
+				"INSERT INTO dolt_ignore VALUES ('scratch_%', true);",
+				"CREATE TABLE scratch_one (pk int);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM dolt_status;",
+					Expected: []sql.Row{
+						{"public.dolt_ignore", "f", "new table"},
+					},
+				},
+				{
+					Query: "SELECT table_name, ignored FROM dolt_status_ignored ORDER BY table_name;",
+					Expected: []sql.Row{
+						{"public.dolt_ignore", "f"},
+						{"public.scratch_one", "t"},
+					},
+				},
+			},
+		},
+		{
+			Name: "dolt_ignore patterns apply only to tables in their own schema",
+			SetUpScript: []string{
+				"INSERT INTO dolt_ignore VALUES ('scratch_%', true);",
+				"CREATE TABLE scratch_one (pk int);",
+				"CREATE SCHEMA otherschema;",
+				"CREATE TABLE otherschema.scratch_one (pk int);",
+				"CREATE SCHEMA thirdschema;",
+				"INSERT INTO thirdschema.dolt_ignore VALUES ('third_%', true);",
+				"CREATE TABLE thirdschema.third_one (pk int);",
+				"CREATE TABLE thirdschema.scratch_one (pk int);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "SELECT * FROM dolt_status ORDER BY table_name;",
+					Expected: []sql.Row{
+						{"otherschema", "f", "new schema"},
+						{"otherschema.scratch_one", "f", "new table"},
+						{"public.dolt_ignore", "f", "new table"},
+						{"thirdschema", "f", "new schema"},
+						{"thirdschema.dolt_ignore", "f", "new table"},
+						{"thirdschema.scratch_one", "f", "new table"},
+					},
+				},
+				{
+					Query: "SELECT table_name, ignored FROM dolt_status_ignored WHERE table_name LIKE '%_one' ORDER BY table_name;",
+					Expected: []sql.Row{
+						{"otherschema.scratch_one", "f"},
+						{"public.scratch_one", "t"},
+						{"thirdschema.scratch_one", "f"},
+						{"thirdschema.third_one", "t"},
+					},
+				},
+				{
+					// dolt_add -A skips exactly the tables that dolt_status hides
+					Query:    "SELECT dolt_add('-A');",
+					Expected: []sql.Row{{int64(0)}},
+				},
+				{
+					Query: "SELECT table_name, ignored FROM dolt_status_ignored WHERE NOT staged ORDER BY table_name;",
+					Expected: []sql.Row{
+						{"public.scratch_one", "t"},
+						{"thirdschema.third_one", "t"},
+					},
+				},
+				{
+					Query:    "SELECT * FROM dolt_status WHERE NOT staged;",
+					Expected: []sql.Row{},
+				},
+			},
+		},
+		{
+			Name: "dolt_status errors on conflicting dolt_ignore patterns in a non-default schema",
+			SetUpScript: []string{
+				"CREATE SCHEMA newschema;",
+				"INSERT INTO newschema.dolt_ignore VALUES ('%_ignore', true), ('commit_%', false);",
+				"CREATE TABLE newschema.commit_ignore (pk int);",
+				"CREATE TABLE commit_ignore (pk int);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "SELECT * FROM dolt_status;",
+					ExpectedErr: "the table commit_ignore matches conflicting patterns in dolt_ignore",
+				},
+				{
+					// dolt_status_ignored reports a table matched by conflicting patterns as not ignored
+					Query: "SELECT table_name, ignored FROM dolt_status_ignored WHERE table_name LIKE '%commit_ignore' ORDER BY table_name;",
+					Expected: []sql.Row{
+						{"newschema.commit_ignore", "f"},
+						{"public.commit_ignore", "f"},
+					},
+				},
+			},
+		},
+		{
 			Name: "dolt log",
 			Assertions: []ScriptTestAssertion{
 				{
