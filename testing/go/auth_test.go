@@ -1779,6 +1779,70 @@ func TestAuthTests(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "Branch Control: Statements that change no rows still require write permission",
+			SetUpScript: []string{
+				`DELETE FROM dolt_branch_control WHERE "user" = '%';`,
+				"INSERT INTO dolt_branch_control VALUES ('%', '%', 'postgres', '%', 'admin');",
+				"INSERT INTO dolt_branch_control VALUES ('%', 'main', 'writer', '%', 'write');",
+				"CREATE USER contributor PASSWORD 'c';",
+				"CREATE USER writer PASSWORD 'w';",
+				"CREATE TABLE salary (id INT PRIMARY KEY, amount INT);",
+				"INSERT INTO salary VALUES (1, 12500);",
+				"GRANT ALL PRIVILEGES ON SCHEMA public TO contributor, writer;",
+				"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO contributor, writer;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       "UPDATE salary SET amount = amount WHERE id = 1;",
+					Username:    "contributor",
+					Password:    "c",
+					ExpectedErr: "does not have the correct permissions on branch `main`",
+				},
+				{
+					Query:       "UPDATE salary SET amount = 12500 WHERE id = 1;",
+					Username:    "contributor",
+					Password:    "c",
+					ExpectedErr: "does not have the correct permissions on branch `main`",
+				},
+				{
+					Query:       "UPDATE salary SET amount = 777 WHERE id = 1;",
+					Username:    "contributor",
+					Password:    "c",
+					ExpectedErr: "does not have the correct permissions on branch `main`",
+				},
+				{
+					Query:       "DELETE FROM salary WHERE 1 = 0;",
+					Username:    "contributor",
+					Password:    "c",
+					ExpectedErr: "does not have the correct permissions on branch `main`",
+				},
+				{
+					Query:       "INSERT INTO salary VALUES (1, 9000) ON CONFLICT (id) DO NOTHING;",
+					Username:    "contributor",
+					Password:    "c",
+					ExpectedErr: "does not have the correct permissions on branch `main`",
+				},
+				{
+					Query:    "UPDATE salary SET amount = amount WHERE id = 1;",
+					Username: "writer",
+					Password: "w",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DELETE FROM salary WHERE 1 = 0;",
+					Username: "writer",
+					Password: "w",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM salary;",
+					Username: "contributor",
+					Password: "c",
+					Expected: []sql.Row{{1, 12500}},
+				},
+			},
+		},
 	})
 }
 
