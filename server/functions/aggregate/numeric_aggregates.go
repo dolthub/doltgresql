@@ -126,12 +126,12 @@ func newIntSumWindowFunction[T int16 | int32](exprs []sql.Expression, window *sq
 }
 
 func (w *intSumWindowFunction[T]) Compute(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) (interface{}, error) {
-	if interval.End <= interval.Start {
+	if interval.Len() == 0 {
 		return nil, nil
 	}
 	var sum int64
 	var sawOne bool
-	for i := interval.Start; i < interval.End; i++ {
+	for i := range interval.Indices() {
 		v, err := w.expr.Eval(ctx, buf[i])
 		if err != nil {
 			return nil, err
@@ -224,12 +224,12 @@ func newDecimalSumWindowFunction[T int64 | *apd.Decimal](convert func(T) *apd.De
 }
 
 func (w *decimalSumWindowFunction[T]) Compute(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) (interface{}, error) {
-	if interval.End <= interval.Start {
+	if interval.Len() == 0 {
 		return nil, nil
 	}
 	var sum apd.Decimal
 	var sawOne bool
-	for i := interval.Start; i < interval.End; i++ {
+	for i := range interval.Indices() {
 		v, err := w.expr.Eval(ctx, buf[i])
 		if err != nil {
 			return nil, err
@@ -315,12 +315,12 @@ func newFloatSumWindowFunction[T float32 | float64](exprs []sql.Expression, wind
 }
 
 func (w *floatSumWindowFunction[T]) Compute(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) (interface{}, error) {
-	if interval.End <= interval.Start {
+	if interval.Len() == 0 {
 		return nil, nil
 	}
 	var sum T
 	var sawOne bool
-	for i := interval.Start; i < interval.End; i++ {
+	for i := range interval.Indices() {
 		v, err := w.expr.Eval(ctx, buf[i])
 		if err != nil {
 			return nil, err

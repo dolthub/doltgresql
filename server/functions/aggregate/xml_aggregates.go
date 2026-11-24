@@ -95,7 +95,7 @@ func newXmlAggWindowFunction(exprs []sql.Expression, window *sql.WindowDefinitio
 // Compute implements sql.WindowFunction.
 func (w *xmlAggWindowFunction) Compute(ctx *sql.Context, interval sql.WindowInterval, buffer sql.WindowBuffer) (interface{}, error) {
 	var result *string
-	for i := interval.Start; i < interval.End; i++ {
+	for i := range interval.Indices() {
 		value, err := w.expr.Eval(ctx, buffer[i])
 		if err != nil {
 			return nil, err
