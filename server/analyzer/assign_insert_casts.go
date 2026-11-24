@@ -78,7 +78,7 @@ func AssignInsertCasts(ctx *sql.Context, a *analyzer.Analyzer, node sql.Node, sc
 				}
 				fromColType, ok := colExprType.(*pgtypes.DoltgresType)
 				if !ok {
-					return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in values source: %s", fromColType.String())
+					return nil, transform.NewTree, errors.Errorf("INSERT: non-Doltgres type found in values source: %s", colExprType.String())
 				}
 				toColType := destinationTypes[columnIndex]
 				// We only assign the existing expression if the types perfectly match (same parameters), otherwise we'll cast
