@@ -137,11 +137,11 @@ func newIntAvgWindowFunction[T int16 | int32](exprs []sql.Expression, window *sq
 }
 
 func (w *intAvgWindowFunction[T]) Compute(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) (interface{}, error) {
-	if interval.End <= interval.Start {
+	if interval.Len() == 0 {
 		return nil, nil
 	}
 	var sum, count int64
-	for i := interval.Start; i < interval.End; i++ {
+	for i := range interval.Indices() {
 		v, err := w.expr.Eval(ctx, buf[i])
 		if err != nil {
 			return nil, err
@@ -226,12 +226,12 @@ func newDecimalAvgWindowFunction[T int64 | *apd.Decimal](convert func(T) *apd.De
 }
 
 func (w *decimalAvgWindowFunction[T]) Compute(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) (interface{}, error) {
-	if interval.End <= interval.Start {
+	if interval.Len() == 0 {
 		return nil, nil
 	}
 	var sum apd.Decimal
 	var count int64
-	for i := interval.Start; i < interval.End; i++ {
+	for i := range interval.Indices() {
 		v, err := w.expr.Eval(ctx, buf[i])
 		if err != nil {
 			return nil, err
@@ -312,12 +312,12 @@ func newFloatAvgWindowFunction[T float32 | float64](exprs []sql.Expression, wind
 }
 
 func (w *floatAvgWindowFunction[T]) Compute(ctx *sql.Context, interval sql.WindowInterval, buf sql.WindowBuffer) (interface{}, error) {
-	if interval.End <= interval.Start {
+	if interval.Len() == 0 {
 		return nil, nil
 	}
 	var sum float64
 	var count int64
-	for i := interval.Start; i < interval.End; i++ {
+	for i := range interval.Indices() {
 		v, err := w.expr.Eval(ctx, buf[i])
 		if err != nil {
 			return nil, err
