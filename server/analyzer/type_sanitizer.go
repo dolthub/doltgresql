@@ -114,6 +114,24 @@ func sanitizeExprType(ctx *sql.Context, n sql.Node, expr sql.Expression) (sql.Ex
 			}
 		}
 		return expr, transform.SameTree, nil
+	case *expression.BindVar:
+		// Parameters take the type of their destination column, which is a GMS type for Dolt system tables. Bound values
+		// arrive as Doltgres values, since their OIDs come from the same type conversion, so only the type is replaced.
+		if expr.Typ == nil {
+			return expr, transform.SameTree, nil
+		}
+
+		if _, ok := expr.Typ.(*pgtypes.DoltgresType); ok {
+			return expr, transform.SameTree, nil
+		}
+
+		if _, ok := expr.Typ.(sql.DeferredType); ok {
+			return expr, transform.SameTree, nil
+		}
+
+		newBindVar := *expr
+		newBindVar.Typ = pgtypes.FromGmsType(expr.Typ)
+		return &newBindVar, transform.NewTree, nil
 	case *expression.Literal:
 		// We want to leave limit literals alone, as they are expected to be GMS types when they appear in certain
 		// parts of the query (subqueries in particular)
