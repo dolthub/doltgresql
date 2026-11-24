@@ -203,7 +203,7 @@ func TestPgvectorKnn(t *testing.T) {
 						{"Limit(4)"},
 						{" └─ Project"},
 						{"     ├─ columns: [knn.id]"},
-						{"     └─ TopN(Limit: [4]; l2_distance(knn.v, '[1.5,1,2]') ASC)"},
+						{"     └─ TopN(Limit: [4]; public.l2_distance(knn.v, '[1.5,1,2]') ASC)"},
 						{"         └─ Table"},
 						{"             ├─ name: knn"},
 						{"             └─ columns: [id v]"},

@@ -837,6 +837,54 @@ FROM pg_constraint c JOIN pg_class cl ON c.conrelid = cl.oid WHERE cl.relname = 
 				},
 			},
 		},
+		{
+			Name: "Issue #3939: NOT EXISTS with two correlated predicates planned as a left outer merge join",
+			SetUpScript: []string{
+				"CREATE TABLE gl_recipe_r (id uuid PRIMARY KEY, grp uuid NOT NULL);",
+				"CREATE INDEX gl_recipe_r_grp ON gl_recipe_r (grp);",
+				"CREATE TABLE gl_recipe_l (id uuid PRIMARY KEY, k uuid, m uuid NOT NULL, st varchar(10) NOT NULL);",
+				"CREATE INDEX gl_recipe_l_k ON gl_recipe_l (k);",
+				"CREATE INDEX gl_recipe_l_m ON gl_recipe_l (m);",
+				"ALTER TABLE gl_recipe_l ADD CONSTRAINT gl_recipe_l_k_fk FOREIGN KEY (k) REFERENCES gl_recipe_r (id);",
+				`INSERT INTO gl_recipe_r VALUES
+ ('00000000-0000-0007-0000-00000000000a', '00000000-0000-0007-0000-000000000001'),
+ ('00000000-0000-0007-0000-000000000014', '00000000-0000-0007-0000-000000000001'),
+ ('00000000-0000-0007-0000-00000000001e', '00000000-0000-0007-0000-000000000002');`,
+				`INSERT INTO gl_recipe_l VALUES
+ ('00000000-0000-0007-0000-0000000000a1', '00000000-0000-0007-0000-00000000000a', '00000000-0000-0007-0000-000000000002', 'active'),
+ ('00000000-0000-0007-0000-0000000000a2', '00000000-0000-0007-0000-00000000000a', '00000000-0000-0007-0000-000000000001', 'active'),
+ ('00000000-0000-0007-0000-0000000000b1', '00000000-0000-0007-0000-000000000014', '00000000-0000-0007-0000-000000000001', 'active'),
+ ('00000000-0000-0007-0000-0000000000b2', '00000000-0000-0007-0000-00000000001e', '00000000-0000-0007-0000-000000000002', 'active'),
+ ('00000000-0000-0007-0000-0000000000b3', '00000000-0000-0007-0000-00000000001e', '00000000-0000-0007-0000-000000000002', 'removed'),
+ ('00000000-0000-0007-0000-0000000000b4', NULL,                                   '00000000-0000-0007-0000-000000000002', 'active'),
+ ('00000000-0000-0007-0000-0000000000b5', '00000000-0000-0007-0000-000000000014', '00000000-0000-0007-0000-000000000009', 'active'),
+ ('00000000-0000-0007-0000-0000000000b6', '00000000-0000-0007-0000-00000000001e', '00000000-0000-0007-0000-000000000009', 'active');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT f.id FROM gl_recipe_l f
+ WHERE f.st = 'active' AND f.k IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM gl_recipe_r s WHERE s.id = f.k AND s.grp = f.m)
+ ORDER BY f.id;`,
+					Expected: []sql.Row{
+						{"00000000-0000-0007-0000-0000000000a1"},
+						{"00000000-0000-0007-0000-0000000000b5"},
+						{"00000000-0000-0007-0000-0000000000b6"},
+					},
+				},
+				{
+					Query: `SELECT f.id FROM gl_recipe_l f
+ WHERE f.st = 'active' AND f.k IS NOT NULL
+   AND EXISTS (SELECT 1 FROM gl_recipe_r s WHERE s.id = f.k AND s.grp = f.m)
+ ORDER BY f.id;`,
+					Expected: []sql.Row{
+						{"00000000-0000-0007-0000-0000000000a2"},
+						{"00000000-0000-0007-0000-0000000000b1"},
+						{"00000000-0000-0007-0000-0000000000b2"},
+					},
+				},
+			},
+		},
 	})
 }
 
