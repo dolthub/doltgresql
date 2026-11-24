@@ -17,7 +17,6 @@ package ast
 import (
 	"github.com/cockroachdb/errors"
 
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/privilege"
@@ -38,35 +37,9 @@ func nodeRevoke(ctx *Context, node *tree.Revoke) (vitess.Statement, error) {
 	var revokeRoutine *pgnodes.RevokeRoutine
 	switch node.Targets.TargetType {
 	case privilege.Table:
-		tables := make([]doltdb.TableName, len(node.Targets.Tables)+len(node.Targets.InSchema))
-		for i, table := range node.Targets.Tables {
-			normalizedTable, err := table.NormalizeTablePattern()
-			if err != nil {
-				return nil, err
-			}
-			switch normalizedTable := normalizedTable.(type) {
-			case *tree.TableName:
-				if normalizedTable.ExplicitCatalog {
-					return nil, errors.Errorf("revoking privileges from other databases is not yet supported")
-				}
-				tables[i] = doltdb.TableName{
-					Name:   string(normalizedTable.ObjectName),
-					Schema: string(normalizedTable.SchemaName),
-				}
-			case *tree.AllTablesSelector:
-				tables[i] = doltdb.TableName{
-					Name:   "",
-					Schema: string(normalizedTable.SchemaName),
-				}
-			default:
-				return nil, errors.Errorf(`unexpected table type in REVOKE: %T`, normalizedTable)
-			}
-		}
-		for _, schema := range node.Targets.InSchema {
-			tables = append(tables, doltdb.TableName{
-				Name:   "",
-				Schema: schema,
-			})
+		tables, err := tablePrivilegeTargets(node.Targets, "REVOKE")
+		if err != nil {
+			return nil, err
 		}
 		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_TABLE, node.Privileges)
 		if err != nil {
@@ -95,51 +68,23 @@ func nodeRevoke(ctx *Context, node *tree.Revoke) (vitess.Statement, error) {
 			Databases:  node.Targets.Databases.ToStrings(),
 		}
 	case privilege.Sequence:
-		sequences := make([]auth.SequencePrivilegeKey, 0, len(node.Targets.Sequences)+len(node.Targets.InSchema))
-		for _, seq := range node.Targets.Sequences {
-			sequences = append(sequences, auth.SequencePrivilegeKey{
-				Schema: sequenceSchema(seq),
-				Name:   seq.Parts[0],
-			})
-		}
-		for _, schema := range node.Targets.InSchema {
-			sequences = append(sequences, auth.SequencePrivilegeKey{
-				Schema: schema,
-				Name:   "",
-			})
-		}
 		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_SEQUENCE, node.Privileges)
 		if err != nil {
 			return nil, err
 		}
 		revokeSequence = &pgnodes.RevokeSequence{
 			Privileges: privileges,
-			Sequences:  sequences,
+			Sequences:  sequencePrivilegeTargets(node.Targets),
 		}
 	case privilege.Function, privilege.Procedure, privilege.Routine:
-		routines := make([]auth.RoutinePrivilegeKey, 0, len(node.Targets.Routines)+len(node.Targets.InSchema))
-		for _, r := range node.Targets.Routines {
-			routines = append(routines, auth.RoutinePrivilegeKey{
-				Schema: routineSchema(r.Name),
-				Name:   r.Name.Parts[0],
-				// TODO: there can be 2 routines with the same name but different argument types
-				//  need a fix for getting argument types from parsing CALL statement
-				//ArgTypes: routineArgTypesKey(r.Args),
-			})
-		}
-		for _, schema := range node.Targets.InSchema {
-			routines = append(routines, auth.RoutinePrivilegeKey{
-				Schema: schema,
-				Name:   "",
-			})
-		}
 		privileges, err := convertPrivilegeKinds(auth.PrivilegeObject_FUNCTION, node.Privileges)
 		if err != nil {
 			return nil, err
 		}
 		revokeRoutine = &pgnodes.RevokeRoutine{
 			Privileges: privileges,
-			Routines:   routines,
+			Routines:   routinePrivilegeTargets(node.Targets),
+			Kind:       routineKind(node.Targets.TargetType),
 		}
 	default:
 		return nil, errors.Errorf("this form of REVOKE is not yet supported")

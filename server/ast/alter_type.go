@@ -18,6 +18,7 @@ import (
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgnodes "github.com/dolthub/doltgresql/server/node"
 )
 
 // nodeAlterType handles *tree.AlterType nodes.
@@ -31,5 +32,15 @@ func nodeAlterType(ctx *Context, node *tree.AlterType) (vitess.Statement, error)
 		return NewNoOp("OWNER TO is unsupported and ignored"), nil
 	}
 
+	if cmd, ok := node.Cmd.(*tree.AlterTypeAddValue); ok {
+		name, err := nodeUnresolvedObjectName(ctx, node.Type)
+		if err != nil {
+			return nil, err
+		}
+		return vitess.InjectedStatement{Statement: &pgnodes.AlterTypeAddValue{
+			SchemaName: name.SchemaQualifier.String(), Name: name.Name.String(),
+			Value: cmd.NewVal, IfNotExists: cmd.IfNotExists, Placement: cmd.Placement,
+		}}, nil
+	}
 	return NotYetSupportedError("ALTER TYPE is not yet supported")
 }

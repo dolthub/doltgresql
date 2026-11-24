@@ -19,7 +19,7 @@ import "testing"
 func TestReset(t *testing.T) {
 	tests := []QueryParses{
 		Parses("RESET configuration_parameter"),
-		Parses("RESET ALL"),
+		Converts("RESET ALL"),
 	}
 	RunTests(t, tests)
 }

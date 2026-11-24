@@ -40,7 +40,7 @@ func PersistChanges(ctx *sql.Context, rsc *doltdb.ReplicationStatusController) e
 func (db *Database) serialize() []byte {
 	writer := utils.NewWriter(16384)
 	// Write the version
-	writer.Uint32(1)
+	writer.Uint32(3)
 	// Write the roles
 	writer.Uint32(uint32(len(db.rolesByID)))
 	for _, role := range db.rolesByID {
@@ -58,6 +58,10 @@ func (db *Database) serialize() []byte {
 	db.routinePrivileges.serialize(writer)
 	// Write the role chain
 	db.roleMembership.serialize(writer)
+	// Write the default privileges
+	db.defaultPrivileges.serialize(writer)
+	// Write the role settings
+	db.roleSettings.serialize(writer)
 	return writer.Data()
 }
 
@@ -74,6 +78,10 @@ func (db *Database) deserialize(data []byte) error {
 		err = db.deserializeV0(reader)
 	case 1:
 		err = db.deserializeV1(reader)
+	case 2:
+		err = db.deserializeV2(reader)
+	case 3:
+		err = db.deserializeV3(reader)
 	default:
 		return errors.Errorf("Authorization database format %d is not supported, please upgrade Doltgres", version)
 	}
@@ -125,6 +133,10 @@ func (db *Database) removeInvalidRoleReferences() {
 			delete(db.routinePrivileges.Data, key)
 		}
 	}
+	db.defaultPrivileges.removeRoles(func(id RoleID) bool {
+		_, ok := db.rolesByID[id]
+		return !ok
+	})
 	for member, groups := range db.roleMembership.Data {
 		if _, ok := db.rolesByID[member]; !ok {
 			delete(db.roleMembership.Data, member)
@@ -139,6 +151,11 @@ func (db *Database) removeInvalidRoleReferences() {
 		}
 		if len(groups) == 0 {
 			delete(db.roleMembership.Data, member)
+		}
+	}
+	for key := range db.roleSettings.Data {
+		if _, ok := db.rolesByID[key.Role]; key.Role.IsValid() && !ok {
+			delete(db.roleSettings.Data, key)
 		}
 	}
 }
@@ -182,6 +199,10 @@ func (db *Database) deserializeV0(reader *utils.Reader) error {
 	db.routinePrivileges.deserialize(0, reader)
 	// Read the role membership
 	db.roleMembership.deserialize(0, reader)
+	// Read the default privileges
+	db.defaultPrivileges.deserialize(0, reader)
+	// Role settings did not exist in this version
+	db.roleSettings.deserialize(0, reader)
 	return nil
 }
 
@@ -209,5 +230,71 @@ func (db *Database) deserializeV1(reader *utils.Reader) error {
 	db.routinePrivileges.deserialize(1, reader)
 	// Read the role membership
 	db.roleMembership.deserialize(1, reader)
+	// Read the default privileges
+	db.defaultPrivileges.deserialize(1, reader)
+	// Read the role settings
+	db.roleSettings.deserialize(1, reader)
+	return nil
+}
+
+// deserializeV2 creates a Database from a byte slice. Expects a reader that has already read the version.
+func (db *Database) deserializeV2(reader *utils.Reader) error {
+	// Read the roles
+	clear(db.rolesByName)
+	clear(db.rolesByID)
+	roleCount := reader.Uint32()
+	for i := uint32(0); i < roleCount; i++ {
+		r := Role{}
+		r.deserialize(2, reader)
+		db.rolesByName[r.Name] = r.id
+		db.rolesByID[r.id] = r
+	}
+	// Read the database privileges
+	db.databasePrivileges.deserialize(2, reader)
+	// Read the schema privileges
+	db.schemaPrivileges.deserialize(2, reader)
+	// Read the table privileges
+	db.tablePrivileges.deserialize(2, reader)
+	// Read the sequence privileges
+	db.sequencePrivileges.deserialize(2, reader)
+	// Read the routine privileges
+	db.routinePrivileges.deserialize(2, reader)
+	// Read the role membership
+	db.roleMembership.deserialize(2, reader)
+	// Read the default privileges
+	db.defaultPrivileges.deserialize(2, reader)
+	// Role settings did not exist in this version
+	db.roleSettings.deserialize(2, reader)
+	return nil
+}
+
+// deserializeV3 creates a Database from a byte slice. Expects a reader that has already read the version.
+func (db *Database) deserializeV3(reader *utils.Reader) error {
+	// Read the roles
+	clear(db.rolesByName)
+	clear(db.rolesByID)
+	roleCount := reader.Uint32()
+	for i := uint32(0); i < roleCount; i++ {
+		r := Role{}
+		r.deserialize(3, reader)
+		db.rolesByName[r.Name] = r.id
+		db.rolesByID[r.id] = r
+	}
+	// Read the database privileges
+	db.databasePrivileges.deserialize(3, reader)
+	// Read the schema privileges
+	db.schemaPrivileges.deserialize(3, reader)
+	// Read the table privileges
+	db.tablePrivileges.deserialize(3, reader)
+	// Read the sequence privileges
+	db.sequencePrivileges.deserialize(3, reader)
+	// Read the routine privileges
+	db.routinePrivileges.deserialize(3, reader)
+	// Read the role membership
+	db.roleMembership.deserialize(3, reader)
+	// Read the default privileges
+	db.defaultPrivileges.deserialize(3, reader)
+	// Read the role settings
+	db.roleSettings.deserialize(3, reader)
 	return nil
 }

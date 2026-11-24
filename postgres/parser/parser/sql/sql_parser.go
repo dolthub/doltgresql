@@ -83,7 +83,8 @@ func (p *PostgresParser) ParseWithOptions(ctx context.Context, query string, del
 		return nil, q, "", vitess.ErrEmpty
 	}
 
-	vitessAST, err := ast.ConvertWithOptions(stmts[0], p.ConvertOptions())
+	options := p.ConvertOptions().WithContext(ctx)
+	vitessAST, err := ast.ConvertWithOptions(stmts[0], options)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -95,12 +96,13 @@ func (p *PostgresParser) ParseWithOptions(ctx context.Context, query string, del
 }
 
 // ParseOneWithOptions implements sql.Parser interface.
-func (p *PostgresParser) ParseOneWithOptions(_ context.Context, query string, _ vitess.ParserOptions) (vitess.Statement, int, error) {
+func (p *PostgresParser) ParseOneWithOptions(ctx context.Context, query string, _ vitess.ParserOptions) (vitess.Statement, int, error) {
 	stmt, err := parser.ParseOne(query)
 	if err != nil {
 		return nil, 0, err
 	}
-	vitessAST, err := ast.ConvertWithOptions(stmt, p.ConvertOptions())
+	options := p.ConvertOptions().WithContext(ctx)
+	vitessAST, err := ast.ConvertWithOptions(stmt, options)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -111,13 +113,22 @@ func (p *PostgresParser) QuoteIdentifier(identifier string) string {
 	return fmt.Sprintf(`"%s"`, strings.ReplaceAll(identifier, `"`, `""`))
 }
 
-type PostgresFormatter struct{}
+// PostgresFormatter is the sql.SchemaFormatter for the Postgres dialect.
+type PostgresFormatter struct {
+	// formatExpression returns the text shown for an expression that a table persists. When nil, an expression is
+	// shown as its persisted text.
+	formatExpression func(ctx *sql.Context, expr sql.Expression) string
+}
 
 var _ sql.SchemaFormatter = PostgresFormatter{}
 
-// NewPostgresSchemaFormatter creates a new PostgresFormatter.
-func NewPostgresSchemaFormatter() PostgresFormatter {
-	return PostgresFormatter{}
+// NewPostgresSchemaFormatter creates a new PostgresFormatter, which shows the expressions that tables persist with the
+// given function. The function is given here, rather than called directly, because it depends on the function
+// framework, which this package cannot import.
+func NewPostgresSchemaFormatter(formatExpression func(ctx *sql.Context, expr sql.Expression) string) PostgresFormatter {
+	return PostgresFormatter{
+		formatExpression: formatExpression,
+	}
 }
 
 // GenerateCreateTableStatement implements sql.SchemaFormatter interface.
@@ -130,7 +141,8 @@ func (p PostgresFormatter) GenerateCreateTableStatement(tblName string, colStmts
 	)
 }
 
-func (p PostgresFormatter) GenerateCreateTableColumnDefinition(col *sql.Column, colDefault, onUpdate string, tableCollation sql.CollationID) string {
+// GenerateCreateTableColumnDefinition implements sql.SchemaFormatter interface.
+func (p PostgresFormatter) GenerateCreateTableColumnDefinition(ctx *sql.Context, col *sql.Column, colDefault, onUpdate string, tableCollation sql.CollationID) string {
 	var colTypeString = col.Type.String()
 	if collationType, ok := col.Type.(sql.TypeWithCollation); ok {
 		colTypeString = collationType.StringWithTableCollation(tableCollation)
@@ -143,7 +155,7 @@ func (p PostgresFormatter) GenerateCreateTableColumnDefinition(col *sql.Column, 
 
 	if col.Generated != nil {
 		storedStr := " STORED"
-		stmt = fmt.Sprintf("%s GENERATED ALWAYS AS %s%s", stmt, col.Generated.String(), storedStr)
+		stmt = fmt.Sprintf("%s GENERATED ALWAYS AS %s%s", stmt, p.FormatExpression(ctx, col.Generated), storedStr)
 	}
 
 	if col.Default != nil && col.Generated == nil {
@@ -183,6 +195,16 @@ func (p PostgresFormatter) GenerateCreateTableForiegnKeyDefinition(fkName string
 
 func (p PostgresFormatter) GenerateCreateTableCheckConstraintClause(checkName, checkExpr string, enforced bool) string {
 	return fmt.Sprintf("  CONSTRAINT %s CHECK (%s)", p.QuoteIdentifier(checkName), checkExpr)
+}
+
+// FormatExpression implements sql.SchemaFormatter interface. Expressions are persisted with the schema of every
+// function that they call, while Postgres shows a function's schema only when the function is not visible on the search
+// path.
+func (p PostgresFormatter) FormatExpression(ctx *sql.Context, expr sql.Expression) string {
+	if p.formatExpression == nil {
+		return expr.String()
+	}
+	return p.formatExpression(ctx, expr)
 }
 
 func (p PostgresFormatter) QuoteIdentifier(identifier string) string {

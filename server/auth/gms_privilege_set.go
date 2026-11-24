@@ -14,36 +14,61 @@
 
 package auth
 
-import "github.com/dolthub/go-mysql-server/sql"
+import (
+	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core"
+)
 
 // PrivilegeSetLayer is used to allow some functions that inspect the GMS privilege set (such as branch control) to
 // interface with Doltgres' auth system.
 type PrivilegeSetLayer struct {
-	Role RoleID
+	session sql.Session
 }
 
 var _ sql.PrivilegeSet = (*PrivilegeSetLayer)(nil)
 
-// NewPrivilegeSetLayer creates a new PrivilegeSetLayer for the user in the given context's session.
-func NewPrivilegeSetLayer(ctx *sql.Context) *PrivilegeSetLayer {
-	return &PrivilegeSetLayer{
-		Role: GetRole(ctx.Client().User).id,
+// NewPrivilegeSetLayer creates a query privilege set from the effective role.
+func NewPrivilegeSetLayer(ctx *sql.Context) (*PrivilegeSetLayer, error) {
+	_, err := core.Identity(ctx)
+	if err != nil {
+		return nil, err
 	}
+	// Resolve identity on each check so role changes and transaction rollback
+	// are visible to this privilege set and its database children.
+	return &PrivilegeSetLayer{session: ctx.Session}, nil
+}
+
+func (privSet *PrivilegeSetLayer) roleID() RoleID {
+	identity, err := core.IdentityFromSession(privSet.session)
+	if err != nil {
+		return 0
+	}
+	return RoleID(identity.CurrentRole())
+}
+
+func privilegeSetSuperuser(id RoleID) bool {
+	var superuser bool
+	LockRead(func() {
+		role, ok := LookupRoleByID(id)
+		superuser = ok && role.IsSuperUser
+	})
+	return superuser
 }
 
 // Has implements the interface sql.PrivilegeSet.
 func (privSet *PrivilegeSetLayer) Has(privileges ...sql.PrivilegeType) bool {
-	return IsSuperUser(privSet.Role)
+	return privilegeSetSuperuser(privSet.roleID())
 }
 
 // HasPrivileges implements the interface sql.PrivilegeSet.
 func (privSet *PrivilegeSetLayer) HasPrivileges() bool {
-	return IsSuperUser(privSet.Role)
+	return privilegeSetSuperuser(privSet.roleID())
 }
 
 // Count implements the interface sql.PrivilegeSet.
 func (privSet *PrivilegeSetLayer) Count() int {
-	if IsSuperUser(privSet.Role) {
+	if privilegeSetSuperuser(privSet.roleID()) {
 		return 31 // The current number in GMS
 	}
 	return 0
@@ -52,8 +77,8 @@ func (privSet *PrivilegeSetLayer) Count() int {
 // Database implements the interface sql.PrivilegeSet.
 func (privSet *PrivilegeSetLayer) Database(dbName string) sql.PrivilegeSetDatabase {
 	return &PrivilegeSetLayerDatabase{
-		Db:   dbName,
-		Role: privSet.Role,
+		Db:      dbName,
+		session: privSet.session,
 	}
 }
 
@@ -65,14 +90,14 @@ func (privSet *PrivilegeSetLayer) GetDatabases() []sql.PrivilegeSetDatabase {
 // Equals implements the interface sql.PrivilegeSet.
 func (privSet *PrivilegeSetLayer) Equals(otherPs sql.PrivilegeSet) bool {
 	if other, ok := otherPs.(*PrivilegeSetLayer); ok {
-		return privSet.Role == other.Role
+		return privSet.roleID() == other.roleID()
 	}
 	return false
 }
 
 // ToSlice implements the interface sql.PrivilegeSet.
 func (privSet *PrivilegeSetLayer) ToSlice() []sql.PrivilegeType {
-	if IsSuperUser(privSet.Role) {
+	if privilegeSetSuperuser(privSet.roleID()) {
 		return []sql.PrivilegeType{sql.PrivilegeType_Select,
 			sql.PrivilegeType_Insert,
 			sql.PrivilegeType_Update,
@@ -110,8 +135,16 @@ func (privSet *PrivilegeSetLayer) ToSlice() []sql.PrivilegeType {
 
 // PrivilegeSetLayerDatabase is the database portion of PrivilegeSetLayer.
 type PrivilegeSetLayerDatabase struct {
-	Db   string
-	Role RoleID
+	Db      string
+	session sql.Session
+}
+
+func (privSet *PrivilegeSetLayerDatabase) roleID() RoleID {
+	identity, err := core.IdentityFromSession(privSet.session)
+	if err != nil {
+		return 0
+	}
+	return RoleID(identity.CurrentRole())
 }
 
 var _ sql.PrivilegeSetDatabase = (*PrivilegeSetLayerDatabase)(nil)
@@ -123,17 +156,17 @@ func (privSet *PrivilegeSetLayerDatabase) Name() string {
 
 // Has implements the interface sql.PrivilegeSetDatabase.
 func (privSet *PrivilegeSetLayerDatabase) Has(privileges ...sql.PrivilegeType) bool {
-	return IsSuperUser(privSet.Role)
+	return privilegeSetSuperuser(privSet.roleID())
 }
 
 // HasPrivileges implements the interface sql.PrivilegeSetDatabase.
 func (privSet *PrivilegeSetLayerDatabase) HasPrivileges() bool {
-	return IsSuperUser(privSet.Role)
+	return privilegeSetSuperuser(privSet.roleID())
 }
 
 // Count implements the interface sql.PrivilegeSetDatabase.
 func (privSet *PrivilegeSetLayerDatabase) Count() int {
-	if IsSuperUser(privSet.Role) {
+	if privilegeSetSuperuser(privSet.roleID()) {
 		return 31 // The current number in GMS
 	}
 	return 0
@@ -162,14 +195,14 @@ func (privSet *PrivilegeSetLayerDatabase) GetRoutines() []sql.PrivilegeSetRoutin
 // Equals implements the interface sql.PrivilegeSetDatabase.
 func (privSet *PrivilegeSetLayerDatabase) Equals(otherPs sql.PrivilegeSetDatabase) bool {
 	if other, ok := otherPs.(*PrivilegeSetLayerDatabase); ok {
-		return privSet.Role == other.Role && privSet.Db == other.Db
+		return privSet.roleID() == other.roleID() && privSet.Db == other.Db
 	}
 	return false
 }
 
 // ToSlice implements the interface sql.PrivilegeSetDatabase.
 func (privSet *PrivilegeSetLayerDatabase) ToSlice() []sql.PrivilegeType {
-	if IsSuperUser(privSet.Role) {
+	if privilegeSetSuperuser(privSet.roleID()) {
 		return []sql.PrivilegeType{sql.PrivilegeType_Select,
 			sql.PrivilegeType_Insert,
 			sql.PrivilegeType_Update,

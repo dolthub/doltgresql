@@ -55,12 +55,17 @@ func AddDatabasePrivilege(key DatabasePrivilegeKey, privilege GrantedPrivilege, 
 		privilegeMap = make(map[GrantedPrivilege]bool)
 		databasePrivilegeValue.Privileges[privilege.Privilege] = privilegeMap
 	}
-	privilegeMap[privilege] = withGrantOption
+	// A grant without the grant option does not remove an existing grant option
+	privilegeMap[privilege] = privilegeMap[privilege] || withGrantOption
 }
 
 // HasDatabasePrivilege checks whether the user has the given privilege on the associated database.
 func HasDatabasePrivilege(key DatabasePrivilegeKey, privilege Privilege) bool {
-	if IsSuperUser(key.Role) {
+	return hasDatabasePrivilege(key, privilege, true)
+}
+
+func hasDatabasePrivilege(key DatabasePrivilegeKey, privilege Privilege, allowSuperuser bool) bool {
+	if allowSuperuser && IsSuperUser(key.Role) {
 		return true
 	}
 	if databasePrivilegeValue, ok := globalDatabase.databasePrivileges.Data[key]; ok {
@@ -69,10 +74,10 @@ func HasDatabasePrivilege(key DatabasePrivilegeKey, privilege Privilege) bool {
 		}
 	}
 	for _, group := range GetAllGroupsWithMember(key.Role, true) {
-		if HasDatabasePrivilege(DatabasePrivilegeKey{
+		if hasDatabasePrivilege(DatabasePrivilegeKey{
 			Role: group,
 			Name: key.Name,
-		}, privilege) {
+		}, privilege, false) {
 			return true
 		}
 	}
@@ -82,7 +87,11 @@ func HasDatabasePrivilege(key DatabasePrivilegeKey, privilege Privilege) bool {
 // HasDatabasePrivilegeGrantOption checks whether the user has WITH GRANT OPTION for the given privilege on the associated
 // database. Returns the role that has WITH GRANT OPTION, or an invalid role if WITH GRANT OPTION is not available.
 func HasDatabasePrivilegeGrantOption(key DatabasePrivilegeKey, privilege Privilege) RoleID {
-	if IsSuperUser(key.Role) {
+	return hasDatabasePrivilegeGrantOption(key, privilege, true)
+}
+
+func hasDatabasePrivilegeGrantOption(key DatabasePrivilegeKey, privilege Privilege, allowSuperuser bool) RoleID {
+	if allowSuperuser && IsSuperUser(key.Role) {
 		return key.Role
 	}
 	if databasePrivilegeValue, ok := globalDatabase.databasePrivileges.Data[key]; ok {
@@ -95,10 +104,10 @@ func HasDatabasePrivilegeGrantOption(key DatabasePrivilegeKey, privilege Privile
 		}
 	}
 	for _, group := range GetAllGroupsWithMember(key.Role, true) {
-		if returnedID := HasDatabasePrivilegeGrantOption(DatabasePrivilegeKey{
+		if returnedID := hasDatabasePrivilegeGrantOption(DatabasePrivilegeKey{
 			Role: group,
 			Name: key.Name,
-		}, privilege); returnedID.IsValid() {
+		}, privilege, false); returnedID.IsValid() {
 			return returnedID
 		}
 	}
@@ -171,7 +180,7 @@ func (sp *DatabasePrivileges) serialize(writer *utils.Writer) {
 func (sp *DatabasePrivileges) deserialize(version uint32, reader *utils.Reader) {
 	sp.Data = make(map[DatabasePrivilegeKey]DatabasePrivilegeValue)
 	switch version {
-	case 0, 1:
+	case 0, 1, 2, 3:
 		// Read the total number of values
 		dataCount := reader.Uint64()
 		for dataIdx := uint64(0); dataIdx < dataCount; dataIdx++ {

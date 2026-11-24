@@ -120,8 +120,8 @@ WHERE pg_catalog.pg_function_is_visible(p.oid)
       AND n.nspname <> 'information_schema'
 ORDER BY 1, 2, 4;`,
 					Expected: []sql.Row{
-						{"public", "add_two", "", "a integer, b integer", "func"},
-						{"public", "noop_proc", "", "", "proc"},
+						{"public", "add_two", "integer", "a integer, b integer", "func"},
+						{"public", "noop_proc", nil, "", "proc"},
 					},
 				},
 			},

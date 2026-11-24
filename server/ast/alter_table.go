@@ -133,10 +133,11 @@ func nodeAlterTableCmds(
 					return nil, nil, err
 				}
 				statement.IndexSpec = &vitess.IndexSpec{
-					Action: "create",
-					ToName: vitess.NewColIdent(string(cmd.ColumnDef.UniqueConstraintName)),
-					Type:   "unique",
-					Fields: indexFields,
+					Action:  "create",
+					ToName:  vitess.NewColIdent(string(cmd.ColumnDef.UniqueConstraintName)),
+					Type:    "unique",
+					Fields:  indexFields,
+					Options: nullsNotDistinctOptions(cmd.ColumnDef.UniqueNullsNotDistinct),
 				}
 			}
 
@@ -290,10 +291,6 @@ func nodeAlterTableAddColumn(ctx *Context, node *tree.AlterTableAddColumn, table
 
 // nodeAlterTableDropColumn converts a tree.AlterTableDropColumn instance into an equivalent vitess.DDL instance.
 func nodeAlterTableDropColumn(ctx *Context, node *tree.AlterTableDropColumn, tableName vitess.TableName, ifExists bool) (*vitess.DDL, error) {
-	if node.IfExists {
-		return nil, errors.Errorf("IF EXISTS on a column in a DROP COLUMN statement is not supported yet")
-	}
-
 	switch node.DropBehavior {
 	case tree.DropDefault:
 	case tree.DropRestrict:
@@ -304,12 +301,13 @@ func nodeAlterTableDropColumn(ctx *Context, node *tree.AlterTableDropColumn, tab
 	}
 
 	return &vitess.DDL{
-		Action:       "alter",
-		ColumnAction: "drop",
-		Table:        tableName,
-		IfExists:     ifExists,
-		Column:       vitess.NewColIdent(node.Column.String()),
-		Cascade:      node.DropBehavior == tree.DropCascade,
+		Action:         "alter",
+		ColumnAction:   "drop",
+		ColumnIfExists: node.IfExists,
+		Table:          tableName,
+		IfExists:       ifExists,
+		Column:         vitess.NewColIdent(node.Column.String()),
+		Cascade:        node.DropBehavior == tree.DropCascade,
 	}, nil
 }
 

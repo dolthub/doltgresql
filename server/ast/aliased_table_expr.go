@@ -77,12 +77,11 @@ func nodeAliasedTableExpr(ctx *Context, node *tree.AliasedTableExpr) (*vitess.Al
 			if isTrivialSelectStar(inSelect) {
 				if aliasedTblExpr, ok := inSelect.From[0].(*vitess.AliasedTableExpr); ok {
 					if valuesStmt, ok := aliasedTblExpr.Expr.(*vitess.ValuesStatement); ok {
-						if len(node.As.Cols) > 0 {
-							columns := make([]vitess.ColIdent, len(node.As.Cols))
-							for i := range node.As.Cols {
-								columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
-							}
-							valuesStmt.Columns = columns
+						if len(node.As.Cols) > len(valuesStmt.Columns) {
+							valuesStmt.Columns = make([]vitess.ColIdent, len(node.As.Cols))
+						}
+						for i := range node.As.Cols {
+							valuesStmt.Columns[i] = vitess.NewColIdent(string(node.As.Cols[i]))
 						}
 						aliasExpr = valuesStmt
 						break

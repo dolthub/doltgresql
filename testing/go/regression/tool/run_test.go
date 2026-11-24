@@ -59,7 +59,6 @@ func TestRegressionTests(t *testing.T) {
 }
 
 var queriesToSkip = []string{
-	`CREATE VIEW lock_view7 AS SELECT * from lock_view2;`,
 	`create index testtable_apple_index on testtable_apple(logdate);`,
 	`create index testtable_orange_index on testtable_orange(logdate);`,
 	`create table child_0_10 partition of parent_tab

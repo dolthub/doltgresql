@@ -37,8 +37,7 @@ import (
 // dropped, as are foreign keys on other tables that reference the dropped tables, functions and procedures with a
 // parameter of a dropped table's row type, and columns of other tables whose type is a dropped table's row type.
 // Sequences owned by the dropped tables' columns (e.g. SERIAL columns) are dropped by the standard DROP TABLE path
-// itself. Foreign keys declared by tables that are themselves being dropped (including self-referential keys) are
-// also removed by the standard path.
+// itself. Foreign keys between dropped tables are removed here as well, so table order does not matter.
 func cascadeDropDependencies(ctx *sql.Context, runner sql.StatementRunner, allDeletedTables []doltdb.TableName) error {
 	if err := cascadeDropViews(ctx, runner, allDeletedTables); err != nil {
 		return err
@@ -78,7 +77,7 @@ type cascadeView struct {
 // path. Column-level dependencies are not tracked, so a view is only dropped when a dropped relation appears in its
 // definition by name.
 func cascadeDropViews(ctx *sql.Context, runner sql.StatementRunner, allDeletedTables []doltdb.TableName) error {
-	views, viewExists, err := loadDatabaseViews(ctx)
+	views, viewExists, err := loadDatabaseViews(ctx, nil)
 	if err != nil || len(views) == 0 {
 		return err
 	}
@@ -128,9 +127,16 @@ func cascadeDropViews(ctx *sql.Context, runner sql.StatementRunner, allDeletedTa
 	return nil
 }
 
+// WalkViewExpressions walks every expression within the definition of every view in the current database using the
+// given visitor.
+func WalkViewExpressions(ctx *sql.Context, visitor tree.Visitor) error {
+	_, _, err := loadDatabaseViews(ctx, visitor)
+	return err
+}
+
 // loadDatabaseViews returns all views in the current database with their parsed table references, along with a set of
-// the views' relation keys for name resolution.
-func loadDatabaseViews(ctx *sql.Context) ([]*cascadeView, map[relationKey]struct{}, error) {
+// the views' relation keys for name resolution. When `visitor` is set, it also visits every expression in each view.
+func loadDatabaseViews(ctx *sql.Context, visitor tree.Visitor) ([]*cascadeView, map[relationKey]struct{}, error) {
 	db, err := core.GetSqlDatabaseFromContext(ctx, "")
 	if err != nil {
 		return nil, nil, err
@@ -167,6 +173,7 @@ func loadDatabaseViews(ctx *sql.Context) ([]*cascadeView, map[relationKey]struct
 				continue
 			}
 			collector := newTableRefCollector()
+			collector.visitor = visitor
 			collector.collectSelect(createView.AsSource)
 			views = append(views, &cascadeView{
 				schema: schema.SchemaName(),
@@ -242,9 +249,6 @@ func cascadeDropForeignKeys(ctx *sql.Context, allDeletedTables []doltdb.TableNam
 			continue
 		}
 		for _, fk := range referencedByFk {
-			if tableNameInSet(fk.TableName, allDeletedTables) {
-				continue
-			}
 			// TODO: issue a notice that the constraint is being dropped ("drop cascades to constraint ... on table ...")
 			if err = fkTable.DropForeignKey(ctx, fk.Name, fk.TableName.Name, fk.TableName.Schema); err != nil {
 				return err
@@ -410,6 +414,8 @@ func quotedQualifiedName(name doltdb.TableName) string {
 type tableRefCollector struct {
 	refs     []*tree.TableName
 	cteNames map[string]struct{}
+	// visitor, when set, also visits every expression that the collector visits.
+	visitor tree.Visitor
 }
 
 var _ tree.Visitor = (*tableRefCollector)(nil)
@@ -419,10 +425,19 @@ func newTableRefCollector() *tableRefCollector {
 	return &tableRefCollector{cteNames: make(map[string]struct{})}
 }
 
-// VisitPre implements the interface tree.Visitor. It recurses into subqueries appearing in expression position.
+// VisitPre implements the interface tree.Visitor. It recurses into subqueries and window definitions appearing in
+// expression position.
 func (c *tableRefCollector) VisitPre(expr tree.Expr) (recurse bool, newExpr tree.Expr) {
-	if subquery, ok := expr.(*tree.Subquery); ok {
-		c.collectSelectStatement(subquery.Select)
+	if c.visitor != nil {
+		c.visitor.VisitPre(expr)
+	}
+	switch expr := expr.(type) {
+	case *tree.Subquery:
+		c.collectSelectStatement(expr.Select)
+	case *tree.FuncExpr:
+		if expr.WindowDef != nil {
+			c.collectWindowDef(expr.WindowDef)
+		}
 	}
 	return true, expr
 }
@@ -485,6 +500,9 @@ func (c *tableRefCollector) collectSelectStatement(stmt tree.SelectStatement) {
 		for _, expr := range stmt.DistinctOn {
 			c.collectExpr(expr)
 		}
+		for _, window := range stmt.Window {
+			c.collectWindowDef(window)
+		}
 	case *tree.UnionClause:
 		c.collectSelect(stmt.Left)
 		c.collectSelect(stmt.Right)
@@ -494,6 +512,16 @@ func (c *tableRefCollector) collectSelectStatement(stmt tree.SelectStatement) {
 				c.collectExpr(expr)
 			}
 		}
+	}
+}
+
+// collectWindowDef collects the table references from the partitions and ordering of the given window definition.
+func (c *tableRefCollector) collectWindowDef(window *tree.WindowDef) {
+	for _, expr := range window.Partitions {
+		c.collectExpr(expr)
+	}
+	for _, order := range window.OrderBy {
+		c.collectExpr(order.Expr)
 	}
 }
 

@@ -259,6 +259,12 @@ func (*AlterIndexAllInTablespace) StatementTag() string { return "ALTER INDEX AL
 func (*AlterIndexAllInTablespace) hiddenFromShowQueries() {}
 
 // StatementType implements the Statement interface.
+func (*AlterExtension) StatementType() StatementType { return DDL }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*AlterExtension) StatementTag() string { return "ALTER EXTENSION" }
+
+// StatementType implements the Statement interface.
 func (*AlterLanguage) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -441,6 +447,17 @@ func (*CannedOptPlan) StatementType() StatementType { return Rows }
 
 // StatementTag returns a short string identifying the type of statement.
 func (*CannedOptPlan) StatementTag() string { return "PREPARE AS OPT PLAN" }
+
+// StatementType implements the Statement interface.
+func (*CloseCursor) StatementType() StatementType { return Ack }
+
+// StatementTag returns a short string identifying the type of statement.
+func (n *CloseCursor) StatementTag() string {
+	if n.Name == "" {
+		return "CLOSE CURSOR ALL"
+	}
+	return "CLOSE CURSOR"
+}
 
 // StatementType implements the Statement interface.
 func (*Comment) StatementType() StatementType { return DDL }
@@ -631,6 +648,12 @@ func (n *Deallocate) StatementTag() string {
 }
 
 // StatementType implements the Statement interface.
+func (*DeclareCursor) StatementType() StatementType { return Ack }
+
+// StatementTag returns a short string identifying the type of statement.
+func (*DeclareCursor) StatementTag() string { return "DECLARE CURSOR" }
+
+// StatementType implements the Statement interface.
 func (*Discard) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -775,6 +798,22 @@ func (*Export) cclOnlyStatement() {}
 func (*Export) StatementTag() string { return "EXPORT" }
 
 // StatementType implements the Statement interface.
+func (n *FetchCursor) StatementType() StatementType {
+	if n.IsMove {
+		return RowsAffected
+	}
+	return Rows
+}
+
+// StatementTag returns a short string identifying the type of statement.
+func (n *FetchCursor) StatementTag() string {
+	if n.IsMove {
+		return "MOVE"
+	}
+	return "FETCH"
+}
+
+// StatementType implements the Statement interface.
 func (*Grant) StatementType() StatementType { return DDL }
 
 // StatementTag returns a short string identifying the type of statement.
@@ -876,7 +915,7 @@ func (n *Relocate) StatementTag() string {
 func (*ResetAll) StatementType() StatementType { return Rows }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*ResetAll) StatementTag() string { return "RESET ALL" }
+func (*ResetAll) StatementTag() string { return "RESET" }
 
 // StatementType implements the Statement interface.
 func (*Restore) StatementType() StatementType { return Rows }
@@ -952,7 +991,12 @@ func (*SelectClause) StatementTag() string { return "SELECT" }
 func (*SetVar) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*SetVar) StatementTag() string { return "SET" }
+func (s *SetVar) StatementTag() string {
+	if s.Reset {
+		return "RESET"
+	}
+	return "SET"
+}
 
 // StatementType implements the Statement interface.
 func (*SetConstraints) StatementType() StatementType { return Ack }
@@ -964,7 +1008,12 @@ func (*SetConstraints) StatementTag() string { return "SET CONSTRAINTS" }
 func (*SetRole) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*SetRole) StatementTag() string { return "SET ROLE" }
+func (n *SetRole) StatementTag() string {
+	if n.Reset {
+		return "RESET"
+	}
+	return "SET"
+}
 
 // StatementType implements the Statement interface.
 func (*SetTransaction) StatementType() StatementType { return Ack }
@@ -976,7 +1025,12 @@ func (*SetTransaction) StatementTag() string { return "SET TRANSACTION" }
 func (*SetSessionAuthorization) StatementType() StatementType { return Ack }
 
 // StatementTag returns a short string identifying the type of statement.
-func (*SetSessionAuthorization) StatementTag() string { return "SET" }
+func (n *SetSessionAuthorization) StatementTag() string {
+	if n.Reset {
+		return "RESET"
+	}
+	return "SET"
+}
 
 // StatementType implements the Statement interface.
 func (*SetSessionCharacteristics) StatementType() StatementType { return Ack }
@@ -1228,6 +1282,7 @@ func (n *AlterDefaultPrivileges) String() string    { return AsString(n) }
 func (n *AlterFunction) String() string             { return AsString(n) }
 func (n *AlterIndex) String() string                { return AsString(n) }
 func (n *AlterIndexAllInTablespace) String() string { return AsString(n) }
+func (n *AlterExtension) String() string            { return AsString(n) }
 func (n *AlterLanguage) String() string             { return AsString(n) }
 func (n *AlterMaterializedView) String() string     { return AsString(n) }
 func (n *AlterProcedure) String() string            { return AsString(n) }
@@ -1251,6 +1306,7 @@ func (n *ControlJobsForSchedules) String() string   { return AsString(n) }
 func (n *CancelQueries) String() string             { return AsString(n) }
 func (n *CancelSessions) String() string            { return AsString(n) }
 func (n *CannedOptPlan) String() string             { return AsString(n) }
+func (n *CloseCursor) String() string               { return AsString(n) }
 func (n *Comment) String() string                   { return AsString(n) }
 func (n *CommitTransaction) String() string         { return AsString(n) }
 func (n *CopyFrom) String() string                  { return AsString(n) }
@@ -1276,6 +1332,7 @@ func (n *CreateSequence) String() string            { return AsString(n) }
 func (n *CreateStats) String() string               { return AsString(n) }
 func (n *CreateView) String() string                { return AsString(n) }
 func (n *Deallocate) String() string                { return AsString(n) }
+func (n *DeclareCursor) String() string             { return AsString(n) }
 func (n *Delete) String() string                    { return AsString(n) }
 func (n *DropAggregate) String() string             { return AsString(n) }
 func (n *DropCast) String() string                  { return AsString(n) }
@@ -1298,6 +1355,7 @@ func (n *Execute) String() string                   { return AsString(n) }
 func (n *Explain) String() string                   { return AsString(n) }
 func (n *ExplainAnalyzeDebug) String() string       { return AsString(n) }
 func (n *Export) String() string                    { return AsString(n) }
+func (n *FetchCursor) String() string               { return AsString(n) }
 func (n *Grant) String() string                     { return AsString(n) }
 func (n *GrantRole) String() string                 { return AsString(n) }
 func (n *Insert) String() string                    { return AsString(n) }

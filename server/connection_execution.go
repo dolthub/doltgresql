@@ -16,18 +16,21 @@ package server
 
 import (
 	"context"
+	goerrors "errors"
 	"fmt"
 	"strings"
 
 	"github.com/cockroachdb/errors"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/dolthub/go-mysql-server/sql/planbuilder"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/pgcode"
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
+	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/server/ast"
 	"github.com/dolthub/doltgresql/server/node"
 )
@@ -37,12 +40,17 @@ type ConvertedQuery struct {
 	String       string
 	AST          sqlparser.Statement
 	StatementTag string
+	// NoTransactionBlock names the statement when Postgres refuses to run it inside a transaction block.
+	NoTransactionBlock string
 }
 
 // handleQueryOutsideEngine handles statements owned by the connection layer instead of the query engine.
 func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery, simpleQuery *simpleQueryExecution) (handled bool, endOfMessages bool, err error) {
 	if handled, err := h.handleTransactionStatement(query); handled || err != nil {
 		return handled, true, err
+	}
+	if query.NoTransactionBlock != "" && h.isInTransactionBlock(simpleQuery) {
+		return true, true, pgerror.Newf(pgcode.ActiveSQLTransaction, "%s cannot run inside a transaction block", query.NoTransactionBlock)
 	}
 
 	switch stmt := query.AST.(type) {
@@ -51,11 +59,13 @@ func (h *ConnectionHandler) handleQueryOutsideEngine(query ConvertedQuery, simpl
 	case sqlparser.InjectedStatement:
 		switch injectedStmt := stmt.Statement.(type) {
 		case node.DiscardStatement:
-			return true, true, h.discardAll(query)
+			return true, true, h.discardAll(simpleQuery)
 		case *node.SetConstraints:
 			if err := h.warnOutsideTransactionBlock(query, simpleQuery); err != nil {
 				return true, true, err
 			}
+		case *node.DeclareCursor:
+			return true, true, h.declareCursor(injectedStmt, query, simpleQuery)
 		case *node.CopyFrom:
 			if injectedStmt.Stdin {
 				return true, false, h.handleCopyFromStdinQuery(injectedStmt, simpleQuery)
@@ -82,9 +92,16 @@ func (h *ConnectionHandler) query(query ConvertedQuery) error {
 	return h.send(makeCommandComplete(query.StatementTag, rowsAffected))
 }
 
+// isInTransactionBlock reports whether a transaction block is active as Postgres defines one: an explicit block opened by
+// BEGIN, including a failed one, or the implicit block of a simple query with several statements. The implicit
+// transaction of an extended-protocol batch is not a transaction block.
+func (h *ConnectionHandler) isInTransactionBlock(simpleQuery *simpleQueryExecution) bool {
+	return h.state.txState.inExplicitTransactionBlock() || (simpleQuery != nil && h.state.txState == implicitTransactionState)
+}
+
 // warnOutsideTransactionBlock warns that a transaction-block-only command ran outside a transaction block.
 func (h *ConnectionHandler) warnOutsideTransactionBlock(query ConvertedQuery, simpleQuery *simpleQueryExecution) error {
-	if h.state.txState.inExplicitTransactionBlock() || (simpleQuery != nil && h.state.txState == implicitTransactionState) {
+	if h.isInTransactionBlock(simpleQuery) {
 		return nil
 	}
 	return h.send(&pgproto3.NoticeResponse{
@@ -95,20 +112,53 @@ func (h *ConnectionHandler) warnOutsideTransactionBlock(query ConvertedQuery, si
 }
 
 // discardAll resets all session-local resources and reports completion.
-func (h *ConnectionHandler) discardAll(query ConvertedQuery) error {
-	if h.state.txState != idleTransactionState {
+func (h *ConnectionHandler) discardAll(simpleQuery *simpleQueryExecution) error {
+	// A multi-statement simple Query message is itself an implicit transaction
+	// block, even when DISCARD ALL is its first statement.
+	if h.state.txState != idleTransactionState || (simpleQuery != nil && len(simpleQuery.statements) > 1) {
 		return pgerror.New(pgcode.ActiveSQLTransaction, "DISCARD ALL cannot run inside a transaction block")
 	}
-	if err := h.doltgresHandler.ComResetConnection(h.mysqlConn); err != nil {
-		return err
+	// The old session cannot end with a command open, so the message's command moves to the new session.
+	h.endCommand()
+	resetErr := h.doltgresHandler.ComResetConnection(h.mysqlConn)
+	if err := h.beginCommand(); err != nil {
+		return goerrors.Join(resetErr, err)
+	}
+	if resetErr != nil {
+		return resetErr
 	}
 	h.state.resetExtendedQueryObjects()
 	return h.send(&pgproto3.CommandComplete{CommandTag: []byte("DISCARD ALL")})
 }
 
+// warnSetLocalOutsideTransaction reports the PostgreSQL warning for a SET LOCAL
+// command that has no surrounding transaction block. The command still runs so
+// its usual parameter validation and completion semantics are preserved.
+func (h *ConnectionHandler) warnSetLocalOutsideTransaction(query ConvertedQuery, inTransactionBlock bool) error {
+	if inTransactionBlock || !isSetLocal(query) {
+		return nil
+	}
+	return h.send(&pgproto3.NoticeResponse{
+		Severity: "WARNING",
+		Code:     pgcode.NoActiveSQLTransaction.String(),
+		Message:  "SET LOCAL can only be used in transaction blocks",
+	})
+}
+
+func isSetLocal(query ConvertedQuery) bool {
+	switch stmt := query.AST.(type) {
+	case *sqlparser.Set:
+		return len(stmt.Exprs) == 1 && stmt.Exprs[0].Scope == planbuilder.SetScope_TransactionLocal
+	case sqlparser.InjectedStatement:
+		set, ok := stmt.Statement.(*node.SetSetting)
+		return ok && set.Local
+	}
+	return false
+}
+
 // spoolRowsCallback returns an engine callback that writes a statement's result messages.
 func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32, isExecute bool) func(ctx *sql.Context, res *Result) error {
-	isIUD := query.StatementTag == "INSERT" || query.StatementTag == "UPDATE" || query.StatementTag == "DELETE"
+	reportsRowsAffected := query.StatementTag == "INSERT" || query.StatementTag == "UPDATE" || query.StatementTag == "DELETE" || query.StatementTag == "MOVE"
 	hasSentRowDescription := false
 	return func(ctx *sql.Context, res *Result) error {
 		sess := dsess.DSessFromSess(ctx.Session)
@@ -137,7 +187,7 @@ func (h *ConnectionHandler) spoolRowsCallback(query ConvertedQuery, rows *int32,
 			}
 		}
 
-		if isIUD {
+		if reportsRowsAffected {
 			*rows = int32(res.RowsAffected)
 		} else {
 			*rows += int32(len(res.Rows))
@@ -165,10 +215,26 @@ func (h *ConnectionHandler) convertQuery(query string) ([]ConvertedQuery, error)
 		if vitessAST == nil {
 			converted[i] = ConvertedQuery{String: s[i].AST.String(), StatementTag: stmtTag}
 		} else {
-			converted[i] = ConvertedQuery{String: query, AST: vitessAST, StatementTag: stmtTag}
+			converted[i] = ConvertedQuery{String: query, AST: vitessAST, StatementTag: stmtTag, NoTransactionBlock: noTransactionBlock(s[i].AST)}
 		}
 	}
 	return converted, nil
+}
+
+// noTransactionBlock returns the name of the statement if Postgres refuses to run it inside a transaction block, and
+// an empty string otherwise.
+func noTransactionBlock(stmt tree.Statement) string {
+	switch stmt := stmt.(type) {
+	case *tree.CreateIndex:
+		if stmt.Concurrently {
+			return "CREATE INDEX CONCURRENTLY"
+		}
+	case *tree.DropIndex:
+		if stmt.Concurrently {
+			return "DROP INDEX CONCURRENTLY"
+		}
+	}
+	return ""
 }
 
 // makeCommandComplete constructs PostgreSQL's command tag for a completed statement.

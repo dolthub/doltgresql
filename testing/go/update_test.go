@@ -200,6 +200,57 @@ func TestUpdate(t *testing.T) {
 			},
 		},
 		{
+			Name: "update keeps GENERATED ALWAYS AS IDENTITY values",
+			SetUpScript: []string{
+				"CREATE TABLE claims (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, claim text UNIQUE);",
+				"INSERT INTO claims (claim) VALUES ('one'), ('two');",
+				"CREATE TABLE g (id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, c text, supersedes bigint REFERENCES g(id));",
+				"INSERT INTO g (c) VALUES ('old');",
+				"INSERT INTO g (c, supersedes) VALUES ('new', 1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "UPDATE claims SET claim = 'ONE' WHERE id = 1;",
+				},
+				{
+					Query:    "SELECT id, claim FROM claims ORDER BY id;",
+					Expected: []sql.Row{{1, "ONE"}, {2, "two"}},
+				},
+				{
+					Query: "UPDATE claims SET claim = lower(claim);",
+				},
+				{
+					Query:    "SELECT id, claim FROM claims ORDER BY id;",
+					Expected: []sql.Row{{1, "one"}, {2, "two"}},
+				},
+				{
+					Query: "INSERT INTO claims (claim) VALUES ('two') ON CONFLICT (claim) DO UPDATE SET claim = 'TWO';",
+				},
+				{
+					Query:    "SELECT id, claim FROM claims ORDER BY id;",
+					Expected: []sql.Row{{1, "one"}, {2, "TWO"}},
+				},
+				{
+					Query: "UPDATE claims SET id = DEFAULT WHERE id = 1;",
+				},
+				{
+					Query:    "SELECT id, claim FROM claims ORDER BY id;",
+					Expected: []sql.Row{{2, "TWO"}, {4, "one"}},
+				},
+				{
+					Query:    "INSERT INTO claims (claim) VALUES ('three') RETURNING id;",
+					Expected: []sql.Row{{5}},
+				},
+				{
+					Query: "UPDATE g SET c = 'edited' WHERE id = 1;",
+				},
+				{
+					Query:    "SELECT id, c, supersedes FROM g ORDER BY id;",
+					Expected: []sql.Row{{1, "edited", nil}, {2, "new", 1}},
+				},
+			},
+		},
+		{
 			Name: "UPDATE ... RETURNING",
 			SetUpScript: []string{
 				"CREATE TABLE t (pk INT PRIMARY KEY, c1 TEXT);",
@@ -398,6 +449,36 @@ func TestUpdate(t *testing.T) {
 						{1, 50000, 51000},
 						{2, 45000, 45500},
 					},
+				},
+			},
+		},
+		{
+			Name: "UPDATE FROM with columns sharing the target's names",
+			SetUpScript: []string{
+				"CREATE SCHEMA s;",
+				"CREATE TABLE s.target (id INT PRIMARY KEY, v INT, note TEXT, arr INT[]);",
+				"CREATE TABLE source (id INT PRIMARY KEY, v INT, note TEXT, arr INT[]);",
+				"INSERT INTO s.target VALUES (1, 0, 'old', '{0,0}'), (2, 0, 'old', '{0,0}');",
+				"INSERT INTO source VALUES (1, 10, 'new', '{5,5}');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "UPDATE s.target AS t SET v = src.v, note = src.note FROM source AS src WHERE t.id = src.id;",
+				},
+				{
+					Query: "UPDATE s.target SET v = target.v + source.v FROM source WHERE target.id = source.id;",
+				},
+				{
+					Query: "UPDATE s.target AS t SET arr[2] = src.v FROM source AS src WHERE t.id = src.id;",
+				},
+				{
+					Query:    "SELECT * FROM s.target ORDER BY id;",
+					Expected: []sql.Row{{1, 20, "new", "{0,10}"}, {2, 0, "old", "{0,0}"}},
+				},
+				{
+					Query:           "UPDATE s.target AS t SET v = v FROM source AS src WHERE t.id = src.id;",
+					ExpectedErr:     "ambiguous",
+					ExpectedErrCode: "42702",
 				},
 			},
 		},

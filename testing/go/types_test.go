@@ -16,6 +16,7 @@ package _go
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -1129,18 +1130,56 @@ var typesTests = []ScriptTest{
 	},
 	{
 		Name: "Inet type",
-		Skip: true,
 		SetUpScript: []string{
 			"CREATE TABLE t_inet (id INTEGER primary key, v1 INET);",
 			"INSERT INTO t_inet VALUES (1, '192.168.1.1'), (2, '10.0.0.1');",
+			`CREATE TABLE ips (ip inet)`,
+			`INSERT INTO ips VALUES ('1.2.3.4'), ('1.2.3.4/32'), ('1.2.3.4/24'), ('::1')`,
 		},
 		Assertions: []ScriptTestAssertion{
 			{
-				Query: "SELECT * FROM t_inet ORDER BY id;",
-				Expected: []sql.Row{
-					{1, "192.168.1.1"},
-					{2, "10.0.0.1"},
-				},
+				Query:    "SELECT * FROM t_inet ORDER BY id;",
+				Expected: []sql.Row{{1, "192.168.1.1"}, {2, "10.0.0.1"}},
+			},
+			{
+				Query:    `SELECT host(ip), masklen(ip), count(*) FROM ips GROUP BY ip ORDER BY ip`,
+				Expected: []sql.Row{{"1.2.3.4", 24, 1}, {"1.2.3.4", 32, 2}, {"::1", 128, 1}},
+			},
+			{
+				Query:    `SELECT count(*) FROM ips a JOIN ips b ON a.ip = b.ip`,
+				Expected: []sql.Row{{6}},
+			},
+			{
+				Query:    `SELECT ~ inet '192.168.1.6'`,
+				Expected: []sql.Row{{"63.87.254.249"}},
+			},
+			{
+				Query:    `SELECT ~ inet '::1'`,
+				Expected: []sql.Row{{"ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffe"}},
+			},
+			{
+				Query:    `SELECT inetnot('192.168.1.6/24'), ~ inet '192.168.1.6/24', ~ '1.2.3.0004'::inet`,
+				Expected: []sql.Row{{"63.87.254.249/24", "63.87.254.249/24", "254.253.252.251"}},
+			},
+			{
+				Query:    `SELECT ~5, ~5::int2, ~5::int8, pg_typeof(~5::int2)`,
+				Expected: []sql.Row{{-6, -6, -6, "smallint"}},
+			},
+			{
+				Query:    `SELECT host('192.168.001.010'::inet)`,
+				Expected: []sql.Row{{"192.168.1.10"}},
+			},
+			{
+				Query:    `SELECT host('010.000.000.001/8'::inet)`,
+				Expected: []sql.Row{{"10.0.0.1"}},
+			},
+			{
+				Query:    `SELECT '192.168.1.6'::inet::varchar(5)`,
+				Expected: []sql.Row{{"192.1"}},
+			},
+			{
+				Query:    `SELECT '192.168.1.6'::inet::char(5)`,
+				Expected: []sql.Row{{"192.1"}},
 			},
 		},
 	},
@@ -4126,6 +4165,359 @@ var typesTests = []ScriptTest{
 			},
 		},
 	},
+	{
+		Name: "Regprocedure type",
+		SetUpScript: []string{
+			`CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE SCHEMA s;`,
+			`CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT 'tf()'::regprocedure;`,
+				Expected: []sql.Row{{"tf()"}},
+			},
+			{
+				Query:    `SELECT 's.sf(int)'::regprocedure;`,
+				Expected: []sql.Row{{"s.sf(integer)"}},
+			},
+			{
+				Query:    `SELECT 'f2(int,text)'::regprocedure;`,
+				Expected: []sql.Row{{"f2(integer,text)"}},
+			},
+			{
+				Query:    `SELECT 'abs(int)'::regprocedure;`,
+				Expected: []sql.Row{{"abs(integer)"}},
+			},
+			{
+				Query:    `SELECT 'p1(int)'::regprocedure;`,
+				Expected: []sql.Row{{"p1(integer)"}},
+			},
+			{
+				Query:    `SELECT 'tf()'::regprocedure::oid = (SELECT oid FROM pg_proc WHERE proname = 'tf');`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    `SELECT 2212::regprocedure;`,
+				Expected: []sql.Row{{"regprocedurein(cstring)"}},
+			},
+			{
+				Query:    `SELECT 'now'::regproc::regprocedure;`,
+				Expected: []sql.Row{{"now()"}},
+			},
+			{
+				Query:    `SELECT 'f2(int,text)'::regprocedure::regproc;`,
+				Expected: []sql.Row{{"f2"}},
+			},
+			{
+				Query:    `SELECT 'f2(int,text)'::regprocedure::text;`,
+				Expected: []sql.Row{{"f2(integer,text)"}},
+			},
+			{
+				Query:    `SELECT 'f3(int)'::regprocedure::regproc::regprocedure;`,
+				Expected: []sql.Row{{"f3(integer)"}},
+			},
+			{
+				Query:           `SELECT 'f3(bool)'::regprocedure;`,
+				ExpectedErr:     `function "f3(bool)" does not exist`,
+				ExpectedErrCode: "42883",
+			},
+			{
+				Query:           `SELECT 'nosuch()'::regprocedure;`,
+				ExpectedErr:     `function "nosuch()" does not exist`,
+				ExpectedErrCode: "42883",
+			},
+			{
+				Query:           `SELECT 'f3'::regprocedure;`,
+				ExpectedErr:     `expected a left parenthesis`,
+				ExpectedErrCode: "22P02",
+			},
+			{
+				Skip:            true, // TODO: schemas are not checked for existence
+				Query:           `SELECT 'nosuchschema.sf(int)'::regprocedure;`,
+				ExpectedErr:     `schema "nosuchschema" does not exist`,
+				ExpectedErrCode: "3F000",
+			},
+			{
+				Query:    `SET search_path = s;`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT 's.sf(int)'::regprocedure;`,
+				Expected: []sql.Row{{"sf(integer)"}},
+			},
+			{
+				Query:    `SELECT 'public.f2(int,text)'::regprocedure;`,
+				Expected: []sql.Row{{"public.f2(integer,text)"}},
+			},
+			{
+				Skip:     true, // TODO: aggregate functions and window functions are not resolved yet
+				Query:    `SELECT 'array_agg(anynonarray)'::regprocedure;`,
+				Expected: []sql.Row{{"array_agg(anynonarray)"}},
+			},
+			{
+				Skip:     true, // TODO: aggregate functions and window functions are not resolved yet
+				Query:    `SELECT 'row_number()'::regprocedure;`,
+				Expected: []sql.Row{{"row_number()"}},
+			},
+		},
+	},
+	{
+		Name: "Regproc user-defined routines",
+		SetUpScript: []string{
+			`CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE SCHEMA s;`,
+			`CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+			`CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;`,
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:    `SELECT 'tf'::regproc;`,
+				Expected: []sql.Row{{"tf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('tf');`,
+				Expected: []sql.Row{{"tf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('public.tf');`,
+				Expected: []sql.Row{{"tf"}},
+			},
+			{
+				Query:    `SELECT 's.sf'::regproc;`,
+				Expected: []sql.Row{{"s.sf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('s.sf');`,
+				Expected: []sql.Row{{"s.sf"}},
+			},
+			{
+				Query:    `SELECT to_regproc('sf');`,
+				Expected: []sql.Row{{nil}},
+			},
+			{
+				Query:    `SELECT to_regproc('p1');`,
+				Expected: []sql.Row{{"p1"}},
+			},
+			{
+				Query:    `SELECT to_regproc('f3');`,
+				Expected: []sql.Row{{nil}},
+			},
+			{
+				Query:    `SELECT to_regproc('nosuchschema.sf');`,
+				Expected: []sql.Row{{nil}},
+			},
+			{
+				Query:    `SELECT 'tf'::regproc::oid = (SELECT oid FROM pg_proc WHERE proname = 'tf');`,
+				Expected: []sql.Row{{"t"}},
+			},
+			{
+				Query:    `SELECT 'abs(int)'::regprocedure::regproc;`,
+				Expected: []sql.Row{{"pg_catalog.abs"}},
+			},
+			{
+				Query:    `SELECT 'f3(int)'::regprocedure::regproc;`,
+				Expected: []sql.Row{{"public.f3"}},
+			},
+			{
+				Query:           `SELECT 'f3'::regproc;`,
+				ExpectedErr:     `more than one function named "f3"`,
+				ExpectedErrCode: "42725",
+			},
+			{
+				Query:           `SELECT 'abs'::regproc;`,
+				ExpectedErr:     `more than one function named "abs"`,
+				ExpectedErrCode: "42725",
+			},
+			{
+				Query:           `SELECT 'nosuch'::regproc;`,
+				ExpectedErr:     `function "nosuch" does not exist`,
+				ExpectedErrCode: "42883",
+			},
+			{
+				Skip:            true, // TODO: schemas are not checked for existence
+				Query:           `SELECT 'nosuchschema.sf'::regproc;`,
+				ExpectedErr:     `schema "nosuchschema" does not exist`,
+				ExpectedErrCode: "3F000",
+			},
+			{
+				Query:    `SET search_path = s;`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    `SELECT 'sf'::regproc;`,
+				Expected: []sql.Row{{"sf"}},
+			},
+			{
+				Query:    `SELECT 'public.tf'::regproc;`,
+				Expected: []sql.Row{{"public.tf"}},
+			},
+			{
+				Skip:     true, // TODO: aggregate functions and window functions are not resolved yet
+				Query:    `SELECT to_regproc('row_number');`,
+				Expected: []sql.Row{{"row_number"}},
+			},
+		},
+	},
+	{
+		Name: "Assigning a string that is too long for a character type",
+		SetUpScript: []string{
+			"CREATE TABLE t3707 (id INT PRIMARY KEY, v VARCHAR(3), c CHAR(3));",
+			"CREATE INDEX t3707_v ON t3707 (v);",
+			"CREATE INDEX t3707_c ON t3707 (c);",
+			"INSERT INTO t3707 VALUES (3, 'x', 'x');",
+			"CREATE TABLE t3707_array (id INT PRIMARY KEY, a VARCHAR(3)[]);",
+		},
+		Assertions: []ScriptTestAssertion{
+			{
+				Query:           "INSERT INTO t3707 VALUES (1, 'abcdef', 'x');",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (2, 'x', 'abcdef');",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "UPDATE t3707 SET v = 'wxyz' WHERE id = 3;",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "UPDATE t3707 SET c = 'wxyz' WHERE id = 3;",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (4, 'abcdef'::TEXT, 'x');",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (4, 'x', 'abcdef'::TEXT);",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 (id, v) SELECT 5, 'abcdef';",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 (id, c) SELECT 5, 'abcdef';",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (6, 'ab  c', 'x');",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (6, 'x', 'abcde'::CHAR(5));",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (6, 'éèêë', 'x');",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707 VALUES (3, 'x', 'x') ON CONFLICT (id) DO UPDATE SET c = 'wxyz';",
+				ExpectedErr:     "value too long for type character(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:    "INSERT INTO t3707 VALUES (7, 'ab   ', 'ab    '), (8, 'ab   '::TEXT, 'ab    '::TEXT), (9, 'éèê', 'éèê');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id, v, c, length(v) FROM t3707 ORDER BY id;",
+				Expected: []sql.Row{{3, "x", "x  ", 1}, {7, "ab ", "ab ", 3}, {8, "ab ", "ab ", 3}, {9, "éèê", "éèê", 3}},
+			},
+			{
+				Query:    "SELECT 'abcdef'::VARCHAR(3), 'abcdef'::CHAR(3), length('abcdef'::TEXT::CHAR(3)), 'ab   '::TEXT::VARCHAR(3) || '|';",
+				Expected: []sql.Row{{"abc", "abc", 3, "ab |"}},
+			},
+			{
+				Query:    "SELECT ARRAY['abcdef']::VARCHAR(3)[], '{abcdef}'::CHAR(3)[], ARRAY['abcdef'::TEXT]::VARCHAR(3)[];",
+				Expected: []sql.Row{{"{abc}", "{abc}", "{abc}"}},
+			},
+			{
+				Query:    "SELECT id FROM t3707 WHERE v = 'éèêë';",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id FROM t3707 WHERE c = 'éèêë';",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:           "INSERT INTO t3707_array VALUES (1, ARRAY['abcdef']);",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:           "INSERT INTO t3707_array VALUES (2, '{abcdef}');",
+				ExpectedErr:     "value too long for type character varying(3)",
+				ExpectedErrCode: "22001",
+			},
+			{
+				Query:    `INSERT INTO t3707_array VALUES (3, ARRAY['ab   ']), (4, '{"ab   "}');`,
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT id, a, length(a[1]) FROM t3707_array ORDER BY id;",
+				Expected: []sql.Row{{3, `{"ab "}`, 3}, {4, `{"ab "}`, 3}},
+			},
+			{
+				Skip:     true, // TODO: column defaults are evaluated when the table is created, rather than when a row uses them
+				Query:    "CREATE TABLE t3707_default (id INT PRIMARY KEY, v VARCHAR(3) DEFAULT 'abcdef');",
+				Expected: []sql.Row{},
+			},
+			{
+				Query:    "SELECT * FROM (VALUES ('abc'::VARCHAR(3), '0123456789'), ('0123456789', 'abc'::VARCHAR(3))) v(a, b);",
+				Expected: []sql.Row{{"abc", "0123456789"}, {"0123456789", "abc"}},
+			},
+			{
+				Query:    "SELECT a::VARCHAR(3) FROM (VALUES ('abc'::VARCHAR(3)), ('0123456789')) v(a);",
+				Expected: []sql.Row{{"abc"}, {"012"}},
+			},
+			{
+				Query:    "SELECT * FROM (VALUES ('abc'::VARCHAR(3)), ('0123456789'::VARCHAR(5))) v(a);",
+				Expected: []sql.Row{{"abc"}, {"01234"}},
+			},
+			{
+				Query:    "SELECT * FROM (VALUES ('abc'::VARCHAR(3)), ('0123'::CHAR(4))) v(a);",
+				Expected: []sql.Row{{"abc"}, {"0123"}},
+			},
+			{
+				Query:    "SELECT * FROM (VALUES (1.5::NUMERIC(5,2)), (2.5::NUMERIC(6,3))) v(a);",
+				Expected: []sql.Row{{Numeric("1.50")}, {Numeric("2.500")}},
+			},
+			{
+				Query:    "SELECT COALESCE(NULL::VARCHAR(3), '0123456789'), GREATEST('abc'::VARCHAR(3), '0123456789');",
+				Expected: []sql.Row{{"0123456789", "abc"}},
+			},
+			{
+				Query:    "SELECT ARRAY['abc'::VARCHAR(3), '0123456789'];",
+				Expected: []sql.Row{{"{abc,0123456789}"}},
+			},
+			{
+				Skip:     true, // TODO: CASE keeps the typmod of a branch when its branches have different typmods
+				Query:    "SELECT CASE WHEN false THEN 'abc'::VARCHAR(3) ELSE '0123456789' END;",
+				Expected: []sql.Row{{"0123456789"}},
+			},
+		},
+	},
 }
 
 func TestSameTypes(t *testing.T) {
@@ -4501,4 +4893,185 @@ func TestCompositeTypes(t *testing.T) {
 			},
 		},
 	})
+}
+
+func TestAlterEnumAddValue(t *testing.T) {
+	RunScripts(t, []ScriptTest{{Name: "add enum labels", SetUpScript: []string{
+		`CREATE TYPE mood AS ENUM ('sad', 'happy')`,
+		`CREATE TABLE enum_rows (id int PRIMARY KEY, value mood, vals mood[])`,
+		`INSERT INTO enum_rows VALUES (1, 'sad', ARRAY['sad']::mood[])`,
+		`CREATE INDEX mood_idx ON enum_rows(value)`,
+	}, Assertions: []ScriptTestAssertion{
+		{Query: `ALTER TYPE mood ADD VALUE 'great'`},
+		{Query: `SELECT 'great'::mood`, Expected: []sql.Row{{"great"}}},
+		{Query: `INSERT INTO enum_rows VALUES (2, 'great', ARRAY['great']::mood[])`},
+		{Query: `ALTER TYPE mood ADD VALUE 'okay' BEFORE 'happy'`},
+		{Query: `ALTER TYPE mood ADD VALUE 'bad' BEFORE 'sad'`},
+		{Query: `ALTER TYPE mood ADD VALUE 'fine' AFTER 'okay'`},
+		{Query: `INSERT INTO enum_rows VALUES (3, 'okay', ARRAY['okay','great']::mood[]), (4, 'bad', NULL), (5, 'fine', NULL)`},
+		{Query: `SELECT value::text FROM enum_rows ORDER BY enum_rows.value`, Expected: []sql.Row{{"bad"}, {"sad"}, {"okay"}, {"fine"}, {"great"}}},
+		{Query: `SELECT id FROM enum_rows WHERE value = 'great'`, Expected: []sql.Row{{int32(2)}}},
+		{Query: `SELECT id FROM enum_rows WHERE value = 'great'`, Username: "postgres", Password: "password", Expected: []sql.Row{{int32(2)}}},
+		{Query: `SELECT vals::text FROM enum_rows WHERE id = 3`, Expected: []sql.Row{{"{okay,great}"}}},
+		{Query: `ALTER TYPE mood ADD VALUE IF NOT EXISTS 'sad' BEFORE 'missing'`},
+		{Query: `ALTER TYPE mood ADD VALUE 'sad'`, ExpectedErr: "already exists", ExpectedErrCode: "42710"},
+		{Query: `ALTER TYPE mood ADD VALUE 'nope' AFTER 'missing'`, ExpectedErr: "not an existing enum label", ExpectedErrCode: "22023"},
+		{Query: `ALTER TYPE int4 ADD VALUE 'x'`, ExpectedErr: "not an enum", ExpectedErrCode: "42809"},
+		{Query: `ALTER TYPE missing_type ADD VALUE 'x'`, ExpectedErr: "unable to resolve type", ExpectedErrCode: "42704"},
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'temporary'`},
+		{Query: `ROLLBACK`},
+		{Query: `SELECT 'temporary'::mood`, ExpectedErr: "invalid input value"},
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'committed'`},
+		{Query: `COMMIT`},
+		{Query: `SELECT 'committed'::mood`, Expected: []sql.Row{{"committed"}}},
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'unsafe'`},
+		{Query: `SELECT 'unsafe'::mood`, Expected: []sql.Row{{"unsafe"}}},
+		{Query: `ROLLBACK`},
+		{Query: `BEGIN`},
+		{Query: `CREATE TYPE new_mood AS ENUM ('old')`},
+		{Query: `ALTER TYPE new_mood ADD VALUE 'new'`},
+		{Query: `SELECT 'new'::new_mood`, Expected: []sql.Row{{"new"}}},
+		{Query: `COMMIT`},
+		{Query: `CREATE TYPE empty_enum AS ENUM ()`},
+		{Query: `ALTER TYPE empty_enum ADD VALUE ''`},
+		{Query: `SELECT ''::empty_enum`, Expected: []sql.Row{{""}}},
+	}}})
+}
+
+func TestAlterEnumAddValueSavepoints(t *testing.T) {
+	RunScripts(t, []ScriptTest{{Name: "enum savepoints", SetUpScript: []string{
+		`CREATE TYPE mood AS ENUM ('old')`,
+	}, Assertions: []ScriptTestAssertion{
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'outer'`},
+		{Query: `SAVEPOINT s`},
+		{Query: `ALTER TYPE mood ADD VALUE 'inner'`},
+		{Query: `ROLLBACK TO s`},
+		{Query: `SELECT 'inner'::mood`, ExpectedErr: "invalid input value"},
+		{Query: `ROLLBACK TO s`},
+		{Query: `SELECT 'outer'::mood`, Expected: []sql.Row{{"outer"}}},
+		{Query: `ROLLBACK TO s`},
+		{Query: `ALTER TYPE mood ADD VALUE 'kept'`},
+		{Query: `RELEASE s`},
+		{Query: `COMMIT`},
+		{Query: `SELECT 'outer'::mood, 'kept'::mood`, Expected: []sql.Row{{"outer", "kept"}}},
+		{Query: `ALTER TYPE mood ADD VALUE 'inner'`},
+		{Query: `SELECT 'inner'::mood`, Expected: []sql.Row{{"inner"}}},
+		{Query: `CREATE SCHEMA enum_schema`},
+		{Query: `CREATE TYPE enum_schema."Mixed" AS ENUM ('a')`},
+		{Query: `SET search_path = enum_schema, public`},
+		{Query: `ALTER TYPE "Mixed" ADD VALUE 'b'`},
+		{Query: `RESET search_path`},
+		{Query: `SELECT 'b'::enum_schema."Mixed"`, Expected: []sql.Row{{"b"}}},
+		{Query: `ALTER TYPE mood ADD VALUE 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'`, ExpectedErr: "invalid enum label", ExpectedErrCode: "42602"},
+		{Query: `ALTER TYPE mood ADD VALUE 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'`},
+		{Query: `ALTER TYPE mood ADD VALUE 'café'`},
+		{Query: `SELECT 'café'::mood`, Expected: []sql.Row{{"café"}}},
+	}}})
+}
+
+func TestAlterEnumAddValueOrdering(t *testing.T) {
+	setup := []string{
+		`CREATE TYPE mood AS ENUM ('a', 'z')`,
+		`CREATE TABLE ordered_enum (v mood PRIMARY KEY)`,
+		`INSERT INTO ordered_enum VALUES ('a'), ('z')`,
+	}
+	// More than 24 midpoint insertions force float32 sort-order renumbering.
+	for i := 0; i < 30; i++ {
+		label := fmt.Sprintf("v%d", i)
+		setup = append(setup, fmt.Sprintf("ALTER TYPE mood ADD VALUE '%s' AFTER 'a'", label), fmt.Sprintf("INSERT INTO ordered_enum VALUES ('%s')", label))
+	}
+	expected := []sql.Row{{"a"}}
+	for i := 29; i >= 0; i-- {
+		expected = append(expected, sql.Row{fmt.Sprintf("v%d", i)})
+	}
+	expected = append(expected, sql.Row{"z"})
+	RunScripts(t, []ScriptTest{{Name: "enum order after repeated insertion", SetUpScript: setup, Assertions: []ScriptTestAssertion{
+		{Query: `SELECT v::text FROM ordered_enum ORDER BY ordered_enum.v`, Expected: expected},
+		{Query: `SELECT count(*) FROM ordered_enum WHERE v > 'a' AND v < 'z'`, Expected: []sql.Row{{int64(30)}}},
+	}}})
+}
+
+func TestAlterEnumAddValueSearchPath(t *testing.T) {
+	RunScripts(t, []ScriptTest{{Name: "resolve enum through search path", SetUpScript: []string{
+		`CREATE SCHEMA enum_first`,
+		`CREATE SCHEMA enum_second`,
+		`CREATE TYPE enum_first.mood AS ENUM ('old')`,
+		`CREATE TYPE enum_second.mood AS ENUM ('old')`,
+		`CREATE TYPE enum_second.hidden AS ENUM ('old')`,
+	}, Assertions: []ScriptTestAssertion{
+		{Query: `SET search_path = enum_first, enum_second`},
+		{Query: `ALTER TYPE mood ADD VALUE 'first'`},
+		{Query: `SELECT 'first'::enum_first.mood`, Expected: []sql.Row{{"first"}}},
+		{Query: `SELECT 'first'::enum_second.mood`, ExpectedErr: "invalid input value"},
+		{Query: `SET search_path = enum_second, enum_first`},
+		{Query: `ALTER TYPE mood ADD VALUE 'second'`},
+		{Query: `SELECT 'second'::enum_second.mood`, Expected: []sql.Row{{"second"}}},
+		{Query: `SELECT 'second'::enum_first.mood`, ExpectedErr: "invalid input value"},
+		{Query: `SET search_path = enum_first`},
+		{Query: `ALTER TYPE hidden ADD VALUE 'invisible'`, ExpectedErr: "unable to resolve type", ExpectedErrCode: "42704"},
+		{Query: `ALTER TYPE enum_second.hidden ADD VALUE 'qualified'`},
+		{Query: `SELECT 'qualified'::enum_second.hidden`, Expected: []sql.Row{{"qualified"}}},
+		{Query: `SELECT 'invisible'::enum_second.hidden`, ExpectedErr: "invalid input value"},
+		{Query: `SET search_path = missing_schema, enum_first, enum_second`},
+		{Query: `ALTER TYPE hidden ADD VALUE 'later'`},
+		{Query: `SELECT 'later'::enum_second.hidden`, Expected: []sql.Row{{"later"}}},
+		{Query: `ALTER TYPE enum_first.hidden ADD VALUE 'wrong_schema'`, ExpectedErr: "unable to resolve type", ExpectedErrCode: "42704"},
+		{Query: `CREATE TYPE enum_first.hidden AS (value integer)`},
+		{Query: `ALTER TYPE hidden ADD VALUE 'shadowed'`, ExpectedErr: "not an enum", ExpectedErrCode: "42809"},
+		{Query: `ALTER TYPE int4 ADD VALUE 'x'`, ExpectedErr: "not an enum", ExpectedErrCode: "42809"},
+	}}})
+}
+
+func TestAlterEnumAddValueTransactionalRows(t *testing.T) {
+	RunScripts(t, []ScriptTest{{Name: "enum definitions and rows share the transaction", SetUpScript: []string{
+		`CREATE TYPE mood AS ENUM ('old')`,
+		`CREATE TABLE enum_tx (v mood PRIMARY KEY, vals mood[])`,
+		`INSERT INTO enum_tx VALUES ('old', ARRAY['old']::mood[])`,
+	}, Assertions: []ScriptTestAssertion{
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'committed'`},
+		{Query: `INSERT INTO enum_tx VALUES ('committed', ARRAY['committed']::mood[])`},
+		{Query: `SELECT vals::text FROM enum_tx WHERE v = 'committed'`, Expected: []sql.Row{{"{committed}"}}},
+		{Query: `COMMIT`},
+		{Query: `SELECT vals::text FROM enum_tx WHERE v = 'committed'`, Username: "postgres", Password: "password", Expected: []sql.Row{{"{committed}"}}},
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'abandoned' BEFORE 'old'`},
+		{Query: `INSERT INTO enum_tx VALUES ('abandoned', ARRAY['abandoned']::mood[])`},
+		{Query: `ROLLBACK`},
+		{Query: `SELECT v::text FROM enum_tx ORDER BY enum_tx.v`, Expected: []sql.Row{{"old"}, {"committed"}}},
+		{Query: `SELECT 'abandoned'::mood`, ExpectedErr: "invalid input value"},
+		{Query: `BEGIN`},
+		{Query: `ALTER TYPE mood ADD VALUE 'outer'`},
+		{Query: `INSERT INTO enum_tx VALUES ('outer', ARRAY['outer']::mood[])`},
+		{Query: `SAVEPOINT s`},
+		{Query: `ALTER TYPE mood ADD VALUE 'inner' BEFORE 'old'`},
+		{Query: `INSERT INTO enum_tx VALUES ('inner', ARRAY['inner']::mood[])`},
+		{Query: `ROLLBACK TO s`},
+		{Query: `SELECT vals::text FROM enum_tx WHERE v = 'outer'`, Expected: []sql.Row{{"{outer}"}}},
+		{Query: `COMMIT`},
+		{Query: `SELECT v::text FROM enum_tx ORDER BY enum_tx.v`, Expected: []sql.Row{{"old"}, {"committed"}, {"outer"}}},
+		{Query: `SELECT 'inner'::mood`, ExpectedErr: "invalid input value"},
+		{Query: `BEGIN`},
+		{Query: `CREATE TYPE new_enum AS ENUM ('a')`},
+		{Query: `ALTER TYPE new_enum ADD VALUE 'b'`},
+		{Query: `CREATE TABLE new_enum_rows (v new_enum PRIMARY KEY)`},
+		{Query: `INSERT INTO new_enum_rows VALUES ('b')`},
+		{Query: `COMMIT`},
+		{Query: `SELECT v FROM new_enum_rows`, Expected: []sql.Row{{"b"}}},
+	}}})
+}
+
+func TestEnumLabelValidation(t *testing.T) {
+	RunScripts(t, []ScriptTest{{Name: "shared enum label validation", Assertions: []ScriptTestAssertion{
+		{Query: `CREATE TYPE invalid_enum AS ENUM ('` + strings.Repeat("a", 64) + `')`, ExpectedErr: "invalid enum label", ExpectedErrCode: "42602"},
+		{Query: `CREATE TYPE invalid_enum AS ENUM ('` + strings.Repeat("é", 32) + `')`, ExpectedErr: "invalid enum label", ExpectedErrCode: "42602"},
+		{Query: `CREATE TYPE valid_enum AS ENUM ('', '` + strings.Repeat("a", 63) + `')`},
+		{Query: `ALTER TYPE valid_enum ADD VALUE '` + strings.Repeat("é", 32) + `'`, ExpectedErr: "invalid enum label", ExpectedErrCode: "42602"},
+		{Query: `ALTER TYPE valid_enum ADD VALUE '` + strings.Repeat("é", 31) + `'`},
+		{Query: `SELECT '` + strings.Repeat("é", 31) + `'::valid_enum`, Expected: []sql.Row{{strings.Repeat("é", 31)}}},
+	}}})
 }

@@ -1,4 +1,4 @@
-// Copyright 2023 Dolthub, Inc.
+// Copyright 2026 Dolthub, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,20 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package ast
+package expression
 
 import (
-	"github.com/cockroachdb/errors"
+	"testing"
 
-	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
+	"github.com/dolthub/go-mysql-server/sql"
+	"github.com/stretchr/testify/require"
 
-	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
-// nodeSetSessionAuthorization handles *tree.SetSessionAuthorization nodes.
-func nodeSetSessionAuthorization(ctx *Context, node *tree.SetSessionAuthorization) (vitess.Statement, error) {
-	if node == nil {
-		return nil, nil
+func TestCatalogRowExprWithoutChildren(t *testing.T) {
+	for _, children := range [][]any{nil, {}} {
+		expr := NewCatalogRowExpr(pgtypes.PgAttribute, true)
+		result, err := expr.WithResolvedChildren(sql.NewEmptyContext(), children)
+		require.True(t, sql.ErrInvalidChildrenNumber.Is(err))
+		require.Nil(t, result)
 	}
-	return nil, errors.Errorf("SET SESSION AUTHORIZATION is not yet supported")
 }

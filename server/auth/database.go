@@ -31,6 +31,8 @@ var authFileName = "auth.db"
 var (
 	globalDatabase Database
 	globalLock     *sync.RWMutex
+	roleNameView   atomic.Value // immutable map[RoleID]string for lock-free principal projection
+	roleNamesDirty bool
 	userIDCounter  atomic.Uint64
 	fileSystem     filesys.Filesys
 )
@@ -46,6 +48,8 @@ type Database struct {
 	sequencePrivileges *SequencePrivileges
 	routinePrivileges  *RoutinePrivileges
 	roleMembership     *RoleMembership
+	defaultPrivileges  *DefaultPrivileges
+	roleSettings       *RoleSettings
 }
 
 // AllRoles returns every role in the database, sorted by the role's name. This does not handle locking, so callers
@@ -71,7 +75,31 @@ func ClearDatabase() {
 	clear(globalDatabase.sequencePrivileges.Data)
 	clear(globalDatabase.routinePrivileges.Data)
 	clear(globalDatabase.roleMembership.Data)
+	clear(globalDatabase.defaultPrivileges.Data)
+	clear(globalDatabase.roleSettings.Data)
 	dbInitDefault()
+	publishRoleNames()
+}
+
+// RoleNameForSession resolves the current name of a stable role ID without
+// taking the auth lock. Dolt's search-path expansion may run inside auth
+// checks, where taking the same lock again would deadlock.
+func RoleNameForSession(id RoleID) (string, bool) {
+	view, ok := roleNameView.Load().(map[RoleID]string)
+	if !ok {
+		return "", false
+	}
+	name, ok := view[id]
+	return name, ok
+}
+
+func publishRoleNames() {
+	view := make(map[RoleID]string, len(globalDatabase.rolesByID))
+	for id, role := range globalDatabase.rolesByID {
+		view[id] = role.Name
+	}
+	roleNameView.Store(view)
+	roleNamesDirty = false
 }
 
 // DropRole removes the given role from the database. If the role does not exist, then this is a no-op.
@@ -81,6 +109,8 @@ func DropRole(name string) {
 		delete(globalDatabase.rolesByID, roleID)
 		globalDatabase.removeRolePrivileges(roleID)
 		globalDatabase.removeRoleMemberships(roleID)
+		globalDatabase.removeRoleSettings(roleID)
+		roleNamesDirty = true
 	}
 }
 
@@ -111,6 +141,9 @@ func (db *Database) removeRolePrivileges(roleID RoleID) {
 			delete(db.routinePrivileges.Data, key)
 		}
 	}
+	db.defaultPrivileges.removeRoles(func(id RoleID) bool {
+		return id == roleID
+	})
 }
 
 // removeRoleFromPrivilegeMap removes grants made by the given role and reports whether the map is empty.
@@ -179,6 +212,7 @@ func RenameRole(oldName string, newName string) {
 		role := globalDatabase.rolesByID[roleID]
 		role.Name = newName
 		globalDatabase.rolesByID[roleID] = role
+		roleNamesDirty = true
 	}
 }
 
@@ -186,6 +220,14 @@ func RenameRole(oldName string, newName string) {
 func RoleExists(name string) bool {
 	_, ok := globalDatabase.rolesByName[name]
 	return ok
+}
+
+// GetRoleName returns the name of the role with the given ID. Returns an empty string if the role does not exist.
+func GetRoleName(id RoleID) string {
+	if role, ok := globalDatabase.rolesByID[id]; ok {
+		return role.Name
+	}
+	return ""
 }
 
 // SetRole sets the role matching the given name. This will add a role that does not yet exist, and overwrite an
@@ -200,6 +242,7 @@ func SetRole(role Role) {
 	}
 	globalDatabase.rolesByName[role.Name] = role.id
 	globalDatabase.rolesByID[role.ID()] = role
+	roleNamesDirty = true
 }
 
 // IsSuperUser returns whether the given role is a SUPERUSER.
@@ -219,7 +262,12 @@ func LockRead(f func()) {
 // automatically released once the function finishes.
 func LockWrite(f func()) {
 	globalLock.Lock()
-	defer globalLock.Unlock()
+	defer func() {
+		if roleNamesDirty {
+			publishRoleNames()
+		}
+		globalLock.Unlock()
+	}()
 	f()
 }
 
@@ -254,6 +302,7 @@ func dbInit(dEnv *env.DoltEnv, cfg Config) {
 	} else {
 		dbInitDefault()
 	}
+	publishRoleNames()
 }
 
 // newEmptyDatabase returns a Database with all of its collections initialized and empty.
@@ -267,6 +316,8 @@ func newEmptyDatabase() Database {
 		sequencePrivileges: NewSequencePrivileges(),
 		routinePrivileges:  NewRoutinePrivileges(),
 		roleMembership:     NewRoleMembership(),
+		defaultPrivileges:  NewDefaultPrivileges(),
+		roleSettings:       NewRoleSettings(),
 	}
 }
 

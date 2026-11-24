@@ -58,7 +58,10 @@ func (c *DropRole) RowIter(ctx *sql.Context, r sql.Row) (sql.RowIter, error) {
 	var roles []auth.Role
 	var err error
 	auth.LockRead(func() {
-		userRole = auth.GetRole(ctx.Client().User)
+		userRole, err = auth.CurrentRoleLocked(ctx)
+		if err != nil {
+			return
+		}
 		for _, roleName := range c.Names {
 			role := auth.GetRole(roleName)
 			if role.IsValid() {

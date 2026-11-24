@@ -26,6 +26,8 @@ setup_doltgres_repo() {
 
 teardown_doltgres_repo() {
   kill $SERVER_PID
+  # The server writes to its data directory while it shuts down, so it must exit before the directory is removed
+  wait $SERVER_PID 2>/dev/null || true
   rm -rf $REPO_NAME
 }
 

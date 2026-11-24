@@ -55,20 +55,24 @@ func (j *JoinComparator) Children() []sql.Expression {
 	return []sql.Expression{j.eq}
 }
 
-// Compare implements the expression.Comparer interface.
+// Compare implements the expression.Comparer interface. Returns expression.ErrNilOperand when either operand is NULL.
 func (j *JoinComparator) Compare(ctx *sql.Context, row sql.Row) (int, error) {
-	// Check equals
 	res, err := j.eq.Eval(ctx, row)
 	if err != nil {
 		return 0, err
 	}
+	if res == nil {
+		return 0, expression.ErrNilOperand.New()
+	}
 	if res.(bool) {
 		return 0, nil
 	}
-	// Check less than
 	res, err = j.less.Eval(ctx, row)
 	if err != nil {
 		return 0, err
+	}
+	if res == nil {
+		return 0, expression.ErrNilOperand.New()
 	}
 	if res.(bool) {
 		return -1, nil

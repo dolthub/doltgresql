@@ -15,12 +15,15 @@
 package ast
 
 import (
-	"github.com/cockroachdb/errors"
+	"context"
 
+	"github.com/cockroachdb/errors"
+	"github.com/dolthub/go-mysql-server/sql"
 	vitess "github.com/dolthub/vitess/go/vt/sqlparser"
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/postgres/parser/sem/tree"
+	"github.com/dolthub/doltgresql/server/node"
 )
 
 // UnknownColSentinelPrefix is prepended to the index position of unaliased string literals in a
@@ -32,11 +35,32 @@ const UnknownColSentinelPrefix = "__?column?__"
 // ConvertOptions controls optional behavior during PostgreSQL-to-Vitess AST conversion.
 type ConvertOptions struct {
 	PermitUnsupportedLockingStatements bool
+	// SystemVariables resolves SET and SHOW; an explicit registry wins over the one WithContext reads from a context.
+	SystemVariables sql.SystemVariableRegistry
+}
+
+// WithContext fills in SystemVariables from the engine variables bound to ctx, if the options do not already name a
+// registry. A context with no engine variables leaves it nil, so SET and SHOW fail to convert instead of panicking.
+func (options ConvertOptions) WithContext(ctx context.Context) ConvertOptions {
+	if options.SystemVariables != nil {
+		return options
+	}
+	if sqlCtx, ok := ctx.(*sql.Context); ok {
+		if vars := sqlCtx.EngineVariables(); vars != nil {
+			options.SystemVariables = vars.System
+		}
+	}
+	return options
 }
 
 // Convert converts a Postgres AST into a Vitess AST.
 func Convert(postgresStmt parser.Statement) (vitess.Statement, error) {
 	return ConvertWithOptions(postgresStmt, ConvertOptions{})
+}
+
+// ConvertWithContext converts a Postgres AST into a Vitess AST using the engine variables bound to ctx.
+func ConvertWithContext(ctx *sql.Context, postgresStmt parser.Statement) (vitess.Statement, error) {
+	return ConvertWithOptions(postgresStmt, ConvertOptions{}.WithContext(ctx))
 }
 
 // ConvertWithOptions converts a Postgres AST into a Vitess AST using the given options.
@@ -51,6 +75,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeAlterDefaultPrivileges(ctx, stmt)
 	case *tree.AlterDomain:
 		return nodeAlterDomain(ctx, stmt)
+	case *tree.AlterExtension:
+		return nodeAlterExtension(ctx, stmt)
 	case *tree.AlterFunction:
 		return nodeAlterFunction(ctx, stmt)
 	case *tree.AlterIndex:
@@ -89,6 +115,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeCancelSessions(ctx, stmt)
 	case *tree.CannedOptPlan:
 		return nodeCannedOptPlan(ctx, stmt)
+	case *tree.CloseCursor:
+		return nodeCloseCursor(ctx, stmt)
 	case *tree.Comment:
 		return nodeComment(ctx, stmt)
 	case *tree.CommitTransaction:
@@ -143,6 +171,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeCreateView(ctx, stmt)
 	case *tree.Deallocate:
 		return nodeDeallocate(ctx, stmt)
+	case *tree.DeclareCursor:
+		return nodeDeclareCursor(ctx, stmt)
 	case *tree.Delete:
 		return nodeDelete(ctx, stmt)
 	case *tree.Discard:
@@ -189,6 +219,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeExplainAnalyzeDebug(ctx, stmt)
 	case *tree.Export:
 		return nodeExport(ctx, stmt)
+	case *tree.FetchCursor:
+		return nodeFetchCursor(ctx, stmt)
 	case *tree.Grant:
 		return nodeGrant(ctx, stmt)
 	case *tree.GrantRole:
@@ -229,6 +261,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeRollbackToSavepoint(ctx, stmt)
 	case *tree.RollbackTransaction:
 		return nodeRollbackTransaction(ctx, stmt)
+	case *tree.ResetAll:
+		return vitess.InjectedStatement{Statement: &node.ResetSettings{}}, nil
 	case *tree.Savepoint:
 		return nodeSavepoint(ctx, stmt)
 	case *tree.Scatter:
@@ -245,6 +279,8 @@ func ConvertWithOptions(postgresStmt parser.Statement, options ConvertOptions) (
 		return nodeSetConstraints(ctx, stmt)
 	case *tree.SetSessionAuthorization:
 		return nodeSetSessionAuthorization(ctx, stmt)
+	case *tree.SetRole:
+		return nodeSetRole(ctx, stmt)
 	case *tree.SetSessionCharacteristics:
 		return nodeSetSessionCharacteristics(ctx, stmt)
 	case *tree.SetTransaction:

@@ -305,6 +305,25 @@ func TestPgAttributeViewColumns(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "pg_attribute includes view columns outside the search path",
+			SetUpScript: []string{
+				`CREATE SCHEMA other;`,
+				`SET search_path = other;`,
+				`CREATE TABLE remote (id INT PRIMARY KEY, label TEXT);`,
+				`CREATE VIEW v AS SELECT id, label AS name FROM remote;`,
+				`SET search_path = public;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `SELECT a.attname, a.atttypid FROM pg_catalog.pg_class c JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid WHERE c.relname = 'v' ORDER BY a.attnum;`,
+					Expected: []sql.Row{
+						{"id", uint32(23)},
+						{"name", uint32(25)},
+					},
+				},
+			},
+		},
 	})
 }
 
@@ -436,6 +455,7 @@ func TestPgAuthid(t *testing.T) {
 
 func TestPgAvailableExtensionVersions(t *testing.T) {
 	registerTestExtension()
+	registerUpdateTestExtension()
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_available_extension_versions",
@@ -449,6 +469,7 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 					Query: `SELECT name, version, installed, superuser, trusted, relocatable, schema, requires, comment FROM "pg_catalog"."pg_available_extension_versions" ORDER BY name;`,
 					Expected: []sql.Row{
 						{"doltgres_test", "1.0", "f", "f", "f", "t", nil, nil, "test extension to ensure that emulated extensions behave properly"},
+						{"doltgres_test_update", "1.0", "f", "f", "f", "f", nil, nil, "test extension whose declaration changes between releases"},
 						{"uuid-ossp", "1.1", "f", "t", "t", "t", nil, nil, "generate universally unique identifiers (UUIDs)"},
 						{"vector", "0.8.6", "f", "t", "f", "t", nil, nil, "vector data type and ivfflat and hnsw access methods"},
 					},
@@ -488,6 +509,7 @@ func TestPgAvailableExtensionVersions(t *testing.T) {
 
 func TestPgAvailableExtensions(t *testing.T) {
 	registerTestExtension()
+	registerUpdateTestExtension()
 	RunScripts(t, []ScriptTest{
 		{
 			Name: "pg_available_extensions",
@@ -501,6 +523,7 @@ func TestPgAvailableExtensions(t *testing.T) {
 					Query: `SELECT name, default_version, installed_version, comment FROM "pg_catalog"."pg_available_extensions" ORDER BY name;`,
 					Expected: []sql.Row{
 						{"doltgres_test", "1.0", nil, "test extension to ensure that emulated extensions behave properly"},
+						{"doltgres_test_update", "1.0", nil, "test extension whose declaration changes between releases"},
 						{"uuid-ossp", "1.1", nil, "generate universally unique identifiers (UUIDs)"},
 						{"vector", "0.8.6", nil, "vector data type and ivfflat and hnsw access methods"},
 					},
@@ -6839,6 +6862,7 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{1241754361, "dolt_tags_dolt_tags_name_idx_key", 2200, "i"},
 						{2969045375, "commits_from", 1634633383, "i"},
 						{1819666711, "commits_to", 1634633383, "i"},
+						{3962040469, "dolt_blame_t1", 1634633383, "v"},
 						{1763579892, "dolt_branches", 1634633383, "r"},
 						{3929519011, "dolt_branches_dolt_branches_name_idx_key", 1634633383, "i"},
 						{1212681264, "dolt_column_diff", 1634633383, "r"},
@@ -7233,6 +7257,12 @@ func TestSystemTablesInPgcatalog(t *testing.T) {
 						{3947121936, "source_commit", 25, 3, "f", "f", "f"},
 						{3947121936, "target", 25, 4, "f", "f", "f"},
 						{3947121936, "unmerged_tables", 25, 5, "f", "f", "f"},
+						{3962040469, "pk", 23, 1, "f", "f", "f"},
+						{3962040469, "commit", 25, 2, "f", "f", "f"},
+						{3962040469, "commit_date", 1114, 3, "f", "f", "f"},
+						{3962040469, "committer", 25, 4, "f", "f", "f"},
+						{3962040469, "email", 25, 5, "f", "f", "f"},
+						{3962040469, "message", 25, 6, "f", "f", "f"},
 						{3999387287, "branch", 25, 1, "t", "f", "f"},
 						{3999387287, "last_read", 1114, 2, "f", "f", "f"},
 						{3999387287, "last_write", 1114, 3, "f", "f", "f"},
@@ -7329,6 +7359,98 @@ func TestPgAttributeIndexes(t *testing.T) {
 						{"test_table", "description", int16(3)},
 						{"test_table", "created_at", int16(4)},
 					},
+				},
+			},
+		},
+	})
+}
+
+func TestRegrole(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "regrole",
+			SetUpScript: []string{
+				`CREATE ROLE regrole_role;`,
+				`CREATE TABLE regrole_t (id INT PRIMARY KEY, r REGROLE);`,
+				`INSERT INTO regrole_t VALUES (1, 'postgres'), (2, 'regrole_role');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT 'postgres'::regrole;`,
+					Expected: []sql.Row{{"postgres"}},
+				},
+				{
+					Query:    `SELECT oid::regrole FROM pg_authid WHERE rolname = 'regrole_role';`,
+					Expected: []sql.Row{{"regrole_role"}},
+				},
+				{
+					Query:    `SELECT 'regrole_role'::REGROLE::OID = (SELECT oid FROM pg_authid WHERE rolname = 'regrole_role'), 'regrole_role'::REGROLE::TEXT, to_regrole('regrole_role') IS NOT NULL, to_regrole('nope'), (SELECT rolname FROM pg_roles WHERE oid = 'regrole_role'::REGROLE);`,
+					Expected: []sql.Row{{"t", "regrole_role", "t", nil, "regrole_role"}},
+				},
+				{
+					Query:    `SELECT typname FROM pg_type WHERE typname IN ('regrole', '_regrole') ORDER BY typname;`,
+					Expected: []sql.Row{{"_regrole"}, {"regrole"}},
+				},
+				{
+					Query:    `SELECT id, r, r::TEXT FROM regrole_t ORDER BY id;`,
+					Expected: []sql.Row{{1, "postgres", "postgres"}, {2, "regrole_role", "regrole_role"}},
+				},
+				{
+					Query:    `SELECT ARRAY['postgres', 'regrole_role']::regrole[];`,
+					Expected: []sql.Row{{"{postgres,regrole_role}"}},
+				},
+				{
+					Query:       `SELECT 'nope'::REGROLE;`,
+					ExpectedErr: `role "nope" does not exist`,
+				},
+				{
+					Query:       `SELECT 'a.b'::REGROLE;`,
+					ExpectedErr: "invalid name syntax",
+				},
+			},
+		},
+		{
+			Name: "quoted role output roundtrip",
+			SetUpScript: []string{
+				`CREATE ROLE "MixedCase"`, `CREATE ROLE mixedcase`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '"MixedCase"'::regrole::text`,
+					Expected: []sql.Row{{`"MixedCase"`}},
+				},
+				{
+					Query:    `SELECT '"MixedCase"'::regrole::text::regrole = '"MixedCase"'::regrole`,
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
+		{
+			Name: "zero OID sentinel",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '-'::regrole::oid`,
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    `SELECT 0::regrole::text`,
+					Expected: []sql.Row{{"-"}},
+				},
+			},
+		},
+		{
+			Name: "quoted char role",
+			SetUpScript: []string{
+				`CREATE ROLE "char"`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '"char"'::regrole::oid = (SELECT oid FROM pg_roles WHERE rolname = 'char')`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT '"char"'::regrole::text`,
+					Expected: []sql.Row{{`"char"`}},
 				},
 			},
 		},

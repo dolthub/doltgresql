@@ -27,6 +27,7 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/timetz"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	"github.com/dolthub/doltgresql/server/compare"
+	"github.com/dolthub/doltgresql/server/functions"
 	"github.com/dolthub/doltgresql/server/functions/framework"
 	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
@@ -171,7 +172,11 @@ var date_gt_timestamptz = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.Date, pgtypes.TimestampTZ},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res := val1.(time.Time).Compare(val2.(time.Time))
+		date, err := functions.DateToTimestampTZ(ctx, val1.(time.Time))
+		if err != nil {
+			return nil, err
+		}
+		res := date.Compare(val2.(time.Time))
 		return res == 1, nil
 	},
 }
@@ -519,7 +524,11 @@ var timestamptz_gt_date = framework.Function2{
 	Parameters: [2]*pgtypes.DoltgresType{pgtypes.TimestampTZ, pgtypes.Date},
 	Strict:     true,
 	Callable: func(ctx *sql.Context, _ [3]*pgtypes.DoltgresType, val1 any, val2 any) (any, error) {
-		res := val1.(time.Time).Compare(val2.(time.Time))
+		date, err := functions.DateToTimestampTZ(ctx, val2.(time.Time))
+		if err != nil {
+			return nil, err
+		}
+		res := val1.(time.Time).Compare(date)
 		return res == 1, nil
 	},
 }

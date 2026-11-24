@@ -325,6 +325,32 @@ select 'drop table gexec_test', 'select ''2000-01-01''::date as party_over'`,
 			},
 		},
 		{
+			Name: "column names of schema-qualified functions",
+			SetUpScript: []string{
+				`CREATE SCHEMA function_labels;`,
+				`CREATE FUNCTION public.label_fn(integer) RETURNS integer LANGUAGE SQL AS 'SELECT $1 + 1';`,
+				`CREATE FUNCTION function_labels.label_fn(integer) RETURNS integer LANGUAGE SQL AS 'SELECT $1 + 2';`,
+				`CREATE FUNCTION function_labels."label.fn"(integer) RETURNS integer LANGUAGE SQL AS 'SELECT $1 + 3';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT public.label_fn(1), function_labels.label_fn(1);`,
+					Expected:         []sql.Row{{2, 3}},
+					ExpectedColNames: []string{"label_fn", "label_fn"},
+				},
+				{
+					Query:            `SELECT function_labels.label_fn(1) AS custom_label;`,
+					Expected:         []sql.Row{{3}},
+					ExpectedColNames: []string{"custom_label"},
+				},
+				{
+					Query:            `SELECT function_labels."label.fn"(1);`,
+					Expected:         []sql.Row{{4}},
+					ExpectedColNames: []string{"label.fn"},
+				},
+			},
+		},
+		{
 			// A function called in FROM without an alias keeps the column name given by its named OUT
 			// parameter, and only the table takes the function's name; a table alias renames a
 			// single-column result. Regression test for a fabricated table alias clobbering the OUT
@@ -384,6 +410,27 @@ select 'drop table gexec_test', 'select ''2000-01-01''::date as party_over'`,
 				{
 					Query:    `SELECT * FROM (SELECT 1, 2) t(a, a);`,
 					Expected: []sql.Row{{1, 2}},
+				},
+			},
+		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3851
+			Name: "string literal containing a double quote in a function argument",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT lower('"');`,
+					Expected:         []sql.Row{{`"`}},
+					ExpectedColNames: []string{"lower"},
+				},
+				{
+					Query:            `SELECT replace('a', '"', 'b');`,
+					Expected:         []sql.Row{{"a"}},
+					ExpectedColNames: []string{"replace"},
+				},
+				{
+					Query:            `SELECT '"';`,
+					Expected:         []sql.Row{{`"`}},
+					ExpectedColNames: []string{"?column?"},
 				},
 			},
 		},

@@ -19,9 +19,9 @@ import "testing"
 func TestDropIndex(t *testing.T) {
 	tests := []QueryParses{
 		Converts("DROP INDEX name"),
-		Parses("DROP INDEX CONCURRENTLY name"),
+		Converts("DROP INDEX CONCURRENTLY name"),
 		Converts("DROP INDEX IF EXISTS name"),
-		Parses("DROP INDEX CONCURRENTLY IF EXISTS name"),
+		Converts("DROP INDEX CONCURRENTLY IF EXISTS name"),
 		Parses("DROP INDEX name , name"),
 		Parses("DROP INDEX CONCURRENTLY name , name"),
 		Parses("DROP INDEX IF EXISTS name , name"),

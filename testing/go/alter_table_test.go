@@ -349,6 +349,24 @@ func TestAlterTable(t *testing.T) {
 			},
 		},
 		{
+			Name: "Add identity column",
+			SetUpScript: []string{
+				"CREATE TABLE test1 (a INT);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE test1 ADD COLUMN b INT GENERATED ALWAYS AS IDENTITY;",
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: ADD COLUMN does not yet create the sequence for an identity column
+					Query:    "INSERT INTO test1 (a) VALUES (10) RETURNING b;",
+					Expected: []sql.Row{{1}},
+					Skip:     true,
+				},
+			},
+		},
+		{
 			Name: "Drop Column",
 			SetUpScript: []string{
 				"CREATE TABLE test1 (a INT, b INT, c INT, d INT);",
@@ -372,8 +390,6 @@ func TestAlterTable(t *testing.T) {
 					Expected: []sql.Row{{1, 2}},
 				},
 				{
-					// TODO: Skipped until we support conditional execution on existence of column
-					Skip:     true,
 					Query:    "ALTER TABLE test1 DROP COLUMN IF EXISTS zzz;",
 					Expected: []sql.Row{},
 				},
@@ -384,6 +400,37 @@ func TestAlterTable(t *testing.T) {
 					Query:    "ALTER TABLE IF EXISTS doesNotExist DROP COLUMN z;",
 					Expected: []sql.Row{},
 				},
+			},
+		},
+		{
+			Name: "Drop Column IF EXISTS",
+			SetUpScript: []string{
+				"CREATE SCHEMA drop_schema;",
+				"CREATE TABLE drop_schema.t (id int PRIMARY KEY, old_column text, other text, \"MixedCase\" int);",
+				"INSERT INTO drop_schema.t VALUES (1, 'old', 'other', 42);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `ALTER TABLE drop_schema.t DROP COLUMN IF EXISTS old_column;`},
+				{Query: `ALTER TABLE drop_schema.t DROP COLUMN IF EXISTS old_column;`},
+				{Query: `SELECT * FROM drop_schema.t;`, Expected: []sql.Row{{1, "other", 42}}},
+				{Query: `ALTER TABLE drop_schema.t DROP COLUMN IF EXISTS missing, DROP COLUMN IF EXISTS other;`},
+				{Query: `ALTER TABLE drop_schema.t DROP COLUMN IF EXISTS mixedcase;`},
+				{Query: `SELECT "MixedCase" FROM drop_schema.t;`, Expected: []sql.Row{{42}}},
+				{Query: `ALTER TABLE drop_schema.t DROP COLUMN IF EXISTS "MIXEDCASE";`},
+				{Query: `SELECT "MixedCase" FROM drop_schema.t;`, Expected: []sql.Row{{42}}},
+				{Query: `ALTER TABLE drop_schema.t DROP COLUMN IF EXISTS "MixedCase", DROP COLUMN IF EXISTS "MixedCase";`},
+				{Query: `SELECT * FROM drop_schema.t;`, Expected: []sql.Row{{1}}},
+				{Query: `ALTER TABLE drop_schema.t DROP COLUMN old_column;`, ExpectedErr: "old_column"},
+				{Query: `ALTER TABLE IF EXISTS drop_schema.t DROP COLUMN old_column;`, ExpectedErr: "old_column"},
+				{Query: `ALTER TABLE drop_schema.missing DROP COLUMN IF EXISTS old_column;`, ExpectedErr: "missing"},
+				{Query: `ALTER TABLE IF EXISTS drop_schema.missing DROP COLUMN IF EXISTS old_column;`},
+				{Query: `DO $$ BEGIN ALTER TABLE drop_schema.t DROP COLUMN IF EXISTS missing; END $$;`},
+				{Query: `ALTER TABLE drop_schema.t DROP COLUMN IF EXISTS missing, ADD COLUMN added int DEFAULT 7;`},
+				{Query: `SELECT added FROM drop_schema.t;`, Expected: []sql.Row{{7}}},
+				{Query: `ALTER TABLE drop_schema.t DROP COLUMN IF EXISTS added;`},
+				{Query: `CREATE TABLE drop_schema.child (parent int REFERENCES drop_schema.t(id));`},
+				{Query: `ALTER TABLE drop_schema.t DROP COLUMN IF EXISTS id;`, ExpectedErr: "depend"},
+				{Query: `SELECT * FROM drop_schema.t;`, Expected: []sql.Row{{1}}},
 			},
 		},
 		{
@@ -595,6 +642,55 @@ func TestAlterTable(t *testing.T) {
 				{
 					Query:    `SELECT count(*) FROM app_event WHERE created > '2024-12-31 00:00:00+00'::timestamptz;`,
 					Expected: []sql.Row{{1}},
+				},
+			},
+		},
+		{
+			Name: "Alter Column Type with USING uses the encoding of the new type",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id int PRIMARY KEY, v date);",
+				"INSERT INTO t1 VALUES (1, '2026-01-01');",
+				"CREATE TABLE p (k boolean PRIMARY KEY);",
+				"INSERT INTO p VALUES (true);",
+				"CREATE TABLE t2 (id int PRIMARY KEY, v varchar(10));",
+				"INSERT INTO t2 VALUES (1, 'abc'), (2, 'abcdefgh');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t1 ALTER COLUMN v TYPE char(70000) USING repeat('x', 70000)::char(70000);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT length(v) FROM t1;",
+					Expected: []sql.Row{{70000}},
+				},
+				{
+					Query:    "ALTER TABLE p ALTER COLUMN k TYPE integer USING 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "CREATE TABLE c (k integer REFERENCES p(k));",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO c VALUES (1);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT dolt_verify_constraints('--all');",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:       "ALTER TABLE t2 ALTER COLUMN v TYPE varchar(5);",
+					ExpectedErr: "out of range for varchar(5)",
+				},
+				{
+					Query:    "ALTER TABLE t2 ALTER COLUMN v TYPE varchar(20);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT id, v FROM t2 ORDER BY id;",
+					Expected: []sql.Row{{1, "abc"}, {2, "abcdefgh"}},
 				},
 			},
 		},
@@ -1983,6 +2079,186 @@ ORDER BY schema_name, table_name;`,
 				{
 					Query:    "SELECT conname, condeferrable, condeferred FROM pg_constraint WHERE connamespace = 'public'::regnamespace AND condeferrable ORDER BY conname;",
 					Expected: []sql.Row{{"c2_pk", "t", "t"}, {"c_fk", "t", "f"}, {"c_u", "t", "f"}, {"c_y_fkey", "t", "f"}, {"c_z_key", "t", "f"}},
+				},
+			},
+		},
+		{
+			Name: "UNIQUE NULLS NOT DISTINCT",
+			SetUpScript: []string{
+				"CREATE TABLE at1 (id INT PRIMARY KEY, a INT, b INT);",
+				"INSERT INTO at1 VALUES (1, 1, NULL), (2, 1, NULL), (3, NULL, NULL);",
+				"CREATE TABLE at2 (id INT PRIMARY KEY);",
+				"INSERT INTO at2 VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "ALTER TABLE at1 ADD CONSTRAINT at1_a_b_key UNIQUE NULLS NOT DISTINCT (a, b);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD UNIQUE NULLS NOT DISTINCT (a);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD CONSTRAINT at1_a_b_key UNIQUE NULLS DISTINCT (a, b);",
+				},
+				{
+					Query: "DELETE FROM at1 WHERE id = 2;",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD CONSTRAINT at1_b_key UNIQUE NULLS NOT DISTINCT (b, a);",
+				},
+				{
+					Query:           "INSERT INTO at1 VALUES (4, NULL, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD COLUMN c INT UNIQUE NULLS NOT DISTINCT;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "ALTER TABLE at1 ADD COLUMN d INT;",
+				},
+				{
+					Query:           "ALTER TABLE at1 ADD CONSTRAINT at1_d_key UNIQUE NULLS NOT DISTINCT (d);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'at1'::regclass AND contype = 'u' ORDER BY 1;",
+					Expected: []sql.Row{
+						{"at1_a_b_key", "UNIQUE (a, b)"},
+						{"at1_b_key", "UNIQUE NULLS NOT DISTINCT (b, a)"},
+					},
+				},
+				{
+					Query: "UPDATE at1 SET d = 1 WHERE id = 1;",
+				},
+				{
+					Query:    "SELECT * FROM at1 ORDER BY id;",
+					Expected: []sql.Row{{1, 1, nil, 1}, {3, nil, nil, nil}},
+				},
+				{
+					Query: "ALTER TABLE at2 ADD COLUMN c INT UNIQUE NULLS NOT DISTINCT;",
+				},
+				{
+					Query:           "INSERT INTO at2 (id) VALUES (2);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO at2 VALUES (2, 1);",
+				},
+				{
+					Query:    "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid = 'at2'::regclass AND contype = 'u';",
+					Expected: []sql.Row{{"at2_c_key", "UNIQUE NULLS NOT DISTINCT (c)"}},
+				},
+			},
+		},
+		{
+			Name: "column defaults with user-defined functions keep working after table rewrites",
+			SetUpScript: []string{
+				"CREATE FUNCTION f() RETURNS INT LANGUAGE SQL AS $$ SELECT 1 $$;",
+				"CREATE TABLE t (id INT, a INT DEFAULT f());",
+				"INSERT INTO t (id) VALUES (1);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "ALTER TABLE t ALTER COLUMN a SET NOT NULL;",
+				},
+				{
+					Query: "ALTER TABLE t ALTER COLUMN a TYPE BIGINT;",
+				},
+				{
+					Query: "ALTER TABLE t ADD COLUMN b INT DEFAULT 2;",
+				},
+				{
+					Query: "ALTER TABLE t DROP COLUMN b;",
+				},
+				{
+					Query: "ALTER TABLE t ADD PRIMARY KEY (id);",
+				},
+				{
+					Query: "INSERT INTO t (id) VALUES (2);",
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 1}, {2, 1}},
+				},
+			},
+		},
+		{
+			Name: "ADD COLUMN NOT NULL without a default",
+			SetUpScript: []string{
+				"CREATE TABLE a (id INT PRIMARY KEY);",
+				"INSERT INTO a VALUES (1), (2);",
+				"CREATE TABLE e (id INT PRIMARY KEY);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "ALTER TABLE a ADD COLUMN h INT NOT NULL;",
+					ExpectedErr:     `column "h" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "ALTER TABLE a ADD COLUMN s TEXT NOT NULL;",
+					ExpectedErr:     `column "s" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "ALTER TABLE a ADD COLUMN d DATE NOT NULL;",
+					ExpectedErr:     `column "d" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "ALTER TABLE a ADD COLUMN b BOOLEAN NOT NULL;",
+					ExpectedErr:     `column "b" of relation "a" contains null values`,
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query: "ALTER TABLE a ADD COLUMN g INT NOT NULL GENERATED ALWAYS AS (id * 2) STORED;",
+				},
+				{
+					Query:    "SELECT * FROM a ORDER BY id;",
+					Expected: []sql.Row{{1, 2}, {2, 4}},
+				},
+				{
+					Query: "ALTER TABLE e ADD COLUMN h INT NOT NULL;",
+				},
+				{
+					Query: "ALTER TABLE e ADD COLUMN s TEXT NOT NULL;",
+				},
+				{
+					Query:           "INSERT INTO e (id) VALUES (3);",
+					ExpectedErr:     "Field 'h' doesn't have a default value",
+					ExpectedErrCode: "23502",
+				},
+				{
+					Query:           "INSERT INTO e (id) VALUES (3);",
+					ExpectedErr:     `null value in column "h" of relation "e" violates not-null constraint`,
+					ExpectedErrCode: "23502",
+					Skip:            true,
+				},
+				{
+					Query: "INSERT INTO e VALUES (3, 4, 'x');",
+				},
+				{
+					Query:    "SELECT * FROM e;",
+					Expected: []sql.Row{{3, 4, "x"}},
+				},
+				{
+					Query: "DELETE FROM a;",
+				},
+				{
+					Query: "ALTER TABLE a ADD COLUMN h INT NOT NULL;",
+				},
+				{
+					Query:    "SELECT column_name FROM information_schema.columns WHERE table_name = 'a' ORDER BY ordinal_position;",
+					Expected: []sql.Row{{"id"}, {"g"}, {"h"}},
 				},
 			},
 		},

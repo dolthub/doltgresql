@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/resolve"
 	"github.com/dolthub/go-mysql-server/sql"
@@ -35,6 +36,7 @@ type PgDatabase struct {
 
 var _ sql.DatabaseSchema = &PgDatabase{}
 var _ sql.SchemaDatabase = &PgDatabase{}
+var _ sql.ViewDatabase = &PgDatabase{}
 var _ sql.SchemaObjectNameValidator = &PgDatabase{}
 var _ sql.IndexNameGenerator = &PgDatabase{}
 
@@ -47,6 +49,7 @@ type PgReadOnlyDatabase struct {
 
 var _ sql.DatabaseSchema = &PgReadOnlyDatabase{}
 var _ sql.SchemaDatabase = &PgReadOnlyDatabase{}
+var _ sql.ViewDatabase = &PgReadOnlyDatabase{}
 
 // WrapSqleDatabase creates a PgDatabase from a sqle.Database.
 func WrapSqleDatabase(db sqle.Database) *PgDatabase {
@@ -100,6 +103,50 @@ func (d *PgDatabase) GetSchema(ctx *sql.Context, schemaName string) (sql.Databas
 		return schema, ok, err
 	}
 	return applySchemaWrap(schemaName, schema), true, nil
+}
+
+// GetViewDefinition resolves an unqualified view against the search path in relation order.
+// Dolt's view lookup checks only the first existing schema on the path, while its table lookup
+// searches all schemas. A table in an earlier schema must also hide a later view of the same name.
+func (d *PgDatabase) GetViewDefinition(ctx *sql.Context, viewName string) (sql.ViewDefinition, bool, error) {
+	if !resolve.UseSearchPath || d.Database.Schema() != "" || isDoltBlameView(viewName) {
+		return d.Database.GetViewDefinition(ctx, viewName)
+	}
+	return viewDefinitionOnSearchPath(ctx, d, viewName)
+}
+
+// Dolt generates blame views from their backing tables. Looking for one in a schema
+// without the backing table returns an error rather than reporting that no view exists.
+func isDoltBlameView(viewName string) bool {
+	return strings.HasPrefix(strings.ToLower(viewName), doltdb.DoltBlameViewPrefix)
+}
+
+func viewDefinitionOnSearchPath(ctx *sql.Context, db sql.SchemaDatabase, viewName string) (sql.ViewDefinition, bool, error) {
+	path, err := core.SearchPath(ctx)
+	if err != nil {
+		return sql.ViewDefinition{}, false, err
+	}
+	for _, schemaName := range path {
+		schema, exists, err := db.GetSchema(ctx, schemaName)
+		if err != nil {
+			return sql.ViewDefinition{}, false, err
+		}
+		if !exists {
+			continue
+		}
+		if _, found, err := schema.GetTableInsensitive(ctx, viewName); err != nil {
+			return sql.ViewDefinition{}, false, err
+		} else if found {
+			return sql.ViewDefinition{}, false, nil
+		}
+		if viewDB, ok := schema.(sql.ViewDatabase); ok {
+			view, found, err := viewDB.GetViewDefinition(ctx, viewName)
+			if err != nil || found {
+				return view, found, err
+			}
+		}
+	}
+	return sql.ViewDefinition{}, false, nil
 }
 
 // GetTableInsensitive overrides sqle.Database.GetTableInsensitive to check the pg_catalog
@@ -162,6 +209,14 @@ func (d *PgReadOnlyDatabase) GetSchema(ctx *sql.Context, schemaName string) (sql
 		return schema, ok, err
 	}
 	return applySchemaWrap(schemaName, schema), true, nil
+}
+
+// GetViewDefinition applies the same relation-order lookup to revision databases.
+func (d *PgReadOnlyDatabase) GetViewDefinition(ctx *sql.Context, viewName string) (sql.ViewDefinition, bool, error) {
+	if !resolve.UseSearchPath || d.ReadOnlyDatabase.Schema() != "" || isDoltBlameView(viewName) {
+		return d.ReadOnlyDatabase.GetViewDefinition(ctx, viewName)
+	}
+	return viewDefinitionOnSearchPath(ctx, d, viewName)
 }
 
 // GetTableInsensitive overrides sqle.Database.GetTableInsensitive to check the pg_catalog

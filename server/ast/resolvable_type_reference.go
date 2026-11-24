@@ -133,6 +133,8 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 				doltgresType = pgtypes.Float32
 			case oid.T_float8:
 				doltgresType = pgtypes.Float64
+			case oid.T_inet:
+				doltgresType = pgtypes.Inet
 			case oid.T_int2:
 				doltgresType = pgtypes.Int16
 			case oid.T_int2vector:
@@ -168,6 +170,10 @@ func nodeResolvableTypeReference(ctx *Context, typ tree.ResolvableTypeReference,
 				doltgresType = pgtypes.Regnamespace
 			case oid.T_regproc:
 				doltgresType = pgtypes.Regproc
+			case oid.T_regprocedure:
+				doltgresType = pgtypes.Regprocedure
+			case oid.T_regrole:
+				doltgresType = pgtypes.Regrole
 			case oid.T_regtype:
 				doltgresType = pgtypes.Regtype
 			case oid.T_text:

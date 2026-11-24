@@ -756,6 +756,12 @@ func (u *sqlSymUnion) operatorToDrop() tree.OperatorToDrop {
 func (u *sqlSymUnion) operatorsToDrop() []tree.OperatorToDrop {
     return u.val.([]tree.OperatorToDrop)
 }
+func (u *sqlSymUnion) cursorOptions() tree.CursorOptions {
+    return u.val.(tree.CursorOptions)
+}
+func (u *sqlSymUnion) fetchCursor() *tree.FetchCursor {
+    return u.val.(*tree.FetchCursor)
+}
 func (u *sqlSymUnion) vacuumOptions() tree.VacuumOptions {
     return u.val.(tree.VacuumOptions)
 }
@@ -789,11 +795,11 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 // below; search this file for "Keyword category lists".
 
 // Ordinary key words in alphabetical order.
-%token <str> ABORT ACCESS ACTION ADD ADMIN AFTER AGGREGATE
+%token <str> ABORT ABSOLUTE ACCESS ACTION ADD ADMIN AFTER AGGREGATE
 %token <str> ALIGNMENT ALL ALLOW_CONNECTIONS ALTER ALWAYS ANALYSE ANALYZE AND AND_AND ANY ANNOTATE_TYPE ARRAY AS ASC
-%token <str> ASSIGNMENT ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTO AUTOMATIC
+%token <str> ASENSITIVE ASSIGNMENT ASYMMETRIC AT ATOMIC ATTACH ATTRIBUTE AUTHORIZATION AUTO AUTOMATIC
 
-%token <str> BACKUP BACKUPS BASETYPE BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
+%token <str> BACKUP BACKUPS BACKWARD BASETYPE BEFORE BEGIN BETWEEN BIGINT BIGSERIAL BINARY BIT
 %token <str> FORMAT CSV HEADER
 %token <str> BUCKET_COUNT 
 %token <str> BOOLEAN BOTH BOX2D BUFFER_USAGE_LIMIT BUNDLE BY BYPASSRLS
@@ -807,7 +813,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> CONTROLJOB CONVERSION CONVERT COPY COST CREATE CREATEDB CREATELOGIN CREATEROLE
 %token <str> CROSS CUBE CURRENT CURRENT_CATALOG CURRENT_DATE CURRENT_SCHEMA
 %token <str> CURRENT_ROLE CURRENT_TIME CURRENT_TIMESTAMP
-%token <str> CURRENT_USER CYCLE
+%token <str> CURRENT_USER CURSOR CYCLE
 
 %token <str> DATA DATABASE DATABASES DATE DAY DEALLOCATE DEC DECIMAL DECLARE
 %token <str> DEFAULT DEFAULTS DEFERRABLE DEFERRED DEFINER DELETE DELIMITER DEPENDS DESC DESCRIBE DESERIALFUNC DESTINATION
@@ -821,19 +827,19 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 
 %token <str> FALSE FAMILY FETCH FETCHVAL FETCHTEXT FETCHVAL_PATH FETCHTEXT_PATH
 %token <str> FILES FILTER FINALFUNC FINALFUNC_EXTRA FINALFUNC_MODIFY FINALIZE FIRST FLOAT FLOAT4 FLOAT8 FLOORDIV
-%token <str> FOLLOWING FOR FORCE FORCE_INDEX FOREIGN FREEZE FROM FULL FUNCTION FUNCTIONS
+%token <str> FOLLOWING FOR FORCE FORCE_INDEX FOREIGN FORWARD FREEZE FROM FULL FUNCTION FUNCTIONS
 
 %token <str> GENERATED GEOGRAPHY GEOMETRY GEOMETRYM GEOMETRYZ GEOMETRYZM
 %token <str> GEOMETRYCOLLECTION GEOMETRYCOLLECTIONM GEOMETRYCOLLECTIONZ GEOMETRYCOLLECTIONZM
 %token <str> GLOBAL GRANT GRANTED GRANTS GREATEST GROUP GROUPING GROUPS
 
-%token <str> HANDLER HASH HASHES HAVING HIGH HISTOGRAM HOUR HYPOTHETICAL
+%token <str> HANDLER HASH HASHES HAVING HIGH HISTOGRAM HOLD HOUR HYPOTHETICAL
 
 %token <str> ICU_LOCALE ICU_RULES IDENTITY
 %token <str> IF IFERROR IFNULL IGNORE_FOREIGN_KEYS ILIKE IMMEDIATE IMPLICIT IMMUTABLE IMPORT
 %token <str> IN INCLUDE INCLUDING INCREMENT INCREMENTAL INET INET_CONTAINED_BY_OR_EQUALS
 %token <str> INET_CONTAINS_OR_EQUALS INDEX INDEX_CLEANUP INDEXES INHERIT INHERITS INITCOND INJECT INLINE INPUT INTERLEAVE INITIALLY
-%token <str> INNER INOUT INSERT INSTEAD INT INTEGER INTERNALLENGTH
+%token <str> INNER INOUT INSENSITIVE INSERT INSTEAD INT INTEGER INTERNALLENGTH
 %token <str> INTERSECT INTERVAL INTO INTO_DB INVERTED INVOKER IS ISERROR ISNULL ISOLATION IS_TEMPLATE
 
 %token <str> JOB JOBS JOIN JSON JSONB JSON_SOME_EXISTS JSON_ALL_EXISTS JSON_TABLE
@@ -846,7 +852,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %token <str> LOCAL LOCALE LOCALE_PROVIDER LOCALTIME LOCALTIMESTAMP LOCKED LOGGED LOGIN LOOKUP LOW LSHIFT
 
 %token <str> MAIN MATCH MATERIALIZED MAXVALUE MERGE MERGES METHOD MFINALFUNC MFINALFUNC_EXTRA MFINALFUNC_MODIFY
-%token <str> MINITCOND MINUTE MINVALUE MINVFUNC MODIFYCLUSTERSETTING MODULUS MONTH MSFUNC MSPACE MSSPACE MSTYPE
+%token <str> MINITCOND MINUTE MINVALUE MINVFUNC MODIFYCLUSTERSETTING MODULUS MONTH MOVE MSFUNC MSPACE MSSPACE MSTYPE
 %token <str> MULTILINESTRING MULTILINESTRINGM MULTILINESTRINGZ MULTILINESTRINGZM MULTIPOINT MULTIPOINTM
 %token <str> MULTIPOINTZ MULTIPOINTZM MULTIPOLYGON MULTIPOLYGONM MULTIPOLYGONZ MULTIPOLYGONZM MULTIRANGE_TYPE_NAME
 
@@ -859,18 +865,18 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 
 %token <str> PARALLEL PARAMETER PARENT PARSER PARTIAL PARTITION PARTITIONS PASSEDBYVALUE PASSING PASSWORD PATH PAUSE PAUSED PHYSICAL
 %token <str> PLACING PLAIN PLAN PLANS POINT POINTM POINTZ POINTZM POLICY POLYGON POLYGONM POLYGONZ POLYGONZM
-%token <str> POSITION PRECEDING PRECISION PREFERRED PREPARE PRESERVE PRIMARY PRIORITY PRIVILEGES
+%token <str> POSITION PRECEDING PRECISION PREFERRED PREPARE PRESERVE PRIMARY PRIOR PRIORITY PRIVILEGES
 %token <str> PROCEDURAL PROCEDURE PROCEDURES PROCESS_MAIN PROCESS_TOAST PUBLIC PUBLICATION
 
 %token <str> QUERIES QUERY QUOTES
 
 %token <str> RANGE RANGES READ READ_ONLY READ_WRITE REAL RECEIVE RECURSIVE RECURRING REF REFERENCES REFERENCING REFRESH
-%token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELEASE REMAINDER
+%token <str> REGCLASS REGPROC REGPROCEDURE REGNAMESPACE REGTYPE REINDEX RELATIVE RELEASE REMAINDER
 %token <str> REMOVE_PATH RENAME REPEATABLE REPLACE REPLICA REPLICATION RESET RESTART RESTORE RESTRICT RESTRICTED RESUME
 %token <str> RETRY RETURN RETURNING RETURNS REVISION_HISTORY REVOKE RIGHT RIGHTARG
 %token <str> ROLE ROLES ROUTINE ROUTINES ROLLBACK ROLLUP ROW ROWS RSHIFT RULE RUNNING
 
-%token <str> SAFE SAVEPOINT SCALAR SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCRUB SEARCH SECOND SECURITY
+%token <str> SAFE SAVEPOINT SCALAR SCATTER SCHEDULE SCHEDULES SCHEMA SCHEMAS SCROLL SCRUB SEARCH SECOND SECURITY
 %token <str> SECURITY_BARRIER SECURITY_INVOKER SEED SELECT SEND
 %token <str> SERIALFUNC SERIALIZABLE SERVER SESSION SESSIONS SESSION_USER SET SETOF SETTING SETTINGS SEQUENCE SEQUENCES SFUNC
 %token <str> SHARE SHAREABLE SHOW SIMILAR SIMPLE SKIP SKIP_LOCKED SKIP_DATABASE_STATS SKIP_MISSING_FOREIGN_KEYS
@@ -929,6 +935,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> alter_index_stmt
 %type <tree.Statement> alter_materialized_view_stmt
 %type <tree.Statement> alter_function_stmt
+%type <tree.Statement> alter_extension_stmt
 %type <tree.Statement> alter_language_stmt
 %type <tree.Statement> alter_procedure_stmt
 %type <tree.Statement> alter_view_stmt
@@ -1092,6 +1099,8 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Statement> set_constraints_stmt
 %type <tree.Statement> set_exprs_internal
 %type <tree.Statement> generic_set_single_config
+%type <tree.Statement> generic_reset_single_config
+%type <str> opt_in_database
 %type <tree.Statement> set_session_or_local_cmd
 %type <tree.Statement> set_session_authorization
 %type <tree.Statement> set_var
@@ -1143,6 +1152,11 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 
 %type <tree.Statement> close_cursor_stmt
 %type <tree.Statement> declare_cursor_stmt
+%type <tree.Statement> fetch_cursor_stmt
+%type <tree.Statement> move_cursor_stmt
+%type <tree.CursorOptions> opt_cursor_options opt_hold
+%type <*tree.FetchCursor> fetch_args
+%type <empty> from_in opt_from_in
 %type <tree.Statement> reindex_stmt
 
 %type <tree.Statement> vacuum_stmt
@@ -1255,7 +1269,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <[]string> schema_name_list role_spec_list opt_role_list opt_owned_by_list
 %type <*tree.UnresolvedName> table_pattern complex_table_pattern
 %type <*tree.UnresolvedName> column_path prefixed_column_path column_path_with_star
-%type <tree.TableExpr> insert_target create_stats_target analyze_target
+%type <tree.TableExpr> insert_target create_stats_target
 
 %type <*tree.UnresolvedObjectName> opt_handler_inline opt_handler_validator
 %type <*tree.LanguageHandler> opt_language_handler
@@ -1418,6 +1432,7 @@ func (u *sqlSymUnion) vacuumTableAndColsList() tree.VacuumTableAndColsList {
 %type <tree.Expr> opt_changefeed_sink
 
 %type <str> explain_option_name explain_option_value
+%type <str> analyze_verb
 %type <[]string> explain_option_list opt_enum_val_list enum_val_list
 
 %type <tree.ResolvableTypeReference> typename simple_typename cast_target
@@ -1613,8 +1628,10 @@ non_transaction_stmt:
 | release_stmt      // EXTEND WITH HELP: RELEASE
 | refresh_stmt      // EXTEND WITH HELP: REFRESH
 | set_stmt // help texts in sub-rule
-| close_cursor_stmt
-| declare_cursor_stmt
+| close_cursor_stmt   // EXTEND WITH HELP: CLOSE
+| declare_cursor_stmt // EXTEND WITH HELP: DECLARE
+| fetch_cursor_stmt   // EXTEND WITH HELP: FETCH
+| move_cursor_stmt    // EXTEND WITH HELP: MOVE
 | reindex_stmt
 | vacuum_stmt
 
@@ -1667,6 +1684,7 @@ alter_ddl_stmt:
 | alter_type_stmt               // EXTEND WITH HELP: ALTER TYPE
 | alter_trigger_stmt            // EXTEND WITH HELP: ALTER TRIGGER
 | alter_language_stmt           // EXTEND WITH HELP: ALTER LANGUAGE
+| alter_extension_stmt          // EXTEND WITH HELP: ALTER EXTENSION
 | alter_domain_stmt             // EXTEND WITH HELP: ALTER DOMAIN
 
 // %Help: ALTER TABLE - change the definition of a table
@@ -1832,9 +1850,9 @@ opt_alter_database:
   {
     $$.val = &tree.AlterDatabase{Name: tree.Name($3), SetVar: $5.setVar()}
   }
-| ALTER DATABASE database_name RESET name
+| ALTER DATABASE database_name RESET generic_reset_single_config
   {
-    $$.val = &tree.AlterDatabase{Name: tree.Name($3), Tablespace: $5}
+    $$.val = &tree.AlterDatabase{Name: tree.Name($3), SetVar: $5.setVar()}
   }
 | ALTER DATABASE database_name RESET ALL
   {
@@ -1989,6 +2007,16 @@ alter_index_stmt:
 // ALTER INDEX has its error help token here because the ALTER INDEX
 // prefix is spread over multiple non-terminals.
 | ALTER INDEX error // SHOW HELP: ALTER INDEX
+
+alter_extension_stmt:
+  ALTER EXTENSION name UPDATE
+  {
+    $$.val = &tree.AlterExtension{Name: tree.Name($3)}
+  }
+| ALTER EXTENSION name UPDATE TO non_reserved_word_or_sconst
+  {
+    $$.val = &tree.AlterExtension{Name: tree.Name($3), Version: $6}
+  }
 
 alter_language_stmt:
   ALTER opt_procedural LANGUAGE name RENAME TO name
@@ -2163,9 +2191,9 @@ alter_oneindex_stmt:
   {
     $$.val = &tree.AlterIndex{Index: $5.tableIndexName(), IfExists: true, Cmd: $6.alterIndexCmd()}
   }
-| ALTER INDEX table_index_name ATTACH PARTITION index_name
+| ALTER INDEX table_index_name ATTACH PARTITION db_object_name
   {
-    $$.val = &tree.AlterIndex{Index: $3.tableIndexName(), Cmd: &tree.AlterIndexAttachPartition{Index: tree.UnrestrictedName($6)}}
+    $$.val = &tree.AlterIndex{Index: $3.tableIndexName(), Cmd: &tree.AlterIndexAttachPartition{Index: $6.unresolvedObjectName()}}
   }
 | ALTER INDEX table_index_name opt_no DEPENDS ON EXTENSION name
   {
@@ -2265,9 +2293,9 @@ alter_table_action:
     }
   }
   // ALTER TABLE <name> ADD CONSTRAINT ... USING INDEX
-| ADD CONSTRAINT constraint_name unique_or_primary USING INDEX index_name opt_deferrable_mode opt_initially
+| ADD CONSTRAINT constraint_name unique_or_primary USING INDEX db_object_name opt_deferrable_mode opt_initially
   {
-    $$.val = tree.AlterTableConstraintUsingIndex{Constraint: tree.Name($3), IsUnique: $4.bool(), Index: tree.Name($7), Deferrable: $8.deferrableMode(), Initially: $9.initiallyMode()}
+    $$.val = tree.AlterTableConstraintUsingIndex{Constraint: tree.Name($3), IsUnique: $4.bool(), Index: $7.unresolvedObjectName(), Deferrable: $8.deferrableMode(), Initially: $9.initiallyMode()}
   }
   // ALTER TABLE <name> ALTER CONSTRAINT ...
 | ALTER CONSTRAINT constraint_name opt_deferrable_mode opt_initially
@@ -5608,34 +5636,31 @@ table_name_list:
 // %Help: ANALYZE - collect table statistics
 // %Category: Misc
 // %Text:
-// ANALYZE [<tablename>]
+// ANALYZE [ ( <option> [, ...] ) ] [ <tablename> [ ( <colname> [, ...] ) ] [, ...] ]
+// ANALYZE [ VERBOSE ] [ <tablename> [ ( <colname> [, ...] ) ] [, ...] ]
 //
 // %SeeAlso: CREATE STATISTICS
 analyze_stmt:
-  ANALYZE
-  {
-    $$.val = &tree.Analyze{}
-  }
-| ANALYZE analyze_target
+  analyze_verb opt_vacuum_option_list opt_vacuum_table_and_cols_list
   {
     $$.val = &tree.Analyze{
-      Table: $2.tblExpr(),
+      Options: $2.vacuumOptions(),
+      TablesAndCols: $3.vacuumTableAndColsList(),
+    }
+  }
+| analyze_verb VERBOSE opt_vacuum_table_and_cols_list
+  {
+    $$.val = &tree.Analyze{
+      Options: tree.VacuumOptions{&tree.VacuumOption{Option: "VERBOSE", Value: true}},
+      TablesAndCols: $3.vacuumTableAndColsList(),
     }
   }
 | ANALYZE error // SHOW HELP: ANALYZE
-| ANALYSE analyze_target
-  {
-    $$.val = &tree.Analyze{
-      Table: $2.tblExpr(),
-    }
-  }
 | ANALYSE error // SHOW HELP: ANALYZE
 
-analyze_target:
-  table_name
-  {
-    $$.val = $1.unresolvedObjectName()
-  }
+analyze_verb:
+  ANALYZE
+| ANALYSE
 
 explain_verb:
   EXPLAIN
@@ -5944,11 +5969,11 @@ other_targets:
   }
 | FUNCTION routine_with_args_list
   {
-    $$.val = tree.TargetList{TargetType: privilege.Routine, Routines: $2.routines()}
+    $$.val = tree.TargetList{TargetType: privilege.Function, Routines: $2.routines()}
   }
 | PROCEDURE routine_with_args_list
   {
-    $$.val = tree.TargetList{TargetType: privilege.Routine, Routines: $2.routines()}
+    $$.val = tree.TargetList{TargetType: privilege.Procedure, Routines: $2.routines()}
   }
 | ROUTINE routine_with_args_list
   {
@@ -6012,7 +6037,7 @@ routine_with_args_list:
 routine_with_args:
   routine_name
   {
-    $$.val = tree.Routine{Name: $1.unresolvedObjectName(), Args: nil}
+    $$.val = tree.Routine{Name: $1.unresolvedObjectName(), Args: nil, ArgsOmitted: true}
   }
 | routine_name '(' opt_routine_args ')'
   {
@@ -6238,13 +6263,17 @@ reset_stmt:
     if name == "role" {
       $$.val = &tree.SetRole{Reset: true}
     } else {
-      $$.val = &tree.SetVar{Name: $2, Values:tree.Exprs{tree.DefaultVal{}}}
+      $$.val = &tree.SetVar{Name: $2, Reset: true, Values:tree.Exprs{tree.DefaultVal{}}}
     }
+  }
+| RESET name '.' name
+  {
+    $$.val = &tree.SetVar{Namespace: $2, Name: $4, Reset: true, Values: tree.Exprs{tree.DefaultVal{}}}
   }
 // TIME ZONE is special: it is two tokens, but is really the identifier "TIME ZONE".
 | RESET TIME ZONE
   {
-    $$.val = &tree.SetVar{Name: "timezone", Values:tree.Exprs{tree.DefaultVal{}}}
+    $$.val = &tree.SetVar{Name: "timezone", Reset: true, Values:tree.Exprs{tree.DefaultVal{}}}
   }
 | RESET ALL
   {
@@ -6252,7 +6281,7 @@ reset_stmt:
   }
 | RESET SESSION AUTHORIZATION
   {
-    $$.val = &tree.SetSessionAuthorization{}
+    $$.val = &tree.SetSessionAuthorization{Reset: true}
   }
 | RESET error // SHOW HELP: RESET
 
@@ -6498,6 +6527,20 @@ generic_set_single_config:
   {
     $$.val = &tree.SetVar{Name: $1, FromCurrent: true}
   }
+| name '.' name FROM CURRENT
+  {
+    $$.val = &tree.SetVar{Namespace: $1, Name: $3, FromCurrent: true}
+  }
+
+generic_reset_single_config:
+  name
+  {
+    $$.val = &tree.SetVar{Name: $1, Reset: true, Values: tree.Exprs{tree.DefaultVal{}}}
+  }
+| name '.' name
+  {
+    $$.val = &tree.SetVar{Namespace: $1, Name: $3, Reset: true, Values: tree.Exprs{tree.DefaultVal{}}}
+  }
 
 var_list:
   var_value
@@ -6537,7 +6580,7 @@ set_special_syntax:
 set_session_authorization:
   SESSION AUTHORIZATION DEFAULT
   {
-    $$.val = &tree.SetSessionAuthorization{}
+    $$.val = &tree.SetSessionAuthorization{Default: true}
   }
 | SESSION AUTHORIZATION non_reserved_word_or_sconst
   {
@@ -6553,6 +6596,10 @@ set_role:
     } else {
       $$.val = &tree.SetRole{Name: $2}
     }
+  }
+| ROLE DEFAULT
+  {
+    $$.val = &tree.SetRole{Default: true}
   }
 
 // SET NAMES is the SQL standard syntax for SET client_encoding.
@@ -6698,14 +6745,181 @@ show_stmt:
 | SHOW error                // SHOW HELP: SHOW
 | show_last_query_stats_stmt // EXTEND WITH HELP: SHOW LAST QUERY STATISTICS
 
-// Cursors are not yet supported by CockroachDB. CLOSE ALL is safe to no-op
-// since there will be no open cursors.
+// %Help: CLOSE - close a cursor
+// %Category: Misc
+// %Text: CLOSE { <name> | ALL }
+// %SeeAlso: DECLARE, FETCH, MOVE
 close_cursor_stmt:
-	CLOSE ALL { }
-| CLOSE cursor_name { return unimplementedWithIssue(sqllex, 41412) }
+  CLOSE ALL
+  {
+    $$.val = &tree.CloseCursor{}
+  }
+| CLOSE cursor_name
+  {
+    $$.val = &tree.CloseCursor{Name: tree.Name($2)}
+  }
+| CLOSE error // SHOW HELP: CLOSE
 
+// %Help: DECLARE - define a cursor
+// %Category: Misc
+// %Text:
+// DECLARE <name> [ BINARY ] [ ASENSITIVE | INSENSITIVE ] [ [ NO ] SCROLL ]
+//     CURSOR [ { WITH | WITHOUT } HOLD ] FOR <selectclause>
+// %SeeAlso: CLOSE, FETCH, MOVE
 declare_cursor_stmt:
-	DECLARE { return unimplementedWithIssue(sqllex, 41412) }
+  DECLARE cursor_name opt_cursor_options CURSOR opt_hold FOR select_stmt
+  {
+    $$.val = &tree.DeclareCursor{Name: tree.Name($2), Options: $3.cursorOptions() | $5.cursorOptions(), Select: $7.slct()}
+  }
+| DECLARE error // SHOW HELP: DECLARE
+
+opt_cursor_options:
+  /* EMPTY */
+  {
+    $$.val = tree.CursorOptions(0)
+  }
+| opt_cursor_options BINARY
+  {
+    $$.val = $1.cursorOptions() | tree.CursorOptionBinary
+  }
+| opt_cursor_options ASENSITIVE
+  {
+    $$.val = $1.cursorOptions() | tree.CursorOptionAsensitive
+  }
+| opt_cursor_options INSENSITIVE
+  {
+    $$.val = $1.cursorOptions() | tree.CursorOptionInsensitive
+  }
+| opt_cursor_options SCROLL
+  {
+    $$.val = $1.cursorOptions() | tree.CursorOptionScroll
+  }
+| opt_cursor_options NO SCROLL
+  {
+    $$.val = $1.cursorOptions() | tree.CursorOptionNoScroll
+  }
+
+opt_hold:
+  /* EMPTY */
+  {
+    $$.val = tree.CursorOptions(0)
+  }
+| WITH HOLD
+  {
+    $$.val = tree.CursorOptionHold
+  }
+| WITHOUT HOLD
+  {
+    $$.val = tree.CursorOptions(0)
+  }
+
+// %Help: FETCH - retrieve rows from a query using a cursor
+// %Category: Misc
+// %Text:
+// FETCH [ <direction> ] [ FROM | IN ] <name>
+//
+// Direction:
+//    NEXT | PRIOR | FIRST | LAST | ABSOLUTE <count> | RELATIVE <count> | <count> | ALL
+//    | FORWARD [ <count> | ALL ] | BACKWARD [ <count> | ALL ]
+// %SeeAlso: CLOSE, DECLARE, MOVE
+fetch_cursor_stmt:
+  FETCH fetch_args
+  {
+    $$.val = $2.fetchCursor()
+  }
+| FETCH error // SHOW HELP: FETCH
+
+// %Help: MOVE - position a cursor
+// %Category: Misc
+// %Text:
+// MOVE [ <direction> ] [ FROM | IN ] <name>
+//
+// Direction:
+//    NEXT | PRIOR | FIRST | LAST | ABSOLUTE <count> | RELATIVE <count> | <count> | ALL
+//    | FORWARD [ <count> | ALL ] | BACKWARD [ <count> | ALL ]
+// %SeeAlso: CLOSE, DECLARE, FETCH
+move_cursor_stmt:
+  MOVE fetch_args
+  {
+    fetch := $2.fetchCursor()
+    fetch.IsMove = true
+    $$.val = fetch
+  }
+| MOVE error // SHOW HELP: MOVE
+
+fetch_args:
+  cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($1), Direction: tree.FetchDirectionForward, Count: 1}
+  }
+| from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($2), Direction: tree.FetchDirectionForward, Count: 1}
+  }
+| NEXT opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($3), Direction: tree.FetchDirectionForward, Count: 1}
+  }
+| PRIOR opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($3), Direction: tree.FetchDirectionBackward, Count: 1}
+  }
+| FIRST opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($3), Direction: tree.FetchDirectionAbsolute, Count: 1}
+  }
+| LAST opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($3), Direction: tree.FetchDirectionAbsolute, Count: -1}
+  }
+| ABSOLUTE signed_iconst32 opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($4), Direction: tree.FetchDirectionAbsolute, Count: int64($2.int32())}
+  }
+| RELATIVE signed_iconst32 opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($4), Direction: tree.FetchDirectionRelative, Count: int64($2.int32())}
+  }
+| signed_iconst32 opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($3), Direction: tree.FetchDirectionForward, Count: int64($1.int32())}
+  }
+| ALL opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($3), Direction: tree.FetchDirectionForward, Count: tree.FetchAll}
+  }
+| FORWARD opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($3), Direction: tree.FetchDirectionForward, Count: 1}
+  }
+| FORWARD signed_iconst32 opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($4), Direction: tree.FetchDirectionForward, Count: int64($2.int32())}
+  }
+| FORWARD ALL opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($4), Direction: tree.FetchDirectionForward, Count: tree.FetchAll}
+  }
+| BACKWARD opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($3), Direction: tree.FetchDirectionBackward, Count: 1}
+  }
+| BACKWARD signed_iconst32 opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($4), Direction: tree.FetchDirectionBackward, Count: int64($2.int32())}
+  }
+| BACKWARD ALL opt_from_in cursor_name
+  {
+    $$.val = &tree.FetchCursor{Name: tree.Name($4), Direction: tree.FetchDirectionBackward, Count: tree.FetchAll}
+  }
+
+from_in:
+  FROM {}
+| IN {}
+
+opt_from_in:
+  from_in {}
+| /* EMPTY */ {}
 
 reindex_stmt:
   REINDEX TABLE error
@@ -6865,6 +7079,13 @@ vacuum_option:
     	Value:  $2,
     }
   }
+| BUFFER_USAGE_LIMIT SCONST
+  {
+    $$.val = &tree.VacuumOption{
+    	Option: "BUFFER_USAGE_LIMIT",
+    	Value:  $2,
+    }
+  }
 
 // Boolean constants for vacuum options. An empty value here is considered true
 boolean_value_for_vacuum_opt:
@@ -6943,8 +7164,7 @@ opt_vacuum_table_and_cols_list:
   }
 | vacuum_table_and_cols ',' opt_vacuum_table_and_cols_list
   {
-    list := $3.vacuumTableAndColsList()
-    $$.val = append(list, $1.vacuumTableAndCols())
+    $$.val = append(tree.VacuumTableAndColsList{$1.vacuumTableAndCols()}, $3.vacuumTableAndColsList()...)
   }
   
 vacuum_table_and_cols:
@@ -6980,6 +7200,10 @@ session_var:
 // separate rules.
 | ALL
 | DATABASE
+| ROLE
+  {
+    $$ = "role"
+  }
 // SET NAMES is standard SQL for SET client_encoding.
 // See https://www.postgresql.org/docs/9.6/static/multibyte.html#AEN39236
 | NAMES { $$ = "client_encoding" }
@@ -8636,6 +8860,7 @@ table_constraint_elem:
         Columns: $4.idxElems(),
         IndexParams: $6.constraintIdxParams(),
       },
+      NullsNotDistinct: !$2.bool(),
     }
   }
 | PRIMARY KEY '(' index_params ')' constraint_index_params
@@ -9358,7 +9583,41 @@ alter_role_stmt:
 {
   $$.val = &tree.AlterRole{Name: $5, IfExists: true, KVOptions: $6.kvOptions(), IsRole: $2.bool()}
 }
+| ALTER role_or_group_or_user role_spec opt_in_database SET generic_set_single_config
+{
+  $$.val = &tree.AlterRole{Name: $3, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user role_spec opt_in_database RESET generic_reset_single_config
+{
+  $$.val = &tree.AlterRole{Name: $3, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user role_spec opt_in_database RESET ALL
+{
+  $$.val = &tree.AlterRole{Name: $3, InDatabase: $4, ResetAll: true, IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user ALL opt_in_database SET generic_set_single_config
+{
+  $$.val = &tree.AlterRole{AllRoles: true, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user ALL opt_in_database RESET generic_reset_single_config
+{
+  $$.val = &tree.AlterRole{AllRoles: true, InDatabase: $4, SetVar: $6.setVar(), IsRole: $2.bool()}
+}
+| ALTER role_or_group_or_user ALL opt_in_database RESET ALL
+{
+  $$.val = &tree.AlterRole{AllRoles: true, InDatabase: $4, ResetAll: true, IsRole: $2.bool()}
+}
 | ALTER role_or_group_or_user error // SHOW HELP: ALTER ROLE
+
+opt_in_database:
+  /* EMPTY */
+  {
+    $$ = ""
+  }
+| IN DATABASE database_name
+  {
+    $$ = $3
+  }
 
 // "CREATE GROUP is now an alias for CREATE ROLE"
 // https://www.postgresql.org/docs/10/static/sql-creategroup.html
@@ -13404,7 +13663,7 @@ a_expr:
   }
 | a_expr INET_CONTAINED_BY_OR_EQUALS a_expr
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("inet_contained_by_or_equals"), Exprs: tree.Exprs{$1.expr(), $3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("network_subeq"), Exprs: tree.Exprs{$1.expr(), $3.expr()}}
   }
 | a_expr AND_AND a_expr
   {
@@ -13412,7 +13671,7 @@ a_expr:
   }
 | a_expr INET_CONTAINS_OR_EQUALS a_expr
   {
-    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("inet_contains_or_equals"), Exprs: tree.Exprs{$1.expr(), $3.expr()}}
+    $$.val = &tree.FuncExpr{Func: tree.WrapFunction("network_supeq"), Exprs: tree.Exprs{$1.expr(), $3.expr()}}
   }
 | a_expr LESS_EQUALS a_expr
   {
@@ -13731,7 +13990,7 @@ a_expr:
   }
  | a_expr OPERATOR '(' schema_name '.' INET_CONTAINED_BY_OR_EQUALS ')' a_expr
    {
-     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("inet_contained_by_or_equals", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
+     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("network_subeq", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
    }
  | a_expr OPERATOR '(' schema_name '.' AND_AND ')' a_expr
    {
@@ -13739,7 +13998,7 @@ a_expr:
    }
  | a_expr OPERATOR '(' schema_name '.' INET_CONTAINS_OR_EQUALS ')' a_expr
    {
-     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("inet_contains_or_equals", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
+     $$.val = &tree.FuncExpr{Func: tree.WrapFunctionSchema("network_supeq", $4), Exprs: tree.Exprs{$1.expr(), $8.expr()}}
    }
  | a_expr OPERATOR '(' schema_name '.' LESS_EQUALS ')' a_expr
    {
@@ -15731,6 +15990,7 @@ unrestricted_name:
 // "Unreserved" keywords --- available for use as any kind of name.
 unreserved_keyword:
   ABORT
+| ABSOLUTE
 | ACCESS
 | ACTION
 | ADD
@@ -15741,6 +16001,7 @@ unreserved_keyword:
 | ALLOW_CONNECTIONS
 | ALTER
 | ALWAYS
+| ASENSITIVE
 | ASSIGNMENT
 | AT
 | ATOMIC
@@ -15750,6 +16011,7 @@ unreserved_keyword:
 | AUTOMATIC
 | BACKUP
 | BACKUPS
+| BACKWARD
 | BASETYPE
 | BEFORE
 | BEGIN
@@ -15806,6 +16068,7 @@ unreserved_keyword:
 | CSV
 | CUBE
 | CURRENT
+| CURSOR
 | CYCLE
 | DATA
 | DATABASE
@@ -15868,6 +16131,7 @@ unreserved_keyword:
 | FORCE
 | FORCE_INDEX
 | FORMAT
+| FORWARD
 | FUNCTION
 | FUNCTIONS
 | GENERATED
@@ -15888,6 +16152,7 @@ unreserved_keyword:
 | HEADER
 | HIGH
 | HISTOGRAM
+| HOLD
 | HOUR
 | HYPOTHETICAL
 | ICU_LOCALE
@@ -15910,6 +16175,7 @@ unreserved_keyword:
 | INJECT
 | INLINE
 | INPUT
+| INSENSITIVE
 | INSERT
 | INSTEAD
 | INTERLEAVE
@@ -15965,6 +16231,7 @@ unreserved_keyword:
 | MODIFYCLUSTERSETTING
 | MODULUS
 | MONTH
+| MOVE
 | MSFUNC
 | MSPACE
 | MSSPACE
@@ -16054,6 +16321,7 @@ unreserved_keyword:
 | PREFERRED
 | PREPARE
 | PRESERVE
+| PRIOR
 | PRIORITY
 | PRIVILEGES
 | PROCEDURAL
@@ -16078,6 +16346,7 @@ unreserved_keyword:
 | REFERENCING
 | REFRESH
 | REINDEX
+| RELATIVE
 | RELEASE
 | REMAINDER
 | RENAME
@@ -16114,6 +16383,7 @@ unreserved_keyword:
 | SCHEDULES
 | SCHEMA
 | SCHEMAS
+| SCROLL
 | SCRUB
 | SEARCH
 | SECOND

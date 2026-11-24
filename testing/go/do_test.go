@@ -30,6 +30,39 @@ func TestDoStatements(t *testing.T) {
 			},
 		},
 		{
+			Name: "line comments in subqueries",
+			Assertions: []ScriptTestAssertion{
+				{Query: `DO $$
+BEGIN
+  IF EXISTS (SELECT 1 -- comment
+  ) THEN
+    NULL;
+  END IF;
+END $$;`},
+				{Query: `DO $$
+DECLARE v INT := 7;
+BEGIN
+  IF EXISTS (SELECT 1 -- v must not be substituted in this comment
+             WHERE v = 7) THEN
+    NULL;
+  ELSE
+    RAISE EXCEPTION 'expected true';
+  END IF;
+  IF NOT EXISTS (SELECT 1 -- comment before a false condition
+                 WHERE v = 8) THEN
+    NULL;
+  ELSE
+    RAISE EXCEPTION 'expected false';
+  END IF;
+  v := (SELECT v -- assignment subquery
+        ) + 1;
+  IF v <> 8 THEN
+    RAISE EXCEPTION 'incorrect assignment';
+  END IF;
+END $$;`},
+			},
+		},
+		{
 			Name: "declarations and mutations",
 			SetUpScript: []string{
 				`CREATE TABLE do_values (v INT PRIMARY KEY)`,

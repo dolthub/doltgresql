@@ -124,11 +124,15 @@ func (h *ConnectionHandler) handleParse(message *pgproto3.Parse) error {
 		return nil
 	}
 
-	ctx, err := h.doltgresHandler.sm.NewContextWithQuery(context.Background(), h.mysqlConn, query.String)
+	ctx, err := h.doltgresHandler.NewContext(context.Background(), h.mysqlConn, query.String)
 	if err != nil {
 		return err
 	}
-	parsedQuery, fields, err := h.doltgresHandler.ComPrepareParsed(ctx, h.mysqlConn, query.String, query.AST)
+	parsed := query.AST
+	if declare, ok := asDeclareCursor(query); ok {
+		parsed = declare.Select
+	}
+	parsedQuery, fields, err := h.doltgresHandler.ComPrepareParsed(ctx, h.mysqlConn, query.String, parsed)
 	if err != nil {
 		return err
 	}
@@ -212,6 +216,9 @@ func (h *ConnectionHandler) handleBind(message *pgproto3.Bind) error {
 		h.state.extendedQueryObjects.portals[message.DestinationPortal] = portalData{Query: preparedData.Query, IsEmptyQuery: true}
 		return h.send(&pgproto3.BindComplete{})
 	}
+	if declare, ok := asDeclareCursor(preparedData.Query); ok {
+		return h.bindDeclareCursor(message, preparedData, declare)
+	}
 
 	analyzedPlan, fields, err := h.doltgresHandler.ComBind(
 		context.Background(),
@@ -277,6 +284,9 @@ func (h *ConnectionHandler) handleExecute(message *pgproto3.Execute) error {
 
 	handled, _, err := h.handleQueryOutsideEngine(query, nil)
 	if handled {
+		return err
+	}
+	if err := h.warnSetLocalOutsideTransaction(query, h.state.txState.inExplicitTransactionBlock()); err != nil {
 		return err
 	}
 

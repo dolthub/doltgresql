@@ -29,6 +29,7 @@ const (
 	AuthType_REFERENCES     = "REFERENCES"
 	AuthType_SELECT         = "SELECT"
 	AuthType_SET            = "SET"
+	AuthType_SUPER          = "SUPER"
 	AuthType_TEMPORARY      = "TEMPORARY"
 	AuthType_TRIGGER        = "TRIGGER"
 	AuthType_TRUNCATE       = "TRUNCATE"
@@ -38,12 +39,13 @@ const (
 
 // These AuthTargetType_ enums are used as the TargetType in vitess.AuthInformation.
 const (
-	AuthTargetType_Ignore              = "IGNORE"
-	AuthTargetType_DatabaseIdentifiers = "DB_IDENTS"
-	AuthTargetType_SchemaIdentifiers   = "DB_SCH_IDENTS"
-	AuthTargetType_TableIdentifiers    = "DB_SCH_TABLE_IDENTS"
-	AuthTargetType_ViewIdentifiers     = "DB_SCH_VIEW_IDENTS"
-	AuthTargetType_FunctionIdentifiers = "DB_SCH_FUNCTION_IDENTS"
-	AuthTargetType_SequenceIdentifiers = "DB_SCH_SEQUENCE_IDENTS"
-	AuthTargetType_TODO                = "TODO"
+	AuthTargetType_Ignore                            = "IGNORE"
+	AuthTargetType_DatabaseIdentifiers               = "DB_IDENTS"
+	AuthTargetType_SchemaIdentifiers                 = "DB_SCH_IDENTS"
+	AuthTargetType_TableIdentifiers                  = "DB_SCH_TABLE_IDENTS"
+	AuthTargetType_ViewIdentifiers                   = "DB_SCH_VIEW_IDENTS"
+	AuthTargetType_FunctionIdentifiers               = "DB_SCH_FUNCTION_IDENTS"
+	AuthTargetType_SequenceIdentifiers               = "DB_SCH_SEQUENCE_IDENTS"
+	AuthTargetType_AlterDefaultPrivilegesIdentifiers = "DB_SCH_ADP_IDENTS"
+	AuthTargetType_TODO                              = "TODO"
 )

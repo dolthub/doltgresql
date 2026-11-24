@@ -16,6 +16,7 @@ package auth
 
 import (
 	"github.com/cockroachdb/errors"
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/dsess"
 	"github.com/dolthub/go-mysql-server/sql"
 
 	"github.com/dolthub/doltgresql/core"
@@ -32,7 +33,51 @@ func InitializeSessionIdentity(sess sql.Session, name string) error {
 	if !ok {
 		return errors.Errorf("authenticated role %q does not exist", name)
 	}
-	return core.InitializeIdentityOnSession(sess, sessionstate.RoleID(role.ID()), role.IsSuperUser)
+	if err := core.InitializeIdentityOnSession(sess, sessionstate.RoleID(role.ID()), role.IsSuperUser); err != nil {
+		return err
+	}
+	InstallDoltPrincipalProvider(sess)
+	return nil
+}
+
+// InstallDoltPrincipalProvider makes Dolt's branch-control user follow the
+// effective SQL role. The connection's Client.User remains the login principal.
+func InstallDoltPrincipalProvider(sess sql.Session) {
+	doltSess, ok := sess.(*dsess.DoltSession)
+	if !ok {
+		return
+	}
+	doltSess.DoltgresPrincipalProvider = func() string {
+		identity, err := core.IdentityFromSession(sess)
+		if err != nil {
+			return ""
+		}
+		name, _ := RoleNameForSession(RoleID(identity.CurrentRole()))
+		return name
+	}
+}
+
+// CurrentRoleLocked resolves the acting role by stable ID. The caller must
+// already hold the auth read or write lock.
+func CurrentRoleLocked(ctx *sql.Context) (Role, error) {
+	identity, err := core.Identity(ctx)
+	if err != nil {
+		return Role{}, err
+	}
+	role, ok := LookupRoleByID(RoleID(identity.CurrentRole()))
+	if !ok {
+		return Role{}, errors.Errorf("role with ID %d no longer exists", identity.CurrentRole())
+	}
+	return role, nil
+}
+
+// CurrentRole resolves the acting role for an ordinary SQL authorization
+// decision. Call CurrentRoleLocked instead when already holding the auth lock.
+func CurrentRole(ctx *sql.Context) (Role, error) {
+	var role Role
+	var err error
+	LockRead(func() { role, err = CurrentRoleLocked(ctx) })
+	return role, err
 }
 
 // ResolveRoleID reads the current role record. It acquires the auth read lock;

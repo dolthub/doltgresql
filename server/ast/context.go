@@ -15,14 +15,19 @@
 package ast
 
 import (
+	"github.com/dolthub/go-mysql-server/sql"
+
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/auth"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 // Context contains any relevant context for the AST conversion. For example, the auth system uses the context to
 // determine which larger statement an expression exists in, which may influence how the expression should handle
 // authorization.
 type Context struct {
+	systemVariables                    sql.SystemVariableRegistry
+	catalogRows                        map[string]*pgtypes.DoltgresType
 	authContext                        *auth.AuthContext
 	originalQuery                      string
 	preserveParens                     bool
@@ -37,6 +42,7 @@ func NewContext(postgresStmt parser.Statement) *Context {
 // NewContextWithOptions returns a new *Context using the given conversion options.
 func NewContextWithOptions(postgresStmt parser.Statement, options ConvertOptions) *Context {
 	return &Context{
+		systemVariables:                    options.SystemVariables,
 		authContext:                        auth.NewAuthContext(),
 		originalQuery:                      postgresStmt.SQL,
 		permitUnsupportedLockingStatements: options.PermitUnsupportedLockingStatements,
@@ -46,4 +52,8 @@ func NewContextWithOptions(postgresStmt parser.Statement, options ConvertOptions
 // Auth returns the portion that handles authentication.
 func (ctx *Context) Auth() *auth.AuthContext {
 	return ctx.authContext
+}
+
+func (ctx *Context) variables() sql.SystemVariableRegistry {
+	return ctx.systemVariables
 }

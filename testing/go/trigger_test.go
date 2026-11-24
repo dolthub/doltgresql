@@ -1523,3 +1523,162 @@ func TestTriggerWholeRecordReference(t *testing.T) {
 		},
 	})
 }
+
+func TestTriggerSpecialVariables(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "TG_ARGV assigned to a NEW column",
+			SetUpScript: []string{
+				"CREATE TABLE t (id TEXT PRIMARY KEY, seen TEXT);",
+				`CREATE FUNCTION f_argv() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					NEW.seen := TG_ARGV[0];
+					RETURN NEW;
+				END;
+				$$;`,
+				"CREATE TRIGGER tr_argv BEFORE INSERT ON t FOR EACH ROW EXECUTE FUNCTION f_argv('hello', 'world');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t (id) VALUES ('a');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t;",
+					Expected: []sql.Row{{"a", "hello"}},
+				},
+			},
+		},
+		{
+			Name: "TG_ARGV subscripts and slices count from 0",
+			SetUpScript: []string{
+				"CREATE TABLE t (id TEXT PRIMARY KEY);",
+				"CREATE TABLE log (v TEXT);",
+				`CREATE FUNCTION f_argv() RETURNS trigger LANGUAGE plpgsql AS $$
+				DECLARE
+					i INT := 0;
+				BEGIN
+					INSERT INTO log (v) VALUES (concat_ws(',', TG_NARGS, TG_ARGV[0], TG_ARGV[1],
+						coalesce(TG_ARGV[2], 'none'), coalesce(TG_ARGV[-1], 'none'), tg_argv[i + 1], TG_ARGV[0:1]::text, TG_ARGV[:0]::text, TG_ARGV[1:]::text,
+						array_length(TG_ARGV, 1)));
+					RETURN NULL;
+				END;
+				$$;`,
+				"CREATE TRIGGER tr_args AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f_argv('x', 'y');",
+				"CREATE TRIGGER tr_no_args AFTER DELETE ON t FOR EACH ROW EXECUTE FUNCTION f_argv();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t VALUES ('a');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "DELETE FROM t;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT v FROM log ORDER BY v;",
+					Expected: []sql.Row{
+						{"0,none,none"},
+						{"2,x,y,none,none,y,{x,y},{x},{y},2"},
+					},
+				},
+			},
+		},
+		{
+			Name: "TG_ARGV keeps its lower bound of 0",
+			SetUpScript: []string{
+				"CREATE TABLE t (id TEXT PRIMARY KEY);",
+				"CREATE TABLE log (v TEXT);",
+				`CREATE FUNCTION f_argv() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					INSERT INTO log (v) VALUES (TG_ARGV::text);
+					RETURN NULL;
+				END;
+				$$;`,
+				"CREATE TRIGGER tr_args AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f_argv('x', 'y');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t VALUES ('a');",
+					Expected: []sql.Row{},
+				},
+				{
+					// TODO: arrays do not yet support lower bounds other than 1
+					Query:    "SELECT v FROM log ORDER BY v;",
+					Expected: []sql.Row{{"[0:1]={x,y}"}},
+					Skip:     true,
+				},
+			},
+		},
+		{
+			Name: "TG_OP and TG_WHEN in BEFORE triggers",
+			SetUpScript: []string{
+				"CREATE TABLE t (id TEXT PRIMARY KEY, seen TEXT);",
+				"CREATE TABLE log (v TEXT);",
+				`CREATE FUNCTION f_before() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					IF TG_OP = 'DELETE' THEN
+						INSERT INTO log (v) VALUES (TG_WHEN || ' ' || TG_OP || ' ' || OLD.id);
+						RETURN OLD;
+					END IF;
+					NEW.seen := TG_WHEN || ' ' || TG_OP;
+					RETURN NEW;
+				END;
+				$$;`,
+				"CREATE TRIGGER tr_before BEFORE INSERT OR UPDATE OR DELETE ON t FOR EACH ROW EXECUTE FUNCTION f_before();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t (id) VALUES ('a'), ('b');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t SET id = 'c' WHERE id = 'b';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query: "SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{
+						{"a", "BEFORE INSERT"},
+						{"c", "BEFORE UPDATE"},
+					},
+				},
+				{
+					Query:    "DELETE FROM t WHERE id = 'a';",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT v FROM log ORDER BY v;",
+					Expected: []sql.Row{{"BEFORE DELETE a"}},
+				},
+			},
+		},
+		{
+			Name: "trigger and table names",
+			SetUpScript: []string{
+				"CREATE SCHEMA s;",
+				"CREATE TABLE s.t (id TEXT PRIMARY KEY);",
+				"CREATE TABLE log (v TEXT);",
+				`CREATE FUNCTION f_after() RETURNS trigger LANGUAGE plpgsql AS $$
+				BEGIN
+					INSERT INTO public.log (v) VALUES (concat_ws(',', TG_NAME, TG_WHEN, TG_LEVEL, TG_OP, TG_TABLE_NAME,
+						TG_TABLE_SCHEMA, TG_RELNAME, TG_RELID::regclass::text));
+					RETURN NULL;
+				END;
+				$$;`,
+				"CREATE TRIGGER tr_after AFTER INSERT ON s.t FOR EACH ROW EXECUTE FUNCTION f_after();",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO s.t VALUES ('a');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT v FROM log ORDER BY v;",
+					Expected: []sql.Row{{"tr_after,AFTER,ROW,INSERT,t,s,t,s.t"}},
+				},
+			},
+		},
+	})
+}

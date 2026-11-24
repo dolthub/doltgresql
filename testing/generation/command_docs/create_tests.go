@@ -21,8 +21,10 @@ import (
 	"math/big"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/dolthub/dolt/go/libraries/doltcore/sqle"
 	"github.com/dolthub/vitess/go/vt/sqlparser"
 	"github.com/jackc/pgx/v5"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -31,6 +33,7 @@ import (
 
 	"github.com/dolthub/doltgresql/postgres/parser/parser"
 	"github.com/dolthub/doltgresql/server/ast"
+	"github.com/dolthub/doltgresql/server/config"
 	"github.com/dolthub/doltgresql/testing/generation/utils"
 )
 
@@ -206,6 +209,13 @@ FileLoop:
 
 var postgresVerificationConnection *pgx.Conn
 
+// convertOptions gives SET and SHOW the same PostgreSQL registry that output.RunTests converts them with.
+var convertOptions = sync.OnceValue(func() ast.ConvertOptions {
+	vars := sqle.NewEngineVariables()
+	config.InitWithRegistry(vars.System)
+	return ast.ConvertOptions{SystemVariables: vars.System}
+})
+
 // GetQueryResult runs the query against a Postgres server to validate that the query is syntactically valid. It then
 // tests the query against the Postgres parser and Postgres-Vitess AST converter to check the current level of support.
 // It returns a string that may be inserted directly into a test source file (two tabs are prefixed).
@@ -245,7 +255,7 @@ func GetQueryResult(query string) (string, error) {
 					vitessAST = nil
 				}
 			}()
-			return ast.Convert(statement)
+			return ast.ConvertWithOptions(statement, convertOptions())
 		}()
 		if err != nil || vitessAST == nil {
 			return fmt.Sprintf("\t\tParses(\"%s\"),\n", formattedQuery), nil

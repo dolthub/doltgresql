@@ -58,21 +58,26 @@ func AddRoutinePrivilege(key RoutinePrivilegeKey, privilege GrantedPrivilege, wi
 		privilegeMap = make(map[GrantedPrivilege]bool)
 		routinePrivilegeValue.Privileges[privilege.Privilege] = privilegeMap
 	}
-	privilegeMap[privilege] = withGrantOption
+	// A grant without the grant option does not remove an existing grant option
+	privilegeMap[privilege] = privilegeMap[privilege] || withGrantOption
 }
 
 // HasRoutinePrivilege checks whether the user has the given privilege on the associated routine.
 func HasRoutinePrivilege(key RoutinePrivilegeKey, privilege Privilege) bool {
-	if IsSuperUser(key.Role) {
+	return hasRoutinePrivilege(key, privilege, true)
+}
+
+func hasRoutinePrivilege(key RoutinePrivilegeKey, privilege Privilege, allowSuperuser bool) bool {
+	if allowSuperuser && IsSuperUser(key.Role) {
 		return true
 	}
 	// If a routine name was provided, also check for privileges on all routines in the schema.
 	if len(key.Name) > 0 {
-		if HasRoutinePrivilege(RoutinePrivilegeKey{
+		if hasRoutinePrivilege(RoutinePrivilegeKey{
 			Role:   key.Role,
 			Schema: key.Schema,
 			Name:   "",
-		}, privilege) {
+		}, privilege, false) {
 			return true
 		}
 	}
@@ -82,12 +87,12 @@ func HasRoutinePrivilege(key RoutinePrivilegeKey, privilege Privilege) bool {
 		}
 	}
 	for _, group := range GetAllGroupsWithMember(key.Role, true) {
-		if HasRoutinePrivilege(RoutinePrivilegeKey{
+		if hasRoutinePrivilege(RoutinePrivilegeKey{
 			Role:     group,
 			Schema:   key.Schema,
 			Name:     key.Name,
 			ArgTypes: key.ArgTypes,
-		}, privilege) {
+		}, privilege, false) {
 			return true
 		}
 	}
@@ -97,16 +102,20 @@ func HasRoutinePrivilege(key RoutinePrivilegeKey, privilege Privilege) bool {
 // HasRoutinePrivilegeGrantOption checks whether the user has WITH GRANT OPTION for the given privilege on the
 // associated routine. Returns the role that has WITH GRANT OPTION, or an invalid role if not available.
 func HasRoutinePrivilegeGrantOption(key RoutinePrivilegeKey, privilege Privilege) RoleID {
-	if IsSuperUser(key.Role) {
+	return hasRoutinePrivilegeGrantOption(key, privilege, true)
+}
+
+func hasRoutinePrivilegeGrantOption(key RoutinePrivilegeKey, privilege Privilege, allowSuperuser bool) RoleID {
+	if allowSuperuser && IsSuperUser(key.Role) {
 		return key.Role
 	}
 	// If a routine name was provided, also check for grant option on all routines in the schema.
 	if len(key.Name) > 0 {
-		if returnedID := HasRoutinePrivilegeGrantOption(RoutinePrivilegeKey{
+		if returnedID := hasRoutinePrivilegeGrantOption(RoutinePrivilegeKey{
 			Role:   key.Role,
 			Schema: key.Schema,
 			Name:   "",
-		}, privilege); returnedID.IsValid() {
+		}, privilege, false); returnedID.IsValid() {
 			return returnedID
 		}
 	}
@@ -120,12 +129,12 @@ func HasRoutinePrivilegeGrantOption(key RoutinePrivilegeKey, privilege Privilege
 		}
 	}
 	for _, group := range GetAllGroupsWithMember(key.Role, true) {
-		if returnedID := HasRoutinePrivilegeGrantOption(RoutinePrivilegeKey{
+		if returnedID := hasRoutinePrivilegeGrantOption(RoutinePrivilegeKey{
 			Role:     group,
 			Schema:   key.Schema,
 			Name:     key.Name,
 			ArgTypes: key.ArgTypes,
-		}, privilege); returnedID.IsValid() {
+		}, privilege, false); returnedID.IsValid() {
 			return returnedID
 		}
 	}
@@ -192,7 +201,7 @@ func (rp *RoutinePrivileges) deserialize(version uint32, reader *utils.Reader) {
 	rp.Data = make(map[RoutinePrivilegeKey]RoutinePrivilegeValue)
 	switch version {
 	case 0:
-	case 1:
+	case 1, 2, 3:
 		// Read the total number of values
 		dataCount := reader.Uint64()
 		for dataIdx := uint64(0); dataIdx < dataCount; dataIdx++ {

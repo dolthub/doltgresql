@@ -22,6 +22,7 @@ import (
 	goerrors "errors"
 	"fmt"
 	"math"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -44,8 +45,10 @@ import (
 
 	"github.com/dolthub/doltgresql/core/id"
 	"github.com/dolthub/doltgresql/postgres/parser/duration"
+	"github.com/dolthub/doltgresql/postgres/parser/ipaddr"
 	pgtree "github.com/dolthub/doltgresql/postgres/parser/sem/tree"
 	"github.com/dolthub/doltgresql/postgres/parser/timeofday"
+	pgutils "github.com/dolthub/doltgresql/postgres/parser/utils"
 	"github.com/dolthub/doltgresql/postgres/parser/uuid"
 	dserver "github.com/dolthub/doltgresql/server"
 	"github.com/dolthub/doltgresql/server/auth"
@@ -90,6 +93,7 @@ type ScriptTest struct {
 // ExpectedNotice specifies what notices are expected during a script test assertion.
 type ExpectedNotice struct {
 	Severity string
+	Code     string
 	Message  string
 }
 
@@ -359,6 +363,9 @@ func runScript(t *testing.T, ctx context.Context, script ScriptTest, conn *Conne
 					if len(assertion.ExpectedNotices) == len(receivedNotices) {
 						for i, notice := range receivedNotices {
 							assert.Equal(t, assertion.ExpectedNotices[i].Severity, notice.Severity)
+							if assertion.ExpectedNotices[i].Code != "" {
+								assert.Equal(t, assertion.ExpectedNotices[i].Code, notice.Code)
+							}
 							assert.Equal(t, assertion.ExpectedNotices[i].Message, notice.Message)
 						}
 					} else {
@@ -941,7 +948,7 @@ func NormalizeValToString(dt *types.DoltgresType, v any) any {
 			panic(err)
 		}
 		return val
-	case types.Interval.ID, types.Uuid.ID:
+	case types.Inet.ID, types.Interval.ID, types.Uuid.ID:
 		// These values need to be normalized into the appropriate types
 		// before being converted to string type using the Doltgres
 		// IoOutput method.
@@ -1083,6 +1090,18 @@ func NormalizeVal(dt *types.DoltgresType, v any) any {
 	case pgtype.Interval:
 		// This value type is used for INTERVAL type.
 		return duration.MakeDuration(val.Microseconds*functions.NanosPerMicro, int64(val.Days), int64(val.Months))
+	case netip.Prefix:
+		// This value type is used for INET type.
+		family := ipaddr.IPv6family
+		if val.Addr().Is4() {
+			family = ipaddr.IPv4family
+		}
+		addr := val.Addr().As16()
+		return ipaddr.IPAddr{
+			Family: family,
+			Mask:   byte(val.Bits()),
+			Addr:   ipaddr.Addr(pgutils.FromBytes(addr[:])),
+		}
 	case [16]byte:
 		// This value type is used for UUID type.
 		u, err := uuid.FromBytes(val[:])

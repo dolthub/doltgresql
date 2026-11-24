@@ -146,7 +146,7 @@ var _ Handler = &DoltgresHandler{}
 
 // ComBind implements the Handler interface.
 func (h *DoltgresHandler) ComBind(ctx context.Context, c *mysql.Conn, query string, parsedQuery mysql.ParsedQuery, bindVars BindVariables, formatCodes []int16) (mysql.BoundQuery, []pgproto3.FieldDescription, error) {
-	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
+	sqlCtx, err := h.NewContext(ctx, c, query)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -205,10 +205,13 @@ func (h *DoltgresHandler) ComPrepareParsed(ctx context.Context, c *mysql.Conn, q
 	sqlCtx, ok := ctx.(*sql.Context)
 	if !ok {
 		var err error
-		sqlCtx, err = h.sm.NewContextWithQuery(ctx, c, query)
+		sqlCtx, err = h.NewContext(ctx, c, query)
 		if err != nil {
 			return nil, nil, err
 		}
+	}
+	if err := installPrivilegeSet(sqlCtx); err != nil {
+		return nil, nil, err
 	}
 
 	node, err := h.e.PrepareParsedQuery(sqlCtx, query, query, parsed)
@@ -274,7 +277,8 @@ func (h *DoltgresHandler) ComQuery(ctx context.Context, c *mysql.Conn, query str
 	return err
 }
 
-// ComResetConnection implements the Handler interface.
+// ComResetConnection implements the Handler interface. It replaces the connection's session, so it must be called
+// while the session has no command open.
 func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	logrus.WithField("connectionId", c.ConnectionID).Debug("COM_RESET_CONNECTION command received")
 	oldIdentity, err := core.IdentityFromSession(h.sm.GetSession(c))
@@ -288,7 +292,7 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	db := h.sm.GetCurrentDB(c)
 
 	// Dispose of the connection's current session
-	h.maybeReleaseAllLocks(c)
+	h.releaseSessionLocks(c)
 	h.e.CloseSession(c.ConnectionID)
 
 	ctx := context.Background()
@@ -301,6 +305,7 @@ func (h *DoltgresHandler) ComResetConnection(c *mysql.Conn) error {
 	if err = core.InitializeIdentityOnSession(h.sm.GetSession(c), principal, principalSuperuser); err != nil {
 		return err
 	}
+	auth.InstallDoltPrincipalProvider(h.sm.GetSession(c))
 	return h.sm.SetDB(ctx, c, db)
 }
 
@@ -315,7 +320,7 @@ func (h *DoltgresHandler) ConnectionClosed(c *mysql.Conn) {
 	defer h.sm.RemoveConn(c)
 	defer h.e.CloseSession(c.ConnectionID)
 
-	h.maybeReleaseAllLocks(c)
+	h.releaseSessionLocks(c)
 
 	logrus.WithField(sql.ConnectionIdLogField, c.ConnectionID).Infof("ConnectionClosed")
 }
@@ -327,7 +332,7 @@ func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
 	}
 
 	h.sm.AddConn(c)
-	sql.StatusVariables.IncrementGlobal("Connections", 1)
+	h.e.Variables().Status.IncrementGlobal("Connections", 1)
 
 	c.DisableClientMultiStatements = true // TODO: h.disableMultiStmts
 	logrus.WithField(sql.ConnectionIdLogField, c.ConnectionID).WithField("DisableClientMultiStatements", c.DisableClientMultiStatements).Infof("NewConnection")
@@ -335,12 +340,23 @@ func (h *DoltgresHandler) NewConnection(c *mysql.Conn) {
 
 // NewContext implements the Handler interface.
 func (h *DoltgresHandler) NewContext(ctx context.Context, c *mysql.Conn, query string) (*sql.Context, error) {
-	return h.sm.NewContextWithQuery(ctx, c, query)
+	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
+	if err != nil {
+		return nil, err
+	}
+	if err = installPrivilegeSet(sqlCtx); err != nil {
+		return nil, err
+	}
+	return sqlCtx, nil
 }
 
-// InitSessionParameterDefault sets a default value to specified parameter for a session.
-func (h *DoltgresHandler) InitSessionParameterDefault(ctx context.Context, c *mysql.Conn, name, value string) error {
-	return h.sm.InitSessionDefaultVariable(ctx, c, name, value)
+func installPrivilegeSet(ctx *sql.Context) error {
+	privilegeSet, err := auth.NewPrivilegeSetLayer(ctx)
+	if err != nil {
+		return err
+	}
+	ctx.SetPrivilegeSet(privilegeSet, 1)
+	return nil
 }
 
 // convertBindParameters handles the conversion from bind parameters to variable values.
@@ -391,11 +407,13 @@ func (h *DoltgresHandler) convertBindParameters(ctx *sql.Context, types []uint32
 var queryLoggingRegex = regexp.MustCompile(`[\r\n\t ]+`)
 
 func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query string, parsed sqlparser.Statement, analyzedPlan sql.Node, queryExec QueryExecutor, callback func(*sql.Context, *Result) error, formatCodes []int16) error {
-	sqlCtx, err := h.sm.NewContextWithQuery(ctx, c, query)
+	sqlCtx, err := h.NewContext(ctx, c, query)
 	if err != nil {
 		return err
 	}
-	sqlCtx.SetPrivilegeSet(auth.NewPrivilegeSetLayer(sqlCtx), 1)
+	// The root span for the query covers everything until doQuery returns.
+	span, sqlCtx := sqlCtx.Span("query")
+	defer span.End()
 
 	start := time.Now()
 	var queryStrToLog string
@@ -450,10 +468,12 @@ func (h *DoltgresHandler) doQuery(ctx context.Context, c *mysql.Conn, query stri
 		// Normalize wire format codes into one canonical per-column slice for result encoding.
 		formatCodes, err = extendFormatCodes(len(schema), formatCodes)
 		if err != nil {
+			closeResultIter(sqlCtx, rowIter, &err)
 			return err
 		}
 		resultFields, err := schemaToFieldDescriptions(sqlCtx, schema, formatCodes)
 		if err != nil {
+			closeResultIter(sqlCtx, rowIter, &err)
 			return err
 		}
 		if analyzer.FlagIsSet(qFlags, sql.QFlagMax1Row) {
@@ -491,6 +511,22 @@ func (h *DoltgresHandler) executeQuery(ctx *sql.Context, query string, parsed sq
 // statement, which may be nil.
 func (h *DoltgresHandler) executeBoundPlan(ctx *sql.Context, query string, _ sqlparser.Statement, plan sql.Node) (sql.Schema, sql.RowIter, *sql.QueryFlags, error) {
 	return h.e.PrepQueryPlanForExecution(ctx, query, plan, nil)
+}
+
+// releaseSessionLocks releases the locks held by the connection's session before the session ends, in a command of
+// its own. It must be called while the session has no command open. A connection that closes before authentication
+// has no session, and so holds no locks.
+func (h *DoltgresHandler) releaseSessionLocks(c *mysql.Conn) {
+	session := h.sm.GetSession(c)
+	if session == nil {
+		return
+	}
+	if err := sql.SessionCommandBegin(session); err != nil {
+		logrus.Errorf("unable to release all locks on session close: %s", err)
+		return
+	}
+	defer sql.SessionCommandEnd(session)
+	h.maybeReleaseAllLocks(c)
 }
 
 // maybeReleaseAllLocks makes a best effort attempt to release all locks on the given connection. If the attempt fails,
@@ -607,8 +643,9 @@ func schemaToFieldDescriptions(ctx *sql.Context, s sql.Schema, formatCodes []int
 }
 
 // resultForOkIter reads a maximum of one result row from a result iterator.
-func resultForOkIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
+func resultForOkIter(ctx *sql.Context, iter sql.RowIter) (_ *Result, err error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForOkIter").End()
+	defer closeResultIter(ctx, iter, &err)
 
 	row, err := iter.Next(ctx)
 	if err != nil {
@@ -621,9 +658,6 @@ func resultForOkIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 	if err != io.EOF {
 		return nil, errors.Errorf("result schema iterator returned more than one row")
 	}
-	if err := iter.Close(ctx); err != nil {
-		return nil, err
-	}
 
 	return &Result{
 		RowsAffected: row[0].(types.OkResult).RowsAffected,
@@ -631,13 +665,11 @@ func resultForOkIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 }
 
 // resultForEmptyIter ensures that an expected empty iterator returns no rows.
-func resultForEmptyIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
+func resultForEmptyIter(ctx *sql.Context, iter sql.RowIter) (_ *Result, err error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForEmptyIter").End()
+	defer closeResultIter(ctx, iter, &err)
 	if _, err := iter.Next(ctx); err != io.EOF {
 		return nil, errors.Errorf("result schema iterator returned more than zero rows")
-	}
-	if err := iter.Close(ctx); err != nil {
-		return nil, err
 	}
 	return &Result{Fields: nil}, nil
 }
@@ -645,18 +677,12 @@ func resultForEmptyIter(ctx *sql.Context, iter sql.RowIter) (*Result, error) {
 // resultForMax1RowIter ensures that an empty iterator returns at most one row
 func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter, resultFields []pgproto3.FieldDescription, formatCodes []int16) (*Result, error) {
 	defer trace.StartRegion(ctx, "DoltgresHandler.resultForMax1RowIter").End()
-	row, err := iter.Next(ctx)
-	if err == io.EOF {
+	row, ok, err := readMax1Row(ctx, iter)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return &Result{Fields: resultFields}, nil
-	} else if err != nil {
-		return nil, err
-	}
-
-	if _, err = iter.Next(ctx); err != io.EOF {
-		return nil, errors.Errorf("result max1Row iterator returned more than one row")
-	}
-	if err := iter.Close(ctx); err != nil {
-		return nil, err
 	}
 
 	outputRow, err := rowToBytes(ctx, schema, row, formatCodes)
@@ -667,6 +693,30 @@ func resultForMax1RowIter(ctx *sql.Context, schema sql.Schema, iter sql.RowIter,
 	ctx.GetLogger().Tracef("spooling result row %s", outputRow)
 
 	return &Result{Fields: resultFields, Rows: []Row{{outputRow}}, RowsAffected: 1}, nil
+}
+
+// readMax1Row reads the row of |iter|, which returns at most one, and closes |iter|. It returns false if there is no
+// row.
+func readMax1Row(ctx *sql.Context, iter sql.RowIter) (_ sql.Row, _ bool, err error) {
+	defer closeResultIter(ctx, iter, &err)
+	row, err := iter.Next(ctx)
+	if err == io.EOF {
+		return nil, false, nil
+	} else if err != nil {
+		return nil, false, err
+	}
+	if _, err = iter.Next(ctx); err != io.EOF {
+		return nil, false, errors.Errorf("result max1Row iterator returned more than one row")
+	}
+	return row, true, nil
+}
+
+// closeResultIter closes |iter|, setting |err| to the error from Close if it holds none. Closing the iterator ends
+// the statement and its autocommit transaction, so it has to happen whether or not the results were read.
+func closeResultIter(ctx *sql.Context, iter sql.RowIter, err *error) {
+	if closeErr := iter.Close(ctx); closeErr != nil && *err == nil {
+		*err = closeErr
+	}
 }
 
 // resultForDefaultIter reads batches of rows from the iterator

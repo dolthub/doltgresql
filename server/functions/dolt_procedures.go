@@ -297,7 +297,7 @@ func noArgCallableForDoltProcedure(p *plan.ExternalProcedure, funcVal reflect.Va
 // admin, and that the server is not read-only if the procedure writes.
 func checkDoltProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedure) error {
 	if !procedure.ReadOnly {
-		if _, readOnly, ok := sql.SystemVariables.GetGlobal("read_only"); ok {
+		if _, readOnly, ok := ctx.SystemVariables().GetGlobal("read_only"); ok {
 			ro, err := sql.ConvertToBool(ctx, readOnly)
 			if err != nil {
 				return err
@@ -314,7 +314,7 @@ func checkDoltProcedureAccess(ctx *sql.Context, procedure *plan.ExternalProcedur
 
 	var userRole auth.Role
 	auth.LockRead(func() {
-		userRole = auth.GetRole(ctx.Client().User)
+		userRole, _ = auth.CurrentRoleLocked(ctx)
 	})
 
 	if !userRole.IsValid() || !userRole.IsSuperUser {

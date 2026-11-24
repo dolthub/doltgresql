@@ -178,6 +178,49 @@ func TestCreateTable(t *testing.T) {
 			},
 		},
 		{
+			// Check constraints may call user-defined and volatile functions, and keep the schema of the functions
+			// they call, as column defaults do.
+			Name: "check constraint with a user-defined function",
+			SetUpScript: []string{
+				"CREATE SCHEMA s2;",
+				"CREATE FUNCTION public.ok(x int) RETURNS bool AS $$ SELECT x > 0 $$ LANGUAGE sql;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "CREATE TABLE s2.t (x int CHECK (ok(x)));",
+				},
+				{
+					Query: "CREATE FUNCTION s2.ok(x int) RETURNS bool AS $$ SELECT false $$ LANGUAGE sql;",
+				},
+				{
+					Query: "SET search_path = s2, public;",
+				},
+				{
+					Query: "INSERT INTO s2.t VALUES (1);",
+				},
+				{
+					Query: "SET search_path = '';",
+				},
+				{
+					Query: "INSERT INTO s2.t VALUES (2);",
+				},
+				{
+					Query:       "INSERT INTO s2.t VALUES (-1);",
+					ExpectedErr: `Check constraint`,
+				},
+				{
+					Query: "ALTER TABLE s2.t ADD CONSTRAINT volatile_check CHECK (random() < 2);",
+				},
+				{
+					Query: "INSERT INTO s2.t VALUES (3);",
+				},
+				{
+					Query:    "SELECT x FROM s2.t ORDER BY x;",
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+			},
+		},
+		{
 			Skip: true, // TODO: vitess does not support multiple check constraint on a single column
 			Name: "Create table with multiple check constraints on a single column",
 			Assertions: []ScriptTestAssertion{
@@ -322,6 +365,47 @@ func TestCreateTable(t *testing.T) {
 						{"foo", "bar", "t"},
 						{"foo2", nil, "f"},
 					},
+				},
+			},
+		},
+		{
+			Name: "generated column naming the table being created",
+			SetUpScript: []string{
+				"CREATE SCHEMA s2;",
+				"CREATE TABLE gself (a int PRIMARY KEY, b regclass GENERATED ALWAYS AS (CASE WHEN a > 0 THEN 'gself'::regclass END) STORED);",
+				"CREATE TABLE s2.gself (a int PRIMARY KEY, b regclass GENERATED ALWAYS AS (CASE WHEN a > 0 THEN 'gself'::regclass END) STORED);",
+				"SET search_path = s2, public;",
+				"CREATE TABLE s2.gself2 (a int PRIMARY KEY, b regclass GENERATED ALWAYS AS (CASE WHEN a > 0 THEN 'gself2'::regclass END) STORED);",
+				"SET search_path = public;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "INSERT INTO gself (a) VALUES (1);",
+				},
+				{
+					Query:    "SELECT * FROM gself;",
+					Expected: []sql.Row{{1, "gself"}},
+				},
+				{
+					// The search path did not include s2 when this table was created, so its own name resolved to
+					// public.gself
+					Query: "INSERT INTO s2.gself (a) VALUES (1);",
+				},
+				{
+					Query:    "SELECT * FROM s2.gself;",
+					Expected: []sql.Row{{1, "gself"}},
+				},
+				{
+					Query: "INSERT INTO s2.gself2 (a) VALUES (1);",
+				},
+				{
+					Query:    "SELECT * FROM s2.gself2;",
+					Expected: []sql.Row{{1, "s2.gself2"}},
+				},
+				{
+					// The table being created is only found when its schema is on the search path
+					Query:       "CREATE TABLE s2.gself3 (a int PRIMARY KEY, b regclass GENERATED ALWAYS AS (CASE WHEN a > 0 THEN 'gself3'::regclass END) STORED);",
+					ExpectedErr: `relation "gself3" does not exist`,
 				},
 			},
 		},
@@ -749,6 +833,131 @@ func TestCreateTable(t *testing.T) {
 				},
 				{
 					Query: "CREATE TABLE b10 (x INTEGER, CHECK (x > 0) INITIALLY IMMEDIATE);",
+				},
+			},
+		},
+		{
+			Name: "UNIQUE NULLS NOT DISTINCT",
+			SetUpScript: []string{
+				"CREATE TABLE t1 (id INT PRIMARY KEY, a INT, b INT, UNIQUE NULLS NOT DISTINCT (a, b));",
+				"INSERT INTO t1 VALUES (1, 1, NULL), (2, NULL, NULL), (3, NULL, 1), (4, 1, 1);",
+				"CREATE TABLE t2 (id INT PRIMARY KEY, a INT, CONSTRAINT t2_a_uniq UNIQUE NULLS NOT DISTINCT (a));",
+				"CREATE TABLE t3 (id INT PRIMARY KEY, a INT UNIQUE NULLS NOT DISTINCT);",
+				"CREATE TABLE t4 (id INT PRIMARY KEY, a INT UNIQUE NULLS DISTINCT, b INT, UNIQUE NULLS DISTINCT (a, b));",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "INSERT INTO t1 VALUES (5, 1, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "INSERT INTO t1 VALUES (5, NULL, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "INSERT INTO t1 VALUES (5, NULL, 1);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO t1 VALUES (5, 2, NULL);",
+				},
+				{
+					Query:           "UPDATE t1 SET a = 1 WHERE id = 5;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "UPDATE t1 SET b = 2 WHERE id = 5;",
+				},
+				{
+					Query:    "SELECT * FROM t1 ORDER BY id;",
+					Expected: []sql.Row{{1, 1, nil}, {2, nil, nil}, {3, nil, 1}, {4, 1, 1}, {5, 2, 2}},
+				},
+				{
+					Query: "INSERT INTO t2 VALUES (1, NULL);",
+				},
+				{
+					Query:           "INSERT INTO t2 VALUES (2, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO t3 VALUES (1, NULL);",
+				},
+				{
+					Query:           "INSERT INTO t3 VALUES (2, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO t3 VALUES (2, NULL) ON CONFLICT (a) DO NOTHING;",
+				},
+				{
+					Query: "INSERT INTO t3 VALUES (2, NULL) ON CONFLICT (a) DO UPDATE SET id = 10;",
+				},
+				{
+					Query: "INSERT INTO t3 VALUES (3, NULL) ON CONFLICT DO NOTHING;",
+				},
+				{
+					Query:    "SELECT * FROM t3;",
+					Expected: []sql.Row{{10, nil}},
+				},
+				{
+					Query: "INSERT INTO t4 VALUES (1, NULL, 1), (2, NULL, 1);",
+				},
+				{
+					Query: "SELECT c.relname, i.indnullsnotdistinct FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid " +
+						"WHERE i.indrelid IN ('t1'::regclass, 't2'::regclass, 't3'::regclass, 't4'::regclass) ORDER BY 1;",
+					Expected: []sql.Row{
+						{"t1_a_b_key", "t"},
+						{"t1_pkey", "f"},
+						{"t2_a_uniq", "t"},
+						{"t2_pkey", "f"},
+						{"t3_a_key", "t"},
+						{"t3_pkey", "f"},
+						{"t4_a_b_key", "f"},
+						{"t4_a_key", "f"},
+						{"t4_pkey", "f"},
+					},
+				},
+				{
+					Query: "SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint " +
+						"WHERE conrelid IN ('t1'::regclass, 't3'::regclass, 't4'::regclass) AND contype = 'u' ORDER BY 1;",
+					Expected: []sql.Row{
+						{"t1_a_b_key", "UNIQUE NULLS NOT DISTINCT (a, b)"},
+						{"t3_a_key", "UNIQUE NULLS NOT DISTINCT (a)"},
+						{"t4_a_b_key", "UNIQUE (a, b)"},
+						{"t4_a_key", "UNIQUE (a)"},
+					},
+				},
+				{
+					Query: "SELECT indexname, indexdef FROM pg_indexes WHERE tablename IN ('t1', 't3') ORDER BY 1;",
+					Expected: []sql.Row{
+						{"t1_a_b_key", "CREATE UNIQUE INDEX t1_a_b_key ON public.t1 USING btree (a, b) NULLS NOT DISTINCT"},
+						{"t1_pkey", "CREATE UNIQUE INDEX t1_pkey ON public.t1 USING btree (id)"},
+						{"t3_a_key", "CREATE UNIQUE INDEX t3_a_key ON public.t3 USING btree (a) NULLS NOT DISTINCT"},
+						{"t3_pkey", "CREATE UNIQUE INDEX t3_pkey ON public.t3 USING btree (id)"},
+					},
+				},
+				{
+					Query:    "SELECT pg_get_indexdef('t1_a_b_key'::regclass);",
+					Expected: []sql.Row{{"CREATE UNIQUE INDEX t1_a_b_key ON public.t1 USING btree (a, b) NULLS NOT DISTINCT"}},
+				},
+				{
+					// rewriting the table keeps the option
+					Query: "ALTER TABLE t1 ALTER COLUMN b TYPE BIGINT;",
+				},
+				{
+					Query:           "INSERT INTO t1 VALUES (6, NULL, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:    "SELECT indnullsnotdistinct FROM pg_index WHERE indexrelid = 't1_a_b_key'::regclass;",
+					Expected: []sql.Row{{"t"}},
 				},
 			},
 		},

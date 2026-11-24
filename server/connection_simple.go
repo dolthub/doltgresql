@@ -98,7 +98,15 @@ func (h *ConnectionHandler) resumeSimpleQuery(execution *simpleQueryExecution) (
 			}
 		}
 
-		if err = h.query(query); err != nil {
+		if err = h.warnSetLocalOutsideTransaction(query, implicitTransactionControl || h.state.txState.inExplicitTransactionBlock()); err != nil {
+			return true, err
+		}
+		standaloneSetLocal := !implicitTransactionControl && h.state.txState == idleTransactionState && isSetLocal(query)
+		err = h.query(query)
+		if standaloneSetLocal {
+			h.clearTransactionLocalVars()
+		}
+		if err != nil {
 			return true, err
 		}
 		if !implicitTransactionControl && isInjected && isDo {

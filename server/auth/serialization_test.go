@@ -15,15 +15,22 @@
 package auth
 
 import (
+	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+
+	"github.com/dolthub/doltgresql/utils"
 )
 
 // TestDeserializeRemovesInvalidRoleReferences verifies that upgrades sanitize authorization data written by affected releases.
 func TestDeserializeRemovesInvalidRoleReferences(t *testing.T) {
 	originalDatabase := globalDatabase
-	t.Cleanup(func() { globalDatabase = originalDatabase })
+	t.Cleanup(func() {
+		globalDatabase = originalDatabase
+		publishRoleNames()
+	})
 	globalDatabase = newEmptyDatabase()
 
 	survivor := Role{Name: "survivor", InheritPrivileges: true, id: 1}
@@ -91,13 +98,92 @@ func TestDeserializeRemovesInvalidRoleReferences(t *testing.T) {
 	if !HasDatabasePrivilege(mixedDatabaseKey, Privilege_SELECT) {
 		t.Error("sanitizing one grantor removed the surviving grant")
 	}
-	if group, _, _ := IsRoleAMember(orphan.ID(), otherGroup.ID()); group.IsValid() {
+	if HasRoleMembership(orphan.ID(), otherGroup.ID()) {
 		t.Error("orphaned role retained membership as member")
 	}
-	if group, _, _ := IsRoleAMember(survivor.ID(), orphan.ID()); group.IsValid() {
+	if HasRoleMembership(survivor.ID(), orphan.ID()) {
 		t.Error("orphaned role retained membership as group")
 	}
-	if group, _, _ := IsRoleAMember(survivor.ID(), otherGroup.ID()); group.IsValid() {
+	if HasRoleMembership(survivor.ID(), otherGroup.ID()) {
 		t.Error("orphaned role retained membership as grantor")
+	}
+}
+
+// TestRoleSettingsSerialization verifies that role settings survive a round trip, and that settings of missing roles are
+// removed on load.
+func TestRoleSettingsSerialization(t *testing.T) {
+	originalDatabase := globalDatabase
+	originalLock := globalLock
+	t.Cleanup(func() {
+		globalDatabase = originalDatabase
+		globalLock = originalLock
+		publishRoleNames()
+	})
+	if globalLock == nil {
+		globalLock = &sync.RWMutex{}
+	}
+	globalDatabase = newEmptyDatabase()
+
+	survivor := Role{Name: "survivor", InheritPrivileges: true, id: 1}
+	orphan := Role{Name: "orphan", InheritPrivileges: true, id: 2}
+	SetRole(survivor)
+	SetRole(orphan)
+	SetRoleSetting(RoleSettingKey{}, "app.global", "g")
+	SetRoleSetting(RoleSettingKey{Database: "db"}, "TimeZone", "UTC")
+	SetRoleSetting(RoleSettingKey{Role: survivor.ID()}, "search_path", "a, b")
+	SetRoleSetting(RoleSettingKey{Role: survivor.ID()}, "app.second", "2")
+	SetRoleSetting(RoleSettingKey{Role: survivor.ID(), Database: "db"}, "app.both", "b")
+	SetRoleSetting(RoleSettingKey{Role: orphan.ID()}, "app.orphan", "o")
+	delete(globalDatabase.rolesByName, orphan.Name)
+	delete(globalDatabase.rolesByID, orphan.ID())
+
+	loaded := newEmptyDatabase()
+	if err := loaded.deserialize(globalDatabase.serialize()); err != nil {
+		t.Fatal(err)
+	}
+	expected := map[RoleSettingKey][]RoleSetting{
+		{}:                                    {{Name: "app.global", Value: "g"}},
+		{Database: "db"}:                      {{Name: "TimeZone", Value: "UTC"}},
+		{Role: survivor.ID()}:                 {{Name: "search_path", Value: "a, b"}, {Name: "app.second", Value: "2"}},
+		{Role: survivor.ID(), Database: "db"}: {{Name: "app.both", Value: "b"}},
+	}
+	if !reflect.DeepEqual(expected, loaded.roleSettings.Data) {
+		t.Fatalf("expected %v, got %v", expected, loaded.roleSettings.Data)
+	}
+
+	globalDatabase = loaded
+	publishRoleNames()
+	expectedSession := []RoleSetting{
+		{Name: "app.global", Value: "g"},
+		{Name: "TimeZone", Value: "UTC"},
+		{Name: "search_path", Value: "a, b"},
+		{Name: "app.second", Value: "2"},
+		{Name: "app.both", Value: "b"},
+	}
+	if got := SessionRoleSettings("survivor", "db"); !reflect.DeepEqual(expectedSession, got) {
+		t.Fatalf("expected %v, got %v", expectedSession, got)
+	}
+	if got := SessionRoleSettings("missing", ""); !reflect.DeepEqual(expectedSession[:1], got) {
+		t.Fatalf("expected %v, got %v", expectedSession[:1], got)
+	}
+}
+
+// TestDeserializeV2WithoutRoleSettings verifies that version 2 data, which predates role settings, still loads.
+func TestDeserializeV2WithoutRoleSettingss(t *testing.T) {
+	// Construct the original v2 format independently of the current serializer:
+	// version, role count, then seven empty privilege/membership collections.
+	// Existing v2 files end after default privileges, without a role-settings count.
+	writer := utils.NewWriter(64)
+	writer.Uint32(2)
+	writer.Uint32(0)
+	for range 7 {
+		writer.Uint64(0)
+	}
+	loaded := newEmptyDatabase()
+	if err := loaded.deserialize(writer.Data()); err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.roleSettings.Data) != 0 {
+		t.Fatalf("expected no role settings in a legacy v2 auth database, got %v", loaded.roleSettings.Data)
 	}
 }

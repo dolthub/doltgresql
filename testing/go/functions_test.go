@@ -15,10 +15,16 @@
 package _go
 
 import (
+	"fmt"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/dolthub/go-mysql-server/sql"
+
+	"github.com/dolthub/doltgresql/core/id"
+	"github.com/dolthub/doltgresql/server/functions"
+	pgtypes "github.com/dolthub/doltgresql/server/types"
 )
 
 func TestAggregateFunctions(t *testing.T) {
@@ -664,7 +670,7 @@ func TestAggregateFunctions(t *testing.T) {
 					Query: `SELECT grp, sum(coalesce(amount, 0)), pg_typeof(sum(coalesce(amount, 0))) FROM numeric_sum_values GROUP BY grp ORDER BY grp;`,
 					Expected: []sql.Row{
 						{1, Numeric("12.50"), "numeric"},
-						{2, Numeric("0.00"), "numeric"},
+						{2, Numeric("0"), "numeric"},
 						{3, Numeric("100000000.00"), "numeric"},
 					},
 				},
@@ -676,9 +682,33 @@ func TestAggregateFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{1, Numeric("12.50"), Numeric("12.50"), "numeric"},
 						{1, nil, Numeric("12.50"), "numeric"},
-						{2, nil, Numeric("0.00"), "numeric"},
+						{2, nil, Numeric("0"), "numeric"},
 						{3, Numeric("0.01"), Numeric("0.01"), "numeric"},
 						{3, Numeric("99999999.99"), Numeric("100000000.00"), "numeric"},
+					},
+				},
+				{
+					Query: `SELECT grp,
+						sum(coalesce(amount, 0)) FILTER (WHERE amount IS NOT NULL),
+						pg_typeof(sum(coalesce(amount, 0)) FILTER (WHERE amount IS NOT NULL))
+					FROM numeric_sum_values GROUP BY grp ORDER BY grp;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), "numeric"},
+						{2, nil, "numeric"},
+						{3, Numeric("100000000.00"), "numeric"},
+					},
+				},
+				{
+					Query: `SELECT grp, amount,
+						sum(coalesce(amount, 0)) FILTER (WHERE amount > 1) OVER (PARTITION BY grp ORDER BY amount),
+						pg_typeof(sum(coalesce(amount, 0)) FILTER (WHERE amount > 1) OVER (PARTITION BY grp ORDER BY amount))
+					FROM numeric_sum_values ORDER BY grp, amount;`,
+					Expected: []sql.Row{
+						{1, Numeric("12.50"), Numeric("12.50"), "numeric"},
+						{1, nil, Numeric("12.50"), "numeric"},
+						{2, nil, nil, "numeric"},
+						{3, Numeric("0.01"), nil, "numeric"},
+						{3, Numeric("99999999.99"), Numeric("99999999.99"), "numeric"},
 					},
 				},
 				{
@@ -688,7 +718,7 @@ func TestAggregateFunctions(t *testing.T) {
 					FROM numeric_sum_groups ORDER BY id;`,
 					Expected: []sql.Row{
 						{1, Numeric("12.50"), "numeric"},
-						{2, Numeric("0.00"), "numeric"},
+						{2, Numeric("0"), "numeric"},
 					},
 				},
 			},
@@ -734,12 +764,205 @@ func TestAggregateFunctions(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "aggregate FILTER (WHERE ...)",
+			SetUpScript: []string{
+				"CREATE TABLE posts (id INT PRIMARY KEY, grp TEXT, status TEXT, n INT);",
+				`INSERT INTO posts VALUES
+					(1, 'a', 'published', 1),
+					(2, 'a', 'draft', 2),
+					(3, 'a', 'published', NULL),
+					(4, 'b', 'published', 4),
+					(5, 'b', 'draft', 5);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'published') FROM posts;",
+					Expected:         []sql.Row{{5, 3}},
+					ExpectedColNames: []string{"count", "count"},
+				},
+				{
+					Query:    "SELECT COUNT(n) FILTER (WHERE status = 'published') FROM posts;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT COUNT(DISTINCT grp) FILTER (WHERE status = 'draft') FROM posts;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT MIN(n) FILTER (WHERE status = 'draft'), MAX(n) FILTER (WHERE status = 'published') FROM posts;",
+					Expected: []sql.Row{{2, 4}},
+				},
+				{
+					Query: "SELECT grp, COUNT(*) FILTER (WHERE status = 'published'), COUNT(*) FROM posts GROUP BY grp ORDER BY grp;",
+					Expected: []sql.Row{
+						{"a", 2, 3},
+						{"b", 1, 2},
+					},
+				},
+				{
+					Query:    "SELECT COUNT(*) FILTER (WHERE status = 'archived'), MAX(n) FILTER (WHERE status = 'archived') FROM posts;",
+					Expected: []sql.Row{{0, nil}},
+				},
+				{
+					Query:    "SELECT string_agg(status, ',') FILTER (WHERE id = 4) FROM posts;",
+					Expected: []sql.Row{{"published"}},
+				},
+				{
+					Query:    "SELECT array_agg(n ORDER BY id) FILTER (WHERE status = 'draft') FROM posts;",
+					Expected: []sql.Row{{"{2,5}"}},
+				},
+			},
+		},
+		{
+			Name: "aggregate FILTER keeps the aggregate's NULL handling",
+			SetUpScript: []string{
+				"CREATE TABLE filtered (id INT PRIMARY KEY, g TEXT, x INT, s TEXT, b BOOL);",
+				"INSERT INTO filtered VALUES (1, 'a', 1, 'p', true), (2, 'a', NULL, 'q', false), (3, 'b', 3, NULL, true), (4, 'b', 4, 'r', NULL), (5, 'a', 5, 'p', true);",
+				"CREATE FUNCTION count_all_step(int8, int4) RETURNS int8 LANGUAGE SQL AS 'SELECT $1 + 1';",
+				"CREATE AGGREGATE count_all(int4) (SFUNC = count_all_step, STYPE = int8, INITCOND = '0');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            "SELECT array_agg(x ORDER BY id) FILTER (WHERE id > 1) FROM filtered;",
+					Expected:         []sql.Row{{"{NULL,3,4,5}"}},
+					ExpectedColNames: []string{"array_agg"},
+				},
+				{
+					Query:    "SELECT json_agg(x) FILTER (WHERE id > 3) FROM filtered;",
+					Expected: []sql.Row{{"[4, 5]"}},
+				},
+				{
+					Query: "SELECT g, array_agg(x ORDER BY id) FILTER (WHERE b) FROM filtered GROUP BY g ORDER BY g;",
+					Expected: []sql.Row{
+						{"a", "{1,5}"},
+						{"b", "{3}"},
+					},
+				},
+				{
+					// The step function is not strict, so this aggregate counts NULL inputs too
+					Query:    "SELECT count_all(x) FILTER (WHERE id > 1), count_all(x) FROM filtered;",
+					Expected: []sql.Row{{4, 5}},
+				},
+				{
+					Query:    "SELECT xmlagg(xmlelement(name e, x)) FILTER (WHERE id > 3) FROM filtered;",
+					Expected: []sql.Row{{"<e>4</e><e>5</e>"}},
+				},
+				{
+					Query:    "SELECT bool_and(b) FILTER (WHERE id < 3), bool_or(b) FILTER (WHERE id > 3), stddev(x) FILTER (WHERE id > 2) FROM filtered;",
+					Expected: []sql.Row{{"f", "t", Numeric("1.00000000000000000000")}},
+				},
+				{
+					Query:    "SELECT string_agg(s, ',' ORDER BY s) FILTER (WHERE id > 1) FROM filtered;",
+					Expected: []sql.Row{{"p,q,r"}},
+				},
+				{
+					// The filter is applied before the aggregate's argument is evaluated
+					Query:    "SELECT sum(10 / x) FILTER (WHERE x <> 0 AND x IS NOT NULL) FROM filtered;",
+					Expected: []sql.Row{{17}},
+				},
+				{
+					Query:    "SELECT count(DISTINCT g) FILTER (WHERE x > 2), min(x) FILTER (WHERE id > 1), max(x) FILTER (WHERE id < 5) FROM filtered;",
+					Expected: []sql.Row{{2, 3, 4}},
+				},
+				{
+					Query:    "SELECT count(*) FILTER (WHERE false), max(x) FILTER (WHERE false), sum(x) FILTER (WHERE NULL) FROM filtered;",
+					Expected: []sql.Row{{0, nil, nil}},
+				},
+				{
+					Query:    "SELECT g FROM filtered GROUP BY g HAVING count(*) FILTER (WHERE b) > 1;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT g, count(*) FILTER (WHERE b) FROM filtered GROUP BY g ORDER BY count(*) FILTER (WHERE b), g;",
+					Expected: []sql.Row{{"b", 1}, {"a", 2}},
+				},
+				{
+					Query: "SELECT f.id, (SELECT count(*) FILTER (WHERE f2.x > f.id) FROM filtered f2) FROM filtered f ORDER BY f.id;",
+					Expected: []sql.Row{
+						{1, 3},
+						{2, 3},
+						{3, 2},
+						{4, 1},
+						{5, 0},
+					},
+				},
+				{
+					Query:    "SELECT count(*) FILTER (WHERE x IN (SELECT max(x) FROM filtered)) FROM filtered;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query: "SELECT id, sum(x) FILTER (WHERE x > 2) OVER (ORDER BY id), count(*) FILTER (WHERE b) OVER (ORDER BY id) FROM filtered ORDER BY id;",
+					Expected: []sql.Row{
+						{1, nil, 1},
+						{2, nil, 1},
+						{3, 3, 2},
+						{4, 7, 2},
+						{5, 12, 3},
+					},
+				},
+				{
+					Query: "SELECT id, sum(x) FILTER (WHERE b) OVER (PARTITION BY g ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) FROM filtered ORDER BY id;",
+					Expected: []sql.Row{
+						{1, 1},
+						{2, 1},
+						{3, 3},
+						{4, 3},
+						{5, 5},
+					},
+				},
+				{
+					Query:       "SELECT abs(x) FILTER (WHERE id > 1) FROM filtered;",
+					ExpectedErr: "FILTER specified, but abs is not an aggregate function",
+				},
+				{
+					Query:       "SELECT row_number() FILTER (WHERE id > 1) OVER () FROM filtered;",
+					ExpectedErr: "FILTER is not implemented for non-aggregate window functions",
+				},
+				{
+					Query:       "SELECT count(*) FILTER (WHERE sum(x) > 1) FROM filtered;",
+					ExpectedErr: "aggregate functions are not allowed in FILTER",
+				},
+				{
+					Query:       "SELECT array_agg(x) FILTER (WHERE count(*) > 1) FROM filtered;",
+					ExpectedErr: "aggregate functions are not allowed in FILTER",
+				},
+				{
+					Query:       "SELECT count(*) FILTER (WHERE row_number() OVER () > 1) FROM filtered;",
+					ExpectedErr: "window functions are not allowed in FILTER",
+				},
+			},
+		},
 	})
 }
 
 // https://www.postgresql.org/docs/15/functions-math.html
 func TestFunctionsMath(t *testing.T) {
 	RunScripts(t, []ScriptTest{
+		{
+			Name: "abs",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT abs((-32767)::int2), abs((-2147483647)::int4), abs((-9223372036854775807)::int8);`,
+					Expected: []sql.Row{{int16(32767), int32(2147483647), int64(9223372036854775807)}},
+				},
+				{
+					Query:           `SELECT abs((-32768)::int2);`,
+					ExpectedErr:     "smallint out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT abs((-2147483648)::int4);`,
+					ExpectedErr:     "integer out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT abs((-9223372036854775808)::int8);`,
+					ExpectedErr:     "bigint out of range",
+					ExpectedErrCode: "22003",
+				},
+			},
+		},
 		{
 			Name: "cbrt",
 			SetUpScript: []string{
@@ -1125,6 +1348,31 @@ func TestFunctionsMath(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name: "trunc",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT trunc(1.567::numeric, 2), trunc(-2.25::numeric, 1), trunc(123.456::numeric, -1), trunc(1.5::numeric), trunc(-1.5::numeric);`,
+					Expected: []sql.Row{{Numeric("1.56"), Numeric("-2.2"), Numeric("120"), Numeric("1"), Numeric("-1")}},
+				},
+				{
+					Query:    `SELECT trunc(1.5::numeric, 3), trunc(123::numeric, 2), trunc(1.567::numeric, 0), trunc(-987.654::numeric, -2), trunc(1e20::numeric, -3);`,
+					Expected: []sql.Row{{Numeric("1.500"), Numeric("123.00"), Numeric("1"), Numeric("-900"), Numeric("100000000000000000000")}},
+				},
+				{
+					Query:    `SELECT trunc(0.001::numeric, 2)::text, trunc(-0.001::numeric, 2)::text, trunc(-0.5::numeric)::text, trunc(5::numeric, -1)::text, trunc(123.456::numeric, -5)::text;`,
+					Expected: []sql.Row{{"0.00", "0.00", "0", "0", "0"}},
+				},
+				{
+					Query:    `SELECT trunc('NaN'::numeric), trunc('NaN'::numeric, 2), trunc('Infinity'::numeric), trunc('-Infinity'::numeric, 2);`,
+					Expected: []sql.Row{{Numeric("NaN"), Numeric("NaN"), Numeric("Infinity"), Numeric("-Infinity")}},
+				},
+				{
+					Query:    `SELECT trunc(1.567::float8), trunc(-1.567::float8);`,
+					Expected: []sql.Row{{1.0, -1.0}},
+				},
+			},
+		},
 	})
 }
 
@@ -1352,6 +1600,136 @@ func TestFunctionsOID(t *testing.T) {
 					Expected: []sql.Row{
 						{nil},
 					},
+				},
+			},
+		},
+		{
+			Name: "to_regprocedure",
+			SetUpScript: []string{
+				`CREATE FUNCTION tf() RETURNS trigger AS $$ BEGIN RETURN NULL; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f2(a INT, b TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f3(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE FUNCTION f3(TEXT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE SCHEMA s;`,
+				`CREATE FUNCTION s.sf(INT) RETURNS INT AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;`,
+				`CREATE PROCEDURE p1(INT) AS $$ BEGIN NULL; END; $$ LANGUAGE plpgsql;`,
+				`CREATE TABLE t1 (pk INT PRIMARY KEY);`,
+				`CREATE TRIGGER trg AFTER INSERT ON t1 FOR EACH ROW EXECUTE FUNCTION tf();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT to_regprocedure('tf()');`,
+					ExpectedColNames: []string{"to_regprocedure"},
+					Expected:         []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('pg_catalog.now()');`,
+					Expected: []sql.Row{{"now()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('"tf"()');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('public.tf()');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure(' tf ( ) ');`,
+					Expected: []sql.Row{{"tf()"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2(int, text)');`,
+					Expected: []sql.Row{{"f2(integer,text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2( integer , text ) ');`,
+					Expected: []sql.Row{{"f2(integer,text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f2(int4, varchar)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f3(text)');`,
+					Expected: []sql.Row{{"f3(text)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('f3(bool)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('s.sf(int)');`,
+					Expected: []sql.Row{{"s.sf(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('sf(int)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('p1(int)');`,
+					Expected: []sql.Row{{"p1(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('abs(float8)');`,
+					Expected: []sql.Row{{"abs(double precision)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('nosuch()');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('nosuchschema.sf(int)');`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(to_regprocedure('tf()'));`,
+					Expected: []sql.Row{{"regprocedure"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('revision_change()') IS NULL;`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT 1 FROM pg_trigger t WHERE t.tgname = 'trg' AND t.tgfoid = to_regprocedure('"tf"()');`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:           `SELECT to_regprocedure('tf');`,
+					ExpectedErr:     `expected a left parenthesis`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int,text');`,
+					ExpectedErr:     `expected a right parenthesis`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int,)');`,
+					ExpectedErr:     `expected a type name`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('f2(int))');`,
+					ExpectedErr:     `improper type name`,
+					ExpectedErrCode: "22P02",
+				},
+				{
+					Query:           `SELECT to_regprocedure('abs(nosuchtype)');`,
+					ExpectedErr:     `type "nosuchtype" does not exist`,
+					ExpectedErrCode: "42704",
+				},
+				{
+					Query:    `SET search_path = s;`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT to_regprocedure('s.sf(int)');`,
+					Expected: []sql.Row{{"sf(integer)"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('public.f2(int,text)');`,
+					Expected: []sql.Row{{"public.f2(integer,text)"}},
 				},
 			},
 		},
@@ -1989,6 +2367,14 @@ func TestSystemInformationFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{"???"},
 					},
+				},
+				{
+					Query:    `SELECT format_type('json'::regtype, NULL), format_type('json'::regtype, -1), format_type('_json'::regtype, NULL), format_type('jsonb'::regtype, NULL), format_type('_jsonb'::regtype, NULL);`,
+					Expected: []sql.Row{{"json", "json", "json[]", "jsonb", "jsonb[]"}},
+				},
+				{
+					Query:    `SELECT 'json'::regtype, 'jsonb'::regtype, '_json'::regtype, 'json[]'::regtype;`,
+					Expected: []sql.Row{{"json", "jsonb", "json[]", "json[]"}},
 				},
 			},
 		},
@@ -3697,6 +4083,7 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					INSERT INTO cp_test VALUES(a, b);
 					INSERT INTO cp_test VALUES(c, b);
 				$$;`,
+				`CREATE FUNCTION json_func(a json, b jsonb, c json[]) RETURNS int LANGUAGE sql AS 'SELECT 1';`,
 			},
 			Assertions: []ScriptTestAssertion{
 				{
@@ -3724,6 +4111,10 @@ func TestSystemCatalogInformationFunctions(t *testing.T) {
 					Expected: []sql.Row{
 						{"a integer, b text, c integer DEFAULT 100"},
 					},
+				},
+				{
+					Query:    `SELECT pg_get_function_arguments('json_func'::regproc);`,
+					Expected: []sql.Row{{"a json, b jsonb, c json[]"}},
 				},
 			},
 		},
@@ -3863,15 +4254,45 @@ ORDER BY i.indisprimary DESC, c2.relname;`,
 			},
 		},
 		{
-			Name:        "pg_get_function_result",
-			SetUpScript: []string{},
+			Name: "pg_get_function_result",
+			SetUpScript: []string{
+				`CREATE TABLE rt_t (a int, b text);`,
+				`CREATE FUNCTION rf1(int) RETURNS int LANGUAGE sql AS 'SELECT $1';`,
+				`CREATE FUNCTION rf2() RETURNS SETOF text LANGUAGE sql AS 'SELECT ''a''';`,
+				`CREATE FUNCTION rf3(OUT a int, OUT b text) LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf4(OUT a int, OUT b text) RETURNS SETOF record LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf5() RETURNS TABLE(a int, b varchar(10)) LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf6(x int, OUT y int) LANGUAGE sql AS 'SELECT $1';`,
+				`CREATE FUNCTION rf7() RETURNS rt_t LANGUAGE sql AS 'SELECT 1, ''x''';`,
+				`CREATE FUNCTION rf8() RETURNS void LANGUAGE sql AS '';`,
+				`CREATE FUNCTION rf9() RETURNS int[] LANGUAGE sql AS 'SELECT NULL::int[]';`,
+				`CREATE PROCEDURE rp1(a int) LANGUAGE sql AS '';`,
+			},
 			Assertions: []ScriptTestAssertion{
 				{
-					// TODO: not supported yet
 					Query: `SELECT pg_get_function_result(22)`,
 					Expected: []sql.Row{
-						{""},
+						{nil},
 					},
+				},
+				{
+					Query: `SELECT proname, pg_get_function_result(oid) FROM pg_proc WHERE proname IN ('rf1', 'rf2', 'rf3', 'rf4', 'rf6', 'rf7', 'rf8', 'rf9', 'rp1') ORDER BY 1;`,
+					Expected: []sql.Row{
+						{"rf1", "integer"},
+						{"rf2", "SETOF text"},
+						{"rf3", "record"},
+						{"rf4", "SETOF record"},
+						{"rf6", "integer"},
+						{"rf7", "rt_t"},
+						{"rf8", "void"},
+						{"rf9", "integer[]"},
+						{"rp1", nil},
+					},
+				},
+				{
+					Query:    `SELECT pg_get_function_result(oid) FROM pg_proc WHERE proname = 'rf5';`,
+					Expected: []sql.Row{{"TABLE(a integer, b character varying)"}},
+					Skip:     true,
 				},
 			},
 		},
@@ -4651,6 +5072,34 @@ func TestDateAndTimeFunction(t *testing.T) {
 					Query:    `select '2011-03-27 02:00:00'::timestamp at time zone 'MSK';`,
 					Expected: []sql.Row{{"2011-03-26 15:30:00-06:30"}},
 				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone 'Asia/Kolkata';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone 'America/New_York';`,
+					Expected: []sql.Row{{"2024-03-05 05:00:00"}},
+				},
+				{
+					Query:    `select '2024-07-01 10:00:00+00'::timestamptz at time zone 'America/New_York';`,
+					Expected: []sql.Row{{"2024-07-01 06:00:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone interval '05:30';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone '+05:30';`,
+					Expected: []sql.Row{{"2024-03-05 04:30:00"}},
+				},
+				{
+					Query:    `select '2024-03-05 10:00:00+00'::timestamptz at time zone '-05:30';`,
+					Expected: []sql.Row{{"2024-03-05 15:30:00"}},
+				},
+				{
+					Query:    `select timezone('Asia/Kolkata', timestamp with time zone '2001-02-16 20:38:40.12-05');`,
+					Expected: []sql.Row{{"2001-02-17 07:08:40.12"}},
+				},
 			},
 		},
 		{
@@ -5326,11 +5775,318 @@ func TestDateAndTimeFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			// https://github.com/dolthub/doltgresql/issues/3705
+			Name: "date minus interval uses calendar months",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT '2024-03-15'::DATE - INTERVAL '1 month';`,
+					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-31'::DATE - INTERVAL '1 month';`,
+					Expected: []sql.Row{{"2024-02-29 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-02-29'::DATE - INTERVAL '1 year';`,
+					Expected: []sql.Row{{"2023-02-28 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::DATE + INTERVAL '-1 month';`,
+					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::TIMESTAMP - INTERVAL '1 month';`,
+					Expected: []sql.Row{{"2024-02-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::DATE - INTERVAL '-1 month';`,
+					Expected: []sql.Row{{"2024-04-15 00:00:00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-15'::DATE - INTERVAL '1 year 2 months 3 days 04:05:06.789';`,
+					Expected: []sql.Row{{"2023-01-11 19:54:53.211"}},
+				},
+				{
+					Query:           `SELECT '4714-11-24 BC'::DATE - INTERVAL '1 day';`,
+					ExpectedErr:     "timestamp out of range",
+					ExpectedErrCode: "22008",
+				},
+			},
+		},
+		{
+			Name: "date and timestamptz conversions use the session time zone",
+			SetUpScript: []string{
+				`CREATE TABLE ev (id INT PRIMARY KEY, at TIMESTAMPTZ);`,
+				`INSERT INTO ev VALUES (1, '2024-03-05 20:00:00-08');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SET TIME ZONE 'America/Los_Angeles';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT '2024-03-05'::DATE::TIMESTAMPTZ::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05 00:00:00-08"}},
+				},
+				{
+					Query:    `SELECT TO_CHAR('2024-03-05'::DATE, 'YYYY-MM-DD');`,
+					Expected: []sql.Row{{"2024-03-05"}},
+				},
+				{
+					Query:    `SELECT id FROM ev WHERE at >= '2024-03-05'::DATE AND at < '2024-03-06'::DATE;`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT '2024-03-06 02:00:00+00'::TIMESTAMPTZ::DATE::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05"}},
+				},
+				{
+					Query: `SELECT '2024-03-05 00:00:00-08'::TIMESTAMPTZ = '2024-03-05'::DATE, '2024-03-05'::DATE = '2024-03-05 00:00:00-08'::TIMESTAMPTZ, ` +
+						`at <> '2024-03-05'::DATE, '2024-03-06'::DATE <> at, at > '2024-03-05'::DATE, '2024-03-06'::DATE > at, ` +
+						`at <= '2024-03-05'::DATE, '2024-03-06'::DATE <= at, '2024-03-05'::DATE < at, '2024-03-06'::DATE >= at FROM ev;`,
+					Expected: []sql.Row{{"t", "t", "t", "t", "t", "t", "f", "f", "t", "t"}},
+				},
+				{
+					Query:    `SET TIME ZONE 'Asia/Tokyo';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT '2024-03-05'::DATE::TIMESTAMPTZ::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05 00:00:00+09"}},
+				},
+				{
+					Query:    `SELECT '2024-03-05 20:00:00+00'::TIMESTAMPTZ::DATE::TEXT;`,
+					Expected: []sql.Row{{"2024-03-06"}},
+				},
+				{
+					Query:    `SELECT TO_CHAR('2024-03-05'::DATE, 'YYYY-MM-DD HH24');`,
+					Expected: []sql.Row{{"2024-03-05 00"}},
+				},
+				{
+					Query:    `SET TIME ZONE 'UTC';`,
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    `SELECT '2024-03-05'::DATE::TIMESTAMPTZ::TEXT;`,
+					Expected: []sql.Row{{"2024-03-05 00:00:00+00"}},
+				},
+				{
+					Query:    `SELECT '2024-03-06 02:00:00+00'::TIMESTAMPTZ::DATE::TEXT;`,
+					Expected: []sql.Row{{"2024-03-06"}},
+				},
+			},
+		},
 	})
 }
 
 func TestStringFunction(t *testing.T) {
 	RunScripts(t, []ScriptTest{
+		{
+			Name: "regexp_replace",
+			SetUpScript: []string{
+				`CREATE TABLE tt (s text);`,
+				`INSERT INTO tt VALUES ('555-123-4567'), ('John Smith');`,
+				`UPDATE tt SET s = regexp_replace(s, '(\w+) (\w+)', '\2, \1');`,
+				`UPDATE tt SET s = regexp_replace(s, '-', '');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT s FROM tt ORDER BY s;`, Expected: []sql.Row{{"555123-4567"}, {"Smith, John"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b..', 'X');`, Expected: []sql.Row{{"fooXbaz"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b..', 'X', 'g');`, Expected: []sql.Row{{"fooXX"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b(..)', 'X\1Y', 'g');`, Expected: []sql.Row{{"fooXarYXazY"}}},
+				{Query: `SELECT regexp_replace('fooBARbaz', 'bar', 'X', 'i');`, Expected: []sql.Row{{"fooXbaz"}}},
+				{Query: `SELECT regexp_replace('fooBARbaz', 'b..', 'X', 'gi');`, Expected: []sql.Row{{"fooXX"}}},
+				{Query: `SELECT regexp_replace('abc', 'b', '[\&]');`, Expected: []sql.Row{{"a[b]c"}}},
+				{Query: `SELECT regexp_replace('abc', 'b', '\\');`, Expected: []sql.Row{{`a\c`}}},
+				{Query: `SELECT regexp_replace('abc', 'b', '\q');`, Expected: []sql.Row{{`a\qc`}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'x\');`, Expected: []sql.Row{{`ax\c`}}},
+				{Query: `SELECT regexp_replace('abc', '(b)', '<\2>');`, Expected: []sql.Row{{"a<>c"}}},
+				{Query: `SELECT regexp_replace('abc', '(b)', '$1');`, Expected: []sql.Row{{"a$1c"}}},
+				{Query: `SELECT regexp_replace('abc', 'x*', '-', 'g');`, Expected: []sql.Row{{"-a-b-c-"}}},
+				{Query: `SELECT regexp_replace('abc', 'b*', '-', 'g');`, Expected: []sql.Row{{"-a-c-"}}},
+				{Query: `SELECT regexp_replace('abc', 'x', 'y');`, Expected: []sql.Row{{"abc"}}},
+				{Query: `SELECT regexp_replace('a.b', '.', 'x', 'gq');`, Expected: []sql.Row{{"axb"}}},
+				{Query: `SELECT regexp_replace(NULL, 'b', 'x');`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'x', NULL);`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'x', 'z');`, ExpectedErr: `invalid regular expression option: "z"`},
+				{Query: `SELECT regexp_replace('abc', '(?i)B', 'x');`, Expected: []sql.Row{{"axc"}}},
+				{Query: `SELECT regexp_replace('abc', '(?g)b', 'x');`, ExpectedErr: `invalid embedded option`},
+				{Query: `SELECT regexp_replace('a.b.c', '\.', '-', 'g');`, Expected: []sql.Row{{"a-b-c"}}},
+				{Query: `SELECT regexp_replace('a.b.c', '***=.', '-', 'g');`, Expected: []sql.Row{{"a-b-c"}}},
+				{Query: `SELECT regexp_replace('foobar', 'o b  # comment', '_', 'x');`, Expected: []sql.Row{{"fo_ar"}}},
+				{Query: `SELECT regexp_replace('日本語日本語', '本', 'X', 'g');`, Expected: []sql.Row{{"日X語日X語"}}},
+				{Query: `SELECT regexp_replace('aaa', 'a', '\&\&', 'g');`, Expected: []sql.Row{{"aaaaaa"}}},
+				{Query: `SELECT regexp_replace('2026-11-20', '(\d+)-(\d+)-(\d+)', '\3/\2/\1');`, Expected: []sql.Row{{"20/11/2026"}}},
+				{Query: `SELECT regexp_replace('ab', '(a)|(b)', '[\1\2]', 'g');`, Expected: []sql.Row{{"[a][b]"}}},
+				{Query: `SELECT regexp_replace('', 'x*', '-');`, Expected: []sql.Row{{"-"}}},
+				{Query: `SELECT regexp_replace('abc', '(', 'x');`, ExpectedErr: `invalid regular expression`},
+				{Query: `SELECT regexp_split_to_array('a,b', ',', 'g');`, ExpectedErr: `does not support the "global" option`},
+				{Query: `SELECT regexp_replace(s, '\s+', '', 'g') FROM (VALUES ('a b  c'), (' d ')) v(s) ORDER BY 1;`, Expected: []sql.Row{{"abc"}, {"d"}}},
+				{Query: `SELECT regexp_replace('A PostgreSQL function', 'A|e|i|o|u', 'X', 1, 2);`, Expected: []sql.Row{{"A PXstgreSQL function"}}},
+				{Query: `SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 3, 'i');`, Expected: []sql.Row{{"A PostgrXSQL function"}}},
+				{Query: `SELECT regexp_replace('A PostgreSQL function', 'a|e|i|o|u', 'X', 1, 0, 'i');`, Expected: []sql.Row{{"X PXstgrXSQL fXnctXXn"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b..', 'X', 1);`, Expected: []sql.Row{{"fooXbaz"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b..', 'X', 5);`, Expected: []sql.Row{{"foobarX"}}},
+				{Query: `SELECT regexp_replace('aaa', 'a', 'X', 2, 0);`, Expected: []sql.Row{{"aXX"}}},
+				{Query: `SELECT regexp_replace('aaa', 'a', 'X', 1, 1, 'g');`, Expected: []sql.Row{{"Xaa"}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'X', 1, 2);`, Expected: []sql.Row{{"abc"}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'X', 10);`, Expected: []sql.Row{{"abc"}}},
+				{Query: `SELECT regexp_replace('日本語日本語', '本', 'X', 3);`, Expected: []sql.Row{{"日本語日X語"}}},
+				{Query: `SELECT regexp_replace('foobarbaz', 'b(..)', '<\1>', 1, 2);`, Expected: []sql.Row{{"foobar<az>"}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'X', NULL, 1);`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT regexp_replace('abc', 'b', 'X', 0);`, ExpectedErr: `invalid value for parameter "start": 0`},
+				{Query: `SELECT regexp_replace('abc', 'b', 'X', 1, -1);`, ExpectedErr: `invalid value for parameter "n": -1`},
+			},
+		},
+		{Name: "regexp_split_to_array", Assertions: []ScriptTestAssertion{
+			{Query: `SELECT regexp_split_to_array('statement_timeout=1000', '=');`, Expected: []sql.Row{{"{statement_timeout,1000}"}}},
+			{Query: `SELECT (regexp_split_to_array((regexp_split_to_array('default_transaction_isolation=read committed,serializable', '='))[2], ','))[1];`, Expected: []sql.Row{{"read committed"}}},
+			{Query: `SELECT regexp_split_to_array('a,b;c', '[,;]');`, Expected: []sql.Row{{"{a,b,c}"}}},
+			{Query: `SELECT regexp_split_to_array('a,b,c', '(,)');`, Expected: []sql.Row{{"{a,b,c}"}}},
+			{Query: `SELECT regexp_split_to_array(',a,,b,', ',');`, Expected: []sql.Row{{"{\"\",a,\"\",b,\"\"}"}}},
+			{Query: `SELECT regexp_split_to_array('abc', 'xyz');`, Expected: []sql.Row{{"{abc}"}}},
+			{Query: `SELECT regexp_split_to_array('', ',');`, Expected: []sql.Row{{"{\"\"}"}}},
+			{Query: `SELECT regexp_split_to_array('', '');`, Expected: []sql.Row{{"{\"\"}"}}},
+			{Query: `SELECT regexp_split_to_array('abc', '');`, Expected: []sql.Row{{"{a,b,c}"}}},
+			{Query: `SELECT regexp_split_to_array('abc', '^|$');`, Expected: []sql.Row{{"{abc}"}}},
+			{Query: `SELECT regexp_split_to_array('abc', 'b*');`, Expected: []sql.Row{{"{a,c}"}}},
+			{Query: `SELECT regexp_split_to_array('a b  c', E'\\s*');`, Expected: []sql.Row{{"{a,b,c}"}}},
+			{Query: `SELECT regexp_split_to_array('日本語', '');`, Expected: []sql.Row{{"{日,本,語}"}}},
+			{Query: `SELECT regexp_split_to_array('aXXbxxc', 'xx', 'i');`, Expected: []sql.Row{{"{a,b,c}"}}},
+			{Query: `SELECT regexp_split_to_array('aXXbxxc', 'xx', 'ic');`, Expected: []sql.Row{{"{aXXb,c}"}}},
+			{Query: `SELECT regexp_split_to_array('aXXbxxc', 'xx', 'ci');`, Expected: []sql.Row{{"{a,b,c}"}}},
+			{Query: `SELECT regexp_split_to_array('a.b*c', '.', 'q');`, Expected: []sql.Row{{"{a,b*c}"}}},
+			{Query: `SELECT regexp_split_to_array('a.b*c', '.', 'qi');`, Expected: []sql.Row{{"{a,b*c}"}}},
+			{Query: `SELECT regexp_split_to_array('a,b', ',', 'e');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('a+b++c', '+', 'b');`, Expected: []sql.Row{{"{a,b,\"\",c}"}}},
+			{Query: `SELECT regexp_split_to_array('a,,b', E'\\(,\\)\\{2\\}', 'b');`, Expected: []sql.Row{{"{a,b}"}}},
+			// BRE grouping and bounds require basic mode and one backslash in the pattern.
+			{Query: `SELECT regexp_split_to_array('a,,b', $re$\(,\)\{2\}$re$, 'b');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('a,,b', $re$\(,\)\{2\}$re$);`, Expected: []sql.Row{{`{"a,,b"}`}}},
+			{Query: `SELECT regexp_split_to_array('a,,b', $re$\\(,\\)\\{2\\}$re$, 'b');`, Expected: []sql.Row{{`{"a,,b"}`}}},
+			{Query: `SELECT regexp_split_to_array(E'a\nb', '.');`, Expected: []sql.Row{{"{\"\",\"\",\"\",\"\"}"}}},
+			{Query: `SELECT regexp_split_to_array(E'a\nb', '.', 'n');`, Expected: []sql.Row{{"{\"\",\"\n\",\"\"}"}}},
+			{Query: `SELECT regexp_split_to_array(E'a\nb', '.', 'p');`, Expected: []sql.Row{{"{\"\",\"\n\",\"\"}"}}},
+			{Query: `SELECT regexp_split_to_array(E'a\nb', '.', 'w');`, Expected: []sql.Row{{"{\"\",\"\",\"\",\"\"}"}}},
+			{Query: `SELECT regexp_split_to_array(E'a\nb', '.', 's');`, Expected: []sql.Row{{"{\"\",\"\",\"\",\"\"}"}}},
+			{Query: `SELECT regexp_split_to_array(E'a\nb', '^', 'n');`, Expected: []sql.Row{{"{\"a\n\",b}"}}},
+			{Query: `SELECT regexp_split_to_array(E'a\nb', '^', 'm');`, Expected: []sql.Row{{"{\"a\n\",b}"}}},
+			{Query: `SELECT regexp_split_to_array(E'a\nb', '^', 'p');`, Expected: []sql.Row{{"{\"a\nb\"}"}}},
+			{Query: `SELECT regexp_split_to_array(E'a\nb', '^', 'w');`, Expected: []sql.Row{{"{\"a\n\",b}"}}},
+			{Query: `SELECT regexp_split_to_array(E'a\nb', '[^,]+', 'n');`, Expected: []sql.Row{{"{\"\",\"\n\",\"\"}"}}},
+			{Query: `SELECT regexp_split_to_array('a,b;c', ' , | ; # delimiters', 'x');`, Expected: []sql.Row{{"{a,b,c}"}}},
+			{Query: `SELECT regexp_split_to_array('a b#c', '[ #]', 'x');`, Expected: []sql.Row{{"{a,b,c}"}}},
+			{Query: `SELECT regexp_split_to_array('a b', ' ', 'xt');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('a,b', '[[:space:],]', 'x');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('a[b c', $$\[ | \ $$, 'x');`, Expected: []sql.Row{{"{a,b,c}"}}},
+			{Query: `SELECT regexp_split_to_array('a#b c', $$\# | \ $$, 'x');`, Expected: []sql.Row{{"{a,b,c}"}}},
+			{Query: `SELECT regexp_split_to_array('a]b c', $$[\] ]$$, 'x');`, Expected: []sql.Row{{"{a,b,c}"}}},
+			{Query: `SELECT regexp_split_to_array('a b', $$[[:space\:]]$$, 'x');`, ExpectedErr: "invalid regular expression", ExpectedErrCode: "2201B"},
+			{Query: `SELECT regexp_split_to_array('a b', $$[[:space:\]]$$, 'x');`, ExpectedErr: "invalid regular expression", ExpectedErrCode: "2201B"},
+			{Query: `SELECT regexp_split_to_array('aXXb', '(?i)xx');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('aXXbxxc', '(?c)xx', 'i');`, Expected: []sql.Row{{"{aXXb,c}"}}},
+			{Query: `SELECT regexp_split_to_array('a.b', '***=.', 'q');`, Expected: []sql.Row{{"{a.b}"}}},
+			{Query: `SELECT regexp_split_to_array('a.b', '***:.', 'q');`, Expected: []sql.Row{{"{a.b}"}}},
+			{Query: `SELECT regexp_split_to_array('aXXb', E'X\\+', 'b');`, Expected: []sql.Row{{"{aXXb}"}}},
+			{Query: `SELECT regexp_split_to_array('aX+b', E'X\\+', 'b');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('aX?b', E'X\\?', 'b');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('aX|Yb', E'X\\|Y', 'b');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('aXXb', '***:(?i)x');`, Expected: []sql.Row{{"{a,\"\",b}"}}},
+			{Query: `SELECT regexp_split_to_array('a.b', '***=.');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('a,b', '***:,', 'b');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('abX', 'a|ab');`, Expected: []sql.Row{{"{\"\",X}"}}},
+			{Query: `SELECT regexp_split_to_array('xabcy', 'a.*?c');`, Expected: []sql.Row{{"{x,y}"}}},
+			{Query: `SELECT regexp_split_to_array(NULL, ',');`, Expected: []sql.Row{{nil}}},
+			{Query: `SELECT regexp_split_to_array('abc', NULL);`, Expected: []sql.Row{{nil}}},
+			{Query: `SELECT regexp_split_to_array('abc', ',', NULL);`, Expected: []sql.Row{{nil}}},
+			{Query: `SELECT regexp_split_to_array(NULL, '[', 'g');`, Expected: []sql.Row{{nil}}},
+			{Query: `SELECT regexp_split_to_array('a,b'::varchar, ','::text);`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('abc', '[');`, ExpectedErr: "invalid regular expression", ExpectedErrCode: "2201B"},
+			{Query: `SELECT regexp_split_to_array('abc', ',','g');`, ExpectedErr: "does not support the \"global\" option", ExpectedErrCode: "22023"},
+			{Query: `SELECT regexp_split_to_array('abc', ',','z');`, ExpectedErr: "invalid regular expression option", ExpectedErrCode: "22023"},
+			{Query: `SELECT regexp_split_to_array('abc', ',','I');`, ExpectedErr: "invalid regular expression option", ExpectedErrCode: "22023"},
+			{Query: `SELECT regexp_split_to_array('abc', ',',' i');`, ExpectedErr: "invalid regular expression option", ExpectedErrCode: "22023"},
+			{Query: `SELECT regexp_split_to_array('abc'::text);`, ExpectedErr: "does not exist"},
+			{Query: `SELECT regexp_split_to_array(123, ','::text);`, ExpectedErr: "does not exist"},
+		}},
+		{Name: "regexp_split_to_array rows", Assertions: []ScriptTestAssertion{
+			{Query: `CREATE TABLE split_inputs (id int PRIMARY KEY, value text, delimiter text, flags text);`},
+			{Query: `INSERT INTO split_inputs VALUES (1, 'aXb', 'x', 'i'), (2, 'c,d', ',', ''), (3, NULL, '[', 'g'), (4, 'text', NULL, ''), (5, 'text', ',', NULL);`},
+			{Query: `SELECT id, regexp_split_to_array(value, delimiter, flags) FROM split_inputs ORDER BY id;`, Expected: []sql.Row{{int32(1), "{a,b}"}, {int32(2), "{c,d}"}, {int32(3), nil}, {int32(4), nil}, {int32(5), nil}}},
+			{Query: `SELECT pg_catalog.regexp_split_to_array('a,b', ',');`, Expected: []sql.Row{{"{a,b}"}}},
+			{Query: `SELECT regexp_split_to_array('a,b', ',', '', '');`, ExpectedErr: "does not exist"},
+		}},
+		{
+			Name: "starts_with",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT starts_with('a.b', 'a.'), starts_with('axb', 'a.'), starts_with('abc', 'a%');`,
+					Expected: []sql.Row{{"t", "f", "f"}},
+				},
+				{
+					Query:    `SELECT starts_with('alphabet', 'alph');`,
+					Expected: []sql.Row{{"t"}},
+				},
+				{
+					Query:    `SELECT starts_with('alphabet', 'pha'), starts_with('alphabet', 'alphabetical');`,
+					Expected: []sql.Row{{"f", "f"}},
+				},
+				{
+					Query:    `SELECT starts_with('alphabet', 'alphabet'), starts_with('Alphabet', 'alph');`,
+					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Query:    `SELECT starts_with('', ''), starts_with('abc', ''), starts_with('', 'a');`,
+					Expected: []sql.Row{{"t", "t", "f"}},
+				},
+				{
+					Query:    `SELECT starts_with(NULL, 'a'), starts_with('abc', NULL), starts_with(NULL, NULL);`,
+					Expected: []sql.Row{{nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT starts_with('éclair', 'é'), starts_with('日本語', '日本'), starts_with('éclair', 'e');`,
+					Expected: []sql.Row{{"t", "t", "f"}},
+				},
+				{
+					Query:    `SELECT pg_catalog.starts_with('alphabet'::varchar, 'alph'::text), starts_with('alphabet'::name, 'alph');`,
+					Expected: []sql.Row{{"t", "t"}},
+				},
+				{
+					Query:    `SELECT starts_with('abc '::text, 'abc '), starts_with('abc '::char(4), 'abc ');`,
+					Expected: []sql.Row{{"t", "f"}},
+				},
+				{
+					Query:    `SELECT starts_with(nspname, 'pg_') FROM pg_catalog.pg_namespace WHERE nspname = 'pg_catalog';`,
+					Expected: []sql.Row{{"t"}},
+				},
+			},
+		},
+		{
+			Name: "starts_with invalid arguments",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:       `SELECT starts_with();`,
+					ExpectedErr: "function starts_with() does not exist",
+				},
+				{
+					Query:       `SELECT starts_with('abc'::text);`,
+					ExpectedErr: "function starts_with(text) does not exist",
+				},
+				{
+					Query:       `SELECT starts_with('abc'::text, 'a'::text, 'b'::text);`,
+					ExpectedErr: "function starts_with(text, text, text) does not exist",
+				},
+				{
+					Query:       `SELECT starts_with(123, '1'::text);`,
+					ExpectedErr: "function starts_with(integer, text) does not exist",
+				},
+				{
+					Query:       `SELECT starts_with('true'::text, true);`,
+					ExpectedErr: "function starts_with(text, boolean) does not exist",
+				},
+			},
+		},
 		{
 			Name:        "use name type for text type input",
 			SetUpScript: []string{},
@@ -5392,6 +6148,39 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
+			Name: "lpad and rpad",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT lpad('hi', 5, ''), lpad('hello', 3, ''), lpad('hi', 2, ''), lpad('', 3, '');`,
+					Expected: []sql.Row{{"hi", "hel", "hi", ""}},
+				},
+				{
+					Query:    `SELECT rpad('hi', 5, ''), rpad('hello', 3, ''), rpad('hi', 2, ''), rpad('', 3, '');`,
+					Expected: []sql.Row{{"hi", "hel", "hi", ""}},
+				},
+				{
+					Query:    `SELECT length(lpad('hi', 5, '')), length(rpad('hi', 5, '')), octet_length(rpad('日本', 5, '')), length(rpad('', 3, ''));`,
+					Expected: []sql.Row{{2, 2, 6, 0}},
+				},
+				{
+					Query:    `SELECT lpad('hi', 5, 'xy'), lpad('hello', 3, 'xy'), lpad('日本', 5, '語'), lpad('日本語', 2, ''), lpad('hi', 0, ''), lpad('hi', -1, '');`,
+					Expected: []sql.Row{{"xyxhi", "hel", "語語語日本", "日本", "", ""}},
+				},
+				{
+					Query:    `SELECT rpad('hi', 5, 'xy'), rpad('hello', 3, 'xy'), rpad('日本', 5, '語'), rpad('日本語', 2, ''), rpad('hi', 0, ''), rpad('hi', -1, '');`,
+					Expected: []sql.Row{{"hixyx", "hel", "日本語語語", "日本", "", ""}},
+				},
+				{
+					Query:    `SELECT lpad('hi', 5), rpad('hi', 5) || '|';`,
+					Expected: []sql.Row{{"   hi", "hi   |"}},
+				},
+				{
+					Query:    `SELECT id, lpad(s, n, f), rpad(s, n, f) FROM (VALUES (1, 'hi', 5, ''), (2, 'hello', 3, ''), (3, 'hi', 5, 'xy')) v(id, s, n, f) ORDER BY id;`,
+					Expected: []sql.Row{{1, "hi", "hi"}, {2, "hel", "hel"}, {3, "xyxhi", "hixyx"}},
+				},
+			},
+		},
+		{
 			Name:        "translate",
 			SetUpScript: []string{},
 			Assertions: []ScriptTestAssertion{
@@ -5410,6 +6199,19 @@ func TestStringFunction(t *testing.T) {
 				{
 					Query:    `select translate('こんにちは', 'ん', 'a');`,
 					Expected: []sql.Row{{`こaにちは`}},
+				},
+			},
+		},
+		{
+			Name: "repeat",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT repeat('ab', 3), repeat('ab', 0), repeat('ab', -1), repeat('', 5), repeat('日', 2), repeat('ab', -2147483648);`,
+					Expected: []sql.Row{{"ababab", "", "", "", "日日", ""}},
+				},
+				{
+					Query:    `SELECT n, repeat('x', n), length(repeat('x', n)) FROM (VALUES (-3), (0), (2)) v(n) ORDER BY n;`,
+					Expected: []sql.Row{{-3, "", 0}, {0, "", 0}, {2, "xx", 2}},
 				},
 			},
 		},
@@ -5551,6 +6353,23 @@ func TestStringFunction(t *testing.T) {
 			},
 		},
 		{
+			Name: "string_agg is not cut at 1024 characters",
+			SetUpScript: []string{
+				"CREATE TABLE parts (id INT PRIMARY KEY, s TEXT);",
+				"INSERT INTO parts SELECT g, repeat('x', 100) FROM generate_series(1, 50) AS g;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT length(string_agg(s, '')) FROM parts;",
+					Expected: []sql.Row{{5000}},
+				},
+				{
+					Query:    "SELECT length(string_agg(s, ',' ORDER BY id)) FROM parts;",
+					Expected: []sql.Row{{5049}},
+				},
+			},
+		},
+		{
 			Name: "concat",
 			Assertions: []ScriptTestAssertion{
 				{ // https://github.com/dolthub/doltgresql/issues/2547
@@ -5671,7 +6490,602 @@ func TestStringFunction(t *testing.T) {
 				},
 			},
 		},
+		{
+			Name:        "format",
+			SetUpScript: []string{},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT format('hello'), format('%s', 'a'), format('x %s y %s', 'a', 'b'), format('100%% %s', 'a');`,
+					Expected: []sql.Row{{"hello", "a", "x a y b", "100% a"}},
+				},
+				{
+					Query:    `SELECT format('%I', 'my table'), format('INSERT INTO %I VALUES (1)', 'log');`,
+					Expected: []sql.Row{{`"my table"`, "INSERT INTO log VALUES (1)"}},
+				},
+				{
+					Query:    `SELECT format('%I %I %I %I', 'Abc', 'user', 'select', 'a"b');`,
+					Expected: []sql.Row{{`"Abc" "user" "select" "a""b"`}},
+				},
+				{
+					Query:    `SELECT format('%L', 'it''s'), format('%L', 'a\b'), format('%L', 12);`,
+					Expected: []sql.Row{{`'it''s'`, `E'a\\b'`, `'12'`}},
+				},
+				{
+					Query:    `SELECT format('%s %s', 1, true), format('%s %L', ARRAY[true,false], true), format('%s', 'a', 'b');`,
+					Expected: []sql.Row{{"1 t", "{t,f} 't'", "a"}},
+				},
+				{
+					Query:    `SELECT format(NULL), format(NULL, 'a'), format('%s|%L|', NULL, NULL);`,
+					Expected: []sql.Row{{nil, nil, "|NULL|"}},
+				},
+				{
+					Query:    `SELECT format('%2$s %1$s %s', 'a', 'b');`,
+					Expected: []sql.Row{{"b a b"}},
+				},
+				{
+					Query:    `SELECT format('|%5s|%-5s|%*s|%-*s|%*s|', 'ab', 'cd', 4, 'ef', 4, 'gh', -4, 'ij');`,
+					Expected: []sql.Row{{"|   ab|cd   |  ef|gh  |ij  |"}},
+				},
+				{
+					Query:    `SELECT format('|%*s|', NULL, 'ab'), format('|%*s|', '3'::text, 'ab'), format('|%3s|', 'éé');`,
+					Expected: []sql.Row{{"|ab|", "| ab|", "| éé|"}},
+				},
+				{
+					Query:           `SELECT format(1234.5678, 2);`,
+					ExpectedErr:     "function format(numeric, integer) does not exist",
+					ExpectedErrCode: "42883",
+				},
+				{
+					Query:           `SELECT format('%I', NULL);`,
+					ExpectedErr:     "null values cannot be formatted as an SQL identifier",
+					ExpectedErrCode: "22004",
+				},
+				{
+					Query:           `SELECT format('%s');`,
+					ExpectedErr:     "too few arguments for format()",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('|%*2$s|%1$*2$s|', 'ab', 5);`,
+					ExpectedErr:     "too few arguments for format()",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%');`,
+					ExpectedErr:     "unterminated format() type specifier",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%1');`,
+					ExpectedErr:     "unterminated format() type specifier",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%d', 1);`,
+					ExpectedErr:     `unrecognized format() type specifier "d"`,
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%é', 1);`,
+					ExpectedErr:     `unrecognized format() type specifier "é"`,
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%0$s', 1);`,
+					ExpectedErr:     "format specifies argument 0, but arguments are numbered from 1",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%*0$s', 1);`,
+					ExpectedErr:     "format specifies argument 0, but arguments are numbered from 1",
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%*1s', 1);`,
+					ExpectedErr:     `width argument position must be ended by "$"`,
+					ExpectedErrCode: "22023",
+				},
+				{
+					Query:           `SELECT format('%99999999999s', 1);`,
+					ExpectedErr:     "number is out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT format('|%*s|', 'x'::text, 'ab');`,
+					ExpectedErr:     `invalid input syntax for type integer: "x"`,
+					ExpectedErrCode: "22P02",
+					Skip:            true, // the int4 input error names the type int4 rather than integer
+				},
+				{
+					Query:    `SELECT format('%s %s', VARIADIC ARRAY['a', 'b']);`,
+					Expected: []sql.Row{{"a b"}},
+					Skip:     true, // VARIADIC is not yet supported when calling a function
+				},
+				{
+					Query:           `SELECT format('%2147483647s', 'a');`,
+					ExpectedErr:     "out of memory",
+					ExpectedErrCode: "54000",
+				},
+				{
+					Query:           `SELECT format('%*s', -2147483647, 'a');`,
+					ExpectedErr:     "out of memory",
+					ExpectedErrCode: "54000",
+				},
+				{
+					Query:           `SELECT format('%*s', -2147483648, 'a');`,
+					ExpectedErr:     "number is out of range",
+					ExpectedErrCode: "22003",
+				},
+				{
+					Query:           `SELECT format('%1073741820s', 'a');`,
+					ExpectedErr:     "invalid memory alloc request size 1073741824",
+					ExpectedErrCode: "XX000",
+					Skip:            true, // lengths just below the limit report out of memory instead
+				},
+			},
+		},
+		{
+			Name: "format builds dynamic SQL in a trigger function",
+			SetUpScript: []string{
+				`CREATE TABLE t (id TEXT PRIMARY KEY);`,
+				`CREATE TABLE log (v TEXT);`,
+				`CREATE FUNCTION f() RETURNS TRIGGER LANGUAGE plpgsql AS $f$
+BEGIN EXECUTE format('INSERT INTO %I VALUES (%L)', 'log', NEW.id); RETURN NULL; END $f$;`,
+				`CREATE TRIGGER tr AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `INSERT INTO t VALUES ('a');`,
+				},
+				{
+					Query:    `SELECT v FROM log;`,
+					Expected: []sql.Row{{"a"}},
+				},
+			},
+		},
+		{
+			Name: "format builds dynamic SQL in functions",
+			SetUpScript: []string{
+				`CREATE FUNCTION make_table(name TEXT) RETURNS TEXT LANGUAGE plpgsql AS $$
+BEGIN
+	IF to_regclass(format('%I', name)) IS NULL THEN
+		EXECUTE format('CREATE TABLE %I (id INT PRIMARY KEY, note TEXT)', name);
+		RETURN 'created';
+	END IF;
+	RETURN 'exists';
+END;
+$$;`,
+				`CREATE FUNCTION add_note(name TEXT, id INT, note TEXT) RETURNS TEXT LANGUAGE plpgsql AS $$
+DECLARE
+	stmt TEXT := format('INSERT INTO %I VALUES (%s, %L)', name, id, note);
+BEGIN
+	EXECUTE stmt;
+	RETURN stmt;
+END;
+$$;`,
+				`CREATE FUNCTION count_rows(name TEXT) RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE
+	n BIGINT;
+BEGIN
+	EXECUTE format('SELECT count(*) FROM %I', name) INTO n;
+	RETURN n;
+END;
+$$;`,
+				`CREATE FUNCTION count_notes(name TEXT, note TEXT) RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE
+	n BIGINT;
+BEGIN
+	EXECUTE format('SELECT count(*) FROM %I WHERE note = $1', name) INTO n USING note;
+	RETURN n;
+END;
+$$;`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT make_table('My Table');`,
+					Expected: []sql.Row{{"created"}},
+				},
+				{
+					Query:    `SELECT make_table('My Table');`,
+					Expected: []sql.Row{{"exists"}},
+				},
+				{
+					Query:    `SELECT make_table('plain');`,
+					Expected: []sql.Row{{"created"}},
+				},
+				{
+					Query:    `SELECT add_note('My Table', 1, 'it''s');`,
+					Expected: []sql.Row{{`INSERT INTO "My Table" VALUES (1, 'it''s')`}},
+				},
+				{
+					Query:    `SELECT add_note('My Table', 2, NULL);`,
+					Expected: []sql.Row{{`INSERT INTO "My Table" VALUES (2, NULL)`}},
+				},
+				{
+					Query:    `SELECT add_note('My Table', 3, 'back\slash');`,
+					Expected: []sql.Row{{`INSERT INTO "My Table" VALUES (3, E'back\\slash')`}},
+				},
+				{
+					Query:    `SELECT * FROM "My Table" ORDER BY id;`,
+					Expected: []sql.Row{{1, "it's"}, {2, nil}, {3, `back\slash`}},
+				},
+				{
+					Query:    `SELECT count_rows('My Table'), count_rows('plain');`,
+					Expected: []sql.Row{{3, 0}},
+				},
+				{
+					Query:    `SELECT count_notes('My Table', 'it''s'), count_notes('My Table', 'nope');`,
+					Expected: []sql.Row{{1, 0}},
+					Skip:     true, // a $1 inside a string literal is replaced by the function's first argument
+				},
+				{
+					Query: `DO $$
+BEGIN
+	EXECUTE format('UPDATE %1$I SET note = %2$L WHERE note IS NULL OR note <> %2$L', 'My Table', 'same');
+END;
+$$;`,
+				},
+				{
+					Query:    `SELECT * FROM "My Table" ORDER BY id;`,
+					Expected: []sql.Row{{1, "same"}, {2, "same"}, {3, "same"}},
+				},
+				{
+					Query:           `SELECT add_note('missing', 1, 'x');`,
+					ExpectedErr:     `relation "missing" does not exist`,
+					ExpectedErrCode: "42P01",
+					Skip:            true, // a missing table is reported as "table not found: missing"
+				},
+			},
+		},
+		{
+			Name: "format builds dynamic SQL in an audit trigger",
+			SetUpScript: []string{
+				`CREATE TABLE src (id TEXT PRIMARY KEY);`,
+				`CREATE TABLE audit (tbl TEXT, op TEXT, id TEXT);`,
+				`CREATE FUNCTION audit_row() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+	EXECUTE format('INSERT INTO %I VALUES (%L, %L, %L)', 'audit', TG_TABLE_NAME, TG_OP, NEW.id);
+	RETURN NEW;
+END;
+$$;`,
+				`CREATE TRIGGER src_audit AFTER INSERT OR UPDATE ON src FOR EACH ROW EXECUTE FUNCTION audit_row();`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `INSERT INTO src VALUES ('a'), ('b''c');`,
+				},
+				{
+					Query: `UPDATE src SET id = 'd' WHERE id = 'a';`,
+				},
+				{
+					Query:    `SELECT * FROM audit ORDER BY op, id;`,
+					Expected: []sql.Row{{"src", "INSERT", "a"}, {"src", "INSERT", "b'c"}, {"src", "UPDATE", "d"}},
+				},
+			},
+		},
+		{
+			Name: "strpos and position count characters in multibyte text",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT strpos('héllo', 'l');`,
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    `SELECT position('テ' IN '日本語テキスト');`,
+					Expected: []sql.Row{{4}},
+				},
+				{
+					Query:    `SELECT strpos('hello', 'l');`,
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    `SELECT substr('héllo', strpos('héllo', 'l'));`,
+					Expected: []sql.Row{{"llo"}},
+				},
+				{
+					Query:    `SELECT substr('日本語テキスト', position('テ' IN '日本語テキスト'));`,
+					Expected: []sql.Row{{"テキスト"}},
+				},
+				{
+					Query:    `SELECT strpos('日本語', '');`,
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    `SELECT strpos('日本語', 'x');`,
+					Expected: []sql.Row{{0}},
+				},
+			},
+		},
+		{
+			Name: "left and right with multibyte characters",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT LEFT('héllo', 2) AS l2, RIGHT('héllo', 4) AS r4;`,
+					Expected: []sql.Row{{"hé", "éllo"}},
+				},
+				{
+					Query:    `SELECT LEFT('日本語', 1) AS l1, OCTET_LENGTH(LEFT('日本語', 1)) AS bytes;`,
+					Expected: []sql.Row{{"日", 3}},
+				},
+				{
+					Query:    `SELECT LEFT('caté', -1) AS l, OCTET_LENGTH(LEFT('caté', -1)) AS bytes;`,
+					Expected: []sql.Row{{"cat", 3}},
+				},
+				{
+					Query:    `SELECT RIGHT('日本語', -1), LEFT('héllo', -2), RIGHT('héllo', -2), LEFT('日本語', 5), RIGHT('日本語', 5);`,
+					Expected: []sql.Row{{"本語", "hél", "llo", "日本語", "日本語"}},
+				},
+			},
+		},
 	})
+}
+
+func TestParseIdent(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "signatures and array result",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:            `SELECT parse_ident('public'), parse_ident('"SomeSchema".some_table');`,
+					Expected:         []sql.Row{{"{public}", "{SomeSchema,some_table}"}},
+					ExpectedColTypes: []id.Type{pgtypes.TextArray.ID, pgtypes.TextArray.ID},
+				},
+				{
+					Query:    `SELECT parse_ident('Schema.Table'::text, true), parse_ident('Schema.Table'::text, false);`,
+					Expected: []sql.Row{{"{schema,table}", "{schema,table}"}},
+				},
+				{
+					Query:    `SELECT pg_catalog.parse_ident('public'), pg_catalog.parse_ident('"SomeSchema".some_table', false);`,
+					Expected: []sql.Row{{"{public}", "{SomeSchema,some_table}"}},
+				},
+				{
+					Query:    `SELECT to_regprocedure('pg_catalog.parse_ident(text, boolean)')::oid;`,
+					Expected: []sql.Row{{1268}},
+				},
+				{
+					Query:    `SELECT parse_ident('Schema.Table'::varchar), parse_ident('public'::name);`,
+					Expected: []sql.Row{{"{schema,table}", "{public}"}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"SomeSchema".some_table'))[1], (parse_ident('"SomeSchema".some_table'))[2], (parse_ident('public'))[2];`,
+					Expected: []sql.Row{{"SomeSchema", "some_table", nil}},
+				},
+				{
+					Query:    `SELECT pg_typeof(parse_ident('public')), array_length(parse_ident('a.b.c.d.e'), 1);`,
+					Expected: []sql.Row{{"text[]", 5}},
+				},
+				{
+					Query:    `SELECT parse_ident($1::text, $2::boolean);`,
+					BindVars: []any{`"SomeSchema".SomeTable(integer)`, false},
+					Expected: []sql.Row{{"{SomeSchema,sometable}"}},
+				},
+			},
+		},
+		{
+			Name: "quoted identifiers",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT parse_ident('"SomeSchema".someTable'), parse_ident('"SomeSchema"."SomeTable"');`,
+					Expected: []sql.Row{{"{SomeSchema,sometable}", "{SomeSchema,SomeTable}"}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"schema.with.dots"."table name"'))[1], (parse_ident('"schema.with.dots"."table name"'))[2];`,
+					Expected: []sql.Row{{"schema.with.dots", "table name"}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"a""b"."c""d"'))[1], (parse_ident('"a""b"."c""d"'))[2];`,
+					Expected: []sql.Row{{`a"b`, `c"d`}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"""foo"""'))[1], (parse_ident('""""'))[1];`,
+					Expected: []sql.Row{{`"foo"`, `"`}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"  spaced  "'))[1], (parse_ident('"123"'))[1], (parse_ident('"char"'))[1];`,
+					Expected: []sql.Row{{"  spaced  ", "123", "char"}},
+				},
+				{
+					Query:    `SELECT (parse_ident('"comma,brace{and}slash\"'))[1], (parse_ident('"O''Brien"'))[1];`,
+					Expected: []sql.Row{{`comma,brace{and}slash\`, "O'Brien"}},
+				},
+				{
+					Query:    `SELECT (parse_ident(E'"line\nnext"'))[1];`,
+					Expected: []sql.Row{{"line\nnext"}},
+				},
+				{
+					Query:    `SELECT parse_ident('"NULL"."a,b"');`,
+					Expected: []sql.Row{{`{"NULL","a,b"}`}},
+				},
+			},
+		},
+		{
+			Name: "unquoted identifiers and whitespace",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT parse_ident('_Schema9.Table$1'), parse_ident('select.from');`,
+					Expected: []sql.Row{{"{_schema9,table$1}", "{select,from}"}},
+				},
+				{
+					Query:    `SELECT parse_ident('  First . "  Second  " . Third  ');`,
+					Expected: []sql.Row{{`{first,"  Second  ",third}`}},
+				},
+				{
+					Query:    `SELECT parse_ident(E' \t\n\r\fFirst\t.\nSecond\r\f ');`,
+					Expected: []sql.Row{{"{first,second}"}},
+				},
+				{
+					// PostgreSQL folds ASCII letters, preserving non-ASCII case in UTF-8.
+					Query:    `SELECT parse_ident('ÄBC.ÖDEF'), parse_ident('日本語.テーブル'), parse_ident('🐘.TABLE');`,
+					Expected: []sql.Row{{"{Äbc,Ödef}", "{日本語,テーブル}", "{🐘,table}"}},
+				},
+				{
+					// Identifier parsing does not perform Unicode normalization.
+					Query:    "SELECT (parse_ident('E\u0301COLE'))[1];",
+					Expected: []sql.Row{{"e\u0301cole"}},
+				},
+				{
+					// Non-breaking spaces are identifier characters, not scanner whitespace.
+					Query:    "SELECT (parse_ident('\u00a0FOO\u00a0'))[1];",
+					Expected: []sql.Row{{"\u00a0foo\u00a0"}},
+				},
+			},
+		},
+		{
+			Name: "non-strict trailing input",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT parse_ident('Schema.Function(integer, text)', false);`,
+					Expected: []sql.Row{{"{schema,function}"}},
+				},
+				{
+					Query:    `SELECT parse_ident('foo.boo[]', false), parse_ident('aaa.a%b', false);`,
+					Expected: []sql.Row{{"{foo,boo}", "{aaa,a}"}},
+				},
+				{
+					Query:    `SELECT parse_ident('foo bar.baz', false), parse_ident('foo;bar', false);`,
+					Expected: []sql.Row{{"{foo}", "{foo}"}},
+				},
+				{
+					Query:    `SELECT parse_ident('"Foo"bar', false), parse_ident('foo"bar', false);`,
+					Expected: []sql.Row{{"{Foo}", "{foo}"}},
+				},
+				{
+					Query:    `SELECT parse_ident('"Foo"."Bar" (integer)', false);`,
+					Expected: []sql.Row{{"{Foo,Bar}"}},
+				},
+				{
+					Query:    `SELECT parse_ident(E'foo\013bar', false), parse_ident('foo/*comment*/.bar', false);`,
+					Expected: []sql.Row{{"{foo}", "{foo}"}},
+				},
+			},
+		},
+		{
+			Name: "long identifiers",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT (parse_ident(repeat('A', 100)))[1];`,
+					Expected: []sql.Row{{strings.Repeat("a", 100)}},
+				},
+				{
+					Query:    `SELECT length((parse_ident('"' || repeat('X', 100) || '".' || repeat('Y', 100)))[1]), length((parse_ident('"' || repeat('X', 100) || '".' || repeat('Y', 100)))[2]);`,
+					Expected: []sql.Row{{100, 100}},
+				},
+				{
+					Query:    `SELECT length((parse_ident(repeat('Ä', 100)))[1]), octet_length((parse_ident(repeat('Ä', 100)))[1]);`,
+					Expected: []sql.Row{{100, 200}},
+				},
+			},
+		},
+		{
+			Name: "null arguments",
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT parse_ident(NULL), parse_ident(NULL::text);`,
+					Expected: []sql.Row{{nil, nil}},
+				},
+				{
+					Query:    `SELECT parse_ident(NULL, true), parse_ident(NULL, false), parse_ident(NULL, NULL);`,
+					Expected: []sql.Row{{nil, nil, nil}},
+				},
+				{
+					Query:    `SELECT parse_ident('public', NULL::boolean), parse_ident('invalid..name', NULL::boolean);`,
+					Expected: []sql.Row{{nil, nil}},
+				},
+			},
+		},
+		{
+			Name: "column arguments",
+			SetUpScript: []string{
+				`CREATE TABLE parse_ident_inputs (id integer PRIMARY KEY, input text, strict_mode boolean);`,
+				`INSERT INTO parse_ident_inputs VALUES (1, 'PUBLIC', true), (2, '"SomeSchema".SomeTable', false), (3, NULL, true), (4, 'invalid..name', NULL);`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT id, parse_ident(input, strict_mode) FROM parse_ident_inputs ORDER BY id;`,
+					Expected: []sql.Row{{1, "{public}"}, {2, "{SomeSchema,sometable}"}, {3, nil}, {4, nil}},
+				},
+				{
+					Query:    `SELECT id, parse_ident(input) FROM parse_ident_inputs WHERE id < 4 ORDER BY id;`,
+					Expected: []sql.Row{{1, "{public}"}, {2, "{SomeSchema,sometable}"}, {3, nil}},
+				},
+			},
+		},
+		{
+			Name: "PostgREST computed relationship schema",
+			SetUpScript: []string{
+				`CREATE FUNCTION public.parse_ident_computed_rel(integer) RETURNS integer LANGUAGE SQL AS 'SELECT $1';`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT (parse_ident(p.pronamespace::regnamespace::text))[1] AS schema FROM pg_catalog.pg_proc p WHERE p.proname = 'parse_ident_computed_rel';`,
+					Expected: []sql.Row{{"public"}},
+				},
+			},
+		},
+	})
+}
+
+func TestParseIdentInvalidInput(t *testing.T) {
+	// These inputs must fail even in non-strict mode: no valid identifier was
+	// found, or a dot requires another identifier, or the quoted part is invalid.
+	invalidInputs := []string{
+		`''`,
+		`' '`,
+		`E'\t\n\r\f'`,
+		`'.'`,
+		`'.foo'`,
+		`'foo.'`,
+		`'foo . '`,
+		`'foo..bar'`,
+		`'foo.123'`,
+		`'123'`,
+		`'$foo'`,
+		`'""'`,
+		`'"unterminated'`,
+		`'foo."unterminated'`,
+		`'foo.""'`,
+		`E'\013foo'`,
+		`'/*comment*/foo'`,
+	}
+	var assertions []ScriptTestAssertion
+	for _, input := range invalidInputs {
+		for _, mode := range []string{"", ", true", ", false"} {
+			assertions = append(assertions, ScriptTestAssertion{
+				Query:           fmt.Sprintf("SELECT parse_ident(%s%s);", input, mode),
+				ExpectedErr:     "string is not a valid identifier",
+				ExpectedErrCode: "22023",
+			})
+		}
+	}
+	RunScripts(t, []ScriptTest{{Name: "invalid identifiers in either mode", Assertions: assertions}})
+}
+
+func TestParseIdentStrictInput(t *testing.T) {
+	// Both the default and explicit strict mode reject characters left after the
+	// final identifier. Non-strict counterparts are covered in TestParseIdent.
+	trailingInputs := []string{
+		`'Schema.Function(integer, text)'`,
+		`'foo.boo[]'`,
+		`'aaa.a%b'`,
+		`'foo bar.baz'`,
+		`'foo;bar'`,
+		`'"Foo"bar'`,
+		`'foo"bar'`,
+		`'"Foo"."Bar" (integer)'`,
+		`E'foo\013bar'`,
+		`'foo/*comment*/.bar'`,
+	}
+	var assertions []ScriptTestAssertion
+	for _, input := range trailingInputs {
+		for _, mode := range []string{"", ", true"} {
+			assertions = append(assertions, ScriptTestAssertion{
+				Query:           fmt.Sprintf("SELECT parse_ident(%s%s);", input, mode),
+				ExpectedErr:     "string is not a valid identifier",
+				ExpectedErrCode: "22023",
+			})
+		}
+	}
+	RunScripts(t, []ScriptTest{{Name: "strict trailing input", Assertions: assertions}})
 }
 
 func TestFormatFunctions(t *testing.T) {
@@ -6572,4 +7986,99 @@ $$ LANGUAGE plpgsql;`,
 			},
 		},
 	)
+}
+
+func TestPgRelationIsUpdatable(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name: "invalid and stale relation OIDs",
+			SetUpScript: []string{
+				`CREATE TABLE saved_oid (relation regclass)`,
+				`CREATE TABLE dropped_probe (id INT)`,
+				`INSERT INTO saved_oid VALUES ('dropped_probe'::regclass)`,
+				`DROP TABLE dropped_probe`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT pg_catalog.pg_relation_is_updatable(0::regclass, true)`, Expected: []sql.Row{{int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable(4294967295::oid::regclass, false)`, Expected: []sql.Row{{int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable(relation, true) FROM saved_oid`, Expected: []sql.Row{{int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable('missing_relation'::regclass, true)`, ExpectedErr: `relation "missing_relation" does not exist`},
+			},
+		},
+		{
+			Name: "relation capabilities",
+			SetUpScript: []string{
+				`CREATE TABLE updatable_probe (id INT PRIMARY KEY)`,
+				`CREATE INDEX probe_idx ON updatable_probe (id)`,
+				`CREATE SEQUENCE probe_seq`,
+			},
+			Assertions: []ScriptTestAssertion{
+				// Also check the literal PostgreSQL mask independently of the implementation constants.
+				{Query: `SELECT pg_relation_is_updatable('updatable_probe'::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, false)`, Expected: []sql.Row{{functions.RelationUpdatable | functions.RelationInsertable | functions.RelationDeletable, int32(28)}}},
+				{Query: `SELECT pg_relation_is_updatable('probe_idx'::regclass, true), pg_relation_is_updatable('probe_seq'::regclass, true)`, Expected: []sql.Row{{int32(0), int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable(NULL::regclass, true), pg_relation_is_updatable('updatable_probe'::regclass, NULL)`, Expected: []sql.Row{{nil, nil}}},
+				{Query: `SELECT pg_typeof(pg_relation_is_updatable('updatable_probe'::regclass, true))`, Expected: []sql.Row{{"integer"}}},
+			},
+		},
+		{
+			Name: "read-only relations",
+			SetUpScript: []string{
+				`CREATE TABLE view_source (id INT)`,
+				`CREATE VIEW simple_probe AS SELECT id FROM view_source`,
+				`CREATE VIEW aggregate_probe AS SELECT count(*) FROM view_source`,
+				`CREATE VIEW nested_probe AS SELECT * FROM simple_probe`,
+			},
+			Assertions: []ScriptTestAssertion{
+				// Doltgres does not yet support writes through views, including simple views.
+				{Query: `SELECT pg_relation_is_updatable('simple_probe'::regclass, true), pg_relation_is_updatable('simple_probe'::regclass, false)`, Expected: []sql.Row{{int32(0), int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable('aggregate_probe'::regclass, true), pg_relation_is_updatable('nested_probe'::regclass, true)`, Expected: []sql.Row{{int32(0), int32(0)}}},
+				{Query: `SELECT pg_relation_is_updatable('pg_catalog.pg_class'::regclass, true)`, Expected: []sql.Row{{int32(0)}}},
+			},
+		},
+		{
+			Name: "capabilities do not depend on table privileges",
+			SetUpScript: []string{
+				`CREATE TABLE protected_probe (id INT)`,
+				`CREATE USER capability_reader PASSWORD 'password'`,
+				`REVOKE ALL ON protected_probe FROM PUBLIC`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Username: "capability_reader", Password: "password", Query: `SELECT pg_relation_is_updatable('public.protected_probe'::regclass, true)`, Expected: []sql.Row{{functions.RelationUpdatable | functions.RelationInsertable | functions.RelationDeletable}}},
+				{Username: "capability_reader", Password: "password", Query: `INSERT INTO public.protected_probe VALUES (1)`, ExpectedErr: "permission denied"},
+			},
+		},
+	})
+}
+
+func TestPgIsOtherTempSchema(t *testing.T) {
+	RunScripts(t, []ScriptTest{
+		{
+			Name:        "ordinary namespaces and invalid OIDs",
+			SetUpScript: []string{`CREATE SCHEMA temp_schema_probe`},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT pg_catalog.pg_is_other_temp_schema(0::oid), pg_is_other_temp_schema(4294967295::oid)`, Expected: []sql.Row{{"f", "f"}}},
+				{Query: `SELECT pg_is_other_temp_schema(NULL::oid)`, Expected: []sql.Row{{nil}}},
+				{Query: `SELECT nspname, pg_is_other_temp_schema(oid) FROM pg_catalog.pg_namespace WHERE nspname IN ('public', 'pg_catalog', 'temp_schema_probe') ORDER BY nspname`, Expected: []sql.Row{{"pg_catalog", "f"}, {"public", "f"}, {"temp_schema_probe", "f"}}},
+				{Query: `SELECT pg_typeof(pg_is_other_temp_schema(0::oid))`, Expected: []sql.Row{{"boolean"}}},
+				{Query: `SELECT pg_is_other_temp_schema('invalid'::oid)`, ExpectedErr: `invalid input syntax for type oid`},
+			},
+		},
+		{
+			Name: "temporary tables do not create session namespaces",
+			SetUpScript: []string{
+				`CREATE TEMP TABLE temp_schema_probe (id INT)`,
+				`INSERT INTO temp_schema_probe VALUES (1)`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
+				// An explicit username opens a second connection while keeping the default session alive.
+				{Username: "postgres", Password: "password", Query: `CREATE TEMP TABLE temp_schema_probe (id INT)`},
+				{Username: "postgres", Password: "password", Query: `INSERT INTO temp_schema_probe VALUES (2)`},
+				{Username: "postgres", Password: "password", Query: `SELECT * FROM temp_schema_probe`, Expected: []sql.Row{{int32(2)}}},
+				{Username: "postgres", Password: "password", Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
+				{Query: `SELECT * FROM temp_schema_probe`, Expected: []sql.Row{{int32(1)}}},
+				{Query: `SELECT count(*) FROM pg_catalog.pg_namespace WHERE pg_is_other_temp_schema(oid)`, Expected: []sql.Row{{int64(0)}}},
+			},
+		},
+	})
 }

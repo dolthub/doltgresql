@@ -31,7 +31,6 @@ import (
 )
 
 func TestConcurrentGC(t *testing.T) {
-	t.Skip("Doltgres does not yet handle dolt_gc() concurrently with active write connections the way this test expects: writers fail with 'unexpected EOF' / connection resets rather than the retriable safepoint errors Dolt produces (behavioral difference)")
 	t.Parallel()
 	type dimension struct {
 		names   []string
@@ -112,17 +111,26 @@ func (gct gcTest) createDB(t *testing.T, ctx context.Context, db *sql.DB) {
 	require.NoError(t, err)
 }
 
+// Errors which mean the GC dropped something that was still reachable. With
+// kill_connections safepoints a query is allowed to fail outright, so we
+// cannot assert that queries succeed, but a query must never fail for one of
+// these reasons.
+var gcDataLossErrors = []string{
+	"dangling ref",
+	"is unexpected noms value",
+	"interface conversion: types.Value is nil",
+	"empty chunk returned from ChunkStore",
+	"required but not found",
+	"root hash doesn't exist",
+}
+
 // When running with kill_connections GC safepoints, asserts that the
 // error we got is not an error that was not allowed.
 func assertExpectedGCError(t *testing.T, err error) bool {
-	if !assert.NotContains(t, err.Error(), "dangling ref") {
-		return false
-	}
-	if !assert.NotContains(t, err.Error(), "is unexpected noms value") {
-		return false
-	}
-	if !assert.NotContains(t, err.Error(), "interface conversion: types.Value is nil") {
-		return false
+	for _, s := range gcDataLossErrors {
+		if !assert.NotContains(t, err.Error(), s) {
+			return false
+		}
 	}
 	return true
 }
@@ -233,7 +241,9 @@ func (gct gcTest) finalize(t *testing.T, ctx context.Context, db *sql.DB) {
 	n := 1
 	for i := 0; i < gct.numThreads*1024; i += 1024 {
 		ids = append(ids, i)
-		qmarks = append(qmarks, fmt.Sprintf("$%d", n))
+		// Doltgres infers untyped IN-list parameters as unknown (OID 705),
+		// which pgx cannot encode an int into, so the type is explicit.
+		qmarks = append(qmarks, fmt.Sprintf("$%d::int4", n))
 		n++
 	}
 	rows, err := conn.QueryContext(ctx, fmt.Sprintf("select val from vals where id in (%s)", strings.Join(qmarks, ",")), ids...)
@@ -279,6 +289,12 @@ func (gct gcTest) run(t *testing.T) {
 	srvSettings := &driver.Server{
 		Args:        []string{},
 		DynamicPort: "server_port",
+		// A panic in the server means the GC collected a chunk something
+		// was still using. With kill_connections safepoints the client only
+		// ever sees a broken connection, which this test has to tolerate
+		// because the GC really does kill connections, so the server log is
+		// the only place that failure is visible.
+		LogNotMatches: []string{"recovered panic", "caught panic"},
 	}
 	if gct.sessionAware {
 		srvSettings.Envs = append(srvSettings.Envs, "DOLT_GC_SAFEPOINT_CONTROLLER_CHOICE=session_aware")

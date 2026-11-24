@@ -274,11 +274,14 @@ func TestAuthQuick(t *testing.T) {
 			},
 		},
 		{
+			// PostgreSQL permits this through inherited ownership, but Doltgres does not track table owners.
+			// Membership in postgres must not confer its SUPERUSER bypass.
 			Queries: []string{
 				"CREATE TABLE mysch.new_table (pk BIGINT PRIMARY KEY);",
 				"GRANT postgres TO tester;",
 				"DROP TABLE mysch.new_table;",
 			},
+			ExpectedErr: "permission denied for table",
 		},
 		{
 			Queries: []string{

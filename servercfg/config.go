@@ -28,6 +28,8 @@ import (
 	"github.com/dolthub/doltgresql/postgres/parser/pgerror"
 	"github.com/dolthub/doltgresql/server/analyzer"
 	"github.com/dolthub/doltgresql/server/expression"
+	"github.com/dolthub/doltgresql/server/functions"
+	"github.com/dolthub/doltgresql/server/functions/framework"
 	"github.com/dolthub/doltgresql/servercfg/cfgdetails"
 )
 
@@ -55,6 +57,7 @@ func (cfg *DoltgresConfig) Overrides() sql.EngineOverrides {
 				PermitUnsupportedLockingStatements: cfg.PermitUnsupportedLockingStatements(),
 			}),
 			ValidateDistinctWindow: validateDistinctWindow,
+			FunctionProvider:       &framework.FunctionProvider{},
 		},
 		Hooks: sql.ExecutionHooks{
 			RenameTable: sql.RenameTable{
@@ -78,8 +81,9 @@ func (cfg *DoltgresConfig) Overrides() sql.EngineOverrides {
 				PostSQLExecution: hook.AfterTableDropColumn,
 			},
 		},
-		SchemaFormatter:                 pgsql.NewPostgresSchemaFormatter(),
-		CostedIndexScanExpressionFilter: &analyzer.LogicTreeWalker{},
+		SchemaFormatter:                      pgsql.NewPostgresSchemaFormatter(functions.FormatExpression),
+		CostedIndexScanExpressionFilter:      &analyzer.LogicTreeWalker{},
+		PermitNonDeterministicCheckFunctions: true,
 	}
 }
 

@@ -25,6 +25,85 @@ import (
 func TestBasicIndexing(t *testing.T) {
 	RunScripts(t, []ScriptTest{
 		{
+			Name: "CREATE INDEX CONCURRENTLY and DROP INDEX CONCURRENTLY",
+			SetUpScript: []string{
+				"CREATE TABLE t (pk INT PRIMARY KEY, v INT, w TEXT);",
+				"INSERT INTO t VALUES (1, 10, 'a'), (2, 20, 'b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: `CREATE INDEX CONCURRENTLY IF NOT EXISTS "t_v_idx" ON "public"."t" ("v");`,
+				},
+				{
+					Query: `CREATE INDEX CONCURRENTLY IF NOT EXISTS "t_v_idx" ON "public"."t" ("v");`,
+				},
+				{
+					Query: "CREATE UNIQUE INDEX CONCURRENTLY t_w_idx ON t (w);",
+				},
+				{
+					Query:           "INSERT INTO t VALUES (3, 30, 'a');",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "INSERT INTO t VALUES (3, 30, 'a');",
+					ExpectedErr:     `duplicate key value violates unique constraint "t_w_idx"`,
+					ExpectedErrCode: "23505",
+					Skip:            true,
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't' ORDER BY indexname;",
+					Expected: []sql.Row{{"t_pkey"}, {"t_v_idx"}, {"t_w_idx"}},
+				},
+				{
+					Query: "BEGIN;",
+				},
+				{
+					Query:           "CREATE INDEX CONCURRENTLY t_v2_idx ON t (v);",
+					ExpectedErr:     "CREATE INDEX CONCURRENTLY cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
+				},
+				{
+					Query: "ROLLBACK;",
+				},
+				{
+					Query: "BEGIN;",
+				},
+				{
+					Query:           "DROP INDEX CONCURRENTLY t_v_idx;",
+					ExpectedErr:     "DROP INDEX CONCURRENTLY cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
+				},
+				{
+					Query: "ROLLBACK;",
+				},
+				{
+					Query:           "DROP INDEX CONCURRENTLY t_v_idx, t_w_idx;",
+					ExpectedErr:     "DROP INDEX CONCURRENTLY does not support dropping multiple objects",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:           "DROP INDEX CONCURRENTLY t_v_idx CASCADE;",
+					ExpectedErr:     "DROP INDEX CONCURRENTLY does not support CASCADE",
+					ExpectedErrCode: "0A000",
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't' ORDER BY indexname;",
+					Expected: []sql.Row{{"t_pkey"}, {"t_v_idx"}, {"t_w_idx"}},
+				},
+				{
+					Query: "DROP INDEX CONCURRENTLY t_v_idx;",
+				},
+				{
+					Query: "DROP INDEX CONCURRENTLY IF EXISTS t_v_idx;",
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't' ORDER BY indexname;",
+					Expected: []sql.Row{{"t_pkey"}, {"t_w_idx"}},
+				},
+			},
+		},
+		{
 			Name: "Covering Index",
 			SetUpScript: []string{
 				"CREATE TABLE test (pk BIGINT PRIMARY KEY, v1 BIGINT);",
@@ -1295,6 +1374,65 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "unique index NULLS NOT DISTINCT",
+			SetUpScript: []string{
+				"CREATE TABLE it (id INT PRIMARY KEY, a INT, b INT);",
+				"INSERT INTO it VALUES (1, NULL, 1), (2, NULL, 1), (3, 2, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "CREATE UNIQUE INDEX it_a_b_idx ON it (a, b) NULLS NOT DISTINCT;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "CREATE UNIQUE INDEX IF NOT EXISTS it_a_b_idx ON it (a, b) NULLS NOT DISTINCT;",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "CREATE UNIQUE INDEX it_a_b_idx ON it (a, b) NULLS DISTINCT;",
+				},
+				{
+					Query: "CREATE UNIQUE INDEX it_b_a_idx ON it (b DESC, a) NULLS NOT DISTINCT WHERE id > 1;",
+				},
+				{
+					// NULLS NOT DISTINCT has no effect on a non-unique index, but is still recorded
+					Query: "CREATE INDEX it_b_idx ON it (b) NULLS NOT DISTINCT;",
+				},
+				{
+					Query:           "INSERT INTO it VALUES (4, 2, NULL);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query:           "INSERT INTO it VALUES (4, NULL, 1);",
+					ExpectedErr:     "duplicate unique key given",
+					ExpectedErrCode: "23505",
+				},
+				{
+					Query: "INSERT INTO it VALUES (0, 2, NULL);",
+				},
+				{
+					Query: "SELECT c.relname, i.indnullsnotdistinct FROM pg_index i " +
+						"JOIN pg_class c ON c.oid = i.indexrelid WHERE i.indrelid = 'it'::regclass ORDER BY 1;",
+					Expected: []sql.Row{{"it_a_b_idx", "f"}, {"it_b_a_idx", "t"}, {"it_b_idx", "t"}, {"it_pkey", "f"}},
+				},
+				{
+					Query: "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'it' AND indexname <> 'it_b_a_idx' ORDER BY 1;",
+					Expected: []sql.Row{
+						{"it_a_b_idx", "CREATE UNIQUE INDEX it_a_b_idx ON public.it USING btree (a, b)"},
+						{"it_b_idx", "CREATE INDEX it_b_idx ON public.it USING btree (b) NULLS NOT DISTINCT"},
+						{"it_pkey", "CREATE UNIQUE INDEX it_pkey ON public.it USING btree (id)"},
+					},
+				},
+				{
+					Query:    "SELECT * FROM it ORDER BY id;",
+					Expected: []sql.Row{{0, 2, nil}, {1, nil, 1}, {2, nil, 1}, {3, 2, nil}},
+				},
+			},
+		},
+		{
 			Name: "Proper range AND + OR handling",
 			SetUpScript: []string{
 				"CREATE TABLE test(pk INTEGER PRIMARY KEY, v1 INTEGER);",
@@ -1722,6 +1860,47 @@ func TestBasicIndexing(t *testing.T) {
 			},
 		},
 		{
+			Name: "partial index predicate that evaluates to NULL",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, a INT, b INT);",
+				"CREATE UNIQUE INDEX t_partial ON t (a) WHERE b > 5;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t VALUES (1, 1, NULL), (2, 1, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (3, 1, 6);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t VALUES (4, 1, 7);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "UPDATE t SET b = NULL WHERE id = 3;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "UPDATE t SET b = 8 WHERE id = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "UPDATE t SET b = 9 WHERE id = 2;",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "DELETE FROM t WHERE b IS NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t;",
+					Expected: []sql.Row{{1, 1, 8}},
+				},
+			},
+		},
+		{
 			Name: "partial index on keyless table",
 			SetUpScript: []string{
 				"CREATE TABLE t (a INT, b INT);",
@@ -1774,6 +1953,65 @@ func TestBasicIndexing(t *testing.T) {
 				{
 					Query:       "INSERT INTO t VALUES (3, 99);",
 					ExpectedErr: "duplicate unique key given",
+				},
+			},
+		},
+		{
+			Name: "partial unique index on keyless table with rows outside the predicate",
+			SetUpScript: []string{
+				"CREATE TABLE t (p INT, slot INT);",
+				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "INSERT INTO t VALUES (1, 5), (1, 6);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (1, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:       "INSERT INTO t VALUES (1, NULL);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "UPDATE t SET slot = 7 WHERE slot IS NULL;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO t VALUES (1, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY slot;",
+					Expected: []sql.Row{{1, 5}, {1, 6}, {1, 7}, {1, nil}},
+				},
+			},
+		},
+		{
+			Name: "dropping a column that precedes the columns of a partial index predicate",
+			SetUpScript: []string{
+				"CREATE TABLE t (id INT PRIMARY KEY, extra INT, p INT, slot INT);",
+				"CREATE UNIQUE INDEX t_partial ON t (p) WHERE slot IS NULL;",
+				"INSERT INTO t VALUES (1, 0, 1, NULL), (2, 0, 2, 5);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER TABLE t DROP COLUMN extra;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM t ORDER BY id;",
+					Expected: []sql.Row{{1, 1, nil}, {2, 2, 5}},
+				},
+				{
+					Query:       "INSERT INTO t VALUES (3, 1, NULL);",
+					ExpectedErr: "duplicate unique key given",
+				},
+				{
+					Query:    "INSERT INTO t VALUES (3, 2, NULL);",
+					Expected: []sql.Row{},
 				},
 			},
 		},
@@ -1895,6 +2133,397 @@ func TestBasicIndexing(t *testing.T) {
 				{
 					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't6' AND indexname <> 't6_pkey' ORDER BY indexname;",
 					Expected: []sql.Row{{"t6_a_idx1"}},
+				},
+			},
+		},
+		{
+			Name: "ALTER INDEX RENAME TO on indexes used by foreign keys",
+			SetUpScript: []string{
+				"CREATE TABLE zi_parent (id INT PRIMARY KEY, u INT);",
+				"CREATE UNIQUE INDEX zi_parent_u_idx ON zi_parent (u);",
+				"CREATE TABLE zi_child (id INT PRIMARY KEY, a INT NOT NULL, b INT);",
+				"CREATE INDEX zi_child_a_idx ON zi_child (a);",
+				"CREATE INDEX zi_child_b_idx ON zi_child (b);",
+				"ALTER TABLE zi_child ADD CONSTRAINT zi_child_a_fk FOREIGN KEY (a) REFERENCES zi_parent(id);",
+				"ALTER TABLE zi_child ADD CONSTRAINT zi_child_b_fk FOREIGN KEY (b) REFERENCES zi_parent(u);",
+				"INSERT INTO zi_parent VALUES (1, 10);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "ALTER INDEX zi_child_a_idx RENAME TO zi_child_a_idx_new;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER INDEX zi_parent_u_idx RENAME TO zi_parent_u_idx_new;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:            "SELECT dolt_commit('-Am', 'renamed indexes');",
+					SkipResultsCheck: true,
+				},
+				{
+					Query:    "INSERT INTO zi_child VALUES (1, 1, 10);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           "INSERT INTO zi_child VALUES (2, 2, 10);",
+					ExpectedErr:     "Foreign key violation",
+					ExpectedErrCode: "23503",
+				},
+				{
+					Query:           "INSERT INTO zi_child VALUES (3, 1, 20);",
+					ExpectedErr:     "Foreign key violation",
+					ExpectedErrCode: "23503",
+				},
+				{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename IN ('zi_parent', 'zi_child') ORDER BY indexname;",
+					Expected: []sql.Row{{"zi_child_a_idx_new"}, {"zi_child_b_idx"}, {"zi_child_pkey"}, {"zi_parent_pkey"}, {"zi_parent_u_idx_new"}},
+				},
+			},
+		},
+		{
+			Name: "CHECK constraints on a table with expression indexes",
+			SetUpScript: []string{
+				"CREATE TABLE ck (id BIGINT PRIMARY KEY, s TEXT NOT NULL CONSTRAINT ck_s_check CHECK (s IN ('a', 'b')), u TEXT UNIQUE);",
+				"CREATE INDEX ck_length_idx ON ck ((length(u)));",
+				"CREATE UNIQUE INDEX ck_md5_idx ON ck ((md5(s || u)));",
+				"INSERT INTO ck VALUES (1, 'a', 'x');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:           "INSERT INTO ck VALUES (2, 'zzz', 'y');",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Skip:            true, // TODO: GMS reports check violations with different text
+					Query:           "INSERT INTO ck VALUES (2, 'zzz', 'y');",
+					ExpectedErr:     `new row for relation "ck" violates check constraint "ck_s_check"`,
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query:           "UPDATE ck SET s = 'zzz';",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query:           "INSERT INTO ck VALUES (1, 'a', 'x') ON CONFLICT (id) DO UPDATE SET s = 'zzz';",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query:           "ALTER TABLE ck ADD CONSTRAINT ck_id_check CHECK (id > 5);",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Skip:            true, // TODO: GMS reports check violations with different text
+					Query:           "ALTER TABLE ck ADD CONSTRAINT ck_id_check CHECK (id > 5);",
+					ExpectedErr:     `check constraint "ck_id_check" of relation "ck" is violated by some row`,
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query:    "ALTER TABLE ck ADD CONSTRAINT ck_id_check CHECK (id < 100);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:           "INSERT INTO ck VALUES (200, 'a', 'y');",
+					ExpectedErr:     "Check constraint",
+					ExpectedErrCode: "23514",
+				},
+				{
+					Query:    "ALTER TABLE ck DROP CONSTRAINT ck_u_key;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "ALTER TABLE ck DROP CONSTRAINT ck_s_check;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "INSERT INTO ck VALUES (2, 'zzz', 'x');",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT * FROM ck ORDER BY id;",
+					Expected: []sql.Row{{1, "a", "x"}, {2, "zzz", "x"}},
+				},
+			},
+		},
+		{
+			Name: "merge join with a literal of another type on the key (issue 3691)",
+			SetUpScript: []string{
+				"CREATE TABLE mj_a2 (k SMALLINT PRIMARY KEY);",
+				"CREATE TABLE mj_b2 (k SMALLINT PRIMARY KEY);",
+				"INSERT INTO mj_a2 VALUES (1), (2);",
+				"INSERT INTO mj_b2 VALUES (1), (3);",
+				"CREATE TABLE mj_a8 (k BIGINT PRIMARY KEY);",
+				"CREATE TABLE mj_b8 (k BIGINT PRIMARY KEY);",
+				"INSERT INTO mj_a8 VALUES (1), (2);",
+				"INSERT INTO mj_b8 VALUES (1), (3);",
+				"CREATE TABLE mj_ad (k DATE PRIMARY KEY);",
+				"CREATE TABLE mj_bd (k DATE PRIMARY KEY);",
+				"INSERT INTO mj_ad VALUES ('2026-01-01'), ('2026-01-02');",
+				"INSERT INTO mj_bd VALUES ('2026-01-01'), ('2026-01-03');",
+				"CREATE TABLE mj_as (id INT PRIMARY KEY, k SMALLINT);",
+				"CREATE TABLE mj_bs (id INT PRIMARY KEY, k SMALLINT);",
+				"CREATE INDEX mj_as_k ON mj_as (k);",
+				"CREATE INDEX mj_bs_k ON mj_bs (k);",
+				"INSERT INTO mj_as VALUES (1, 1), (2, 2), (3, 1);",
+				"INSERT INTO mj_bs VALUES (1, 1), (2, 3);",
+				"CREATE TABLE mj_t (w SMALLINT, n SMALLINT, PRIMARY KEY (w, n));",
+				"INSERT INTO mj_t SELECT w, n FROM generate_series(1, 3) w, generate_series(1, 2) n;",
+				"CREATE TABLE mj_u (n SMALLINT PRIMARY KEY);",
+				"INSERT INTO mj_u VALUES (1), (2);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query: "EXPLAIN SELECT /*+ merge_join(a, b) */ HINT * FROM mj_a2 a JOIN mj_b2 b ON b.k = a.k WHERE a.k = 1;",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [a.k, b.k]"},
+						{" └─ MergeJoin"},
+						{"     ├─ cmp: b.k = a.k"},
+						{"     ├─ TableAlias(b)"},
+						{"     │   └─ IndexedTableAccess(mj_b2)"},
+						{"     │       ├─ index: [mj_b2.k]"},
+						{"     │       ├─ filters: [{[NULL, ∞)}]"},
+						{"     │       └─ columns: [k]"},
+						{"     └─ Filter"},
+						{"         ├─ a.k = 1"},
+						{"         └─ TableAlias(a)"},
+						{"             └─ IndexedTableAccess(mj_a2)"},
+						{"                 ├─ index: [mj_a2.k]"},
+						{"                 ├─ filters: [{[NULL, ∞)}]"},
+						{"                 └─ columns: [k]"},
+					},
+				},
+				{
+					Query:    "SELECT /*+ merge_join(a, b) */ HINT * FROM mj_a2 a JOIN mj_b2 b ON b.k = a.k WHERE a.k = 1;",
+					Expected: []sql.Row{{1, 1}},
+				},
+				{
+					Query:    "SELECT /*+ merge_join(a, b) */ HINT * FROM mj_a8 a JOIN mj_b8 b ON b.k = a.k WHERE a.k = 1;",
+					Expected: []sql.Row{{1, 1}},
+				},
+				{
+					Query:    "SELECT /*+ merge_join(a, b) */ HINT * FROM mj_ad a JOIN mj_bd b ON b.k = a.k WHERE a.k = '2026-01-01';",
+					Expected: []sql.Row{{"2026-01-01", "2026-01-01"}},
+				},
+				{
+					Query:    "SELECT /*+ merge_join(a, b) */ HINT * FROM mj_as a JOIN mj_bs b ON b.k = a.k WHERE a.k = 1 ORDER BY a.id, b.id;",
+					Expected: []sql.Row{{1, 1, 1, 1}, {3, 1, 1, 1}},
+				},
+				{
+					Query: "EXPLAIN SELECT /*+ merge_join(x, y) */ HINT * FROM mj_t x JOIN mj_t y ON y.w = x.w WHERE x.w = 1 ORDER BY 1, 2, 3, 4;",
+					Expected: []sql.Row{
+						{"Project"},
+						{" ├─ columns: [x.w, x.n, y.w, y.n]"},
+						{" └─ Sort(x.w ASC, x.n ASC, y.w ASC, y.n ASC)"},
+						{"     └─ MergeJoin"},
+						{"         ├─ cmp: y.w = x.w"},
+						{"         ├─ TableAlias(y)"},
+						{"         │   └─ IndexedTableAccess(mj_t)"},
+						{"         │       ├─ index: [mj_t.w,mj_t.n]"},
+						{"         │       ├─ filters: [{[NULL, ∞), [NULL, ∞)}]"},
+						{"         │       └─ columns: [w n]"},
+						{"         └─ Filter"},
+						{"             ├─ x.w = 1"},
+						{"             └─ TableAlias(x)"},
+						{"                 └─ IndexedTableAccess(mj_t)"},
+						{"                     ├─ index: [mj_t.w,mj_t.n]"},
+						{"                     ├─ filters: [{[NULL, ∞), [NULL, ∞)}]"},
+						{"                     └─ columns: [w n]"},
+					},
+				},
+				{
+					Query: "SELECT /*+ merge_join(x, y) */ HINT * FROM mj_t x JOIN mj_t y ON y.w = x.w WHERE x.w = 1 ORDER BY 1, 2, 3, 4;",
+					Expected: []sql.Row{
+						{1, 1, 1, 1},
+						{1, 1, 1, 2},
+						{1, 2, 1, 1},
+						{1, 2, 1, 2},
+					},
+				},
+				{
+					Query:    "SELECT * FROM mj_t x JOIN mj_u y ON y.n = x.n WHERE x.w = 1 ORDER BY 1, 2, 3;",
+					Expected: []sql.Row{{1, 1, 1}, {1, 2, 2}},
+				},
+			},
+		},
+		{
+			Name: "merge join with NULL join keys (issue 3879)",
+			SetUpScript: []string{
+				"CREATE TABLE users (id int PRIMARY KEY, name text NOT NULL);",
+				"CREATE TABLE tasks (id int PRIMARY KEY, title text NOT NULL, assignee_id int REFERENCES users (id));",
+				"INSERT INTO users VALUES (1, 'ana'), (2, 'bo'), (3, 'cy');",
+				"INSERT INTO tasks VALUES (10, 'write spec', 1), (11, 'review', 2), (12, 'triage', null), (13, 'deploy', 1);",
+				"CREATE TABLE stores (id int PRIMARY KEY, region_id int);",
+				"CREATE TABLE orders (id int PRIMARY KEY, region_id int);",
+				"CREATE INDEX stores_region_id ON stores (region_id);",
+				"CREATE INDEX orders_region_id ON orders (region_id);",
+				"INSERT INTO stores SELECT g, g % 30 FROM generate_series(1, 10) g;",
+				"INSERT INTO orders SELECT g, CASE WHEN g = 1 THEN NULL ELSE g % 20 END FROM generate_series(1, 10) g;",
+				"CREATE TABLE a (id int PRIMARY KEY, k int);",
+				"CREATE TABLE b (id int PRIMARY KEY, k int);",
+				"CREATE INDEX a_k ON a (k);",
+				"CREATE INDEX b_k ON b (k);",
+				"INSERT INTO a VALUES (1, NULL), (2, NULL), (3, 1), (4, 2), (5, 2), (6, 5);",
+				"INSERT INTO b VALUES (1, NULL), (2, 2), (3, 2), (4, 3), (5, 5), (6, NULL);",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT u.id FROM users u WHERE NOT EXISTS (SELECT 1 FROM tasks t WHERE t.assignee_id = u.id) ORDER BY u.id;",
+					Expected: []sql.Row{{3}},
+				},
+				{
+					Query:    "SELECT u.id FROM users u WHERE EXISTS (SELECT 1 FROM tasks t WHERE t.assignee_id = u.id) ORDER BY u.id;",
+					Expected: []sql.Row{{1}, {2}},
+				},
+				{
+					Query:    "SELECT t.id, u.id FROM tasks t LEFT JOIN users u ON t.assignee_id = u.id ORDER BY t.id;",
+					Expected: []sql.Row{{10, 1}, {11, 2}, {12, nil}, {13, 1}},
+				},
+				{
+					Query:    "SELECT o.id FROM orders o WHERE EXISTS (SELECT 1 FROM stores s WHERE s.region_id = o.region_id) ORDER BY o.id;",
+					Expected: []sql.Row{{2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}},
+				},
+				{
+					Query:    "SELECT o.id FROM orders o WHERE NOT EXISTS (SELECT 1 FROM stores s WHERE s.region_id = o.region_id) ORDER BY o.id;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "INSERT INTO stores VALUES (11, NULL);",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT o.id FROM orders o WHERE EXISTS (SELECT 1 FROM stores s WHERE s.region_id = o.region_id) ORDER BY o.id;",
+					Expected: []sql.Row{{2}, {3}, {4}, {5}, {6}, {7}, {8}, {9}, {10}},
+				},
+				{
+					Query:    "SELECT o.id FROM orders o WHERE NOT EXISTS (SELECT 1 FROM stores s WHERE s.region_id = o.region_id) ORDER BY o.id;",
+					Expected: []sql.Row{{1}},
+				},
+				{
+					Query:    "SELECT count(*) FROM orders o JOIN stores s ON s.region_id = o.region_id;",
+					Expected: []sql.Row{{9}},
+				},
+				{
+					Query:    "SELECT a.id FROM a WHERE EXISTS (SELECT 1 FROM b WHERE b.k = a.k) ORDER BY a.id;",
+					Expected: []sql.Row{{4}, {5}, {6}},
+				},
+				{
+					Query:    "SELECT a.id FROM a WHERE NOT EXISTS (SELECT 1 FROM b WHERE b.k = a.k) ORDER BY a.id;",
+					Expected: []sql.Row{{1}, {2}, {3}},
+				},
+				{
+					Query:    "SELECT b.id FROM b WHERE NOT EXISTS (SELECT 1 FROM a WHERE a.k = b.k) ORDER BY b.id;",
+					Expected: []sql.Row{{1}, {4}, {6}},
+				},
+				{
+					Query:    "SELECT count(*) FROM a JOIN b ON a.k = b.k;",
+					Expected: []sql.Row{{5}},
+				},
+				{
+					Query:    "SELECT count(*), count(b.id) FROM a LEFT JOIN b ON a.k = b.k;",
+					Expected: []sql.Row{{8, 5}},
+				},
+			},
+		},
+		{
+			Name: "primary key lookup with a literal of another type (issue 3748)",
+			SetUpScript: []string{
+				"CREATE TABLE npk (n NUMERIC PRIMARY KEY, v TEXT);",
+				"INSERT INTO npk VALUES (1, 'a'), (2, 'b'), (1.5, 'c');",
+				"CREATE TABLE bpk (id BIGINT PRIMARY KEY, v TEXT);",
+				"INSERT INTO bpk VALUES (1, 'a'), (2, 'b');",
+				"CREATE TABLE ipk (id INT PRIMARY KEY, v TEXT);",
+				"INSERT INTO ipk VALUES (1, 'a'), (2, 'b');",
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1.0;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1.5;",
+					Expected: []sql.Row{{"c"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = '1';",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = '1'::unknown;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = '01';",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = '1.50';",
+					Expected: []sql.Row{{"c"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 2::INT8;",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = $1;",
+					BindVars: []any{"2"},
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT count(*) FROM npk WHERE n = 3;",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "UPDATE npk SET v = 'z' WHERE n = 1;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT v FROM npk WHERE n = 1.0;",
+					Expected: []sql.Row{{"z"}},
+				},
+				{
+					Query:    "DELETE FROM npk WHERE n = 2;",
+					Expected: []sql.Row{},
+				},
+				{
+					Query:    "SELECT count(*) FROM npk;",
+					Expected: []sql.Row{{2}},
+				},
+				{
+					Query:    "SELECT v FROM bpk WHERE id = 1;",
+					Expected: []sql.Row{{"a"}},
+				},
+				{
+					Query:    "SELECT v FROM bpk WHERE id = '2';",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT v FROM bpk WHERE id = 2::INT8;",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT v FROM ipk WHERE id = 2::INT8;",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT v FROM ipk WHERE id = '2';",
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    "SELECT count(*) FROM ipk WHERE id = 1.5;",
+					Expected: []sql.Row{{0}},
+				},
+				{
+					Query:    "SELECT v FROM ipk WHERE id = 2.0;",
+					Expected: []sql.Row{{"b"}},
 				},
 			},
 		},
@@ -3131,6 +3760,36 @@ func TestIndexColumnOptions(t *testing.T) {
 					Query:    "SELECT pk FROM uq WHERE e = 3;",
 					Expected: []sql.Row{{3}},
 				},
+			},
+		},
+	})
+}
+
+// TestIndexConcurrentlyInMultiStatementSimpleQuery verifies that CONCURRENTLY index statements are refused inside the
+// implicit transaction block of a simple query with several statements.
+func TestIndexConcurrentlyInMultiStatementSimpleQuery(t *testing.T) {
+	RunMessageFlowTests(t, []MessageFlowTest{
+		{
+			Name: "CONCURRENTLY index statements in an implicit block",
+			Steps: []FlowStep{
+				SimpleQuery{Query: "CREATE TABLE t (pk INT PRIMARY KEY, v INT);", Expected: []StatementResult{{Tag: "CREATE TABLE"}}},
+				SimpleQuery{
+					Query:           "CREATE INDEX CONCURRENTLY t_v_idx ON t (v); SELECT 1;",
+					ExpectedErr:     "CREATE INDEX CONCURRENTLY cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
+				},
+				SimpleQuery{Query: "CREATE INDEX CONCURRENTLY t_v_idx ON t (v);", Expected: []StatementResult{{Tag: "CREATE INDEX"}}},
+				SimpleQuery{
+					Query:           "SELECT 1; DROP INDEX CONCURRENTLY t_v_idx;",
+					Expected:        []StatementResult{{Tag: "SELECT 1", Rows: [][]string{{"1"}}}},
+					ExpectedErr:     "DROP INDEX CONCURRENTLY cannot run inside a transaction block",
+					ExpectedErrCode: "25001",
+				},
+				SimpleQuery{
+					Query:    "SELECT indexname FROM pg_indexes WHERE tablename = 't' ORDER BY indexname;",
+					Expected: []StatementResult{{Tag: "SELECT 2", Rows: [][]string{{"t_pkey"}, {"t_v_idx"}}}},
+				},
+				SimpleQuery{Query: "DROP INDEX CONCURRENTLY t_v_idx;", Expected: []StatementResult{{Tag: "DROP INDEX"}}},
 			},
 		},
 	})
