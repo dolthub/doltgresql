@@ -1616,6 +1616,7 @@ func TestDoltMerge(t *testing.T) {
 		"merge with new triggers defined",                                                                                // triggers
 		"try to merge a nullable field into a non-null column",                                                           // alter table
 		"merge fulltext with renamed table",                                                                              // alter table
+		"MATCH(a) AGAINST(",                                                                                              // MySQL full-text search has no Postgres equivalent
 		"select * from dolt_status",                                                                                      // table_name column includes schema name,
 		"dolt_merge() (3way) works with no auto increment overlap",                                                       // sequencing doesn't work globally after merge, need to decide product behavior
 		"dolt_merge() (3way) with a gap in an auto increment key",                                                        // sequencing doesn't work globally after merge, need to decide product behavior

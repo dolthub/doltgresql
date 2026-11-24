@@ -93,12 +93,27 @@ func nodeWindowDef(ctx *Context, node *tree.WindowDef) (*vitess.WindowDef, error
 				Type: boundType,
 			}
 		}
+		var exclusion vitess.FrameExclusion
+		switch node.Frame.Exclusion {
+		case tree.NoExclusion:
+			exclusion = vitess.ExcludeNoOthers
+		case tree.ExcludeCurrentRow:
+			exclusion = vitess.ExcludeCurrentRow
+		case tree.ExcludeGroup:
+			exclusion = vitess.ExcludeGroup
+		case tree.ExcludeTies:
+			exclusion = vitess.ExcludeTies
+		default:
+			return nil, errors.Errorf("unknown window frame exclusion")
+		}
+
 		frame = &vitess.Frame{
 			Unit: unit,
 			Extent: &vitess.FrameExtent{
 				Start: bounds[0],
 				End:   bounds[1],
 			},
+			Exclusion: exclusion,
 		}
 	}
 	return &vitess.WindowDef{
