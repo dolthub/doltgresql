@@ -8,7 +8,7 @@ require (
 	github.com/antchfx/xpath v1.3.3
 	github.com/cockroachdb/apd/v3 v3.2.3
 	github.com/cockroachdb/errors v1.7.5
-	github.com/dolthub/dolt/go v0.40.5-0.20261124014957-9fa8ff8a6d0b
+	github.com/dolthub/dolt/go v0.40.5-0.20261124021454-dd7f1447ea4b
 	github.com/dolthub/eventsapi_schema v0.0.0-20261119125135-6b30707d614f
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2
 	github.com/dolthub/go-mysql-server v0.20.1-0.20261124000141-e42d36114c4f
