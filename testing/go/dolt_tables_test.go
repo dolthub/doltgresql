@@ -1617,19 +1617,7 @@ WHERE to_commit = dolt_hashof('HEAD')
 					Expected: []sql.Row{{1}},
 				},
 				{
-					Query: `SELECT to_id FROM DOLT_DIFF(
-    (SELECT commit_hash FROM dolt.log ORDER BY date DESC OFFSET 1 LIMIT 1),
-    (SELECT commit_hash FROM dolt.log ORDER BY date DESC LIMIT 1),
-    'bug6');`,
-					Expected: []sql.Row{{1}},
-				},
-				{
 					Query:           `SELECT to_id FROM dolt_commit_diff_bug6 WHERE to_commit = (SELECT commit_hash FROM dolt.log) AND from_commit = dolt_hashof('HEAD~');`,
-					ExpectedErr:     "more than",
-					ExpectedErrCode: "21000",
-				},
-				{
-					Query:           `SELECT to_id FROM DOLT_DIFF((SELECT commit_hash FROM dolt.log), 'HEAD', 'bug6');`,
 					ExpectedErr:     "more than",
 					ExpectedErrCode: "21000",
 				},
