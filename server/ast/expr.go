@@ -439,10 +439,11 @@ func nodeExpr(ctx *Context, node tree.Expr) (vitess.Expr, error) {
 			operator = vitess.LikeStr
 		case tree.NotLike:
 			operator = vitess.NotLikeStr
+		// TODO: ILIKE ... ESCAPE (ilike_escape) and the ~~* / !~~* operator spellings are not supported yet
 		case tree.ILike:
-			return nil, errors.Errorf("ILIKE is not yet supported")
+			return vitess.InjectedExpr{Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryILike), Children: vitess.Exprs{left, right}}, nil
 		case tree.NotILike:
-			return nil, errors.Errorf("ILIKE is not yet supported")
+			return vitess.InjectedExpr{Expression: pgexprs.NewBinaryOperator(framework.Operator_BinaryNotILike), Children: vitess.Exprs{left, right}}, nil
 		case tree.SimilarTo:
 			return nil, errors.Errorf("similar to is not yet supported")
 		case tree.NotSimilarTo:

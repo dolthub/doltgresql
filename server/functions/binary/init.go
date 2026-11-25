@@ -39,4 +39,5 @@ func Init() {
 	initInet()
 	initJSON()
 	initRegexInsensitive()
+	initILike()
 }
