@@ -26,6 +26,35 @@ func TestIn(t *testing.T) {
 		anyTests("ANY"),
 		anyTests("SOME"),
 		{
+			Name: "IN subquery compares varchar with char(n) as bpchar",
+			SetUpScript: []string{
+				`CREATE TABLE vc (k VARCHAR(10) PRIMARY KEY);`,
+				`INSERT INTO vc VALUES ('a'), ('a '), ('b');`,
+			},
+			Assertions: []ScriptTestAssertion{
+				{
+					Query:    `SELECT k FROM vc WHERE k IN (SELECT 'a'::char(5)) ORDER BY k;`,
+					Expected: []sql.Row{{"a"}, {"a "}},
+				},
+				{
+					Query:    `SELECT k FROM vc WHERE k NOT IN (SELECT 'a'::char(5)) ORDER BY k;`,
+					Expected: []sql.Row{{"b"}},
+				},
+				{
+					Query:    `SELECT k FROM vc WHERE k IN (SELECT 'z'::char(5) UNION ALL SELECT NULL::char(5)) IS NULL ORDER BY k;`,
+					Expected: []sql.Row{{"a"}, {"a "}, {"b"}},
+				},
+				{
+					Query:    `SELECT NULL::varchar IN (SELECT 'a'::char(5));`,
+					Expected: []sql.Row{{nil}},
+				},
+				{
+					Query:    `SELECT NULL::varchar IN (SELECT 'a'::char(5) WHERE false);`,
+					Expected: []sql.Row{{"f"}},
+				},
+			},
+		},
+		{
 			Name: "IN",
 			SetUpScript: []string{
 				`CREATE TABLE test (id INT);`,

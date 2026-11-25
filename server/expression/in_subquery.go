@@ -40,6 +40,9 @@ type InSubquery struct {
 	leftLiteral   *expression.Literal
 	rightLiterals []*expression.Literal
 	compFuncs     []framework.Function
+	// compareEach is set when the left and right types differ. Equal values of different types can hash differently
+	// (varchar 'a ' and char(n) 'a' are equal as bpchar), so Eval compares each value instead of looking up its hash.
+	compareEach bool
 }
 
 var _ vitess.Injectable = (*InSubquery)(nil)
@@ -79,6 +82,10 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 
 	if types.NumColumns(in.Left().Type(ctx)) != types.NumColumns(in.Right().Type(ctx)) {
 		return nil, sql.ErrInvalidOperandColumns.New(types.NumColumns(in.Left().Type(ctx)), types.NumColumns(in.Right().Type(ctx)))
+	}
+
+	if in.compareEach {
+		return in.evalByComparison(ctx, left, row)
 	}
 
 	right := in.rightExpr
@@ -124,6 +131,40 @@ func (in *InSubquery) Eval(ctx *sql.Context, row sql.Row) (any, error) {
 	}
 
 	return in.valuesEqual(ctx, left, r)
+}
+
+// evalByComparison returns whether the left value equals any value of the subquery, using the equality functions
+// instead of the hash lookup. It follows the same NULL rules as the hash lookup: NULL IN (empty) is false, NULL IN (any
+// rows) is NULL, and no match is NULL when the subquery returned a NULL.
+func (in *InSubquery) evalByComparison(ctx *sql.Context, left any, row sql.Row) (any, error) {
+	values, err := in.rightExpr.EvalMultiple(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+	if left == nil {
+		if len(values) == 0 {
+			return false, nil
+		}
+		return nil, nil
+	}
+	sawNull := false
+	for _, value := range values {
+		if value == nil {
+			sawNull = true
+			continue
+		}
+		equal, err := in.valuesEqual(ctx, left, sql.Row{value})
+		if err != nil {
+			return nil, err
+		}
+		if equal {
+			return true, nil
+		}
+	}
+	if sawNull {
+		return nil, nil
+	}
+	return false, nil
 }
 
 // valuesEqual returns true if the left value is equal to the row provided using the equality functions previously
@@ -252,6 +293,7 @@ func (in *InSubquery) WithChildren(ctx *sql.Context, children ...sql.Expression)
 				leftLiteral:   leftLiteral,
 				rightLiterals: rightLiterals,
 				compFuncs:     compFuncs,
+				compareEach:   len(sch) == 1 && sch[0].Type.(*pgtypes.DoltgresType).ID != leftType.ID,
 			}, nil
 		}
 	}
