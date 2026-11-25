@@ -104,7 +104,7 @@ func nodeUniqueConstraintTableDef(
 		return nil, errors.Errorf("STORAGE parameters not yet supported for indexes")
 	}
 
-	if node.IndexParams.Tablespace != "" {
+	if node.IndexParams.Tablespace != "" && node.IndexParams.Tablespace != "pg_default" {
 		return nil, errors.Errorf("TABLESPACE is not yet supported")
 	}
 
