@@ -170,6 +170,11 @@ func (ext Extension) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Extensions
 }
 
+// KindName implements the interface objinterface.RootObject.
+func (ext Extension) KindName() string {
+	return "extension"
+}
+
 // HashOf implements the interface objinterface.RootObject.
 func (ext Extension) HashOf(ctx context.Context) (hash.Hash, error) {
 	data, err := ext.Serialize(ctx)

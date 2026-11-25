@@ -242,6 +242,11 @@ func (operator Operator) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Operators
 }
 
+// KindName implements the interface objinterface.RootObject.
+func (operator Operator) KindName() string {
+	return "operator"
+}
+
 // HashOf implements the interface objinterface.RootObject.
 func (operator Operator) HashOf(ctx context.Context) (hash.Hash, error) {
 	data, err := operator.Serialize(ctx)

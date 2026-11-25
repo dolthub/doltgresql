@@ -1128,8 +1128,8 @@ func TestSequences(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
-						{"public.test1", "t", "new table"},
-						{"public.test2", "f", "new table"},
+						{"public.test1", "t", "new sequence"},
+						{"public.test2", "f", "new sequence"},
 					},
 				},
 				{
@@ -1139,7 +1139,7 @@ func TestSequences(t *testing.T) {
 				{
 					Query: "SELECT * FROM dolt.status;",
 					Expected: []sql.Row{
-						{"public.test1", "t", "new table"},
+						{"public.test1", "t", "new sequence"},
 					},
 				},
 			},

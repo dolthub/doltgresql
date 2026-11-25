@@ -567,6 +567,11 @@ func (cast Cast) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Casts
 }
 
+// KindName implements the interface objinterface.RootObject.
+func (cast Cast) KindName() string {
+	return "cast"
+}
+
 // HashOf implements the interface objinterface.RootObject.
 func (cast Cast) HashOf(ctx context.Context) (hash.Hash, error) {
 	data, err := cast.Serialize(ctx)

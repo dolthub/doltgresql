@@ -507,6 +507,11 @@ func (t TypeWrapper) GetRootObjectID() objinterface.RootObjectID {
 	return objinterface.RootObjectID_Types
 }
 
+// KindName implements the interface objinterface.RootObject.
+func (t TypeWrapper) KindName() string {
+	return "type"
+}
+
 // HashOf implements the interface objinterface.RootObject.
 func (t TypeWrapper) HashOf(ctx context.Context) (hash.Hash, error) {
 	if t.Type != nil {

@@ -28,7 +28,7 @@ import (
 
 // RootObject is an expanded interface on Dolt's root objects.
 type RootObject interface {
-	doltdb.RootObject
+	doltdb.RootObjectWithKind
 	// GetID returns the root object ID.
 	GetID() id.Id
 	// GetRootObjectID returns the root object ID.
